@@ -502,9 +502,9 @@ function teamData(over) {
   await check('raid detail: header with one summary line, state pill, three source chips with their actions, flagged rows first under "Needs review"', () => {
     const out = raidPage(detail());
     assert(out.includes('Sat Oct 10 - BT / Hyjal') && out.includes('1 kill, 1 wipe') && out.includes('3 to review'));
-    assert(out.includes('Sat BT') && out.includes('28 sign-ups') && out.includes('data-op="event-refresh"') && out.includes('data-op="event-replace"') && out.includes('data-op="event-remove"'));
-    assert(out.includes('Warcraft Logs') && out.includes('>2 reports<') && out.includes('17 boss pulls') && out.includes('WaghkY9zwDyvLX7m') && out.includes('data-op="report-refresh"') && out.includes('data-code="h8VAwCFa79Jk1cvf"') && out.includes('data-op="report-add"'));
-    assert(out.includes('BT run') && out.includes('25 players') && out.includes('data-op="plan-replace"') && out.includes('data-op="plan-remove"'));
+    assert(out.includes('<dt>Sign-ups</dt><dd><span class="gs-rpg-v">28 signed</span>') && out.includes('data-op="event-refresh"') && out.includes('data-op="event-replace"') && out.includes('data-op="event-remove"'));
+    assert(out.includes('Warcraft Logs - 2 reports, 17 pulls') && out.includes('WaghkY9zwDyvLX7m') && out.includes('data-op="report-refresh"') && out.includes('data-code="h8VAwCFa79Jk1cvf"') && out.includes('data-op="report-add"'));
+    assert(out.includes('BT run, 25 players') && out.includes('data-op="plan-replace"') && out.includes('data-op="plan-remove"'));
     assert(/aria-pressed="true">Needs review/.test(out), 'defaults to Needs review when flags exist');
     const body = out.slice(out.indexOf('<tbody>'), out.indexOf('</tbody>'));
     const names = [...body.matchAll(/gs-char-link[^>]*>([^<]*)</g)].map(m => m[1]);
@@ -532,7 +532,7 @@ function teamData(over) {
     const awaiting = raidPage(detail({ raid: Object.assign(detail().raid, { state: 'awaiting_log', openFlags: 0 }), people: [], sources: { event: null, reports: [], plan: null }, unmatched: [] }));
     assert(awaiting.includes('Awaiting log') && awaiting.includes('data-op="manual-open"') && awaiting.includes('Mark as No log') && awaiting.includes('Link an event') && awaiting.includes('Add report') && awaiting.includes('Link a plan'));
     const manual = raidPage(detail({ raid: Object.assign(detail().raid, { state: 'manual', openFlags: 0, manual: { reason: 'Nobody uploaded', by: 'Officer', at: 1760000000000 } }), sources: { event: null, reports: [], plan: null } }));
-    assert(manual.includes('No log - attendance entered by hand') && manual.includes('Nobody uploaded') && manual.includes('data-op="manual-edit"') && manual.includes('data-op="manual-remove"') && !manual.includes('data-op="report-add"') && !manual.includes('Mark as No log'));
+    assert(manual.includes('Entered by hand by Officer on ') && manual.includes('Reason: Nobody uploaded') && manual.includes('Edit attendance by hand') && manual.includes('Remove hand-entered attendance') && manual.includes('data-op="manual-edit"') && manual.includes('data-op="manual-remove"') && !manual.includes('data-op="report-add"') && !manual.includes('Mark as No log'));
     assert(raidPage(detail({ raid: Object.assign(detail().raid, { stale: true }) })).includes('data-op="recompute"'));
     const bad = detail({ people: [prow('p_x', HOSTILE + QUOTES, { flags: ['no_show'], decision: { reason: HOSTILE, by: QUOTES, applied: true } })], unmatched: [{ key: 'k', name: HOSTILE, realm: QUOTES, class: 'MAGE', pullsPresent: 1 }] });
     bad.raid.zone = HOSTILE;
@@ -1152,8 +1152,8 @@ function teamData(over) {
     };
     const panel = v => ({ signups: { gid: 'g1', rid: 'u1', status: 'ok', data: v, ui: G.pages.raidSignups.freshUi(v) } });
     const out = raidPage(up, panel(view));
-    assert(out.includes('Starts Sat Oct 24, ') && out.includes('Prog night') && out.includes('>Upcoming<') && out.includes('>Not planned<'));
-    assert(out.includes('Opens when the raid starts') && out.includes('Sign-ups') && out.includes('Bravo') && out.includes('Arms'), 'attendance waits for the start: a locked After the raid section');
+    assert(out.includes('Sat Oct 24 - Prog night') && out.includes('>Sign-ups open</span>') && out.includes('Not planned') && out.includes('Raid-Helper, Sat BT (2, synced'));
+    assert(!out.includes('Opens when the raid starts') && out.includes('Sign-ups') && out.includes('Bravo') && out.includes('Arms'), 'attendance waits for the start: no log, no people');
     assert(out.includes('Refresh sign-ups') && out.includes('data-op="event-refresh"'));
     assert(!out.includes('Mark as No log') && !out.includes('Recalculate') && !out.includes('Warcraft Logs reports') && !out.includes('Needs review') && !out.includes('>People<'));
     const hidden = Object.assign({}, view, { can: { edit: false, self: false, seeList: false, seeNicknames: false }, counts: null, entries: null });
@@ -1162,7 +1162,7 @@ function teamData(over) {
     assertEscaped(raidPage(up, panel(hostile)), 'upcoming signups');
   });
 
-  await check('Plan in Planner: no button on the Raids list cards (the raid page has it), and Open in Planner in the Actions menu of the raid page (never for a member); Refresh sign-ups lives on the Raid-Helper chip', () => {
+  await check('Plan in Planner: no button on the Raids list cards (the raid page has it), and Open in Planner in the Actions menu of the raid page (never for a member); Refresh sign-ups lives in the Sign-ups from Change menu', () => {
     const out = withUp();
     assert(!out.includes('raids-plan') && !out.includes('Plan in Planner') && !out.includes('raids-refresh'));
     assertNoRawAttrs(out);
@@ -1172,7 +1172,7 @@ function teamData(over) {
     });
     const page = raidPage(up);
     assert(page.includes('data-op="plan-in-planner"') && page.includes('>Open in Planner<'));
-    assert(page.indexOf('id="raid-actions"') < page.indexOf('data-op="plan-in-planner"') && page.indexOf('data-op="plan-in-planner"') < page.indexOf('data-src="event"') + 2000, 'Open in Planner is in the Actions menu, the Raid-Helper chip has its own menu');
+    assert(page.indexOf('id="raid-actions"') < page.indexOf('data-op="plan-in-planner"') && page.includes('id="fact-plan"') && page.includes('id="fact-event"'), 'Open in Planner is first in More (and in Plan settings); the event has its own Change menu');
     const noEvent = raidPage(Object.assign({}, up, { sources: { event: null, reports: [], plan: null } }));
     assert(noEvent.includes('data-op="plan-in-planner"') && !noEvent.includes('Refresh sign-ups'));
     assert(!raidPage(Object.assign({}, up, { can: { edit: false, review: false, seeAttendance: false, seeNicknames: false } }), { guildData: gd(MEMBER_CAN) }).includes('plan-in-planner'));
@@ -1392,12 +1392,12 @@ function teamData(over) {
     } finally { G.pages.raidSignups.loadFor = savedLoad; s.restore(); }
   });
 
-  await check('R3-1: the manual line shows only "No log - attendance entered by hand" without the officer\'s name, date and reason', () => {
+  await check('R3-1: the Log fact shows only "Entered by hand" without the officer\'s name, date and reason', () => {
     const base = detail().raid;
-    const hidden = raidPage(detail({ raid: Object.assign({}, base, { state: 'manual', openFlags: 0, manual: { reason: null, by: null, at: 1760000000000, presentPlayerIds: [] } }) }), { guildData: gd(MEMBER_CAN) });
-    assert(hidden.includes('No log - attendance entered by hand</strong>.') && !/Reason|by Officer|hand<\/strong> on/.test(hidden));
-    const shown = raidPage(detail({ raid: Object.assign({}, base, { state: 'manual', openFlags: 0, manual: { reason: 'Nobody uploaded', by: 'Officer', at: 1760000000000 } }) }));
-    assert(shown.includes('by Officer') && shown.includes('Reason: Nobody uploaded'));
+    const hidden = raidPage(detail({ raid: Object.assign({}, base, { state: 'manual', openFlags: 0, manual: { reason: null, by: null, at: 1760000000000, presentPlayerIds: [] } }), sources: { event: null, reports: [], plan: null } }), { guildData: gd(MEMBER_CAN) });
+    assert(hidden.includes('<span class="gs-rpg-v">Entered by hand</span>') && !/Reason|by Officer/.test(hidden));
+    const shown = raidPage(detail({ raid: Object.assign({}, base, { state: 'manual', openFlags: 0, manual: { reason: 'Nobody uploaded', by: 'Officer', at: 1760000000000 } }), sources: { event: null, reports: [], plan: null } }));
+    assert(shown.includes('Entered by hand by Officer on ') && shown.includes('Reason: Nobody uploaded'));
   });
 
   await check('R3-4: "Decided" shows only for an applied decision; a stale one shows a muted hint to reviewers and nothing to others', () => {

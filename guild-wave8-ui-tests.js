@@ -334,17 +334,22 @@ const RAID = (over, rover) => Object.assign({
   can: { edit: true, review: true, seeAttendance: true, seeNicknames: true }, sources: { event: null, reports: [], plan: null }, pulls: [], people: [], unmatched: [], signups: [], duties: [],
 }, over || {});
 
-check('raid page: the header line lists the duties; the Actions menu offers duties everywhere, a guest link before the start and a pasted roster after it - editors only', () => {
+check('raid page: the Raid facts panel lists the duties (a Change button for editors only); the More menu offers a guest link before the start and a pasted roster after it - editors only; no duties line under the head', () => {
   const duties = [{ duty: 'leader', label: 'Raid leader', personId: 'p1', name: 'Aldric', class: 'WARRIOR' }, { duty: 'extra', label: 'Bring <flasks>', personId: 'p2', name: 'Brenna', class: 'PRIEST' }];
   const out = G.pages.raid.raidHtml({ guildData: gd(OFFICER, 'tbc'), data: RAID({ duties }) });
-  assert(out.includes('id="raid-duties"'));
-  assert(text(out.slice(out.indexOf('id="raid-duties"'), out.indexOf('</p>', out.indexOf('id="raid-duties"')))).includes('Raid leader: Aldric') && out.includes('Bring &lt;flasks&gt;'));
-  assert(!G.pages.raid.raidHtml({ guildData: gd(OFFICER, 'tbc'), data: RAID() }).includes('raid-duties'), 'no duties, no line');
+  const row = out.slice(out.indexOf('id="raid-duties"'), out.indexOf('</dl>', out.indexOf('id="raid-duties"')));
+  assert(row.includes('<dt>Duties</dt>') && text(row).includes('Raid leader Aldric') && row.includes('Bring &lt;flasks&gt; <span class="gs-char-name gs-class-priest">Brenna</span>'), text(row));
+  assert(row.includes('data-action="raid-extra" data-op="duties"') && row.includes('aria-label="Change duties"'), 'an editor opens the Raid duties dialog directly');
+  assert(!out.includes('gs-duties-line') && !out.includes('<p class="gs-duties-line"'), 'the old line under the head is gone');
+  const none = text(G.pages.raid.raidHtml({ guildData: gd(OFFICER, 'tbc'), data: RAID() }));
+  assert(none.includes('Duties Not set'), 'no duties: Not set');
+  const member = G.pages.raid.raidHtml({ guildData: gd({ 'raids.view': 'guild' }, 'tbc'), data: RAID({ duties, can: { edit: false } }) });
+  assert(member.includes('id="raid-duties"') && !member.includes('data-op="duties"'), 'a member reads the duties, no Change');
   const labels = (data) => plain(G.pages.raidExtras.menuItems(data).map(i => i.label));
-  assert.deepEqual(labels(RAID()), ['Set raid duties', 'Paste raid roster']);
-  assert.deepEqual(labels(RAID({}, { upcoming: true })), ['Set raid duties', 'Guest sign-up link']);
-  assert.deepEqual(labels(RAID({ sources: { event: null, reports: [{ code: 'Aaaa000000000001' }], plan: null } })), ['Set raid duties'], 'a raid with a log has no pasted roster');
-  assert.deepEqual(labels(RAID({}, { state: 'manual', manual: { reason: 'x' } })), ['Set raid duties', 'Paste raid roster (replaces who is present)']);
+  assert.deepEqual(labels(RAID()), ['Paste raid roster']);
+  assert.deepEqual(labels(RAID({}, { upcoming: true })), ['Guest sign-up link']);
+  assert.deepEqual(labels(RAID({ sources: { event: null, reports: [{ code: 'Aaaa000000000001' }], plan: null } })), [], 'a raid with a log has no pasted roster');
+  assert.deepEqual(labels(RAID({}, { state: 'manual', manual: { reason: 'x' } })), ['Paste raid roster (replaces who is present)']);
   assert.deepEqual(labels(RAID({ can: { edit: false } })), []);
   assert(G.pages.raid.raidHtml({ guildData: gd(OFFICER, 'tbc'), data: RAID() }).includes('data-action="raid-extra" data-op="paste"'));
 });

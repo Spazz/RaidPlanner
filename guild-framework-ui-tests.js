@@ -776,12 +776,12 @@ function assertNoRawAttrs(out) {
 
   await check('glossary: the words that replace them are in place - Line-up, Loot prios, Loot awards, Can\'t come, Spec poll, Recruiting needs, Accounts, More, Plan settings, Group', () => {
     const all = Object.fromEntries(sources);
-    assert(all['js/guild/pages-raid-roster.js'].includes('Publish line-up') && all['js/guild/pages-raid-roster.js'].includes('>Line-up</h2>') && all['js/guild/pages-raid-roster.js'].includes('Your group'));
+    assert(all['js/guild/pages-raid-roster.js'].includes('Publish line-up') && all['js/guild/pages-raid-roster.js'].includes('>Line-up</h2>') && all['js/guild/pages-raid-you.js'].includes("'Group '"));
     assert(all['js/guild/pages-raid-roster.js'].includes('Can\\\'t come'));
     assert(all['js/guild/pages-raid-board.js'].includes('Loot prios') && all['js/guild/pages-raid-loot.js'].includes('Loot awards'));
     assert(all['js/guild/pages-roster-tabs.js'].includes("intent: 'Spec poll'") && all['js/guild/pages-roster-tabs.js'].includes("recruiting: 'Recruiting'"));
     assert(all['js/guild/shell.js'].includes("label: 'Spec poll'") && all['js/guild/shell.js'].includes("label: 'Recruiting'") && all['js/guild/shell.js'].includes("label: 'Accounts'"));
-    assert(all['js/guild/pages-raid.js'].includes("label: 'More', key: 'raid-actions'") && all['js/guild/pages-raid.js'].includes("sourceMenuHtml('plan', 'Plan settings'"));
+    assert(all['js/guild/pages-raid.js'].includes("label: 'More', key: 'raid-actions'") && all['js/guild/pages-raid-facts.js'].includes("changeMenu('plan', 'Plan settings'"));
     assert(all['js/guild/pages-raid-signups.js'].includes("absence: 'Can\\'t come'"));
     assert(all['worker/notify.js'].includes('Line-up published:') && all['worker/notify.js'].includes('Please confirm your group, or say you can\'t come.'));
     assert(all['worker/audit-view.js'].includes('Published the line-up of') && all['worker/audit-view.js'].includes("can't come to ${onRaid(ent)}") && all['worker/audit-view.js'].includes('Opened a spec poll for'));

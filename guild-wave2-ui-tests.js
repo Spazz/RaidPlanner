@@ -124,6 +124,10 @@ function view(over, raidOver) {
 }
 const state = (v, over) => Object.assign({ gid: 'g1', rid: 'u1', status: 'ok', data: v, ui: G.pages.raidSignups.freshUi(v) }, over || {});
 const panel = (v, opts) => G.pages.raidSignups.panelHtml(Object.assign({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: state(v) }, opts || {}));
+// The viewer's own part moved out of the panel: the You bar (status pills, "Change character or note") and its details dialog. panelAll = the three together.
+const youBar = (v, over) => G.pages.raidYou.youBarHtml(Object.assign({ guildData: gd(MEMBER_CAN), data: DETAIL(), parts: { signups: state(v) }, nextHasPrimary: false }, over || {}));
+const detailsDlg = (v) => G.pages.raidSignups.detailsDialogHtml(v, G.pages.raidSignups.freshUi(v), false);
+const panelAll = (v, opts) => panel(v, opts) + youBar(v) + detailsDlg(v);
 
 function stub(handler) {
   const calls = [];
@@ -520,79 +524,82 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   // ═══ 4. The raid page ════════════════════════════════════════════
   const raidPage = (data, can, signups) => ws(G.pages.raid.raidHtml({ guildData: gd(can || OFFICER_CAN), data, signups: signups || null }));
+  const settingsDlg = (data, can) => ws(G.pages.raid.settingsDialogHtml(gd(can || OFFICER_CAN), data));
 
-  await check('raid page: the title carries "zone - size"; a date-only raid says "Time not set" and shows no time; a timed one shows its start', () => {
+  await check('raid page: the title is the day and the raid\'s title, else its zone, else its size; the context line has the time with its zone (or Time not set), where, and when sign-ups close; one chip', () => {
     const timed = raidPage(DETAIL());
-    assert(/<h1 class="gs-h1" id="page-title" tabindex="-1">Sat Oct 24 - Hyjal Summit - 20<\/h1>/.test(timed));
-    assert(timed.includes('Prog night &middot; Starts Sat Oct 24, 8:00 PM') && !timed.includes('Time not set'));
-    const noZone = raidPage(DETAIL(null, { zone: null, size: 25 }));
-    assert(noZone.includes('>Sat Oct 24 - 25-player</h1>'));
-    const old = raidPage(DETAIL(null, { size: undefined }));
-    assert(old.includes('>Sat Oct 24 - Hyjal Summit</h1>'), 'an older reply: the zone alone');
+    assert(/<h1 class="gs-h1" id="page-title" tabindex="-1">Sat Oct 24 - Prog night<\/h1>/.test(timed));
+    assert(timed.includes('<span>8:00 PM CT</span><span class="gs-sumsep" aria-hidden="true"></span><span>Hyjal Summit, 20-player</span><span class="gs-sumsep" aria-hidden="true"></span><span>sign-ups close Sat Oct 24, 8:00 PM CT</span></p>') && timed.includes('<span>Team KJ</span>') && !timed.includes('Time not set'), timed.slice(timed.indexOf('gs-pagehead-context'), timed.indexOf('gs-pagehead-context') + 400));
+    assert.equal((timed.match(/class="gs-hd-chip /g) || []).length, 1, 'one chip in the head');
+    const noTitle = raidPage(DETAIL(null, { title: null }));
+    assert(noTitle.includes('>Sat Oct 24 - Hyjal Summit</h1>'), 'no title: the zone');
+    const noZone = raidPage(DETAIL(null, { zone: null, title: null, size: 25 }));
+    assert(noZone.includes('>Sat Oct 24 - 25-player</h1>') && noZone.includes('<span>25-player</span>'), 'no zone: the size');
     const dateOnly = raidPage(DETAIL(null, { timeKnown: false, startsAt: NOON_UTC }));
-    assert(dateOnly.includes('Starts Sat Oct 24 &middot; <span class="gs-time-unset">Time not set</span>'), dateOnly.slice(dateOnly.indexOf('gs-sub')));
-    assert(!/12:00|\bAM\b|\bPM\b/.test(stripTags(dateOnly)), 'no made-up time');
-    // A past raid: the title has the size; the sub line is the bosses as before.
+    assert(dateOnly.includes('<span class="gs-time-unset">Time not set</span>'), dateOnly.slice(dateOnly.indexOf('gs-pagehead-context'), dateOnly.indexOf('gs-pagehead-context') + 300));
+    assert(!/12:00|\bAM\b|\bPM\b/.test(stripTags(dateOnly.slice(dateOnly.indexOf('gs-pagehead-context'), dateOnly.indexOf('gs-pagehead-context') + 200))), 'no made-up time');
+    // A past raid: the same title; the context line is the bosses (and the counts), never "Starts".
     const past = raidPage(DETAIL(null, { upcoming: false, state: 'reviewed' }));
-    assert(past.includes('>Sat Oct 24 - Hyjal Summit - 20</h1>') && !past.includes('Starts '));
-    assertEscaped(raidPage(DETAIL(null, { zone: HOSTILE + QUOTES })), 'raid title');
+    assert(past.includes('>Sat Oct 24 - Prog night</h1>') && !past.includes('Starts ') && !past.includes('sign-ups close'));
+    assertEscaped(raidPage(DETAIL(null, { zone: HOSTILE + QUOTES, title: null })), 'raid title');
   });
 
-  await check('raid settings card: officers only; the size select (Automatic / 10 / 20 / 25 / 40) starts at the override; what is in effect is written under each control', () => {
-    const out = raidPage(DETAIL());
-    assert(out.includes('<h2 class="gs-h2" id="rs-h">Raid settings</h2>') && out.includes('data-submit="raid-settings-form"') && out.includes('data-key="rs-save"'));
+  await check('raid settings dialog: officers only; the size select (Automatic / 10 / 20 / 25 / 40) starts at the override; what is in effect is written under each control', () => {
+    const out = settingsDlg(DETAIL());
+    assert(out.includes('<h2 class="gs-dialog-title" id="dlg-title">Raid settings</h2>') && out.includes('data-submit="raid-settings-form"') && out.includes('data-key="rs-save"'));
     const sizes = optionsOf(out, 'rs-size');
     assert.deepEqual(sizes.map(o => o.value), ['', '10', '20', '25', '40']);
     assert.deepEqual(sizes.filter(o => o.selected).map(o => o.value), [''], 'no override: Automatic');
     assert(sizes[0].label.startsWith('Automatic - from the zone'));
     assert(out.includes('id="rs-size-help">In effect: 20 players, picked from the zone, else the team&#39;s size.') || out.includes('id="rs-size-help">In effect: 20 players, picked from the zone, else the team\'s size.'));
-    const over = raidPage(DETAIL(null, { sizeOverride: 10, size: 10 }));
+    const over = settingsDlg(DETAIL(null, { sizeOverride: 10, size: 10 }));
     assert.deepEqual(optionsOf(over, 'rs-size').filter(o => o.selected).map(o => o.value), ['10']);
     assert(over.includes('In effect: 10 players, set for this raid.'));
     assert(out.includes('id="rs-error" role="alert" hidden') && out.includes('id="rs-err-size" role="alert" hidden'));
-    // Members and anyone without raids.edit do not see it.
+    // Members and anyone without raids.edit have no More menu, so no way to it; the page carries no settings form.
     const member = raidPage(DETAIL({ can: { edit: false, review: false, seeAttendance: false, seeNicknames: false } }), MEMBER_CAN);
     assert(!member.includes('Raid settings') && !member.includes('rs-size') && !member.includes('raid-settings-form'));
-    assert.equal(G.pages.raid.settingsCardHtml(gd(MEMBER_CAN), DETAIL({ can: { edit: false } })), '');
+    assert(raidPage(DETAIL()).includes('data-op="settings"') && !raidPage(DETAIL()).includes('id="rs-size"'), 'More menu opens it; the form is not on the page');
+    assert(out.includes('class="gs-dialog-form gs-forge'), 'a Forge form dialog');
     assertNoRawAttrs(out);
-    assertEscaped(raidPage(DETAIL(null, { zone: HOSTILE + QUOTES })), 'settings card');
+    assertEscaped(settingsDlg(DETAIL(null, { zone: HOSTILE + QUOTES })), 'settings dialog');
   });
 
-  await check('raid settings card: the deadline - "Team default (N hours)" or "Set for this raid" with hours 0 to 72; what is in effect is written, in the guild\'s time zone', () => {
-    const none = raidPage(DETAIL());
+  await check('raid settings dialog: the deadline - "Team default (N hours)" or "Set for this raid" with hours 0 to 72; what is in effect is written, in the guild\'s time zone', () => {
+    const none = settingsDlg(DETAIL());
     assert.deepEqual(optionsOf(none, 'rs-hours-mode'), [{ value: '', selected: true, label: 'Team default (0 hours)' }, { value: 'custom', selected: false, label: 'Set for this raid' }]);
     assert(/id="rs-hours-field" hidden>/.test(none) && /<input class="gs-input" type="number" id="rs-hours" name="hours" data-key="rs-hours" min="0" max="72" step="1" inputmode="numeric" autocomplete="off" value="">/.test(none));
     assert(none.includes('id="rs-hours-help">In effect: members can change their sign-up until the raid starts, the team&#39;s setting.') || none.includes("In effect: members can change their sign-up until the raid starts, the team's setting."));
     assert(none.includes('data-change="rs-hours-mode"') && none.includes('<label class="gs-label" for="rs-hours">Hours before the start (0 = when the raid starts)</label>'));
-    const team = raidPage(DETAIL(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR }));
+    const team = settingsDlg(DETAIL(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR }));
     assert(team.includes('>Team default (24 hours)<') && team.includes('until 24 hours before the start (Fri Oct 23, 8:00 PM CT)'), 'the team\'s deadline, written in Chicago time');
     assert(team.includes('(Fri Oct 23, 8:00 PM CT), the team'));
-    const one = raidPage(DETAIL(null, { closeHours: 1, closesAt: STARTS - HOUR }));
+    const one = settingsDlg(DETAIL(null, { closeHours: 1, closesAt: STARTS - HOUR }));
     assert(one.includes('>Team default (1 hour)<') && one.includes('until 1 hour before the start'));
-    const own = raidPage(DETAIL(null, { closeHours: 6, closeHoursOverride: 6, closesAt: STARTS - 6 * HOUR }));
+    const own = settingsDlg(DETAIL(null, { closeHours: 6, closeHoursOverride: 6, closesAt: STARTS - 6 * HOUR }));
     assert.deepEqual(optionsOf(own, 'rs-hours-mode').filter(o => o.selected).map(o => o.value), ['custom']);
     assert(/id="rs-hours-field">/.test(own) && /id="rs-hours"[^>]*value="6"/.test(own), 'the box shows with the raid\'s own hours');
     assert(own.includes('until 6 hours before the start (Sat Oct 24, 2:00 PM CT), set for this raid.'));
     assert(own.includes('>Set for this raid<'));
     // An own value of 0 is still an override.
-    const zero = raidPage(DETAIL(null, { closeHours: 0, closeHoursOverride: 0 }));
+    const zero = settingsDlg(DETAIL(null, { closeHours: 0, closeHoursOverride: 0 }));
     assert(/id="rs-hours"[^>]*value="0"/.test(zero) && zero.includes('until the raid starts, set for this raid.'));
     // The same moment in another zone.
-    const nz = ws(G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN, null, 'Pacific/Auckland'), data: DETAIL(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR }), signups: null }));
+    const nz = ws(G.pages.raid.settingsDialogHtml(gd(OFFICER_CAN, null, 'Pacific/Auckland'), DETAIL(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR })));
     assert(nz.includes('(Sat Oct 24, 2:00 PM UTC+13)'));
     // A past raid has no deadline to set, only the size.
-    const past = raidPage(DETAIL(null, { upcoming: false, state: 'reviewed' }));
+    const past = settingsDlg(DETAIL(null, { upcoming: false, state: 'reviewed' }));
     assert(past.includes('id="rs-size"') && !past.includes('rs-hours') && !past.includes('Sign-up deadline'));
   });
 
-  await check('raid settings card: "Team default (N hours)" still names the team\'s hours when the raid has its own - from the Raids list\'s copy of the team', withState(async (S) => {
+  await check('raid settings dialog: "Team default (N hours)" still names the team\'s hours when the raid has its own - from the Raids list\'s copy of the team', withState(async (S) => {
     S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
     const detail = DETAIL(null, { closeHours: 6, closeHoursOverride: 6 });
-    assert(raidPage(detail).includes('>Team default<'), 'nothing to read it from: no number');
+    assert(settingsDlg(detail).includes('>Team default<'), 'nothing to read it from: no number');
     S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ team: { id: 't1', name: 'Team KJ', archived: false, size: 20, signupCloseHours: 12 } }) };
-    assert(raidPage(detail).includes('>Team default (12 hours)<'));
+    assert(settingsDlg(detail).includes('>Team default (12 hours)<'));
     S.att.raids.data.team.id = 't2';
-    assert(raidPage(detail).includes('>Team default<'), 'another team\'s copy is not used');
+    assert(settingsDlg(detail).includes('>Team default<'), 'another team\'s copy is not used');
   }));
 
   await check('raid settings: the mode select shows the hours box in place and moves focus to it', withState(async () => {
@@ -760,19 +767,19 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   await check('panel: closed by the deadline - its own pill and sentence ("Sign-ups closed N hours before the start. Ask an officer if you need to change yours."), the buttons off, nothing to save', () => {
     const closedRaid = { closed: 'deadline', closeHours: 24, closesAt: STARTS - 24 * HOUR };
     const v = view({ me: Object.assign({}, view().me, { canChange: false, closed: 'deadline' }) }, closedRaid);
-    const out = ws(panel(v));
+    const out = ws(panelAll(v));
     assert(out.includes('gs-pill gs-pill-warn gs-su-status">Closed Fri Oct 23, 8:00 PM CT</span>'), out.slice(out.indexOf('gs-pill')));
     assert(out.includes('Sign-ups closed 24 hours before the start. Ask an officer if you need to change yours.'));
     assert(!out.includes('An officer has closed sign-ups') && !out.includes('The raid has started'));
     assert(/data-kind="signed"[^>]*disabled/.test(out) && /data-kind="absence"[^>]*disabled/.test(out) && /id="su-note"[^>]*disabled/.test(out));
     assert(!out.includes('Save details'));
-    assert(ws(panel(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'deadline' }) }, { closed: 'deadline', closeHours: 1, closesAt: STARTS - HOUR }))).includes('Sign-ups closed 1 hour before the start.'));
+    assert(ws(panelAll(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'deadline' }) }, { closed: 'deadline', closeHours: 1, closesAt: STARTS - HOUR }))).includes('Sign-ups closed 1 hour before the start.'));
     // An officer is not bound: the panel keeps its tools and the buttons work.
-    const officer = ws(panel(view({ can: { edit: true, self: true, seeList: true, seeNicknames: true }, me: Object.assign({}, view().me, { canChange: true, closed: null }), roster: [] }, { closed: 'deadline', closeHours: 24, closesAt: STARTS - 24 * HOUR }), { guildData: gd(OFFICER_CAN) }));
+    const officer = ws(panelAll(view({ can: { edit: true, self: true, seeList: true, seeNicknames: true }, me: Object.assign({}, view().me, { canChange: true, closed: null }), roster: [] }, { closed: 'deadline', closeHours: 24, closesAt: STARTS - 24 * HOUR }), { guildData: gd(OFFICER_CAN) }));
     assert(officer.includes('data-action="su-add"') && !/data-kind="signed"[^>]*disabled/.test(officer));
     // The other two reasons keep their words.
-    assert(panel(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'locked' }) }, { closed: 'locked', locked: true })).includes('An officer has closed sign-ups.'));
-    assert(panel(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'started' }) }, { closed: 'started', upcoming: false })).includes('The raid has started, so sign-ups can no longer be changed here.'));
+    assert(panelAll(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'locked' }) }, { closed: 'locked', locked: true })).includes('An officer has closed sign-ups.'));
+    assert(panelAll(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'started' }) }, { closed: 'started', upcoming: false }), { data: DETAIL(null, { upcoming: false }) }).includes('The raid has started, so sign-ups can no longer be changed here.') || youBar(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'started' }) }, { closed: 'started', upcoming: false })).includes('The raid has started, so sign-ups can no longer be changed here.'));
   });
 
   await check('panel: a 409 for the deadline is handled like started / locked - the view is read again, the Worker\'s sentence shown in the panel, the buttons off', withState(async (S) => {
@@ -787,7 +794,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.equal(x.ui.busy, false);
     assert.equal(x.data, closed, 'the page now shows the closed state');
     assert.equal(S.pageAlert, '', 'not the page alert');
-    const html = ws(G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: x }));
+    const html = ws(G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: x }) + G.pages.raidYou.youBarHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), parts: { signups: x }, nextHasPrimary: false }));
     assert(html.includes(message) && html.includes('Sign-ups closed 24 hours before the start. Ask an officer') && /data-kind="late"[^>]*disabled/.test(html));
     s.restore();
   }));
@@ -1268,15 +1275,15 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   const PANEL_COUNTS = Object.assign({}, COUNTS, { standby: 1, absence: 2, expected: 19 });
 
   await check('panel: a fifth member button, Standby, with the one-line hint; the officer\'s status list has Standby', () => {
-    const out = panel(view());
+    const out = panelAll(view());
     assert(/data-action="su-kind" data-kind="standby" data-key="su-kind-standby" aria-pressed="false" aria-describedby="su-standby-hint">Standby<\/button>/.test(out));
-    assert(out.includes('<p class="gs-fine" id="su-standby-hint">Standby: Happy to sit out if needed.</p>'));
+    assert(out.includes('<span class="gs-sr" id="su-standby-hint">Standby: Happy to sit out if needed.</span>'));
     assert.deepEqual([...out.matchAll(/data-action="su-kind" data-kind="(\w+)"/g)].map(m => m[1]), ['signed', 'late', 'standby', 'tentative', 'absence']);
     const mine = view({ me: Object.assign({}, view().me, { signup: entry({ kind: 'standby', isMe: true }) }) });
-    assert(/data-kind="standby"[^>]*aria-pressed="true"/.test(panel(mine)) && panel(mine).includes('You are down as <strong>standby</strong>'));
+    assert(/data-kind="standby"[^>]*aria-pressed="true"/.test(panelAll(mine)) && panelAll(mine).includes('You are down as <strong>standby</strong>'));
     assert(/<option value="standby"/.test(G.pages.raidSignups.editDialogHtml({ view: OFFICER_VIEW(), personId: 'p_t' })), 'the officer dialog');
     assert.equal(G.pages.attendance.KIND_LABELS.standby, 'Standby');
-    assert(/data-kind="standby"[^>]*disabled/.test(panel(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'locked' }) }, { closed: 'locked', locked: true }))));
+    assert(/data-kind="standby"[^>]*disabled/.test(panelAll(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'locked' }) }, { closed: 'locked', locked: true }))));
   });
   function OFFICER_VIEW(over) {
     return view(Object.assign({ can: { edit: true, self: false, seeList: true, seeNicknames: true }, me: null, roster: [{ personId: 'p_t', name: 'Thoren', status: 'raider', characters: [{ id: 'c_th', name: 'Thoren', class: 'PALADIN', mainSpec: 'Protection', offSpec: null, isMain: true, teamId: 't1', specs: ['Protection', 'Holy'] }] }, { personId: 'p_aw', name: 'Garrosh', status: 'raider', characters: [{ id: 'c_ga', name: 'Garrosh', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, isMain: true, teamId: 't1', specs: ['Arms', 'Fury'] }] }] }, over || {}));
@@ -1315,13 +1322,13 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('panel: "You are away (notice). Choosing a status here overrides it." - no button pressed, nothing to save or remove; the viewer\'s own Late / Leaving notice is named; a status button still sends', withState(async (S) => {
     const away = view({ me: Object.assign({}, view().me, { signup: Object.assign({}, AWAY_ENTRY, { isMe: true, name: 'Eliora' }), notice: null }) });
-    const out = panel(away);
+    const out = panelAll(away);
     assert(out.includes('You are away (notice). Choosing a status here overrides it.'));
     assert(!/aria-pressed="true"/.test(out) && !out.includes('Save details') && !out.includes('su-withdraw'));
     assert(!/data-kind="\w+"[^>]*disabled/.test(out), 'the buttons work');
-    const noticed = panel(view({ me: Object.assign({}, view().me, { notice: { kind: 'leaving', atTime: '22:00' } }) }));
+    const noticed = panelAll(view({ me: Object.assign({}, view().me, { notice: { kind: 'leaving', atTime: '22:00' } }) }));
     assert(noticed.includes('Your notice for this raid: Leaves 22:00.') && noticed.includes('You are down as <strong>signed up</strong>'));
-    assert(panel(view({ me: Object.assign({}, view().me, { signup: null, notice: { kind: 'late', atTime: '21:00' } }) })).includes('Your notice for this raid: Late 21:00.'));
+    assert(panelAll(view({ me: Object.assign({}, view().me, { signup: null, notice: { kind: 'late', atTime: '21:00' } }) })).includes('Your notice for this raid: Late 21:00.'));
     const x = openRaid(S, away);
     const answer = view({ me: Object.assign({}, view().me, { signup: entry({ kind: 'standby', isMe: true }) }) });
     const s = stub(() => Promise.resolve(answer));
@@ -1549,11 +1556,11 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   await check('panel: a standing sign-up says where it comes from and its button reads "Skip this week"; any other keeps "Remove my sign-up"; the list marks the entry', withState(async (S) => {
     const standingMe = entry({ key: 'p:p_e', personId: 'p_e', name: 'Eliora', classId: 'PRIEST', isMe: true, characterId: 'c_eli', standing: true });
     const v = view({ me: Object.assign({}, view().me, { signup: standingMe }), entries: [standingMe, entry()] });
-    const out = panel(v);
+    const out = panelAll(v);
     assert(/data-action="su-withdraw" data-key="su-withdraw">Skip this week<\/button>/.test(out) && !out.includes('Remove my sign-up'));
     assert(out.includes('This sign-up comes from your standing sign-up. Skip this week sets you to Can\'t come for this raid only.'));
     assert(out.includes('<span class="gs-chip gs-chip-src">standing</span>'));
-    const plainOne = panel(view());
+    const plainOne = panelAll(view());
     assert(plainOne.includes('>Remove my sign-up</button>') && !plainOne.includes('Skip this week') && !plainOne.includes('standing'));
     // Pressing it is the same call; the answer (the person's own Absence) is shown as Absent with the usual button.
     const x = openRaid(S, v);
@@ -1563,7 +1570,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     await settle();
     assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['del', '/api/guild/g1/raids/u1/signup']]);
     assert.equal(x.data, absent);
-    const after = panel(absent);
+    const after = panelAll(absent);
     assert(/data-kind="absence"[^>]*aria-pressed="true"/.test(after) && after.includes('You are down as <strong>can&#39;t come</strong>') && !after.includes('Skip this week'));
     s.restore();
   }));
@@ -1727,46 +1734,54 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   // ── a member's seat ──
   const SEAT = (over) => ({ published: true, publishedAt: STARTS - 3 * HOUR, mine: Object.assign({ group: 3, name: 'Gorrim', class: 'PALADIN', spec: 'Holy', status: 'pending' }, over || {}) });
-  const seatCard = (data, detail, can) => ws(G.pages.raidRoster.seatHtml({ guildData: gd(can || MEMBER_CAN), data: detail || DETAIL({ can: { edit: false } }), state: roState(data) }));
+  const seatBar = (data, detail, can, rosterOver) => ws(G.pages.raidYou.youBarHtml({ guildData: gd(can || MEMBER_CAN), data: detail || DETAIL({ can: { edit: false } }), parts: { signups: state(view()), roster: roState(data, rosterOver) }, nextHasPrimary: false }));
+  const flat = h => dec(stripTags(h)).replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+/g, ' ');
 
-  await check('Your group: "You\'re in Group 3 as Holy Paladin (Gorrim)" with the status and Confirm / Can\'t come; the bench reads "You\'re on the bench"; confirmed and declined change the buttons and the sentence', () => {
-    const out = seatCard(SEAT());
-    assert(out.includes('<h2 class="gs-h2" id="seat-h">Your group</h2>') && out.includes('<span class="gs-pill gs-pill-info">Waiting</span>'));
-    assert.equal(dec(stripTags(out)).includes('You\'re in Group 3 as Holy Paladin (Gorrim)'), true, stripTags(out));
-    assert(/data-action="seat-confirm" data-key="seat-confirm">Confirm<\/button>/.test(out) && /data-action="seat-decline" data-key="seat-decline">Can't come<\/button>/.test(out));
-    assert(out.includes('id="seat-error" role="alert" hidden'));
-    const bench = seatCard(SEAT({ group: 0 }));
-    assert(dec(stripTags(bench)).includes('You\'re on the bench') && dec(stripTags(bench)).includes('As Holy Paladin (Gorrim)') && !bench.includes('Group 0'));
-    const ok = seatCard(SEAT({ status: 'confirmed' }));
-    assert(ok.includes('gs-pill-ok">Confirmed') && !ok.includes('data-action="seat-confirm"') && ok.includes('data-action="seat-decline"'));
-    const no = seatCard(SEAT({ status: 'declined' }));
-    assert(dec(stripTags(no)).includes('You told the officers you can\'t come.') && no.includes('gs-pill-warn') && /data-action="seat-confirm"[^>]*>Confirm after all</.test(no) && !no.includes('data-action="seat-decline"'));
-    assert(dec(stripTags(seatCard(SEAT({ spec: null })))).includes('You\'re in Group 3 as Paladin (Gorrim)'));
-    assert(dec(stripTags(seatCard(SEAT({ spec: null, class: null, name: null })))).includes('You\'re in Group 3') && !seatCard(SEAT({ spec: null, class: null, name: null })).includes(' as '));
-    assert(seatCard(SEAT(), null).includes('Your group'));
-    const busy = G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: roState(SEAT(), { busy: true }) });
+  await check('You bar, seated: "Group 3 - Holy Paladin (Gorrim)" with Are you coming?, Confirm and Can\'t come; the bench reads "Bench"; confirmed and declined change the chip and the buttons', () => {
+    const out = seatBar(SEAT());
+    assert(flat(out).includes('Group 3 - Holy Paladin (Gorrim)') && out.includes('<span class="gs-fg-lbl" id="rpg-you-l">You</span>'), stripTags(out));
+    assert(out.includes('Are you coming?') && !out.includes('gs-hd-chip'), 'waiting: the question, no chip');
+    assert(/class="gs-btn gs-btn-molten" data-action="seat-confirm" data-key="seat-confirm">Confirm<\/button>/.test(out) && /data-action="seat-decline" data-key="seat-decline">Can't come<\/button>/.test(out), 'Confirm is the molten one when the bar has no primary');
+    assert(out.includes('id="seat-error" role="alert" hidden') && out.includes('data-action="su-signup-open"') && out.includes('>Change sign-up<'));
+    assert(!out.includes('data-action="su-kind"'), 'the pills moved into the Change sign-up dialog');
+    const withPrimary = ws(G.pages.raidYou.youBarHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), parts: { signups: state(view()), roster: roState(SEAT()) }, nextHasPrimary: true }));
+    assert(/class="gs-btn" data-action="seat-confirm"/.test(withPrimary) && !withPrimary.includes('gs-btn-molten'), 'a secondary Confirm while the next-step bar has the primary');
+    const bench = seatBar(SEAT({ group: 0 }));
+    assert(flat(bench).includes('Bench - Holy Paladin (Gorrim)') && !bench.includes('Group 0'));
+    const ok = seatBar(SEAT({ status: 'confirmed' }));
+    assert(ok.includes('<span class="gs-hd-chip is-grey">Confirmed</span>') && !ok.includes('data-action="seat-confirm"') && ok.includes('data-action="seat-decline"') && !ok.includes('Are you coming?'));
+    const no = seatBar(SEAT({ status: 'declined' }));
+    assert(no.includes('<span class="gs-hd-chip is-rose">Can&#39;t come</span>') && /data-action="seat-confirm"[^>]*>Confirm after all</.test(no) && !no.includes('data-action="seat-decline"'), no);
+    assert(flat(seatBar(SEAT({ spec: null }))).includes('Group 3 - Paladin (Gorrim)'));
+    const bare = seatBar(SEAT({ spec: null, class: null, name: null }));
+    assert(flat(bare).includes('Group 3') && !flat(bare).includes('Group 3 -'), 'no spec, class or name: just the group');
+    const busy = seatBar(SEAT(), null, null, { busy: true });
     assert(/data-action="seat-confirm"[^>]*disabled/.test(busy) && /data-action="seat-decline"[^>]*disabled/.test(busy));
-    assert(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: roState(SEAT(), { error: HOSTILE + QUOTES }) }).includes('role="alert">&lt;img'));
-    assertEscaped(seatCard(SEAT({ name: HOSTILE + QUOTES, spec: HOSTILE })), 'seat card');
+    assert(seatBar(SEAT(), null, null, { error: HOSTILE + QUOTES }).includes('role="alert">&lt;img'));
+    assertEscaped(seatBar(SEAT({ name: HOSTILE + QUOTES, spec: HOSTILE })), 'You bar seat');
     assertNoRawAttrs(out);
+    const noSignups = ws(G.pages.raidYou.youBarHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), parts: { signups: null, roster: roState(SEAT()) }, nextHasPrimary: false }));
+    assert(noSignups.includes('data-action="seat-confirm"') && !noSignups.includes('Change sign-up'), 'a seat still shows when the sign-ups could not be read');
   });
 
-  await check('Your group: nothing when the roster is not published, the viewer has no seat (an officer\'s reply), the raid has started or the data is not there', () => {
-    assert.equal(seatCard({ published: false, mine: null }), '');
-    assert.equal(seatCard({ published: true, publishedAt: 1, mine: null }), '');
-    assert.equal(seatCard(Object.assign(SEAT(), { published: false })), '');
-    assert.equal(seatCard(SEAT(), DETAIL({ can: { edit: false } }, { upcoming: false })), '');
-    assert.equal(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: null }), '');
-    assert.equal(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: roState(null, { status: 'error' }) }), '');
+  await check('You bar: no seat card when the roster is not published, the viewer has no seat (an officer\'s reply) or the data is not there; an officer sees the Line-up card, a member the bar', () => {
+    for (const none of [{ published: false, mine: null }, { published: true, publishedAt: 1, mine: null }, Object.assign(SEAT(), { published: false })]) {
+      const out = seatBar(none);
+      assert(!out.includes('seat-confirm') && !out.includes('Are you coming?'), 'a sign-up bar, not a seat');
+    }
+    assert(!ws(G.pages.raidYou.youBarHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), parts: { signups: state(view()), roster: null }, nextHasPrimary: false })).includes('seat-confirm'));
+    assert(!ws(G.pages.raidYou.youBarHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), parts: { signups: state(view()), roster: roState(null, { status: 'error' }) }, nextHasPrimary: false })).includes('seat-confirm'));
+    assert.equal(G.pages.raidYou.youBarHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), parts: { signups: null, roster: null }, nextHasPrimary: false }), '', 'nothing without a person on the team');
     const officer = ws(G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN), data: PLANNED(), signups: null, roster: roState(ROSTER()) }));
-    assert(!officer.includes('Your group') && officer.includes('id="ro-h"'), 'an officer sees the Roster card, not a seat');
-    const member = ws(G.pages.raid.raidHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), signups: null, roster: roState(SEAT()) }));
-    assert(member.includes('Your group') && !member.includes('id="ro-h"') && member.indexOf('Your group') < member.indexOf('Opens when the raid starts'), 'the seat is on top, the officers\' card is not there');
+    assert(!officer.includes('Are you coming?') && officer.includes('id="ro-h"'), 'an officer sees the Line-up card, not a seat');
+    const member = ws(G.pages.raid.raidHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), signups: state(view()), roster: roState(SEAT()) }));
+    assert(member.includes('Are you coming?') && !member.includes('id="ro-h"') && member.indexOf('id="su-me"') < member.indexOf('class="gs-rpg-cols"'), 'the bar is above the columns, the officers\' card is not there');
   });
 
-  await check('Your group: Confirm POSTs and shows the answer, then reads the Sign-ups panel again; a failure is shown in the card; Can\'t come asks first, then POSTs decline and the card says so', withState(async (S) => {
+  await check('You bar, seated: Confirm POSTs and shows the answer, then reads the Sign-ups panel again; a failure is shown in the bar; Can\'t come asks first, then POSTs decline and the bar says so', withState(async (S) => {
     openRaid(S, view(), MEMBER_CAN, DETAIL({ can: { edit: false } }));
     const sc = S.att.raidRoster = roState(SEAT());
+    const bar = () => ws(G.pages.raidYou.youBarHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), parts: { signups: state(view()), roster: sc }, nextHasPrimary: false }));
     let s = stub((m, url) => Promise.resolve(m === 'post' ? SEAT({ status: 'confirmed' }) : view()));
     G.handlers.click['seat-confirm'](el({}));
     assert.equal(sc.busy, true);
@@ -1781,7 +1796,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     await settle();
     assert.equal(sc.error, 'The raid has started.');
     assert.equal(sc.busy, false);
-    assert(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: sc }).includes('id="seat-error" role="alert">The raid has started.</p>'));
+    assert(bar().includes('id="seat-error" role="alert">The raid has started.</p>'));
     s.restore();
     // Can't come asks first.
     sc.error = '';
@@ -1799,8 +1814,8 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     await settle();
     assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['post', '/api/guild/g1/raids/u1/roster/decline'], ['get', '/api/guild/g1/raids/u1/signups']]);
     assert.equal(sc.data.mine.status, 'declined');
-    const card = ws(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: sc }));
-    assert(dec(stripTags(card)).includes('You told the officers you can\'t come.') && card.includes('Confirm after all'));
+    const card = bar();
+    assert(card.includes('is-rose">Can&#39;t come</span>') && card.includes('Confirm after all'));
     // Confirm after all: the same call as Confirm.
     s.calls.length = 0;
     G.handlers.click['seat-confirm'](el({}));

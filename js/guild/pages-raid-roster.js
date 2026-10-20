@@ -1,7 +1,7 @@
 // ── PAGE PIECE: THE PUBLISHED LINE-UP OF A RAID ─────────────────
 // GET /raids/:rid/roster (the route keeps its name; the words on screen are "line-up", glossary D1). Officers (raids.edit), once the raid has a plan, publish it as
-// the line-up (POST), publish it again when the plan changed, or unpublish it (DELETE), and see who confirmed. A member with a group gets "Your group" at the top of
-// the raid page and a chip on the Raids list, with Confirm and Can't come (POST .../roster/confirm and .../roster/decline; the decline asks first and turns the sign-up into an Absence). The data loads itself after
+// the line-up (POST), publish it again when the plan changed, or unpublish it (DELETE), and see who confirmed. A member with a group sees it in the raid page's You bar
+// (pages-raid-you.js) and a chip on the Raids list, with Confirm and Can't come (POST .../roster/confirm and .../roster/decline; the decline asks first and turns the sign-up into an Absence). The data loads itself after
 // the raid page is drawn (afterRender), so the raid page reads exactly what it did before; pages-raid.js draws the pieces and drops this copy when the raid changes.
 (function (G) {
   'use strict';
@@ -33,24 +33,6 @@
     if (!m.group) return 'You\'re on the bench';
     const who = seatWho(m).trim();
     return 'You\'re in Group ' + m.group + (who ? ' as ' + who : '');
-  }
-
-  // opts: { guildData, data (the raid detail), state: a().raidRoster }. Members only (an officer's reply has no seat), before the raid starts.
-  function seatHtml(opts) {
-    const s = opts.state;
-    const mine = s && s.status === 'ok' && s.data && s.data.published ? s.data.mine : null;
-    if (!mine || !opts.data.raid || !opts.data.raid.upcoming) return '';
-    const declined = mine.status === 'declined';
-    const buttons = declined
-      ? '<button type="button" class="gs-btn gs-btn-molten" data-action="seat-confirm" data-key="seat-confirm"' + (s.busy ? ' disabled' : '') + '>Confirm after all</button>'
-      : (mine.status === 'pending' ? '<button type="button" class="gs-btn gs-btn-molten" data-action="seat-confirm" data-key="seat-confirm"' + (s.busy ? ' disabled' : '') + '>Confirm</button>' : '') +
-        '<button type="button" class="gs-btn" data-action="seat-decline" data-key="seat-decline"' + (s.busy ? ' disabled' : '') + '>Can\'t come</button>';
-    return '<section class="gs-card-sec gs-seat" aria-labelledby="seat-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="seat-h">Your group</h2>' + pill(mine.status) + '</div><div class="gs-card-sec-body">' +
-      '<p class="gs-seat-line">' + esc(seatText(mine)) + '</p>' +
-      (!mine.group && seatWho(mine).trim() ? '<p class="gs-fine">As ' + esc(seatWho(mine).trim()) + '</p>' : '') +
-      (declined ? '<p class="gs-fine">You told the officers you can\'t come.</p>' : mine.status === 'confirmed' ? '<p class="gs-fine">You told the officers you\'re coming.</p>' : '<p class="gs-fine">Tell the officers if you\'re coming.</p>') +
-      '<div class="gs-row-actions gs-seat-actions">' + buttons + '</div>' +
-      '<p class="gs-alert" id="seat-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p></div></section>';
   }
 
   // ── the Raids list row ──
@@ -312,7 +294,6 @@
   G.pages.raidRoster = {
     STATUS_LABELS: STATUS_LABELS,
     seatText: seatText,
-    seatHtml: seatHtml,
     cardHtml: cardHtml,
     canPublish: canPublish,
     listChipHtml: listChipHtml,

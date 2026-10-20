@@ -65,6 +65,8 @@
     '/js/guild/pages-raid-board.js',
     '/js/guild/pages-raid-signups.js',
     '/js/guild/pages-raid-extras.js',
+    '/js/guild/pages-raid-facts.js',
+    '/js/guild/pages-raid-you.js',
     '/js/guild/pages-away.js',
     '/js/guild/pages-standing.js',
     '/js/guild/pages-raid-roster.js',

@@ -140,14 +140,14 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     assert.equal(done.stages[4].line, '2 items');
   });
 
-  await check('stage strip: every tile jumps to a section that is on the page, before and after the raid', () => {
-    for (const [data, parts] of [[up(), { signups: sState(view()), roster: rState() }], [past(), { loot: lState([]) }], [past({ people: [] }), {}]]) {
-      const out = page(data, parts);
-      const targets = [...out.matchAll(/class="gs-stage-link" href="#([a-z-]+)"/g)].map(m => m[1]);
-      assert.deepEqual(targets, ['s-signups', 's-plan', 's-publish', 's-log', 's-loot']);
-      for (const t of targets) assert(out.includes(' id="' + t + '"'), t + ' is on the page');
-      assert.equal(count(out, /class="gs-stage is-current"/g), count(out, /class="gs-stage is-current"/g) > 0 ? 1 : 0, 'one current stage at most');
-    }
+  await check('no stage strip (the bar and the Raid facts carry the stages); the old jump targets still land on the page, before and after the raid', () => {
+    const me = { personId: 'p_a', signup: { kind: 'signed', name: 'Alliesha', spec: 'Feral', source: 'raidsmith' }, notice: null, canChange: true, characters: [], defaultCharacterId: null };
+    const before = page(up(), { signups: sState(view({ me })), roster: rState() });
+    const after = page(past(), { signups: sState(view({ me })), loot: lState([]) });
+    for (const out of [before, after]) assert(!out.includes('gs-stage') && !out.includes('Raid stages'), 'no stage strip');
+    for (const t of ['s-signups', 's-plan', 's-publish', 'su-me']) assert(before.includes(' id="' + t + '"'), t + ' is on the page before the raid');
+    for (const t of ['s-log', 's-loot', 's-plan', 's-publish', 'raid-people']) assert(after.includes(' id="' + t + '"'), t + ' is on the page after the raid');
+    assert(after.includes('id="s-signups"'), 'the sign-ups record keeps its address after the raid');
   });
 
   // ═══ 2. The next-step bar: one primary per stage ═══
@@ -212,82 +212,51 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
   const youOf = (data, parts) => stripTags(G.pages.raid.youHtml(data, parts)).replace(/\s+/g, ' ').trim();
   const meOf = (over) => ({ personId: 'p_a', signup: null, notice: null, canChange: true, characters: [], defaultCharacterId: null }, Object.assign({ personId: 'p_a', signup: null, notice: null, canChange: true, characters: [], defaultCharacterId: null }, over || {}));
 
-  await check('You line: the viewer\'s own sign-up on one line with Change sign-up; no sign-up says so and offers Sign up; closed sign-ups offer nothing; an Away notice and Standby read as themselves', () => {
-    const signed = { kind: 'signed', name: 'Alliesha', spec: 'Feral', source: 'raidsmith' };
-    const line = youOf(up(), { signups: sState(view({ me: meOf({ signup: signed }) })), roster: rState() });
-    assert(/^You Signed Alliesha, Feral\. Line-up not published yet, so no group\. Change sign-up$/.test(line), line);
-    const html = G.pages.raid.youHtml(up(), { signups: sState(view({ me: meOf({ signup: signed }) })), roster: rState() });
-    assert(html.includes('data-action="jump" data-target="su-me"') && html.includes('>Change sign-up<'));
-    assert(/^You No sign-up You have not signed up yet\. Line-up not published yet, so no group\. Sign up$/.test(youOf(up(), { signups: sState(view({ me: meOf() })), roster: rState() })));
-    const closed = youOf(up(), { signups: sState(view({ me: meOf({ canChange: false }) })) });
-    assert(closed.includes('sign-ups are closed') && !closed.includes('Sign up') && !closed.includes('Change'), closed);
-    assert(youOf(up(), { signups: sState(view({ me: meOf({ signup: { kind: 'signed', source: 'away', name: null } }) })) }).startsWith('You Away (notice)'));
-    assert(youOf(up(), { signups: sState(view({ me: meOf({ signup: { kind: 'standby', name: 'Alliesha', spec: null, source: 'raidsmith' } }) })) }).startsWith('You Standby Alliesha'));
-    assert(youOf(up(), { signups: sState(view({ me: meOf({ signup: { kind: 'absence', name: 'Alliesha', spec: null, source: 'raidsmith' } }) })) }).startsWith('You Can\'t come Alliesha'));
-    assert.equal(G.pages.raid.youHtml(up(), { signups: sState(view({ me: null })) }), '', 'a viewer with no person on the team has no line');
-    assert.equal(G.pages.raid.youHtml(up(), {}), '', 'nothing while the sign-ups are not read');
-    const seated = youOf(up(), { signups: sState(view({ me: meOf({ signup: signed }) })), roster: rState({ published: true, mine: { group: 2, name: 'Alliesha', status: 'pending' } }) });
-    assert(seated.includes('In Group 2.') && !seated.includes('not published'), seated);
-    const bench = youOf(up(), { signups: sState(view({ me: meOf({ signup: signed }) })), roster: rState({ published: true, mine: { group: 0, name: 'Alliesha', status: 'pending' } }) });
-    assert(bench.includes('On the bench.'), bench);
-  });
 
-  await check('You line after the raid: the result and the group, from the viewer\'s own row of the attendance', () => {
-    const data = past({ people: [prow('p_a', 'Alliesha', { plan: 'G1' }), prow('p_b', 'Brewmaw', { plan: 'bench', outcome: 'bench' })] });
-    const parts = { signups: sState(view({ me: meOf({ personId: 'p_a' }) })) };
-    const line = youOf(data, parts);
-    assert(/^You Attended Alliesha was in Group 1\./.test(line), line);
-    assert(youOf(data, { signups: sState(view({ me: meOf({ personId: 'p_b' }) })) }).startsWith('You Bench Brewmaw was in the bench.'));
-    assert.equal(youOf(data, { signups: sState(view({ me: meOf({ personId: 'p_zz' }) })) }), '', 'no row for the viewer: no line');
-  });
 
   // ═══ 4. Sections and post-raid mode ═══
   const idsOf = out => [...out.matchAll(/<(?:section|div) class="gs-osection(?:-bare| is-locked)?"[^>]* id="([a-z-]+)"/g)].map(m => m[1]);
 
-  await check('sections before the raid: Sign-ups, Plan and line-up, Loot prios, After the raid (locked, says when it opens), then Raid settings; the order is the same every raid', () => {
+  await check('columns before the raid: main = Sign-ups panel, then Loot prios; side = the Raid facts panel; no locked After the raid card and no Raid settings card; the next-step bar comes first', () => {
     const out = page(up(), { signups: sState(view()), roster: rState() });
-    assert.deepEqual(idsOf(out), ['s-signups', 's-plan', 's-log', 's-loot', 's-settings']);
-    assert(out.includes('class="gs-osection is-locked" id="s-log"') && out.includes('Opens when the raid starts at '), 'After the raid is locked and names its time with the zone');
-    assert(/Opens when the raid starts at \d{1,2}:\d{2} (AM|PM) CT\./.test(stripTags(out)), 'in the guild zone');
-    assert(out.indexOf('id="s-signups"') < out.indexOf('id="su-h"') && out.indexOf('id="su-h"') < out.indexOf('id="s-plan"'), 'the Sign-ups panel is in the Sign-ups section');
-    const mine = view({ me: { personId: 'p_a', signup: null, notice: null, canChange: true, characters: [{ id: 'c1', name: 'Alliesha', class: 'DRUID', specs: ['Feral'], mainSpec: 'Feral' }], defaultCharacterId: 'c1' } });
-    const withForm = page(up(), { signups: sState(mine), roster: rState() });
-    assert(withForm.includes('id="su-me"') && withForm.includes('data-action="su-kind"') && withForm.indexOf('id="s-signups"') < withForm.indexOf('id="su-me"'), 'before the start the officer\'s sign-up form is in the Sign-ups section, not on top');
-    assert(out.indexOf('class="gs-youline"') < 0 || out.indexOf('class="gs-youline"') < out.indexOf('id="s-signups"'));
-    assert(out.indexOf('class="gs-nextstep') < out.indexOf('id="s-signups"'), 'the next-step bar comes before the sections');
+    assert.deepEqual(idsOf(out), ['raid-cols', 's-signups']);
+    assert(!out.includes('Opens when the raid starts') && !out.includes('id="s-settings"') && !out.includes('id="rs-h"'), 'the locked card and the settings card are gone');
+    assert(out.includes('class="gs-rpg-cols"') && out.indexOf('class="gs-rpg-main"') < out.indexOf('class="gs-rpg-side"'), 'two columns, main first');
+    assert(out.indexOf('id="s-signups"') < out.indexOf('id="su-h"') && out.indexOf('id="su-h"') < out.indexOf('id="raid-facts"'), 'the Sign-ups panel is in the main column, the facts in the side one');
+    assert(out.includes('gs-forge') && out.indexOf('class="gs-nextstep') < out.indexOf('class="gs-rpg-cols"'), 'the Forge page; the next-step bar comes before the columns');
+    assert(!out.includes('id="su-me" tabindex="-1" role="group"') && !out.includes('Your sign-up</h3>'), 'the old Your sign-up form is gone from the Sign-ups panel');
     const noPanel = page(up(), { roster: rState() });
-    assert(!idsOf(noPanel).includes('s-board'), 'no Loot prios section while nothing is pasted or loaded');
+    assert(!noPanel.includes('id="s-board"'), 'no Loot prios section while nothing is pasted or loaded');
   });
 
-  await check('Plan and line-up: the plan\'s name opens the Planner and its menu is Plan settings; the line-up row has Publish line-up, disabled with its reason while there is no plan', () => {
+  await check('Raid facts (officer): Plan shows the plan and its unmatched names with a Plan settings menu; Line-up says Not published with Publish line-up disabled and its reason while there is no plan', () => {
     const planned = up({ sources: { event: null, reports: [], plan: { label: 'Gruul night', players: 19, unmatched: ['Zed'] } } });
     const out = page(planned, { signups: sState(view()), roster: rState() });
-    assert(/<button type="button" class="gs-linkbtn" data-action="raid-op" data-op="plan-in-planner" data-key="plan-open">Gruul night<\/button>, 19 players\./.test(out));
-    assert(out.includes('aria-label="Plan settings"') && out.includes('data-op="plan-replace"') && out.includes('data-op="plan-remove"'));
+    assert(out.includes('<dt>Plan</dt><dd><span class="gs-rpg-v">Gruul night, 19 players</span>'), 'the plan and its size');
+    assert(out.includes('aria-label="Plan settings"') && out.includes('data-op="plan-in-planner"') && out.includes('data-op="plan-replace"') && out.includes('>Replace plan<') && out.includes('data-op="plan-remove"'));
     assert(out.includes('1 planned name is not on the roster.'));
-    const row = out.slice(out.indexOf('id="s-publish"'), out.indexOf('id="s-publish"') + 700);
-    assert(row.includes('Not published') && /data-key="ro-publish">/.test(row) && !/disabled[^>]*data-key="ro-publish"|data-key="ro-publish"[^>]*disabled/.test(row), row);
+    const row = out.slice(out.indexOf('id="s-publish"'), out.indexOf('id="s-publish"') + 2000);
+    assert(row.includes('Not published') && row.includes('data-op="publish"') && !row.includes('is-disabled'), row);
     const none = page(up(), { signups: sState(view()), roster: rState() });
-    assert(/<button[^>]*disabled[^>]*data-key="ro-publish"[^>]*>|<button[^>]*data-key="ro-publish"[^>]*disabled/.test(none) && none.includes('Needs a plan first'));
-    assert(none.includes('Not planned') && none.includes('data-op="plan-replace"') && none.includes('>Link a plan<'));
+    const noneRow = none.slice(none.indexOf('id="s-publish"'), none.indexOf('id="s-publish"') + 2000);
+    assert(noneRow.includes('is-disabled') && noneRow.includes('Needs a plan first') && !noneRow.includes('data-op="publish"'), noneRow);
+    assert(none.includes('Not planned') && none.includes('>Link a plan<') && !none.includes('data-op="plan-remove"'));
     const memberRaid = up({ can: { edit: false, review: false, seeAttendance: false, seeNicknames: false }, sources: planned.sources });
     const member = page(memberRaid, { signups: sState(view({ can: { edit: false, self: true, seeList: true, seeNicknames: false } })), roster: rState() }, MEMBER_CAN);
-    assert(!member.includes('data-key="ro-publish"') && !member.includes('Plan settings') && member.includes('>Gruul night<'), 'a member reads the rows and gets no tools');
+    assert(!member.includes('data-op="publish"') && !member.includes('Plan settings') && !member.includes('>Change<') && member.includes('Gruul night, 19 players'), 'a member reads the rows and gets no Change');
     const pub = page(planned, { signups: sState(view()), roster: rState({ published: true, publishedAt: 1, entries: [], counts: { confirmed: 1, pending: 0, declined: 0 } }) });
-    assert(pub.includes('Published') && pub.includes('1 of 1 confirmed') && pub.includes('id="ro-h"'), 'a published line-up row, and the officers\' card below it');
+    assert(pub.includes('Published, 1 of 1 confirmed') && pub.includes('id="ro-h"') && pub.includes('data-op="republish"') && pub.includes('data-op="unpublish"'), 'a published line-up row with its menu, and the officers\' card in the main column');
   });
 
-  await check('post-raid mode: the page leads with the log and the people, then the loot awards, then Plan, line-up and sign-ups as summaries; Add a sign-up, Close sign-ups and the status form are gone', () => {
+  await check('post-raid mode: the log and the people lead the main column, the sign-ups record sits behind Show sign-ups, the facts and the Loot awards card are the side column; Add a sign-up, Close sign-ups and the status buttons are gone', () => {
     const data = past({ sources: { event: { id: 'e1', title: 'BT', signups: 26, syncedAt: 1, otherServer: false }, reports: [{ code: 'WaghkY9zwDyvLX7m', flavour: 'fresh', startedAt: 1, pulls: 4 }], plan: { label: 'BT run', players: 19 } } });
     const out = page(data, { signups: sState(view({ raid: { id: 'r4', teamId: 't1', startsAt: 1, upcoming: false, locked: false, closed: 'started' }, me: meOf() })), loot: lState([]), roster: rState({ published: true, counts: { confirmed: 17, pending: 2, declined: 0 }, publishedAt: 1760000000000 }) });
-    assert.deepEqual(idsOf(out), ['s-log', 's-loot', 's-plan', 's-settings']);
-    assert(!out.includes('data-action="su-add"') && !out.includes('data-action="su-lock"') && !out.includes('data-action="su-kind"') && !out.includes('id="su-me"'), 'no Add a sign-up, Close sign-ups or status form');
-    assert(!out.includes('Opens when the raid starts'), 'nothing is locked any more');
-    assert(out.includes('<details class="gs-srow-more"><summary>View line-up</summary>') && out.includes('<summary>Show sign-ups</summary>'), 'the summaries open on demand');
-    assert(out.includes('id="s-publish"') && out.includes('id="s-signups"') && out.includes('Published ') && out.includes('17 of 19 confirmed, 2 never answered.'), stripTags(out).slice(0, 600));
-    assert(/1 response\./.test(stripTags(out)), 'the responses are the sign-ups panel\'s list');
-    assert(/26 responses\./.test(stripTags(page(data, { loot: lState([]) }))), 'until it is read, Raid-Helper\'s count stands in');
-    assert(out.indexOf('id="s-log"') < out.indexOf('id="s-loot"') && out.indexOf('id="s-loot"') < out.indexOf('id="s-plan"'), 'log, loot, then the summaries');
+    assert.deepEqual(idsOf(out), ['raid-cols', 's-log', 's-loot']);
+    assert(!out.includes('data-action="su-add"') && !out.includes('data-action="su-lock"') && !out.includes('data-action="su-kind"'), 'no Add a sign-up, Close sign-ups or status buttons');
+    assert(!out.includes('Opens when the raid starts') && !out.includes('View line-up') && !out.includes('gs-srow-more"><summary>View'), 'nothing is locked, no summary rows');
+    assert(out.includes('<details class="gs-srow-more gs-rpg-record" id="s-signups" tabindex="-1"><summary>Show sign-ups</summary>'), 'the sign-ups record opens on demand');
+    assert(out.includes('id="s-publish"') && out.includes('Published, 17 of 19 confirmed'), stripTags(out).slice(0, 600));
+    assert(out.indexOf('id="s-log"') < out.indexOf('id="s-signups"') && out.indexOf('id="s-signups"') < out.indexOf('id="raid-facts"') && out.indexOf('id="raid-facts"') < out.indexOf('id="s-loot"'), 'main: log, sign-ups record; side: facts, then the loot awards');
     const stage = page(past({ sources: { event: null, reports: [], plan: null }, people: [] }), {});
     assert(stage.includes('Awaiting log.') && stage.includes('id="raid-people"'));
     const lootLocked = page(past({ sources: { event: null, reports: [], plan: null }, people: [] }), {});

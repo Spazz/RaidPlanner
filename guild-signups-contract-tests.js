@@ -186,9 +186,10 @@ check('member: the raid page offers four buttons; Sign up, Late, a change of cha
   const page = await openRaid(s, E);
   let html = page();
   let text = stripTags(html);
-  assert(/Your sign-up/.test(text) && /You have not signed up yet\./.test(text), text.slice(0, 400));
-  for (const label of ['Sign up', 'Late', 'Tentative', 'Can']) assert(text.includes(label), label);
-  assert(/Thoren \(Paladin\)/.test(text) && /Thorenmage \(Mage\)/.test(text), 'both characters are offered');
+  assert(/You have not signed up yet\./.test(text) && !/Your sign-up/.test(text), text.slice(0, 400));
+  for (const label of ['Signed up', 'Late', 'Tentative', 'Can']) assert(text.includes(label), label);
+  E.handlers.click['su-details-open'](el({}));
+  assert(/Thoren \(Paladin\)/.test(stripTags(E.dialogs[E.dialogs.length - 1])) && /Thorenmage \(Mage\)/.test(stripTags(E.dialogs[E.dialogs.length - 1])), 'both characters are offered in Change character or note');
   assert(/Open until Sat, Oct 24, 8:00 PM|Open until Sat Oct 24, 8:00 PM/.test(text), 'the close time is in the guild\'s zone: ' + text.slice(0, 300));
   assert(!/Add a sign-up|Close sign-ups/.test(text), 'no officer tools for a member');
 
@@ -200,11 +201,11 @@ check('member: the raid page offers four buttons; Sign up, Late, a change of cha
   assert(/Tanks 1/.test(text) && /Thoren/.test(text) && /Protection/.test(text), text);
   assert(/Signed 1 Late 0/.test(text), 'the counts follow: ' + text.slice(0, 600));
   assert(html.includes('aria-pressed="true"') && /data-kind="signed"[^>]*aria-pressed="true"/.test(html));
-  assert(/You are down as <strong>signed up<\/strong> with Thoren \(Protection\)/.test(html));
+  assert(/Signed up - Thoren\s*, Protection/.test(stripTags(html)), 'the You bar says it');
 
   // A different character, its spec, a note: through the form's own handlers.
   const mage = (await rows(s.world, "SELECT id FROM characters WHERE name = 'Thorenmage'"))[0].id;
-  E.handlers.change['su-char'](el({}, { value: mage }));
+  E.handlers.change['su-mine-char'](el({}, { value: mage }));
   assert.equal(E.app.state.att.raidSignups.ui.form.spec, 'Fire', 'its main spec follows the character');
   E.handlers.change['su-spec'](el({}, { value: 'Frost' }));
   E.handlers.input['su-note'](el({}, { value: 'on my mage this week' }));

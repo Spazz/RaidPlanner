@@ -144,9 +144,9 @@ class ApiErr extends Error {
     assert(/Open until Sat Oct 24, 8:00 PM CT \(sign-ups close 2 hours before the start\)/.test(timedText), timedText.slice(0, 300));
     // The officer's raid settings: "In effect".
     const raidDetail = { raid: Object.assign({}, detail.raid, { closeHours: 0, closeHoursOverride: null, teamCloseHours: 0, closesAt: closes, closesSource: 'slot', sizeOverride: null, size: 25 }), can: { edit: true }, sources: {}, pulls: [], people: [], unmatched: [], signups: [] };
-    const settings = stripTags(G.pages.raid.settingsCardHtml(gdata, raidDetail));
+    const settings = stripTags(G.pages.raid.settingsDialogHtml(gdata, raidDetail));
     assert(/In effect: members can change their sign-up until Sat Oct 24, 8:00 PM CT \(this raid has only a date, so sign-ups close at the time of the schedule slot that day\), the team's setting\./.test(settings), settings);
-    const timedSettings = stripTags(G.pages.raid.settingsCardHtml(gdata, { raid: Object.assign({}, raidDetail.raid, { closesSource: undefined, timeKnown: true }), can: { edit: true }, sources: {}, pulls: [], people: [], unmatched: [], signups: [] }));
+    const timedSettings = stripTags(G.pages.raid.settingsDialogHtml(gdata, { raid: Object.assign({}, raidDetail.raid, { closesSource: undefined, timeKnown: true }), can: { edit: true }, sources: {}, pulls: [], people: [], unmatched: [], signups: [] }));
     assert(/In effect: members can change their sign-up until the raid starts, the team's setting\./.test(timedSettings), timedSettings);
   });
 

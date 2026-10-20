@@ -116,6 +116,10 @@ const OFFICER_VIEW = (over) => view(Object.assign({
 }, over || {}));
 const state = (v, over) => Object.assign({ gid: 'g1', rid: 'u1', status: 'ok', data: v, ui: G.pages.raidSignups.freshUi(v) }, over || {});
 const panel = (v, opts) => G.pages.raidSignups.panelHtml(Object.assign({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: state(v) }, opts || {}));
+// The viewer's own part is the raid page's You bar (status pills, "Change character or note") and its details dialog; panelAll = panel + bar + dialog.
+const youBar = (v, over) => G.pages.raidYou.youBarHtml(Object.assign({ guildData: gd(MEMBER_CAN), data: DETAIL(), parts: { signups: state(v) }, nextHasPrimary: false }, over || {}));
+const detailsDlg = (v, ui) => G.pages.raidSignups.detailsDialogHtml(v, ui || G.pages.raidSignups.freshUi(v), false);
+const panelAll = (v, opts) => panel(v, opts) + youBar(v) + detailsDlg(v);
 
 function stub(handler) {
   const calls = [];
@@ -175,10 +179,10 @@ class ApiErr extends Error {
     assert(err.includes('Could not reach Raidsmith.') && err.includes('data-action="su-retry"') && err.includes('role="alert"'));
   });
 
-  await check('panel (member): header says when it closes; four big status buttons with the current one pressed; character, spec and note; no officer tools', () => {
-    const out = panel(view());
+  await check('panel (member): header says when it closes; the You bar has the status pills with the current one pressed; the dialog has character, spec and note; no officer tools', () => {
+    const out = panelAll(view());
     assert(out.includes('id="su-h">Sign-ups<') && /Open until Sat, Oct 24, 8:00 PM|Open until Sat Oct 24, 8:00 PM/.test(out), out.slice(0, 600));
-    for (const [kind, label] of [['signed', 'Sign up'], ['late', 'Late'], ['tentative', 'Tentative'], ['absence', 'Can&#39;t come']]) {
+    for (const [kind, label] of [['signed', 'Signed up'], ['late', 'Late'], ['tentative', 'Tentative'], ['absence', 'Can&#39;t come']]) {
       assert(new RegExp('data-action="su-kind" data-kind="' + kind + '"[^>]*aria-pressed="' + (kind === 'signed' ? 'true' : 'false') + '"[^>]*>' + label.replace('&#39;', "(?:'|&#39;)") + '<').test(out), kind);
     }
     assert(!/su-kind[^>]*disabled/.test(out), 'open: the buttons work');
@@ -210,7 +214,7 @@ class ApiErr extends Error {
 
   await check('panel: closed by an officer or started - buttons disabled with the reason; officers keep their tools; a past raid shows the panel only to officers or when there are sign-ups', () => {
     const locked = view({ raid: { id: 'u1', teamId: 't1', startsAt: STARTS, upcoming: true, locked: true, closed: 'locked' }, me: Object.assign({}, view().me, { canChange: false, closed: 'locked' }) });
-    const out = panel(locked);
+    const out = panelAll(locked);
     assert(out.includes('Closed by an officer') && out.includes('An officer has closed sign-ups.'));
     assert(/data-kind="signed"[^>]*disabled/.test(out) && /data-kind="absence"[^>]*disabled/.test(out) && /id="su-note"[^>]*disabled/.test(out));
     assert(!out.includes('Save details'), 'nothing to save while it is closed');
@@ -245,9 +249,9 @@ class ApiErr extends Error {
     assert(hidden.includes('Sign-ups are visible to the team&#39;s members.') || hidden.includes("Sign-ups are visible to the team's members."));
     assert(!hidden.includes('gs-su-item') && !hidden.includes('gs-summary'));
     const rh = view({ me: Object.assign({}, view().me, { signup: ENTRIES[3] }) });
-    assert(panel(rh).includes('on Raid-Helper. Choosing a status here saves a sign-up in Raidsmith that replaces it.'));
+    assert(panelAll(rh).includes('on Raid-Helper. Choosing a status here saves a sign-up in Raidsmith that replaces it.'));
     const none = view({ me: Object.assign({}, view().me, { signup: null }) });
-    const noneOut = panel(none);
+    const noneOut = panelAll(none);
     assert(noneOut.includes('You have not signed up yet.') && !noneOut.includes('Save details') && !noneOut.includes('data-action="su-withdraw"'));
     assert(/data-kind="signed"[^>]*aria-pressed="false"/.test(noneOut) && noneOut.includes('gs-btn gs-su-kind gs-btn-molten'), 'Sign up stands out until it is chosen');
     assert(panel(view({ entries: [] , counts: Object.assign({}, COUNTS, { expected: 0 }) })).includes('No sign-ups yet.'));
@@ -259,7 +263,7 @@ class ApiErr extends Error {
     assertEscaped(panel(v, { guildData: gd(OFFICER_CAN) }), 'officer panel');
     const me = view({ entries: ENTRIES.map(evil), me: Object.assign({}, view().me, { signup: evil(ENTRIES[1]), characters: [Object.assign({}, CHAR_PRIEST, { name: HOSTILE + QUOTES }), CHAR_HUNTER] }) });
     const ui = Object.assign(G.pages.raidSignups.freshUi(me), {}); ui.form.note = HOSTILE + QUOTES;
-    assertEscaped(G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: Object.assign(state(me), { ui }) }), 'member panel');
+    assertEscaped(G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: Object.assign(state(me), { ui }) }) + youBar(me) + detailsDlg(me, ui), 'member panel, bar and dialog');
     assertEscaped(G.pages.raidSignups.editDialogHtml({ view: v, personId: 'p_t' }), 'edit dialog');
     assertEscaped(G.pages.raidSignups.removeDialogHtml('p_t', HOSTILE + QUOTES), 'remove dialog');
   });
@@ -288,11 +292,11 @@ class ApiErr extends Error {
     assert.equal(x.data, answer);
     assert.equal(x.ui.busy, false);
     // The character changes: its main spec is chosen and the specs are the new class's.
-    G.handlers.change['su-char'](el({}, { value: 'c_mir' }));
+    G.handlers.change['su-mine-char'](el({}, { value: 'c_mir' }));
     assert.deepEqual(plain(x.ui.form), { characterId: 'c_mir', spec: 'Marksmanship', note: '' });
     G.handlers.change['su-spec'](el({}, { value: 'Survival' }));
     G.handlers.input['su-note'](el({}, { value: 'on my hunter' }));
-    let html = G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: x });
+    let html = detailsDlg(x.data, x.ui);
     assert(/<option value="c_mir" selected>/.test(html) && /<option value="Survival" selected>/.test(html) && html.includes('value="on my hunter"') && html.includes('>Beast Mastery<') && !html.includes('>Shadow<'));
     s.calls.length = 0;
     G.handlers.submit['su-details-form']();
@@ -316,7 +320,7 @@ class ApiErr extends Error {
     assert.equal(n, 1);
     assert.equal(x.data, closedView, 'the page now shows the closed state');
     assert.equal(S.pageAlert, '', 'not the page alert');
-    assert(G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: x }).includes('An officer has closed sign-ups for this raid. Ask an officer.'));
+    assert(G.pages.raidYou.youBarHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), parts: { signups: x }, nextHasPrimary: false }).includes('An officer has closed sign-ups for this raid. Ask an officer.'));
     s.restore();
     const x2 = openRaid(S, view());
     const bad = stub(() => Promise.reject(new ApiErr(400, 'bad_request', { message: 'A note is at most 120 characters.', field: 'note' })));

@@ -1,7 +1,7 @@
 // ── PAGE PIECE: THE SIGN-UPS PANEL OF A RAID ────────────────────
 // Native Raidsmith sign-ups. GET /raids/:rid/signups answers with the merged list (a person's Raidsmith sign-up replaces their
-// Raid-Helper row), the viewer's own part (`me`) and, for officers, the team's people (`roster`). A member signs themselves up with
-// four big buttons (Sign up, Late, Tentative, Can't come) and a small form for the character, spec and a note, until the raid starts or
+// Raid-Helper row), the viewer's own part (`me`) and, for officers, the team's people (`roster`). A member signs themselves up from the
+// raid page's You bar (pages-raid-you.js: five status pills, and a dialog for the character, spec and a note; the pieces and the handlers are here), until the raid starts or
 // an officer closes sign-ups or the team's deadline (hours before the start) passes; officers edit or remove anyone's, add one for someone without
 // Discord, and close or reopen sign-ups. The counts read "expected / size" against the raid's size. A fifth button, Standby ("happy to sit out if
 // needed"), has its own group; a person away by notice is a virtual Can't come entry (source 'away', "Away (notice)": nothing to edit, a real sign-up
@@ -13,7 +13,7 @@
   const NOTE_MAX = 120;
   const KIND_LABELS = { signed: 'Signed up', late: 'Late', standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
   // The five a member picks, with the words on the buttons.
-  const MY_KINDS = [['signed', 'Sign up'], ['late', 'Late'], ['standby', 'Standby'], ['tentative', 'Tentative'], ['absence', 'Can\'t come']];
+  const MY_KINDS = [['signed', 'Signed up'], ['late', 'Late'], ['standby', 'Standby'], ['tentative', 'Tentative'], ['absence', 'Can\'t come']];
   const OFFICER_KINDS = [['signed', 'Signed up'], ['late', 'Late'], ['standby', 'Standby'], ['tentative', 'Tentative'], ['bench', 'Bench'], ['absence', 'Can\'t come']];
   const ROLE_ORDER = ['tank', 'healer', 'melee', 'ranged', 'none'];
   const ROLE_LABELS = { tank: 'Tanks', healer: 'Healers', melee: 'Melee', ranged: 'Ranged', none: 'No role yet' };
@@ -119,8 +119,27 @@
       (sig.standing ? '<p class="gs-fine">This sign-up comes from your standing sign-up. Skip this week sets you to Can\'t come for this raid only.</p>' : '') + own;
   }
 
-  // The viewer's own part: four status buttons, then the character / spec / note form.
-  function mineHtml(view, ui) {
+  // The viewer's own part lives in the raid page's You bar (pages-raid-you.js), which asks for these pieces: the five status pills and the dialog with the
+  // character, spec and note (the old "Your sign-up" form).
+  // opts.molten: the first pill is the page's one primary (a member who has not signed up and has no other primary on screen).
+  function pillsHtml(view, ui, opts) {
+    const me = view.me;
+    if (!me) return '';
+    const sig = me.signup;
+    const open = !!me.canChange;
+    const molten = !!(opts && opts.molten) && open;
+    // A person away by notice has not chosen a status: no button is pressed.
+    const buttons = MY_KINDS.map(function (k) {
+      const on = sig && sig.source !== 'away' && sig.kind === k[0];
+      return '<button type="button" class="gs-btn gs-su-kind' + (k[0] === 'signed' && !on && molten ? ' gs-btn-molten' : '') + '" data-action="su-kind" data-kind="' + k[0] + '" data-key="' + (opts && opts.keyPrefix ? opts.keyPrefix : 'su-kind-') + k[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '"' +
+        (k[0] === 'standby' ? ' aria-describedby="su-standby-hint"' : '') + (open && !ui.busy ? '' : ' disabled') + '>' + esc(k[1]) + '</button>';
+    }).join('');
+    return '<div class="gs-su-kinds" role="group" aria-label="Your status">' + buttons + '</div><span class="gs-sr" id="su-standby-hint">' + esc(STANDBY_HINT) + '</span>';
+  }
+
+  // The dialog behind "Change character or note" (and, while the viewer sits in a published line-up, "Change sign-up" with the pills on top): today's Character,
+  // Spec and Note fields, Save details and Remove my sign-up / Skip this week. Nothing is sent from the fields until Save details.
+  function detailsDialogHtml(view, ui, withPills) {
     const me = view.me;
     if (!me) return '';
     const sig = me.signup;
@@ -128,14 +147,8 @@
     const chars = Array.isArray(me.characters) ? me.characters : [];
     const form = ui.form || { characterId: null, spec: '', note: '' };
     const ch = myCharacter(view, ui);
-    // A person away by notice has not chosen a status: no button is pressed.
-    const buttons = MY_KINDS.map(function (k) {
-      const on = sig && sig.source !== 'away' && sig.kind === k[0];
-      return '<button type="button" class="gs-btn gs-su-kind' + (k[0] === 'signed' && !on && !view.can.edit ? ' gs-btn-molten' : '') + '" data-action="su-kind" data-kind="' + k[0] + '" data-key="su-kind-' + k[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '"' +
-        (k[0] === 'standby' ? ' aria-describedby="su-standby-hint"' : '') + (open && !ui.busy ? '' : ' disabled') + '>' + esc(k[1]) + '</button>';
-    }).join('');
     const charField = chars.length > 1
-      ? '<div class="gs-field"><label class="gs-label" for="su-char">Character</label><select class="gs-input" id="su-char" data-change="su-char" data-key="su-char"' + (open ? '' : ' disabled') + '>' +
+      ? '<div class="gs-field"><label class="gs-label" for="su-char">Character</label><select class="gs-input" id="su-char" data-change="su-mine-char" data-key="su-char"' + (open ? '' : ' disabled') + '>' +
         G.ui.optionsHtml(chars.map(function (c) { return { value: c.id, label: c.name + ' (' + G.ui.className(c.class) + ')' }; }), form.characterId) + '</select></div>'
       : '';
     const specField = ch
@@ -143,15 +156,17 @@
         G.ui.optionsHtml([{ value: '', label: 'No spec' }].concat((ch.specs || []).map(function (s) { return { value: s, label: s }; })), form.spec) + '</select></div>'
       : '';
     const noteField = '<div class="gs-field"><label class="gs-label" for="su-note">Note (optional)</label><input class="gs-input" type="text" id="su-note" data-input="su-note" data-key="su-note" maxlength="' + NOTE_MAX + '" autocomplete="off" value="' + esc(form.note) + '"' + (open ? '' : ' disabled') + '></div>';
-    const save = sig && sig.source !== 'away' && open
-      ? '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm" data-key="su-save"' + (ui.busy ? ' disabled' : '') + '>Save details</button>' +
-        (sig.source === 'raidsmith' ? '<button type="button" class="gs-btn gs-btn-sm" data-action="su-withdraw" data-key="su-withdraw"' + (ui.busy ? ' disabled' : '') + '>' + (sig.standing ? 'Skip this week' : 'Remove my sign-up') + '</button>' : '') + '</div>'
+    const saves = !!(sig && sig.source !== 'away'); // with a sign-up the details are sent; without one they wait in the form for the first status pill (Done)
+    const withdraw = sig && sig.source === 'raidsmith' && open
+      ? '<button type="button" class="gs-btn" data-action="su-withdraw" data-key="su-withdraw"' + (ui.busy ? ' disabled' : '') + '>' + (sig.standing ? 'Skip this week' : 'Remove my sign-up') + '</button>'
       : '';
-    return '<div class="gs-su-me" id="su-me" tabindex="-1" role="group" aria-labelledby="su-me-h"><h3 class="gs-h3" id="su-me-h">Your sign-up</h3>' + sourceNoteHtml(sig, me.notice) +
-      (open ? '' : '<p class="gs-notice" role="status">' + esc(closedText(view)) + '</p>') +
-      '<div class="gs-su-kinds" role="group" aria-label="Your status">' + buttons + '</div><p class="gs-fine" id="su-standby-hint">' + esc(STANDBY_HINT) + '</p>' +
-      '<form class="gs-su-form" data-submit="su-details-form" novalidate><div class="gs-su-fields">' + charField + specField + noteField + '</div>' + save + '</form>' +
-      '<p class="gs-alert" id="su-error" role="alert"' + (ui.error ? '' : ' hidden') + '>' + esc(ui.error) + '</p></div>';
+    return '<form class="gs-dialog-form gs-forge" data-submit="su-details-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">' + (withPills ? 'Change sign-up' : 'Change character or note') + '</h2>' +
+      '<div id="dlg-help">' + sourceNoteHtml(sig, me.notice) + (open ? '' : '<p class="gs-notice" role="status">' + esc(closedText(view)) + '</p>') + '</div>' +
+      (withPills ? pillsHtml(view, ui, { keyPrefix: 'su-dlg-kind-' }) : '') +
+      '<div class="gs-su-fields">' + charField + specField + noteField + '</div>' +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
+      '<div class="gs-dialog-actions">' + withdraw + '<button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button>' +
+      (open ? '<button type="submit" class="gs-btn gs-btn-molten" data-key="su-save"' + (ui.busy ? ' disabled' : '') + '>' + (saves ? 'Save details' : 'Done') + '</button>' : '') + '</div></form>';
   }
 
   // "Signed 23 (2 late), Tentative 1 ..." as a row of numbers, then the class counts.
@@ -254,9 +269,9 @@
     const body = view.can.seeList
       ? countsHtml(view) + listHtml(view)
       : '<p class="gs-empty">Sign-ups are visible to the team\'s members.</p>';
-    // After the start sign-ups are a record: no status buttons or form (the You line of the raid page says what the viewer signed up as), and no Add a sign-up or Close sign-ups.
+    // The viewer's own status buttons and details are the raid page's You bar; after the start sign-ups are a record (no Add a sign-up or Close sign-ups).
     return '<section class="gs-card-sec gs-su" aria-labelledby="su-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="su-h">Sign-ups</h2>' + statusPillHtml(view, detail, gd) + (upcoming ? officerBarHtml(view) : '') + '</div>' +
-      '<div class="gs-card-sec-body">' + (upcoming ? mineHtml(view, x.ui || freshUi(view)) : '') + body + '</div></section>';
+      '<div class="gs-card-sec-body">' + body + '</div></section>';
   }
 
   // ── officer dialog: add or change one person's sign-up ──
@@ -376,25 +391,32 @@
   }
 
   // ── handlers ──
+  // A status pill (the You bar's, or the one in the Change sign-up dialog, which closes first).
   G.handlers.click['su-kind'] = function (el) {
     const c = cur();
     if (!c || !c.x.data.me) return;
+    G.ui.closeDialogOf(el);
     return run(c, G.api.signups.save(c.gid, c.rid, bodyFor(c, el.getAttribute('data-kind'))));
   };
 
-  G.handlers.submit['su-details-form'] = function () {
+  // Save details: with a sign-up the form is sent (its status kept); without one the values wait in the form for the first status pill.
+  G.handlers.submit['su-details-form'] = function (form) {
     const c = cur();
-    if (!c || !c.x.data.me || !c.x.data.me.signup) return;
+    if (!c || !c.x.data.me) return;
+    G.ui.closeDialogOf(form);
+    if (!c.x.data.me.signup) { G.app.render(); return; }
     return run(c, G.api.signups.save(c.gid, c.rid, bodyFor(c, c.x.data.me.signup.kind)));
   };
 
-  G.handlers.click['su-withdraw'] = function () {
+  G.handlers.click['su-withdraw'] = function (el) {
     const c = cur();
     if (!c) return;
+    G.ui.closeDialogOf(el);
     return run(c, G.api.signups.withdraw(c.gid, c.rid));
   };
 
-  G.handlers.change['su-char'] = function (el) {
+  // The dialog's character changed: the specs of that character in place (a re-render must not swallow the open dialog), its main spec chosen.
+  G.handlers.change['su-mine-char'] = function (el) {
     const c = cur();
     if (!c) return;
     const chars = c.x.data.me ? c.x.data.me.characters : [];
@@ -402,7 +424,9 @@
     if (!ch) return;
     c.x.ui.form.characterId = ch.id;
     c.x.ui.form.spec = specOf(ch, null);
-    G.app.render();
+    const form = el.closest ? el.closest('form') : null;
+    const spec = form && form.elements ? form.elements.spec || (typeof document !== 'undefined' ? document.getElementById('su-spec') : null) : null;
+    if (spec) spec.innerHTML = specOptionsHtml(ch, c.x.ui.form.spec);
   };
 
   G.handlers.change['su-spec'] = function (el) {
@@ -427,6 +451,16 @@
     if (!gd || !r || !r.data) return;
     loadFor(gd, r.data).then(function () { G.app.render(); });
   };
+
+  // The You bar's "Change character or note" and (while the viewer has a seat) "Change sign-up", which carries the status pills too.
+  function openMine(withPills) {
+    const c = cur();
+    if (!c || !c.x.data.me) return;
+    c.x.ui = c.x.ui || freshUi(c.x.data);
+    G.ui.openDialog(detailsDialogHtml(c.x.data, c.x.ui, withPills), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+  }
+  G.handlers.click['su-details-open'] = function () { openMine(false); };
+  G.handlers.click['su-signup-open'] = function () { openMine(true); };
 
   G.handlers.click['su-add'] = function () {
     const c = cur();
@@ -506,7 +540,12 @@
     freshUi: freshUi,
     formFrom: formFrom,
     panelHtml: panelHtml,
-    mineHtml: mineHtml,
+    pillsHtml: pillsHtml,
+    detailsDialogHtml: detailsDialogHtml,
+    sourceNoteHtml: sourceNoteHtml,
+    closedText: closedText,
+    statusPillHtml: statusPillHtml,
+    viewOf: function (state) { return state && state.status === 'ok' && state.data ? state.data : null; },
     listHtml: listHtml,
     countsHtml: countsHtml,
     editDialogHtml: editDialogHtml,

@@ -217,12 +217,14 @@
   // opens, and a re-render, return to the button). Items run their own data-action through the normal delegated handlers.
   //   opts: { id, label, ariaLabel, icon ('more' for an icon-only "..." button), phoneIcon (true: the labelled button turns into a 44 px dots icon button
   //           on a phone, label "More" kept as its aria-label), triggerClass, align ('left'), key, items }
-  //   item: { label, href } for a link, { label, data: { action: 'raid-op', op: 'recompute' }, key } for a button, { danger: true } to
+  //   item: { label, href } for a link, { label, disabled: true, note } for an action that is not offered right now (the note says why), { label, data: { action: 'raid-op', op: 'recompute' }, key } for a button, { danger: true } to
   //         colour a destructive item, { separator: true } for a rule. Falsy entries are skipped; no items renders nothing.
   const MENU_DATA_NAME = /^[a-z][a-z0-9-]*$/;
 
   function menuItemHtml(item) {
     if (item.separator) return '<div class="gs-menu-sep" role="separator"></div>';
+    // A disabled item stays in the list as a muted line with its reason (note), so people see why the action is not offered; it is not a menu item (no focus, no action).
+    if (item.disabled) return '<div class="gs-menu-item is-disabled" role="none">' + esc(item.label) + (item.note ? '<small class="gs-menu-note">' + esc(item.note) + '</small>' : '') + '</div>';
     const data = item.data || {};
     const attrs = Object.keys(data).filter(function (k) { return MENU_DATA_NAME.test(k); }).map(function (k) { return ' data-' + k + '="' + esc(data[k]) + '"'; }).join('');
     const common = ' class="gs-menu-item' + (item.danger ? ' is-danger' : '') + '" role="menuitem" tabindex="-1"' + attrs + (item.key ? ' data-key="' + esc(item.key) + '"' : '');

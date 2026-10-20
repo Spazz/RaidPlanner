@@ -2710,3 +2710,59 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-loot-choice { flex-direction: column; }
   .gs-loot-page .gs-pagehead-actions { flex-wrap: wrap; }
 }
+
+/* ── Raid page (T2 on Forge): head, next-step bar, You bar, then main 2fr / side 1fr from 1024 px (raids revamp, concept A). Prefix gs-rpg-. ──
+   Phone order = next-step bar, You bar, main column, side panels; the side panels carry gs-rpg-sp-loot / -bosses / -facts so one column can put Loot, Bosses, Raid facts in that order. */
+.gs-rpg { display: flex; flex-direction: column; gap: 16px; }
+.gs-rpg-cols { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.gs-rpg-main, .gs-rpg-side { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+@media (min-width: 1024px) {
+  .gs-rpg-cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: start; }
+}
+@media (max-width: 1023px) {
+  .gs-rpg-sp-loot { order: 1; }
+  .gs-rpg-sp-bosses { order: 2; }
+  .gs-rpg-sp-facts { order: 3; }
+}
+.gs-rpg-record { padding: 0; }
+.gs-rpg-record > summary { cursor: pointer; font-size: 15px; color: var(--text-secondary); min-height: 44px; display: flex; align-items: center; }
+/* You bar */
+.gs-rpg-you { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 12px 20px; min-height: 60px; }
+.gs-rpg-you:focus { outline: none; }
+.gs-rpg-you .gs-fg-lbl { flex: none; }
+.gs-rpg-you-body { flex: 1 1 320px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-width: 0; }
+.gs-rpg-you-line { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text-secondary); overflow-wrap: anywhere; }
+.gs-rpg-you-line strong { color: var(--hd-white); font-weight: 700; }
+.gs-rpg-you-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
+.gs-rpg-you-q { font-size: 14px; color: var(--text-secondary); }
+.gs-rpg-you .gs-su-kinds { display: flex; flex-wrap: wrap; gap: 8px; }
+.gs-rpg-you .gs-su-kind { min-height: 36px; font-size: 13px; padding: 0 12px; }
+.gs-rpg-you .gs-alert { flex: 1 1 100%; margin: 0; }
+.gs-rpg-why { max-width: 340px; }
+.gs-rpg-link { font-size: 13px; color: var(--text-secondary); min-height: 36px; }
+.gs-dialog-form.gs-forge .gs-su-kinds { display: flex; flex-wrap: wrap; gap: 8px; }
+.gs-dialog-form.gs-forge .gs-su-kind { min-height: 36px; font-size: 13px; }
+/* Raid facts panel */
+.gs-rpg-facts .gs-pr-ph { min-height: 52px; }
+.gs-rpg-dl { margin: 0; padding: 0; }
+.gs-rpg-fact { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 4px 12px; padding: 12px 20px; border-top: 1px solid var(--hd-hair); }
+.gs-rpg-fact:focus { outline: none; }
+.gs-rpg-fact dt { margin: 0; font-size: 13px; line-height: 1.4; color: var(--text-muted); }
+.gs-rpg-fact dd { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; font-size: 14px; line-height: 1.4; color: var(--hd-white); overflow-wrap: anywhere; }
+.gs-rpg-sub { font-size: 13px; line-height: 1.4; color: var(--text-muted); }
+.gs-rpg-chg { margin-top: 4px; }
+.gs-rpg-chg .gs-btn { min-height: 32px; font-size: 13px; }
+.gs-menu-item.is-disabled { color: var(--text-muted); cursor: default; }
+.gs-menu-note { display: block; font-size: 12px; color: var(--text-muted); }
+@media screen and (max-width: 600px) {
+  .gs-rpg-you { padding: 12px 16px; }
+  .gs-rpg-you-body { flex-basis: 100%; }
+  .gs-rpg-you-act { margin-left: 0; width: 100%; }
+  .gs-rpg-you .gs-su-kinds { width: 100%; }
+  .gs-rpg-you .gs-su-kind { flex: 1 1 calc(50% - 4px); min-height: 44px; font-size: 14px; justify-content: center; }
+  .gs-rpg-you-act > .gs-btn { flex: 1 1 140px; min-height: 44px; justify-content: center; }
+  .gs-rpg-link { min-height: 44px; }
+  .gs-rpg-fact { padding: 12px 16px; grid-template-columns: 88px minmax(0, 1fr); }
+  .gs-rpg-chg .gs-btn { min-height: 44px; }
+  .gs-dialog-form.gs-forge .gs-su-kind { min-height: 44px; flex: 1 1 calc(50% - 4px); }
+}

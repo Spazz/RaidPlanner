@@ -1,7 +1,7 @@
 // ── PAGE PIECES OF THE RAID: DUTIES, PASTE RAID ROSTER, GUEST SIGN-UP LINK ──
-// Three things an officer does from the raid page's More menu (pages-raid.js asks menuItems() and draws dutiesLineHtml()):
+// Three things an officer does on the raid page (pages-raid.js asks menuItems() for the More menu; Duties is a row of the Raid facts panel):
 //   Set raid duties          who is Raid leader, Loot master, Logger and Plan maker for this raid, and one duty in the officer's own words.
-//                            The raid header shows them and the Discord roster post lists them; the Logger is nudged when no log arrives.
+//                            The Raid facts panel shows them and the Discord roster post lists them; the Logger is nudged when no log arrives.
 //   Paste raid roster        a raid with no log: paste who was there (names, /who, a raid frame), check who matched, save it as hand-entered attendance.
 //                            Names that match nobody wait in the review queue. Two steps in one button: Check names, then Save attendance.
 //   Guest sign-up link       an upcoming raid: a link for people with no guild account to sign up as Guests (expires at the raid's start, revocable).
@@ -19,20 +19,13 @@
   function hasReports(data) { return !!(data.sources && Array.isArray(data.sources.reports) && data.sources.reports.length); }
   function isManual(data) { return !!(data.raid && data.raid.state === 'manual') || !!(data.raid && data.raid.manual); }
 
-  // ── the header and the menu ──
-  function dutiesLineHtml(data) {
-    const list = Array.isArray(data.duties) ? data.duties : [];
-    if (!list.length) return '';
-    return '<p class="gs-duties-line" id="raid-duties">' + list.map(function (d) {
-      return '<span><strong>' + esc(d.label) + ':</strong> ' + G.ui.classNameHtml(d.name, d.class) + '</span>';
-    }).join(' ') + '</p>';
-  }
-
-  // The More menu's extra items for this raid (empty for anyone who may not edit it).
+  // ── the menu ──
+  // The More menu's extra items for this raid (empty for anyone who may not edit it): the guest sign-up link before the raid, Paste raid roster after it (no log).
+  // Raid duties are the Duties row of the Raid facts panel (its Change button runs the raid-extra handler below).
   function menuItems(data) {
     if (!(data && data.can && data.can.edit)) return [];
     const upcoming = !!(data.raid && data.raid.upcoming);
-    const items = [{ label: 'Set raid duties', key: 'mi-duties', data: { action: 'raid-extra', op: 'duties' } }];
+    const items = [];
     if (upcoming) items.push({ label: 'Guest sign-up link', key: 'mi-join', data: { action: 'raid-extra', op: 'join' } });
     else if (!hasReports(data)) items.push({ label: isManual(data) ? 'Paste raid roster (replaces who is present)' : 'Paste raid roster', key: 'mi-paste', data: { action: 'raid-extra', op: 'paste' } });
     return items;
@@ -296,7 +289,7 @@
   };
 
   G.pages.raidExtras = {
-    FIXED: FIXED, menuItems: menuItems, dutiesLineHtml: dutiesLineHtml, dutiesDialogHtml: dutiesDialogHtml, peopleOptions: peopleOptions,
+    FIXED: FIXED, menuItems: menuItems, dutiesDialogHtml: dutiesDialogHtml, peopleOptions: peopleOptions,
     pasteDialogHtml: pasteDialogHtml, previewHtml: previewHtml, joinDialogHtml: joinDialogHtml, createdDialogHtml: createdDialogHtml, readDuties: readDuties,
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));
