@@ -656,6 +656,7 @@
     mainOf: mainOf,
     altsOf: altsOf,
     headOpts: headOpts,
+    recordHeadOpts: recordHeadOpts,
     headChipHtml: headChipHtml,
     accountText: accountText,
     panelHtml: panelHtml,

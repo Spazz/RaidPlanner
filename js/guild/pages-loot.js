@@ -65,6 +65,27 @@
       TAGS.map(function (t) { return '<option value="' + t + '"' + (t === award.tag ? ' selected' : '') + '>' + esc(TAG_NAMES[t]) + '</option>'; }).join('') + '</select>';
   }
 
+  // The tag on the Forge Loot pages: a plain word, never a chip (every award has one; a chip is for an exception). The raid page keeps tagChipHtml.
+  function tagTextHtml(tag, tagSetBy) {
+    const by = tagSetBy ? '<span class="gs-sr"> (set by an officer)</span>' : '';
+    return '<span class="gs-lt-tag" title="' + esc(has(TAG_NAMES, tag) ? TAG_NAMES[tag] : tag) + '">' + esc(tagLabel(tag)) + by + '</span>';
+  }
+
+  // One Forge chip (spec 2.3): an exception or a single status word. tone: rose | green | grey | blue.
+  function chipHtml(tone, label, title) {
+    return '<span class="gs-hd-chip is-' + esc(tone) + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' + esc(label) + '</span>';
+  }
+
+  // "Edited" marks an award an officer corrected: the one chip an award can carry.
+  function editedChipHtml(award) {
+    return award && Array.isArray(award.editedFields) && award.editedFields.length ? chipHtml('grey', 'Edited', 'An officer corrected this award') : '';
+  }
+
+  // "Manual" is where the award came from, not a state: muted words under the item.
+  function manualNoteHtml(award) {
+    return award && award.manual ? '<span class="gs-lt-sub" title="Added by an officer, not imported from Gargul">Manual</span>' : '';
+  }
+
   function flagChipsHtml(flags) {
     const list = Array.isArray(flags) ? flags : [];
     return list.filter(function (f) {
@@ -90,7 +111,8 @@
 
   // The winner of an award: the person (a link to their loot) when a roster character matched, else the Gargul name with a
   // chip saying why there is no person; "Disenchanted" for an item nobody won. `match` is the Worker's { kind, personId, personName, characterName, ... }.
-  function winnerHtml(gid, winner, match) {
+  // forge: the Loot pages' Forge chip (rose for a name that needs fixing, grey for a guest); the raid page keeps the old chip.
+  function winnerHtml(gid, winner, match, forge) {
     const w = winner || {};
     const m = match || {};
     if (m.kind === 'disenchanted') return '<span class="gs-char-text"><span class="gs-muted">Disenchanted</span></span>';
@@ -103,7 +125,8 @@
       return '<span class="gs-char-text">' + who + sub + '</span>';
     }
     const chip = m.kind === 'guest' ? 'Guest' : 'Not on roster';
-    return '<span class="gs-char-text">' + G.ui.classNameHtml(winnerText(w), w.class) + '</span><span class="gs-chip gs-chip-flag">' + chip + '</span>';
+    return '<span class="gs-char-text">' + G.ui.classNameHtml(winnerText(w), w.class) + '</span>' +
+      (forge ? chipHtml(m.kind === 'guest' ? 'grey' : 'rose', chip) : '<span class="gs-chip gs-chip-flag">' + chip + '</span>');
   }
 
   // The character that won it, as the person pages show it (no link: the page is already that person's).
@@ -212,18 +235,61 @@
     return list.map(tagLabel).join(' and ');
   }
 
+  // ── Forge parts every Loot page shares (spec 2.1, 3, 4) ──
+  // The one panel with a head row (the person page recipe). s: { id, title, metaHtml, actionsHtml, bodyHtml, flush (the body draws its own rows), cls }
+  function panelHtml(s) {
+    if (!s) return '';
+    const id = esc(s.id);
+    return '<section class="gs-hd-panel gs-pr-panel' + (s.cls ? ' ' + esc(s.cls) : '') + '" id="' + id + '" aria-labelledby="' + id + '-h"><div class="gs-pr-ph"><h2 class="gs-pr-h" id="' + id + '-h">' + esc(s.title) + '</h2>' +
+      (s.metaHtml ? '<span class="gs-pr-mut">' + s.metaHtml + '</span>' : '') + (s.actionsHtml ? '<span class="gs-pr-acts">' + s.actionsHtml + '</span>' : '') + '</div>' +
+      (s.flush ? s.bodyHtml || '' : '<div class="gs-pr-body">' + (s.bodyHtml || '') + '</div>') + '</section>';
+  }
+
+  // Figures in a panel: [{ label, value }] as a caption over a white number (2 to 5 of them).
+  function figsHtml(list) {
+    const items = (Array.isArray(list) ? list : []).filter(Boolean);
+    return '<dl class="gs-pr-figs gs-lt-figs is-n' + items.length + '">' + items.map(function (f) {
+      return '<div class="gs-pr-fig"><dt class="gs-pr-cap">' + esc(f.label) + '</dt><dd class="gs-pr-num">' + esc(f.value) + '</dd></div>';
+    }).join('') + '</dl>';
+  }
+
+  // The empty / denied / not-found state: one panel, an icon, a title, the next action. opts: { label, title, text, actionsHtml }
+  function stateHtml(opts) {
+    const o = opts || {};
+    return '<section class="gs-hd-panel gs-rs-state" aria-label="' + esc(o.label || o.title) + '"><span class="gs-rs-tilebox" aria-hidden="true">' + G.icons.icon('loot', 28) + '</span>' +
+      '<h2 class="gs-rs-cardtitle">' + esc(o.title) + '</h2>' + (o.text ? '<p class="gs-rs-statetext">' + esc(o.text) + '</p>' : '') + (o.actionsHtml ? '<div class="gs-rs-stateacts">' + o.actionsHtml + '</div>' : '') + '</section>';
+  }
+
+  // The loading state: the heading, then grey blocks where the panels will be.
+  function loadingHtml(title) {
+    const sk = function (cls) { return '<span class="gs-hd-sk ' + cls + '"></span>'; };
+    return '<div class="gs-page gs-list-page gs-forge gs-loot-page" aria-busy="true"><p class="gs-sr" role="status">Loading ' + esc(String(title || 'loot').toLowerCase()) + '</p>' +
+      '<header class="gs-pagehead"><div class="gs-pagehead-row"><div class="gs-pagehead-title"><div class="gs-pagehead-h"><h1 class="gs-h1" id="page-title" tabindex="-1">' + esc(title || 'Loot') + '</h1></div></div></div></header>' +
+      '<div class="gs-hd-panel gs-lt-skel" aria-hidden="true">' + [0, 1, 2, 3, 4].map(function () { return sk('is-line'); }).join('') + '</div></div>';
+  }
+
+  // Joined segments (Forge): opts { label, items: [{ key, label, dataKey }], selected, action }. Same data-action / data-value contract as ui.segmentsHtml.
+  function segmentsHtml(opts) {
+    const o = opts || {};
+    const items = (Array.isArray(o.items) ? o.items : []).filter(Boolean);
+    if (!items.length) return '';
+    return '<div class="gs-fg-segs" role="group" aria-label="' + esc(o.label || 'Filter') + '">' + items.map(function (it) {
+      return '<button type="button" class="gs-fg-seg" aria-pressed="' + (String(it.key) === String(o.selected) ? 'true' : 'false') + '" data-action="' + esc(o.action) + '" data-value="' + esc(it.key) + '"' +
+        (it.dataKey ? ' data-key="' + esc(it.dataKey) + '"' : '') + '>' + esc(it.label) + '</button>';
+    }).join('') + '</div>';
+  }
+
   function emptyHtml(gd, teamId) {
     const edit = allows(gd, 'loot.edit', teamId);
-    return '<section class="gs-empty-card" aria-labelledby="loot-empty-h"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('loot', 28) + '</span>' +
-      '<h2 class="gs-h2 gs-h2-lg" id="loot-empty-h">No loot yet</h2>' +
-      '<p class="gs-lead gs-lead-sm">' + (edit ? 'Loot builds up from raids. Open a past raid and choose Import from Gargul to add what was awarded.' : 'Loot shows here after your officers import a raid\'s awards from Gargul.') + '</p>' +
-      (edit ? '<div class="gs-actions"><a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'section', gid: gd.guild.id, section: 'raids' })) + '">Open Raids</a></div>' : '') + '</section>';
+    return stateHtml({ label: 'No loot yet', title: 'No loot yet',
+      text: edit ? 'Loot builds up from raids. Open a past raid and choose Import from Gargul to add what was awarded.' : 'Loot shows here after your officers import a raid\'s awards from Gargul.',
+      actionsHtml: edit ? G.ui.buttonHtml({ label: 'Open Raids', variant: 'primary', href: G.router.format({ name: 'section', gid: gd.guild.id, section: 'raids' }) }) : '' });
   }
 
   function noAccessHtml(gd, teamId) {
     const team = teamOf(gd, teamId);
-    return '<div class="gs-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Loot</h1></div><section class="gs-empty-card"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('loot', 28) + '</span>' +
-      '<h2 class="gs-h2 gs-h2-lg">You can\'t see this team\'s loot</h2><p class="gs-fine">Who sees the loot of ' + esc(team ? team.name : 'this team') + ' is set by the guild\'s officers in Guild settings.</p></section></div>';
+    return '<div class="gs-page gs-list-page gs-forge gs-loot-page"><header class="gs-pagehead"><div class="gs-pagehead-row"><div class="gs-pagehead-title"><div class="gs-pagehead-h"><h1 class="gs-h1" id="page-title" tabindex="-1">Loot</h1></div></div></div></header>' +
+      stateHtml({ label: 'No access', title: 'You can\'t see this team\'s loot', text: 'Who sees the loot of ' + (team ? team.name : 'this team') + ' is set by the guild\'s officers in Guild settings.' }) + '</div>';
   }
 
   // The Loot section is the hub (pages-loot-hub.js); this module keeps the vocabulary and the balance maths the other loot pages share.
@@ -240,6 +306,15 @@
     itemHtml: itemHtml,
     timeText: timeText,
     tagChipHtml: tagChipHtml,
+    tagTextHtml: tagTextHtml,
+    chipHtml: chipHtml,
+    editedChipHtml: editedChipHtml,
+    manualNoteHtml: manualNoteHtml,
+    panelHtml: panelHtml,
+    figsHtml: figsHtml,
+    stateHtml: stateHtml,
+    loadingHtml: loadingHtml,
+    segmentsHtml: segmentsHtml,
     tagSelectHtml: tagSelectHtml,
     flagChipsHtml: flagChipsHtml,
     winnerText: winnerText,

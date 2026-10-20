@@ -948,7 +948,6 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-loot-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
 .gs-loot-tagsel { width: auto; min-width: 130px; }
 .gs-loot-tag { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.gs-loot-page .gs-roster-filters { align-items: center; }
 .gs-loot-sec .gs-notice { margin: 0; }
 .gs-settings-loot .gs-pol-form { max-width: 760px; }
 .gs-loot-import { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-4); background: var(--bg-card); border: 1px solid var(--border-medium); }
@@ -2512,56 +2511,90 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-watch-item.is-reviewed .gs-watch-num, .gs-watch-item.is-reviewed .gs-watch-was, .gs-watch-item.is-reviewed .gs-watch-counts { color: var(--text-muted); }
 
 
-/* ── Loot page redesign: the hub's cards, the raid night and item pages ── */
-.gs-lhub { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); align-items: start; }
-.gs-lhub-card .gs-card-sec-body { padding: 16px 20px; display: flex; flex-direction: column; gap: var(--sp-3); }
-.gs-lhub-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.gs-lhub-list, .gs-lhub-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.gs-lhub-row, .gs-lhub-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; min-height: 44px; min-width: 0; }
-.gs-lhub-row + .gs-lhub-row, .gs-lhub-links > li + li { border-top: 1px solid var(--border-subtle); }
-.gs-lhub-row.is-you { background: var(--bg-card-hover); padding-left: 8px; padding-right: 8px; }
-.gs-lhub-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
-.gs-lhub-figure { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
-a.gs-lhub-link { color: var(--text-primary); text-decoration: none; }
-a.gs-lhub-link:hover { background: var(--bg-card-hover); }
-.gs-lhub-day + .gs-lhub-day { border-top: 1px solid var(--border-subtle); padding-top: var(--sp-3); }
-.gs-lhub-day .gs-h3 { margin: 0 0 4px; }
-.gs-ln-tag { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.gs-ln-saved { font-size: 14px; font-weight: 600; color: var(--status-success-ink); }
+/* ── Loot on Forge: the Loot pages (hub, standings, raid night, item, person loot, award, Needs fixing) ──
+   Panels, heads, chips and buttons are the shared Forge recipes (.gs-hd-panel, .gs-pr-*, .gs-hd-chip, .gs-fg-*); only the parts below are Loot's own. */
+.gs-lt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.gs-lt-list { list-style: none; margin: 0; padding: 0; }
+.gs-lt-row, .gs-lt-link { justify-content: space-between; min-width: 0; padding-top: 8px; padding-bottom: 8px; }
+.gs-pr-row.is-you { background: var(--you-bg); }
+.guild-page a.gs-lt-link { color: var(--text-primary); text-decoration: none; }
+.guild-page a.gs-lt-link:hover { background: var(--bg-card-hover); }
+.gs-lt-main { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.gs-lt-name { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
+.gs-lt-sub { display: block; font-size: 13px; line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
+.gs-lt-figure { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gs-lt-figure strong { font-size: 16px; color: var(--hd-white); }
+.gs-lt-pad { margin: 0; padding: 12px 20px; border-top: 1px solid var(--hd-hair); }
+.gs-lt-tag { font-weight: 600; color: var(--text-primary); }
+.gs-lt-tagcell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.gs-lt-saved { font-size: 14px; font-weight: 600; color: var(--status-success-ink); }
+.gs-lt-figs { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
+.gs-lt-figs dt, .gs-lt-figs dd { margin: 0; }
+.gs-lt-skel { padding: 8px 20px 20px; }
+.gs-lt-day { padding: 12px 20px 4px; border-top: 1px solid var(--hd-hair); }
+.gs-lt-day .gs-fg-gh { margin-bottom: 4px; }
+.gs-lt-day .gs-loot-sublist { padding: 0; }
+.gs-lt-day .gs-loot-subrow:first-child { border-top: 0; }
+.gs-lt-night > details > summary { list-style: none; cursor: pointer; }
+.gs-lt-night > details > summary::-webkit-details-marker { display: none; }
+.gs-lt-night > details > summary::after { content: ""; flex: none; width: 8px; height: 8px; border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted); transform: rotate(45deg); }
+.gs-lt-night > details[open] > summary::after { transform: rotate(-135deg); }
+.gs-lt-night > details > summary:hover { background: var(--bg-card-hover); }
+.gs-loot-page .gs-loot-sublist { margin: 0; padding: 0 20px 8px; }
+.gs-loot-page .gs-loot-subrow { min-height: 44px; padding: 6px 0; border-top: 1px solid var(--hd-hair); }
 .gs-loot-night .gs-loot-who, .gs-loot-person .gs-loot-who { display: inline-flex; }
 .gs-loot-hub .gs-loot-subrow { min-width: 0; }
+/* the data tables of the Loot pages are the panel (T1) or sit unframed in one; no row edges (spec 2.2) */
+.gs-lt-tablepanel { overflow: hidden; }
+.gs-loot-page .gs-dtable-wrap { background: none; border: 0; }
+.gs-loot-page .gs-pr-panel .gs-dtable-wrap { border-top: 1px solid var(--hd-hair); }
+.gs-loot-page .gs-dtable th { background: transparent; border-bottom-color: var(--hd-hair); font: 600 12px/1.2 var(--font-body); letter-spacing: 0.1em; }
+.gs-loot-page .gs-dtable td, .gs-loot-page .gs-dtable th[scope="row"] { border-bottom-color: var(--hd-hair); }
+.gs-loot-page .gs-dtable-row.is-you { background: var(--you-bg); box-shadow: none; }
+@media (min-width: 1024px) {
+  .gs-lt-cols-rev > .gs-pr-left { grid-column: 1; grid-row: 1; }
+  .gs-lt-cols-rev > .gs-pr-right { grid-column: 2; grid-row: 1; }
+}
 @media (max-width: 900px) {
-  .gs-lhub { grid-template-columns: minmax(0, 1fr); }
-  .gs-lhub-card .gs-card-sec-body { padding: 12px 16px; }
+  .gs-lt-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .gs-loot-page .gs-fg-linkbtn, .gs-loot-page .gs-fg-seg { min-height: 44px; height: 44px; }
+  .gs-lt-tablepanel { background: none; border: 0; box-shadow: none; overflow: visible; }
+  .gs-loot-page .gs-pr-panel .gs-dtable-wrap { border-top: 0; }
+  .gs-loot-page .gs-dtable tbody tr { margin-bottom: 8px; padding: 12px 16px; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
+  .gs-loot-page .gs-dtable-row.is-you, .gs-loot-page .gs-dtable-row.is-you:hover { background: var(--you-bg); box-shadow: none; }
+  .gs-loot-page .gs-pr-panel .gs-dtable tbody tr { margin: 0; border-width: 1px 0 0; border-radius: 0; box-shadow: none; background: none; }
+  .gs-loot-page .gs-pr-panel .gs-dtable tbody tr.is-you { background: var(--you-bg); }
+  .gs-lt-pad, .gs-lt-day, .gs-loot-page .gs-loot-sublist { padding-left: 16px; padding-right: 16px; }
+  .gs-lt-day .gs-loot-sublist { padding-left: 0; padding-right: 0; }
 }
 
 /* ── Loot page redesign: the award record, Edit details, Needs fixing, the import's decision rows, phones ── */
 .gs-loot-award .gs-la-form .gs-check { padding: 2px 0; }
 .gs-la-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.gs-la-hrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0; min-width: 0; }
-.gs-la-hrow + .gs-la-hrow { border-top: 1px solid var(--border-subtle); }
+.gs-la-hrow { flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; padding-top: 10px; padding-bottom: 10px; min-width: 0; }
 .gs-la-htext { min-width: 0; overflow-wrap: anywhere; }
-.gs-lf-groups { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
-.gs-lf-group { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gs-lf-groups { list-style: none; margin: 0; padding: 0; }
+.gs-lf-group { box-sizing: border-box; padding: 12px 20px; border-top: 1px solid var(--hd-hair); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .gs-lf-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .gs-lf-awards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .gs-lf-award { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 8px 0; min-width: 0; }
-.gs-lf-award + .gs-lf-award { border-top: 1px solid var(--border-subtle); }
+.gs-lf-award + .gs-lf-award { border-top: 1px solid var(--hd-hair); }
 .gs-lf-n { display: flex; flex-direction: column; min-width: 120px; }
 .gs-lf-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .gs-lf-keep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.gs-lf-sec + .gs-lf-sec { margin-top: var(--sp-4); }
+.gs-lf-sec + .gs-lf-sec { margin-top: 24px; }
 .gs-loot-decisions { display: flex; flex-direction: column; gap: 8px; margin: var(--sp-3) 0; padding: 12px 16px; border: 1px solid var(--border-medium); background: var(--bg-card); min-width: 0; }
 .gs-loot-decisions-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 .gs-loot-decisions-head .gs-h3 { margin: 0; }
 .gs-loot-decide { grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) auto; }
 .gs-loot-choice { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; border: 0; min-width: 0; }
 @media screen and (max-width: 600px) {
-  .gs-lf-group { padding: 12px; }
+  .gs-lf-group { padding: 12px 16px; }
   .gs-lf-award { flex-direction: column; align-items: stretch; }
   .gs-lf-acts { margin-left: 0; }
   .gs-lf-acts .gs-btn { flex: 1 1 auto; }
-  .gs-la-hrow { flex-direction: column; gap: 2px; }
   .gs-loot-decide { grid-template-columns: minmax(0, 1fr); }
   .gs-loot-decisions { padding: 12px; }
   .gs-loot-choice { flex-direction: column; }

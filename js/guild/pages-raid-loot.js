@@ -484,7 +484,7 @@
 
   function addDialogHtml(names) {
     const tags = ADD_TAGS.map(function (t) { return '<option value="' + t + '"' + (t === 'MS' ? ' selected' : '') + '>' + esc(L().TAG_NAMES[t]) + '</option>'; }).join('');
-    return '<form class="gs-dialog-form" data-submit="loot-add-form" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge" data-submit="loot-add-form" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Add a loot award</h2>' +
       '<p class="gs-fine" id="dlg-help">For an item that was handed out without Gargul. It counts in the balance like any other award.</p>' +
       '<div class="gs-field"><label class="gs-label" for="dlg-item">Item (id or Wowhead link)</label><input class="gs-input" type="text" id="dlg-item" name="itemRef" autocomplete="off" spellcheck="false" data-field="itemId" aria-describedby="dlg-help">' +
@@ -540,7 +540,7 @@
 
   // The confirm dialog for deleting an award (the raid night and person pages use it too, with their own submit handler).
   function deleteDialogHtml(award, submit) {
-    return '<form class="gs-dialog-form" data-submit="' + esc(submit || 'loot-delete-form') + '" data-aid="' + esc(award.id) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge" data-submit="' + esc(submit || 'loot-delete-form') + '" data-aid="' + esc(award.id) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Delete this award?</h2>' +
       '<p class="gs-confirm-text" id="dlg-text">' + esc((award.itemName || 'This item') + (L().isDisenchanted(award) ? ' (disenchanted)' : ' awarded to ' + L().winnerText(award.winner))) + ' is removed from the raid and from the balance.' + (award.manual ? '' : ' Importing the same Gargul export again asks before it adds it back.') + '</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +

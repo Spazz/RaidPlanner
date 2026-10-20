@@ -17,8 +17,6 @@
   function currentGd() { const s = st(); return s.currentGid ? s.guilds[s.currentGid] : null; }
   function dayText(raidOn) { return G.ui.weekdayDay(raidOn) || raidOn || 'Raid night'; }
   function href(route) { return G.router.format(route); }
-  function edited(award) { return Array.isArray(award.editedFields) && award.editedFields.length > 0; }
-  function editedChip(award) { return edited(award) ? '<span class="gs-chip gs-chip-plain" title="An officer corrected this award">Edited</span>' : ''; }
 
   // ── the More menu of an award row (edit holders) ──
   function moreMenuHtml(gd, award) {
@@ -41,10 +39,10 @@
   }
 
   function tagCellHtml(award, edit, saved) {
-    const officer = award.tagSetBy ? '<span class="gs-chip gs-chip-plain">Officer tag</span>' : '';
+    const officer = award.tagSetBy ? '<span class="gs-lt-sub">Officer tag</span>' : '';
     const select = edit && !L().isDisenchanted(award);
-    return '<span class="gs-ln-tag">' + (select ? L().tagSelectHtml(award, 'ln-tag') : L().tagChipHtml(award.tag, award.tagSetBy)) + (select ? officer : '') + editedChip(award) +
-      (saved ? '<span class="gs-ln-saved" role="status">Saved</span>' : '') + '</span>';
+    return '<span class="gs-lt-tagcell">' + (select ? L().tagSelectHtml(award, 'ln-tag') : L().tagTextHtml(award.tag, award.tagSetBy)) + (select ? officer : '') + L().editedChipHtml(award) +
+      (saved ? '<span class="gs-lt-saved" role="status">Saved</span>' : '') + '</span>';
   }
 
   // opts: { guildData, state: { status, awards, canEdit, raid, saved, rid, teamId }, alert }
@@ -54,10 +52,10 @@
     const x = opts.state;
     const back = { href: href({ name: 'section', gid: gid, section: 'loot' }), label: 'Loot' };
     if (x.status === 'denied') {
-      return G.ui.listPageHtml({ head: { title: 'Raid night', back: back }, bodyHtml: '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">You can\'t see this loot</h2><p class="gs-lead gs-lead-sm">Who sees the loot of a team is set by the guild\'s officers in Loot rules.</p></section>' });
+      return G.ui.listPageHtml({ head: { title: 'Raid night', back: back }, pageClass: 'gs-forge gs-loot-page gs-loot-night', bodyHtml: L().stateHtml({ title: 'You can\'t see this loot', text: 'Who sees the loot of a team is set by the guild\'s officers in Loot rules.' }) });
     }
     if (x.status === 'none') {
-      return G.ui.listPageHtml({ head: { title: 'Raid night', back: back }, bodyHtml: '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">No loot on this night</h2><p class="gs-lead gs-lead-sm">That raid night has no loot, or it does not exist.</p></section>' });
+      return G.ui.listPageHtml({ head: { title: 'Raid night', back: back }, pageClass: 'gs-forge gs-loot-page gs-loot-night', bodyHtml: L().stateHtml({ title: 'No loot on this night', text: 'That raid night has no loot, or it does not exist.' }) });
     }
     const awards = x.awards || [];
     const edit = !!x.canEdit;
@@ -72,15 +70,15 @@
     if (edit) columns.push({ key: 'actions', label: 'More', srLabel: true, hideLabel: true });
     const rows = awards.map(function (w) {
       return { id: w.id, ariaLabel: (w.itemName || 'Item') + ' awarded to ' + (L().isDisenchanted(w) ? 'nobody (disenchanted)' : L().winnerText(w.winner)), cells: {
-        item: L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + (w.manual ? ' <span class="gs-chip gs-chip-src" title="Added by an officer, not imported from Gargul">Manual</span>' : '') + (w.note ? '<span class="gs-char-sub">Note: ' + esc(w.note) + '</span>' : ''),
-        winner: L().winnerHtml(gid, w.winner, w.match), tag: tagCellHtml(w, edit, !!(x.saved && x.saved[w.id])),
+        item: L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + L().manualNoteHtml(w) + (w.note ? '<span class="gs-lt-sub">Note: ' + esc(w.note) + '</span>' : ''),
+        winner: L().winnerHtml(gid, w.winner, w.match, true), tag: tagCellHtml(w, edit, !!(x.saved && x.saved[w.id])),
         actions: edit ? moreMenuHtml(gd, w) : '' } };
     });
-    const empty = '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">No loot recorded</h2><p class="gs-lead gs-lead-sm">' + esc(edit ? 'Import a Gargul export on the raid page, or add an award by hand.' : 'Nothing was awarded on this night.') + '</p></section>';
+    const empty = L().stateHtml({ title: 'No loot recorded', text: edit ? 'Import a Gargul export on the raid page, or add an award by hand.' : 'Nothing was awarded on this night.' });
     return G.ui.listPageHtml({
-      head: { title: title, context: context, back: back, more: more }, pageClass: 'gs-loot-page gs-loot-night',
+      head: { title: title, context: context, back: back, more: more }, pageClass: 'gs-forge gs-loot-page gs-loot-night',
       noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'),
-      bodyHtml: G.ui.dataTableHtml({ label: 'Loot awarded on ' + title, columns: columns, rows: rows, limit: 1000, showAll: true, noun: 'awards', emptyHtml: empty }),
+      bodyHtml: awards.length ? '<div class="gs-hd-panel gs-lt-tablepanel">' + G.ui.dataTableHtml({ label: 'Loot awarded on ' + title, columns: columns, rows: rows, limit: 1000, showAll: true, noun: 'awards' }) + '</div>' : empty,
       footHtml: awards.length ? esc('All ' + plural(awards.length, 'award', 'awards') + ', in the order they were awarded.') + ' <a href="' + esc(raidHref) + '">Open the raid page</a>' : '',
     });
   }
@@ -110,7 +108,7 @@
 
   function mainNight(r, gd) {
     const x = a().lootNight;
-    if (!x || x.gid !== gd.guild.id || x.rid !== r.rid) return G.pages.signin.loadingHtml();
+    if (!x || x.gid !== gd.guild.id || x.rid !== r.rid) return L().loadingHtml('Raid night');
     return nightHtml({ guildData: gd, state: x, alert: st().pageAlert });
   }
 
@@ -180,10 +178,10 @@
     const x = opts.state;
     const back = { href: href({ name: 'section', gid: gid, section: 'loot' }), label: 'Loot' };
     if (x.status === 'none') {
-      return G.ui.listPageHtml({ head: { title: 'Item', back: back }, bodyHtml: '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">Nobody has received that item yet.</h2><p class="gs-lead gs-lead-sm">Only items that were awarded on this team show here.</p></section>' });
+      return G.ui.listPageHtml({ head: { title: 'Item', back: back }, pageClass: 'gs-forge gs-loot-page gs-loot-item-page', bodyHtml: L().stateHtml({ title: 'Nobody has received that item yet.', text: 'Only items that were awarded on this team show here.' }) });
     }
     if (x.status === 'denied') {
-      return G.ui.listPageHtml({ head: { title: 'Item', back: back }, bodyHtml: '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">Item look-up is not shown</h2><p class="gs-lead gs-lead-sm">Your guild doesn\'t let members look up items.</p></section>' });
+      return G.ui.listPageHtml({ head: { title: 'Item', back: back }, pageClass: 'gs-forge gs-loot-page gs-loot-item-page', bodyHtml: L().stateHtml({ title: 'Item look-up is not shown', text: 'Your guild doesn\'t let members look up items.' }) });
     }
     const d = x.data;
     const drops = Array.isArray(d.drops) ? d.drops : [];
@@ -194,13 +192,12 @@
     const counts = d.counts || {};
     const lastOn = drops.length ? dayText(drops[0].raidOn) : '';
     const context = plural(counts.total || drops.length, 'award', 'awards') + ' on ' + plural(nightIds.length, 'raid night', 'raid nights') + (lastOn ? ' - last dropped ' + lastOn : '');
-    const stat = function (label, value) { return '<div class="gs-summary-item"><dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd></div>'; };
-    const summary = '<dl class="gs-summary">' + stat('Awards', counts.total || drops.length) + stat('Main spec', counts.MS || 0) + stat('Off spec', counts.OS || 0) + stat('Raid nights', nightIds.length) + '</dl>';
+    const summary = L().figsHtml([{ label: 'Awards', value: counts.total || drops.length }, { label: 'Main spec', value: counts.MS || 0 }, { label: 'Off spec', value: counts.OS || 0 }, { label: 'Raid nights', value: nightIds.length }]);
     // Awards per night, oldest first.
     const perNight = nightIds.map(function (rid) { return { rid: rid, raidOn: drops.filter(function (w) { return w.raidId === rid; })[0].raidOn, n: nightsOf[rid] }; })
       .sort(function (p, q) { return String(p.raidOn).localeCompare(String(q.raidOn)); });
-    const over = '<ul class="gs-lhub-links" aria-label="Awards per night">' + perNight.map(function (n) {
-      return '<li><a class="gs-lhub-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.rid })) + '"><span class="gs-lhub-main"><strong>' + esc(dayText(n.raidOn)) + '</strong></span><span class="gs-lhub-figure gs-num">' + esc(n.n) + '</span></a></li>';
+    const over = '<ul class="gs-lt-list" aria-label="Awards per night">' + perNight.map(function (n) {
+      return '<li><a class="gs-pr-row gs-lt-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.rid })) + '"><span class="gs-lt-main"><strong>' + esc(dayText(n.raidOn)) + '</strong></span><span class="gs-lt-figure gs-num">' + esc(n.n) + '</span></a></li>';
     }).join('') + '</ul>';
     // Who has it: one row per winner per night.
     const groups = [];
@@ -213,21 +210,22 @@
     });
     const whoRows = groups.map(function (g) {
       return { id: g.first.id, cells: {
-        winner: L().winnerHtml(gid, g.first.winner, g.first.match) + (edit && g.times > 1 && g.first.winner && g.first.winner.name ? '<span class="gs-chip gs-chip-flag">Possible duplicate</span>' : ''),
-        times: esc(g.times), tag: g.tags.map(function (t) { return L().tagChipHtml(t, null); }).join(' '),
+        winner: L().winnerHtml(gid, g.first.winner, g.first.match, true) + (edit && g.times > 1 && g.first.winner && g.first.winner.name ? L().chipHtml('rose', 'Possible duplicate') : ''),
+        times: esc(g.times), tag: g.tags.map(function (t) { return L().tagTextHtml(t, null); }).join(', '),
         night: '<a href="' + esc(href({ name: 'lootnight', gid: gid, rid: g.first.raidId })) + '">' + esc(dayText(g.first.raidOn)) + '</a>' } };
     });
     const who = G.ui.dataTableHtml({ label: 'Who has ' + (d.item.itemName || 'this item'), columns: [{ key: 'winner', label: 'Winner', primary: true }, { key: 'times', label: 'Times', align: 'right' }, { key: 'tag', label: 'Tag' }, { key: 'night', label: 'Night' }],
       rows: whoRows, limit: 25, noun: 'awards', showAllAction: 'litem-showall', showAll: !!(a().lootItemUi && a().lootItemUi.showAll) });
-    const fixLine = edit ? '<p class="gs-fine">To fix an award, open its raid night and use More.' + (groups.some(function (g) { return g.times > 1 && g.first.winner && g.first.winner.name; }) ? ' <a class="gs-fg-u" href="' + esc(href({ name: 'lootfix', gid: gid })) + '">Review in Needs fixing</a>' : '') + '</p>' : '';
+    const fixLine = edit ? '<p class="gs-lt-pad gs-fine">To fix an award, open its raid night and use More.' + (groups.some(function (g) { return g.times > 1 && g.first.winner && g.first.winner.name; }) ? ' <a class="gs-fg-u" href="' + esc(href({ name: 'lootfix', gid: gid })) + '">Review in Needs fixing</a>' : '') + '</p>' : '';
+    const players = new Set(groups.map(function (g) { return g.first.winner && g.first.winner.name ? String(g.first.winner.name).toLowerCase() : g.first.id; })).size;
+    // Two columns from 1024 px (2fr / 1fr): the question ("who has it") first, the item and its drops beside it.
+    const left = L().panelHtml({ id: 'li-who', title: 'Who has it', metaHtml: esc(plural(players, 'player', 'players')), flush: true, bodyHtml: who + fixLine });
+    const right = L().panelHtml({ id: 'li-sum', title: 'Item', flush: true, bodyHtml: '<p class="gs-lt-pad">' + L().itemHtml({ itemId: d.item.itemId, itemName: d.item.itemName, quality: d.item.quality }, gd.guild.gameVersion) + '</p>' + summary }) +
+      L().panelHtml({ id: 'li-over', title: 'Drops over time', metaHtml: 'Awards per night', flush: true, bodyHtml: over });
     return G.ui.objectPageHtml({
-      head: { title: d.item.itemName || 'Item ' + d.item.itemId, context: context, back: back }, pageClass: 'gs-loot-page gs-loot-item-page',
+      head: { title: d.item.itemName || 'Item ' + d.item.itemId, context: context, back: back }, pageClass: 'gs-forge gs-loot-page gs-loot-item-page',
       noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'),
-      sections: [
-        { id: 'li-sum', title: 'Item', bodyHtml: '<p>' + L().itemHtml({ itemId: d.item.itemId, itemName: d.item.itemName, quality: d.item.quality }, gd.guild.gameVersion) + '</p>' + summary },
-        { id: 'li-over', title: 'Drops over time', chipHtml: '<span class="gs-fine">Awards per night</span>', bodyHtml: over },
-        { id: 'li-who', title: 'Who has it', chipHtml: '<span class="gs-fine">' + esc(plural(new Set(groups.map(function (g) { return g.first.winner && g.first.winner.name ? String(g.first.winner.name).toLowerCase() : g.first.id; })).size, 'player', 'players')) + '</span>', bodyHtml: who + fixLine },
-      ],
+      sections: [{ id: 'li-cols', bare: true, bodyHtml: '<div class="gs-pr-cols"><div class="gs-pr-left">' + left + '</div><div class="gs-pr-right">' + right + '</div></div>' }],
     });
   }
 
@@ -247,7 +245,7 @@
 
   function mainItem(r, gd) {
     const x = a().lootItem;
-    if (!x || x.gid !== gd.guild.id || String(x.itemId) !== String(r.itemId)) return G.pages.signin.loadingHtml();
+    if (!x || x.gid !== gd.guild.id || String(x.itemId) !== String(r.itemId)) return L().loadingHtml('Item');
     return itemHtml({ guildData: gd, state: x, alert: st().pageAlert });
   }
 

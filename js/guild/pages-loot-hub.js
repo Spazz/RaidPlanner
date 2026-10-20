@@ -55,19 +55,19 @@
     const weeks = balance.window && typeof balance.window.weeks === 'number' ? 'Last ' + balance.window.weeks + ' weeks' : '';
     const note = (mode === 'count' ? 'Counted items: ' : 'Counted items per raid attended: ') + L().countedText(balance.countTags) + '. The lowest figure is the most due.';
     const body = rows.length
-      ? '<ol class="gs-lhub-list" aria-label="Who is due">' + rows.map(function (r) {
+      ? '<ol class="gs-lt-list" aria-label="Who is due">' + rows.map(function (r) {
         const name = r.id ? '<a class="gs-char-link ' + G.ui.classClass(r.class) + '" href="' + esc(href({ name: 'lootperson', gid: gid, pid: r.id })) + '">' + esc(r.name) + '</a>' : G.ui.classNameHtml(r.name, r.class);
-        return '<li class="gs-lhub-row' + (r.isMe ? ' is-you' : '') + '"><span class="gs-lhub-main">' + name + (r.isMe ? '<span class="gs-you">You</span>' : '') + '<span class="gs-fine">' + esc(dueSub(r)) + '</span></span>' +
-          '<span class="gs-lhub-figure"><strong class="gs-num">' + esc(dueFigure(r, mode)) + '</strong><span class="gs-fine">' + (mode === 'count' ? 'counted' : 'per raid') + '</span></span></li>';
+        return '<li class="gs-pr-row gs-lt-row' + (r.isMe ? ' is-you' : '') + '"><span class="gs-lt-main"><span class="gs-lt-name">' + name + (r.isMe ? '<span class="gs-you">You</span>' : '') + '</span><span class="gs-lt-sub">' + esc(dueSub(r)) + '</span></span>' +
+          '<span class="gs-lt-figure"><strong class="gs-num">' + esc(dueFigure(r, mode)) + '</strong><span class="gs-lt-sub">' + (mode === 'count' ? 'counted' : 'per raid') + '</span></span></li>';
       }).join('') + '</ol>'
-      : '<p class="gs-fine">Nobody has a loot figure yet.</p>';
-    return card({ id: 'lhub-due', title: 'Who is due', sub: weeks, bodyHtml: '<p class="gs-fine">' + esc(note) + '</p>' + body +
-      '<p class="gs-fine"><a class="gs-fg-u" href="' + esc(href({ name: 'lootstandings', gid: gid })) + '">Full standings, ' + esc(plural(typeof balance.count === 'number' ? balance.count : (balance.people || []).length, 'person', 'people')) + '</a></p>' });
+      : '<p class="gs-lt-pad gs-fine">Nobody has a loot figure yet.</p>';
+    return card({ id: 'lhub-due', title: 'Who is due', sub: weeks, flush: true, bodyHtml: '<p class="gs-lt-pad gs-fine">' + esc(note) + '</p>' + body +
+      '<p class="gs-pr-linkrow"><a class="gs-fg-u" href="' + esc(href({ name: 'lootstandings', gid: gid })) + '">Full standings, ' + esc(plural(typeof balance.count === 'number' ? balance.count : (balance.people || []).length, 'person', 'people')) + '</a></p>' });
   }
 
+  // One hub card = the one Forge panel (pages-loot.js panelHtml). o: { id, title, sub, chipHtml, bodyHtml, flush }
   function card(o) {
-    return '<section class="gs-card-sec gs-lhub-card" id="' + esc(o.id) + '" aria-labelledby="' + esc(o.id) + '-h"><div class="gs-card-sec-head"><div class="gs-lhub-head"><h2 class="gs-h2" id="' + esc(o.id) + '-h">' + esc(o.title) + '</h2>' +
-      (o.sub ? '<span class="gs-fine">' + esc(o.sub) + '</span>' : '') + '</div>' + (o.chipHtml || '') + '</div><div class="gs-card-sec-body">' + o.bodyHtml + '</div></section>';
+    return L().panelHtml({ id: o.id, title: o.title, metaHtml: o.sub ? esc(o.sub) : '', actionsHtml: o.chipHtml || '', bodyHtml: o.bodyHtml, flush: !!o.flush });
   }
 
   // ── Latest raid nights ──
@@ -81,8 +81,14 @@
     return '<ul class="gs-loot-sublist" aria-label="Loot awarded on ' + esc(dayText(night.raid.raidOn)) + '">' + (night.awards || []).map(function (w) {
       const you = mine && w.match && w.match.personId === mine;
       return '<li class="gs-loot-subrow"><span class="gs-loot-item">' + L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span>' +
-        '<span class="gs-loot-who">' + L().winnerHtml(gid, w.winner, w.match) + (you ? '<span class="gs-you">You</span>' : '') + '</span>' + L().tagChipHtml(w.tag, w.tagSetBy) + '</li>';
+        '<span class="gs-loot-who">' + L().winnerHtml(gid, w.winner, w.match, true) + (you ? '<span class="gs-you">You</span>' : '') + '</span>' + L().tagTextHtml(w.tag, w.tagSetBy) + '</li>';
     }).join('') + '</ul>';
+  }
+
+  // A night as a link row (edit holders; the all-nights list).
+  function nightLinkHtml(gid, rid, raidOn, awards, meta) {
+    return '<li><a class="gs-pr-row gs-lt-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: rid })) + '"><span class="gs-lt-main"><strong>' + esc(dayText(raidOn)) + '</strong>' +
+      '<span class="gs-lt-sub">' + esc(plural(awards, 'award', 'awards') + (meta ? ' - ' + meta : '')) + '</span></span></a></li>';
   }
 
   // Edit holders get one link row per night; members get the night opened with who received what (the newest night open, the others folded).
@@ -93,17 +99,14 @@
     const nights = Array.isArray(hub.nights) ? hub.nights : [];
     const shownIds = nights.map(function (n) { return n.raid.id; });
     let body;
-    if (!nights.length) body = '<p class="gs-fine">' + esc(edit ? 'No loot is recorded yet. Open a past raid and choose Import from Gargul.' : 'No loot is recorded for this team yet.') + '</p>';
+    if (!nights.length) body = '<p class="gs-lt-pad gs-fine">' + esc(edit ? 'No loot is recorded yet. Open a past raid and choose Import from Gargul.' : 'No loot is recorded for this team yet.') + '</p>';
     else if (edit) {
-      body = '<ul class="gs-lhub-links" aria-label="Latest raid nights">' + nights.map(function (n) {
-        return '<li><a class="gs-lhub-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '"><span class="gs-lhub-main"><strong>' + esc(dayText(n.raid.raidOn)) + '</strong>' +
-          '<span class="gs-fine">' + esc(plural(n.awards.length, 'award', 'awards') + (nightMeta(n) ? ' - ' + nightMeta(n) : '')) + '</span></span></a></li>';
-      }).join('') + '</ul>';
+      body = '<ul class="gs-lt-list" aria-label="Latest raid nights">' + nights.map(function (n) { return nightLinkHtml(gid, n.raid.id, n.raid.raidOn, n.awards.length, nightMeta(n)); }).join('') + '</ul>';
     } else {
-      body = '<ul class="gs-loot-items" aria-label="Latest raid nights">' + nights.map(function (n, i) {
-        return '<li class="gs-loot-itemrow"><details class="gs-loot-item"' + (i === 0 ? ' open' : '') + '><summary><span class="gs-loot-item-name"><strong>' + esc(dayText(n.raid.raidOn)) + '</strong></span>' +
-          '<span class="gs-fine">' + esc(plural(n.awards.length, 'award', 'awards') + (nightMeta(n) ? ' - ' + nightMeta(n) : '')) + '</span></summary>' + receivedHtml(gd, hub, n) +
-          '<p class="gs-fine"><a class="gs-fg-u" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '">Open the night</a></p></details></li>';
+      body = '<ul class="gs-lt-list" aria-label="Latest raid nights">' + nights.map(function (n, i) {
+        return '<li class="gs-lt-night"><details' + (i === 0 ? ' open' : '') + '><summary class="gs-pr-row"><span class="gs-lt-main"><strong>' + esc(dayText(n.raid.raidOn)) + '</strong>' +
+          '<span class="gs-lt-sub">' + esc(plural(n.awards.length, 'award', 'awards') + (nightMeta(n) ? ' - ' + nightMeta(n) : '')) + '</span></span></summary>' + receivedHtml(gd, hub, n) +
+          '<p class="gs-lt-pad"><a class="gs-fg-u" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '">Open the night</a></p></details></li>';
       }).join('') + '</ul>';
     }
     const raids = Array.isArray(x.raids) ? x.raids : [];
@@ -111,15 +114,14 @@
     if (rest.length && hub.level !== 'own') {
       const label = edit ? 'All ' + raids.length + ' raid nights' : 'Earlier raid nights';
       if (x.ui.allNights) {
-        body += '<ul class="gs-lhub-links" id="lhub-all" aria-label="' + esc(label) + '">' + rest.map(function (r) {
-          return '<li><a class="gs-lhub-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: r.raidId })) + '"><span class="gs-lhub-main"><strong>' + esc(dayText(r.raidOn)) + '</strong>' +
-            '<span class="gs-fine">' + esc(plural(Number(r.awards) || 0, 'award', 'awards') + (L().raidLabel(r) ? ' - ' + L().raidLabel(r) : '')) + '</span></span></a></li>';
-        }).join('') + '</ul><p><button type="button" class="gs-linkbtn" data-action="lhub-nights" data-key="lhub-nights" aria-expanded="true">Show fewer</button></p>';
+        body += '<ul class="gs-lt-list" id="lhub-all" aria-label="' + esc(label) + '">' + rest.map(function (r) {
+          return nightLinkHtml(gid, r.raidId, r.raidOn, Number(r.awards) || 0, L().raidLabel(r));
+        }).join('') + '</ul><p class="gs-pr-linkrow"><button type="button" class="gs-fg-linkbtn" data-action="lhub-nights" data-key="lhub-nights" aria-expanded="true">Show fewer</button></p>';
       } else {
-        body += '<p><button type="button" class="gs-linkbtn" data-action="lhub-nights" data-key="lhub-nights" aria-expanded="false" aria-controls="lhub-all">' + esc(label) + '</button></p>';
+        body += '<p class="gs-pr-linkrow"><button type="button" class="gs-fg-linkbtn" data-action="lhub-nights" data-key="lhub-nights" aria-expanded="false" aria-controls="lhub-all">' + esc(label) + '</button></p>';
       }
     }
-    return card({ id: 'lhub-nights', title: 'Latest raid nights', sub: edit ? 'What was awarded' : 'Newest first - who received what', bodyHtml: body });
+    return card({ id: 'lhub-nights', title: 'Latest raid nights', sub: edit ? 'What was awarded' : 'Newest first - who received what', flush: true, bodyHtml: body });
   }
 
   // ── My loot ──
@@ -130,20 +132,18 @@
       return card({ id: 'lhub-mine', title: 'My loot', bodyHtml: '<p class="gs-fine">You are not on this team\'s roster, so there is no loot to list for you.</p>' });
     }
     const t = me.totals || {};
-    const totals = '<dl class="gs-summary"><div class="gs-summary-item"><dt>Main-spec awards</dt><dd>' + esc(Number(t.MS) || 0) + ' MS</dd></div>' +
-      '<div class="gs-summary-item"><dt>Off-spec awards</dt><dd>' + esc(Number(t.OS) || 0) + ' OS</dd></div></dl>';
+    const totals = L().figsHtml([{ label: 'Main-spec awards', value: (Number(t.MS) || 0) + ' MS' }, { label: 'Off-spec awards', value: (Number(t.OS) || 0) + ' OS' }]);
     const nights = Array.isArray(me.byNight) ? me.byNight : [];
     const body = nights.length
       ? nights.map(function (n) {
-        return '<div class="gs-lhub-day"><h3 class="gs-h3"><a href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '">' + esc(dayText(n.raid.raidOn)) + '</a> <span class="gs-fine">' + esc(plural(n.awards.length, 'item', 'items')) + '</span></h3>' +
+        return '<div class="gs-lt-day"><h3 class="gs-fg-gh"><a class="gs-fg-u" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '">' + esc(dayText(n.raid.raidOn)) + '</a> <b>' + esc(n.awards.length) + '</b> ' + (n.awards.length === 1 ? 'item' : 'items') + '</h3>' +
           '<ul class="gs-loot-sublist" aria-label="My loot on ' + esc(dayText(n.raid.raidOn)) + '">' + n.awards.map(function (w) {
-            return '<li class="gs-loot-subrow"><span class="gs-loot-item">' + L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span>' + L().tagChipHtml(w.tag, w.tagSetBy) +
-              (Array.isArray(w.editedFields) && w.editedFields.length ? '<span class="gs-chip gs-chip-plain" title="An officer corrected this award">Edited</span>' : '') + '</li>';
+            return '<li class="gs-loot-subrow"><span class="gs-loot-item">' + L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span>' + L().tagTextHtml(w.tag, w.tagSetBy) + L().editedChipHtml(w) + '</li>';
           }).join('') + '</ul></div>';
       }).join('')
-      : '<p class="gs-fine">Your loot shows here after your first award is imported.</p>';
-    return card({ id: 'lhub-mine', title: 'My loot', bodyHtml: totals + body +
-      '<p><a class="gs-btn gs-btn-sm" href="' + esc(href({ name: 'lootperson', gid: gid, pid: me.personId })) + '">Open my loot page</a></p>' });
+      : '<p class="gs-lt-pad gs-fine">Your loot shows here after your first award is imported.</p>';
+    return card({ id: 'lhub-mine', title: 'My loot', flush: true, bodyHtml: totals + body +
+      '<p class="gs-pr-linkrow">' + G.ui.buttonHtml({ label: 'Open my loot page', variant: 'secondary', href: href({ name: 'lootperson', gid: gid, pid: me.personId }) }) + '</p>' });
   }
 
   // ── Look up an item ──
@@ -162,8 +162,8 @@
   }
 
   function itemRowHtml(gd, item, sub) {
-    return '<li><a class="gs-lhub-link" href="' + esc(href({ name: 'lootitem', gid: gd.guild.id, itemId: String(item.itemId) })) + '"><span class="gs-lhub-main"><strong>' + esc(item.itemName || 'Item ' + item.itemId) + '</strong>' +
-      '<span class="gs-fine">' + esc(sub) + '</span></span></a></li>';
+    return '<li><a class="gs-pr-row gs-lt-link" href="' + esc(href({ name: 'lootitem', gid: gd.guild.id, itemId: String(item.itemId) })) + '"><span class="gs-lt-main"><strong>' + esc(item.itemName || 'Item ' + item.itemId) + '</strong>' +
+      '<span class="gs-lt-sub">' + esc(sub) + '</span></span></a></li>';
   }
 
   // The matches for what was typed: item names containing the text, or the item id. [] for empty text.
@@ -180,33 +180,34 @@
     if (!q) {
       const rep = repeatDrops(x.hub);
       const night = x.hub.nights && x.hub.nights[0];
-      return rep.length ? '<p class="gs-fine">Dropped more than once on ' + esc(dayText(night.raid.raidOn)) + '</p><ul class="gs-lhub-links">' + rep.map(function (i) { return itemRowHtml(gd, i, plural(i.n, 'award', 'awards') + ' on that night'); }).join('') + '</ul>' : '';
+      return rep.length ? '<p class="gs-lt-pad gs-fine">Dropped more than once on ' + esc(dayText(night.raid.raidOn)) + '</p><ul class="gs-lt-list">' + rep.map(function (i) { return itemRowHtml(gd, i, plural(i.n, 'award', 'awards') + ' on that night'); }).join('') + '</ul>' : '';
     }
     const found = searchMatches(x.items, q);
     const asId = /^[1-9][0-9]{0,9}$/.test(q) && !found.some(function (i) { return String(i.itemId) === q; })
-      ? '<li><a class="gs-lhub-link" href="' + esc(href({ name: 'lootitem', gid: gd.guild.id, itemId: q })) + '"><span class="gs-lhub-main"><strong>Open item ' + esc(q) + '</strong></span></a></li>' : '';
-    if (!found.length && !asId) return '<p class="gs-fine">No item with that name has been awarded.</p>';
-    return '<ul class="gs-lhub-links">' + found.map(function (i) { return itemRowHtml(gd, i, plural(Number(i.count) || 0, 'award', 'awards')); }).join('') + asId + '</ul>';
+      ? '<li><a class="gs-pr-row gs-lt-link" href="' + esc(href({ name: 'lootitem', gid: gd.guild.id, itemId: q })) + '"><span class="gs-lt-main"><strong>Open item ' + esc(q) + '</strong></span></a></li>' : '';
+    if (!found.length && !asId) return '<p class="gs-lt-pad gs-fine">No item with that name has been awarded.</p>';
+    return '<ul class="gs-lt-list">' + found.map(function (i) { return itemRowHtml(gd, i, plural(Number(i.count) || 0, 'award', 'awards')); }).join('') + asId + '</ul>';
   }
 
   function lookupCardHtml(gd, x) {
-    return card({ id: 'lhub-items', title: 'Look up an item', bodyHtml: '<div class="gs-field"><label class="gs-label" for="lhub-search">Item name or ID</label>' +
+    return card({ id: 'lhub-items', title: 'Look up an item', flush: true, bodyHtml: '<div class="gs-pr-body"><div class="gs-field"><label class="gs-label" for="lhub-search">Item name or ID</label>' +
       '<input class="gs-input gs-input-search" type="search" id="lhub-search" name="item" autocomplete="off" spellcheck="false" aria-describedby="lhub-search-help" data-input="lhub-search" data-key="lhub-search" value="' + esc(x.ui.query || '') + '"></div>' +
-      '<p class="gs-fine" id="lhub-search-help">See who has it and how often it dropped.</p><div id="lhub-results" aria-live="polite">' + searchResultsHtml(gd, x) + '</div>' });
+      '<p class="gs-fine" id="lhub-search-help">See who has it and how often it dropped.</p></div><div id="lhub-results" aria-live="polite">' + searchResultsHtml(gd, x) + '</div>' });
   }
 
   // ── Needs fixing ──
+  // The one status word of the card: rose with the count when something needs fixing, green "All clear" when nothing does.
   function fixCardHtml(gd, hub) {
     const fix = hub.fix;
     const gid = gd.guild.id;
     const total = (fix.duplicates || 0) + (fix.unknown || 0);
     const row = function (title, sub, n) {
-      return '<li class="gs-lhub-row"><span class="gs-lhub-main"><strong>' + esc(title) + '</strong><span class="gs-fine">' + esc(sub) + '</span></span><span class="gs-lhub-figure">' + (n > 0 ? esc(n + ' found') : '<span class="gs-muted">None</span>') + '</span></li>';
+      return '<li class="gs-pr-row gs-lt-row"><span class="gs-lt-main"><strong>' + esc(title) + '</strong><span class="gs-lt-sub">' + esc(sub) + '</span></span><span class="gs-lt-figure">' + (n > 0 ? esc(n + ' found') : '<span class="gs-muted">None</span>') + '</span></li>';
     };
-    return card({ id: 'lhub-fix', title: 'Needs fixing', chipHtml: G.ui.chipHtml({ tone: total > 0 ? 'warning' : 'success', label: total > 0 ? String(total) : 'All clear' }),
-      bodyHtml: '<p class="gs-fine">Officers and Team Leads can change the winner, item, night, tag or note, or remove an award.</p><ul class="gs-lhub-list">' +
+    return card({ id: 'lhub-fix', title: 'Needs fixing', flush: true, chipHtml: total > 0 ? L().chipHtml('rose', total + ' to fix') : L().chipHtml('green', 'All clear'),
+      bodyHtml: '<p class="gs-lt-pad gs-fine">Officers and Team Leads can change the winner, item, night, tag or note, or remove an award.</p><ul class="gs-lt-list">' +
         row('Possible duplicates', 'Same night, item and winner', fix.duplicates || 0) + row('Unknown winner names', 'Every winner matches a roster character or a guest', fix.unknown || 0) + '</ul>' +
-        (total > 0 ? '<p><a class="gs-btn gs-btn-sm" href="' + esc(href({ name: 'lootfix', gid: gid })) + '">' + esc(fix.duplicates > 0 ? 'Review the ' + plural(fix.duplicates, 'possible duplicate', 'possible duplicates') : 'Review the unknown names') + '</a></p>' : '') });
+        (total > 0 ? '<p class="gs-pr-linkrow">' + G.ui.buttonHtml({ label: fix.duplicates > 0 ? 'Review the ' + plural(fix.duplicates, 'possible duplicate', 'possible duplicates') : 'Review the unknown names', variant: 'secondary', href: href({ name: 'lootfix', gid: gid }) }) + '</p>' : '') });
   }
 
   // ── the hub ──
@@ -245,9 +246,9 @@
     }
     const rules = hub.can.rules ? { id: 'lhub-more', label: 'Loot rules', items: [{ label: 'Loot rules', href: href({ name: 'settings', gid: gd.guild.id, tab: 'loot' }), key: 'lhub-rules' }] } : null;
     const hasAnything = (hub.nights && hub.nights.length) || (hub.me && hub.me.byNight && hub.me.byNight.length);
-    const bodyHtml = !hasAnything && edit && !(x.raids && x.raids.length) ? L().emptyHtml(gd, x.teamId) : '<div class="gs-lhub' + (edit ? ' is-officer' : ' is-member') + '">' + hubCards.join('') + '</div>';
+    const bodyHtml = !hasAnything && edit && !(x.raids && x.raids.length) ? L().emptyHtml(gd, x.teamId) : '<div class="gs-lt-grid">' + hubCards.join('') + '</div>';
     return G.ui.listPageHtml({
-      head: { title: 'Loot', context: contextOf(gd, x), more: rules }, pageClass: 'gs-loot-page gs-loot-hub',
+      head: { title: 'Loot', context: contextOf(gd, x), more: rules }, pageClass: 'gs-forge gs-loot-page gs-loot-hub',
       noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'), bodyHtml: bodyHtml,
     });
   }
@@ -297,7 +298,7 @@
 
   function main(r, gd) {
     const x = a().lootHub;
-    if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
+    if (!x || x.gid !== gd.guild.id) return L().loadingHtml('Loot');
     if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
     return hubHtml({ guildData: gd, state: x, alert: st().pageAlert });
   }
@@ -326,7 +327,7 @@
     const weeks = Array.isArray(w.switchWeeks) && w.switchWeeks.length ? w.switchWeeks : [8, 12];
     const items = weeks.map(function (n) { return { key: n, label: n + ' weeks', dataKey: 'lwin-' + n }; }).concat([{ key: 'all', label: 'All time', dataKey: 'lwin-all' }]);
     const current = u.window === 'all' ? 'all' : (typeof w.weeks === 'number' ? w.weeks : null);
-    return G.ui.segmentsHtml({ label: 'Time window', items: items, selected: current, action: 'loot-window' });
+    return L().segmentsHtml({ label: 'Time window', items: items, selected: current, action: 'loot-window' });
   }
 
   // opts: { guildData, state: { status, data, teamId }, alert }
@@ -337,8 +338,8 @@
     const u = ui();
     const back = { href: href({ name: 'section', gid: gid, section: 'loot' }), label: 'Loot' };
     if (x.status === 'denied') {
-      return G.ui.listPageHtml({ head: { title: 'Standings', back: back }, bodyHtml: '<section class="gs-empty-card"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('loot', 28) + '</span>' +
-        '<h2 class="gs-h2 gs-h2-lg">Standings are not shown</h2><p class="gs-lead gs-lead-sm">Your guild doesn\'t show standings to members.</p></section>' });
+      return G.ui.listPageHtml({ head: { title: 'Standings', back: back }, pageClass: 'gs-forge gs-loot-page gs-loot-standings',
+        bodyHtml: L().stateHtml({ title: 'Standings are not shown', text: 'Your guild doesn\'t show standings to members.' }) });
     }
     const data = x.data || {};
     const w = u.window === 'all' ? 'all' : 'window';
@@ -352,7 +353,7 @@
     const columns = [{ key: 'rank', label: '#', align: 'right', hideLabel: true }, { key: 'name', label: 'Player', primary: true }, { key: 'cls', label: 'Class' },
       { key: 'raids', label: 'Raids', align: 'right' }, { key: 'ms', label: 'MS', align: 'right' }, { key: 'os', label: 'OS', align: 'right' }, { key: 'per', label: perLabel, align: 'right' }];
     const tableRows = ordered.map(function (r) {
-      return { id: r.id || r.name, you: r.isMe, mark: r.class, cells: {
+      return { id: r.id || r.name, you: r.isMe, cells: {
         rank: esc(rankOf[r.id || r.name]),
         name: r.id ? '<a class="gs-char-link ' + G.ui.classClass(r.class) + '" href="' + esc(href({ name: 'lootperson', gid: gid, pid: r.id })) + '">' + esc(r.name) + '</a>' : G.ui.classNameHtml(r.name, r.class),
         cls: r.class ? esc(G.ui.className(r.class)) : '', raids: esc(L().count(r.raids)), ms: esc(L().count(r.ms)), os: esc(L().count(r.os)),
@@ -364,11 +365,11 @@
     const tn = data.team && data.team.name ? data.team.name : teamName(gd, x.teamId);
     const context = (several ? tn + ' - ' : '') + plural(rows.length, 'person', 'people') + ' - ' +
       (mode === 'count' ? 'counted items, the lowest is the most due' : L().countedText(data.countTags) + ' items per raid attended, the lowest is the most due');
-    const bar = empty ? '' : G.ui.segmentsHtml({ label: 'Order', items: SORTS.map(function (s) { return { key: s.key, label: s.label, dataKey: 'lsort-' + s.key }; }), selected: u.sort, action: 'lstand-sort' }) + windowSwitchHtml(data, u);
+    const bar = empty ? '' : L().segmentsHtml({ label: 'Order', items: SORTS.map(function (s) { return { key: s.key, label: s.label, dataKey: 'lsort-' + s.key }; }), selected: u.sort, action: 'lstand-sort' }) + windowSwitchHtml(data, u);
     const notice = own ? '<div class="gs-notice" role="status"><span>You see your own loot only. The team average is for comparison. Officers choose who sees what in Loot rules.</span></div>' : '';
     const body = empty ? L().emptyHtml(gd, x.teamId)
-      : G.ui.dataTableHtml({ label: 'Loot standings', columns: columns, rows: tableRows, limit: STANDINGS_LIMIT, showAll: !!u.showAll, noun: 'people', showAllAction: 'lstand-showall' });
-    return G.ui.listPageHtml({ head: { title: 'Standings', context: context, back: back }, pageClass: 'gs-loot-page gs-loot-standings', noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + notice, barHtml: bar, bodyHtml: body,
+      : '<div class="gs-hd-panel gs-lt-tablepanel">' + G.ui.dataTableHtml({ label: 'Loot standings', columns: columns, rows: tableRows, limit: STANDINGS_LIMIT, showAll: !!u.showAll, noun: 'people', showAllAction: 'lstand-showall' }) + '</div>';
+    return G.ui.listPageHtml({ head: { title: 'Standings', context: context, back: back }, pageClass: 'gs-forge gs-loot-page gs-loot-standings', noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + notice, barHtml: bar, bodyHtml: body,
       footHtml: empty ? '' : esc('Per raid is the counted items divided by the raids the person attended.') });
   }
 
@@ -395,7 +396,7 @@
 
   function mainStandings(r, gd) {
     const x = a().lootStand;
-    if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
+    if (!x || x.gid !== gd.guild.id) return L().loadingHtml('Standings');
     if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
     return standingsHtml({ guildData: gd, state: x, alert: st().pageAlert });
   }

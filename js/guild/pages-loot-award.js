@@ -97,8 +97,8 @@
     const edited = Array.isArray(award.editedFields) && award.editedFields.length > 0;
     return kv('Raid night', '<a href="' + esc(href({ name: 'lootnight', gid: gd.guild.id, rid: raid.id })) + '">' + esc(nightText(raid)) + '</a>') +
       kv('Item', L().itemHtml({ itemId: award.itemId, itemName: award.itemName, quality: award.quality }, gd.guild.gameVersion)) +
-      kv('Winner', L().winnerHtml(gd.guild.id, award.winner, award.match)) +
-      kv('Tag', L().tagChipHtml(award.tag, award.tagSetBy) + (edited ? ' <span class="gs-chip gs-chip-plain" title="An officer corrected this award">Edited</span>' : '')) +
+      kv('Winner', L().winnerHtml(gd.guild.id, award.winner, award.match, true)) +
+      kv('Tag', L().tagTextHtml(award.tag, award.tagSetBy) + (edited ? ' ' + L().editedChipHtml(award) : '')) +
       kv('Note', award.note ? esc(award.note) : '<span class="gs-muted">No note</span>') +
       kv('Source', esc(d.origin && d.origin.text ? d.origin.text : ''));
   }
@@ -137,10 +137,10 @@
 
   function historyHtml(gd, d) {
     const list = Array.isArray(d.history) ? d.history : [];
-    if (!list.length) return '<p class="gs-fine">Nothing has been recorded for this award.</p>';
+    if (!list.length) return '<p class="gs-lt-pad gs-fine">Nothing has been recorded for this award.</p>';
     return '<ol class="gs-la-history" aria-label="History of this award">' + list.map(function (h) {
       const who = h.by && h.by.displayName ? 'by ' + h.by.displayName + ', ' : '';
-      return '<li class="gs-la-hrow"><span class="gs-la-htext">' + esc(h.text) + '</span><span class="gs-fine">' + esc(who + L().dateText(h.at, gd.guild.timeZone)) + '</span></li>';
+      return '<li class="gs-pr-row gs-la-hrow"><span class="gs-la-htext">' + esc(h.text) + '</span><span class="gs-lt-sub">' + esc(who + L().dateText(h.at, gd.guild.timeZone)) + '</span></li>';
     }).join('') + '</ol>';
   }
 
@@ -151,8 +151,8 @@
   }
 
   function stateCard(gd, title, text) {
-    return G.ui.listPageHtml({ head: { title: 'Award', back: { href: href({ name: 'section', gid: gd.guild.id, section: 'loot' }), label: 'Loot' } },
-      bodyHtml: '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">' + esc(title) + '</h2><p class="gs-lead gs-lead-sm">' + esc(text) + '</p></section>' });
+    return G.ui.listPageHtml({ head: { title: 'Award', back: { href: href({ name: 'section', gid: gd.guild.id, section: 'loot' }), label: 'Loot' } }, pageClass: 'gs-forge gs-loot-page gs-loot-award',
+      bodyHtml: L().stateHtml({ title: title, text: text }) });
   }
 
   // opts: { guildData, state, alert }
@@ -177,12 +177,11 @@
         more: { id: 'la-more', label: 'More', items: [{ label: 'Delete award', danger: true, key: 'la-delete', data: { action: 'la-delete' } }] },
         primary: editing ? null : { label: 'Edit details', attrs: { 'data-action': 'la-edit-open', 'data-key': 'la-edit' } },
       },
-      pageClass: 'gs-loot-page gs-loot-award', noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + staleHtml,
-      sections: [
-        { id: 'la-details', title: editing ? 'Edit details' : 'Details', flush: true, actionsHtml: (editing ? '' : savedHtml(x, gd)) + toggle,
-          bodyHtml: '<div class="gs-pr-body">' + (editing ? formHtml(gd, x) : readRowsHtml(gd, d)) + '</div>' },
-        { id: 'la-history', title: 'History', chipHtml: '<span class="gs-fine">Newest first</span>', bodyHtml: historyHtml(gd, d) },
-      ],
+      pageClass: 'gs-forge gs-loot-page gs-loot-award', noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + staleHtml,
+      sections: [{ id: 'la-cols', bare: true, bodyHtml: '<div class="gs-pr-cols"><div class="gs-pr-left">' +
+        L().panelHtml({ id: 'la-details', title: editing ? 'Edit details' : 'Details', flush: true, actionsHtml: (editing ? '' : savedHtml(x, gd)) + toggle,
+          bodyHtml: editing ? '<div class="gs-pr-body">' + formHtml(gd, x) + '</div>' : readRowsHtml(gd, d) }) +
+        '</div><div class="gs-pr-right">' + L().panelHtml({ id: 'la-history', title: 'History', metaHtml: 'Newest first', flush: true, bodyHtml: historyHtml(gd, d) }) + '</div></div>' }],
     });
   }
 
@@ -239,7 +238,7 @@
 
   function main(r, gd) {
     const x = a().lootAward;
-    if (!x || x.gid !== gd.guild.id || x.aid !== r.aid) return G.pages.signin.loadingHtml();
+    if (!x || x.gid !== gd.guild.id || x.aid !== r.aid) return L().loadingHtml('Award');
     return awardHtml({ guildData: gd, state: x, alert: st().pageAlert });
   }
 

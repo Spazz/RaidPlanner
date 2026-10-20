@@ -409,7 +409,7 @@ function withState(fn) {
   const hubPage = (hub, can, over) => G.pages.lootHub.hubHtml({ guildData: gd(can || MEMBER_CAN), state: hubState(hub, over) });
   const OFFICER_HUB = () => hubData({ level: 'full', can: { edit: true, rules: true, standings: true, itemLookup: true }, me: null, fix: { duplicates: 3, unknown: 0 },
     standingsTop: BALANCE.people.slice(0, 3), standingsCount: 4, standingsInfo: { mode: 'perRaid', countTags: ['MS'], weeks: 8 } });
-  const cardIds = html => [...html.matchAll(/<section class="gs-card-sec gs-lhub-card" id="(lhub-[a-z]+)"/g)].map(m => m[1]);
+  const cardIds = html => [...html.matchAll(/<section class="gs-hd-panel gs-pr-panel" id="(lhub-[a-z]+)"/g)].map(m => m[1]);
 
   await check('hub: an officer gets Who is due, Latest raid nights, Look up an item and Needs fixing, and the Loot rules link', withState(async () => {
     const out = hubPage(OFFICER_HUB(), OFFICER_CAN, { balance: BALANCE });
@@ -422,7 +422,7 @@ function withState(fn) {
     assert(!dueCard.includes('Oldtimer'), 'inactive people are left off the card');
     assert(out.includes('href="#/g/g1/loot/n/r2"') && out.includes('3 awards - BT clear - Black Temple') && out.includes('All 2 raid nights'));
     assert(out.includes('Item name or ID') && out.includes('Dropped more than once on Sun Oct 11') && out.includes('href="#/g/g1/loot/i/30311"') && out.includes('2 awards on that night'));
-    assert(out.includes('Needs fixing') && out.includes('3 found') && out.includes('Review the 3 possible duplicates') && out.includes('href="#/g/g1/loot/fix"'));
+    assert(out.includes('Needs fixing') && out.includes('<span class="gs-hd-chip is-rose">3 to fix</span>') && out.includes('3 found') && out.includes('Review the 3 possible duplicates') && out.includes('href="#/g/g1/loot/fix"'));
     assert(!out.includes('My loot'), 'officers have no My loot card');
     assertNoRawAttrs(out);
   }));
@@ -444,8 +444,8 @@ function withState(fn) {
     const mine = out.slice(out.indexOf('id="lhub-mine"'), out.indexOf('id="lhub-nights"'));
     assert(mine.includes('2 MS') && mine.includes('1 OS') && mine.includes('Open my loot page') && mine.includes('href="#/g/g1/loot/p/p_th"') && mine.includes('>Edited<'));
     const nights = out.slice(out.indexOf('id="lhub-nights"'));
-    assert(nights.includes('Newest first - who received what') && (nights.match(/<details class="gs-loot-item"/g) || []).length === 2);
-    assert(/<details class="gs-loot-item" open>/.test(nights) && nights.indexOf(' open>') < nights.indexOf('Sat Oct 10') , 'the newest night is open, the older one folded');
+    assert(nights.includes('Newest first - who received what') && (nights.match(/<li class="gs-lt-night"><details/g) || []).length === 2);
+    assert(/<li class="gs-lt-night"><details open>/.test(nights) && nights.indexOf(' open>') < nights.indexOf('Sat Oct 10') , 'the newest night is open, the older one folded');
     assert(nights.includes('<span class="gs-you">You</span>') && nights.includes('>Kaelith<'), 'who received what, with You');
     assert(!nights.includes('All 2 raid nights'));
     const earlier = hubPage(hubData(), MEMBER_CAN, { raids: RAIDS.raids.concat([{ raidId: 'r0', raidOn: '2026-10-03', title: null, zone: 'SSC', awards: 6 }]) });
@@ -986,8 +986,8 @@ function withState(fn) {
 
   await check('person loot page: header, figures, one table of awards newest first with the night link, the character name and a More menu for edit holders', () => {
     const out = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_th', data: PERSON_LOOT });
-    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Thoren</h1>') && out.includes('Loot history') && out.includes('href="#/g/g1/roster/p/p_th"'));
-    assert(out.includes('<dt>Main spec</dt><dd>5</dd>') && out.includes('<dt>Off spec</dt><dd>1</dd>') && !out.includes('Due order'), 'no standings figures without the balance');
+    assert(/<h1 class="gs-h1[^"]*" id="page-title" tabindex="-1">Thoren<\/h1>/.test(out) && out.includes('Loot history') && out.includes('href="#/g/g1/roster/p/p_th"'));
+    assert(out.includes('<dt class="gs-pr-cap">Main spec</dt><dd class="gs-pr-num">5</dd>') && out.includes('<dt class="gs-pr-cap">Off spec</dt><dd class="gs-pr-num">1</dd>') && !out.includes('Due order'), 'no standings figures without the balance');
     assert(out.includes('6 awards, newest first') && out.includes('<table class="gs-dtable" aria-label="Loot awards">'));
     assert.deepEqual([...out.matchAll(/href="(#\/g\/g1\/loot\/n\/[^"]*)"/g)].map(m => m[1]), ['r2', 'r2', 'r1', 'r1', 'r0', 'r0'].map(r => '#/g/g1/loot/n/' + r));
     assert(!out.includes('href="#/g/g1/loot/p/p_th"'), 'no link to this page');
@@ -1006,7 +1006,7 @@ function withState(fn) {
     const standing = G.pages.personLoot.standingOf(bal, 'p_th');
     assert.deepEqual(plain(standing), { raids: 10, perRaid: 0.73, counted: 6, mode: 'perRaid', rank: 2, of: 3 });
     const out = G.pages.personLoot.personLootHtml({ guildData: gd(MEMBER_CAN), pid: 'p_th', data: PERSON_LOOT, balance: bal });
-    assert(out.includes('<dt>Raids</dt><dd>10</dd>') && out.includes('<dt>Main spec per raid</dt><dd>0.73</dd>') && out.includes('<dt>Due order</dt><dd>2nd of 3</dd>'));
+    assert(out.includes('<dt class="gs-pr-cap">Raids</dt><dd class="gs-pr-num">10</dd>') && out.includes('<dt class="gs-pr-cap">Main spec per raid</dt><dd class="gs-pr-num">0.73</dd>') && out.includes('<dt class="gs-pr-cap">Due order</dt><dd class="gs-pr-num">2nd of 3</dd>'));
     assert(out.includes('See where you stand') && out.includes('href="#/g/g1/loot/standings"'));
     assert.equal(G.pages.personLoot.standingOf(bal, 'p_nobody'), null);
     assert.equal(G.pages.personLoot.standingOf(null, 'p_th'), null);
@@ -1402,7 +1402,7 @@ function withState(fn) {
   await check('raid night: members read it; no select, no More menu, no import link; the raid page link stays', () => {
     const out = nightPage(nightState({ canEdit: false }), MEMBER_CAN);
     assert(!out.includes('data-change="ln-tag"') && !out.includes('id="lm-') && !out.includes('Delete award') && !out.includes('Import from Gargul'));
-    assert(out.includes('Open the raid page') && out.includes('gs-chip-tag') && out.includes('Disenchanted'));
+    assert(out.includes('Open the raid page') && out.includes('class="gs-lt-tag"') && !out.includes('gs-chip-tag') && out.includes('Disenchanted'));
   });
 
   await check('raid label: a title that already ends with the zone is not followed by the zone again', () => {
@@ -1467,7 +1467,7 @@ function withState(fn) {
     assert.equal(S.att.lootNight.awards[1].tag, 'OS');
     assert.deepEqual(plain(S.att.lootNight.saved), { a2: true });
     const out = nightPage(S.att.lootNight);
-    assert(/data-aid="a2"[\s\S]*?<span class="gs-ln-saved" role="status">Saved<\/span>/.test(out) && (out.match(/>Saved</g) || []).length === 1);
+    assert(/data-aid="a2"[\s\S]*?<span class="gs-lt-saved" role="status">Saved<\/span>/.test(out) && (out.match(/>Saved</g) || []).length === 1);
     s.restore();
     s = stub(() => Promise.reject(new G.api.ApiError(409, { error: 'stale' })));
     G.handlers.change['ln-tag'](Object.assign(el({ 'data-aid': 'a1' }), { value: 'DE' }));
@@ -1509,7 +1509,7 @@ function withState(fn) {
   await check('item page: header counts, drops over time, who has it with times, tags and nights; the duplicate chip is for edit holders', () => {
     const out = itemPage({ status: 'ok', itemId: '28770', data: ITEM_DATA });
     assert(out.includes('>Nathrezim Mindblade</h1>') && out.includes('4 awards on 3 raid nights - last dropped Sun Oct 11'));
-    assert(out.includes('<dt>Awards</dt><dd>4</dd>') && out.includes('<dt>Main spec</dt><dd>3</dd>') && out.includes('<dt>Off spec</dt><dd>1</dd>') && out.includes('<dt>Raid nights</dt><dd>3</dd>'));
+    assert(out.includes('<dt class="gs-pr-cap">Awards</dt><dd class="gs-pr-num">4</dd>') && out.includes('<dt class="gs-pr-cap">Main spec</dt><dd class="gs-pr-num">3</dd>') && out.includes('<dt class="gs-pr-cap">Off spec</dt><dd class="gs-pr-num">1</dd>') && out.includes('<dt class="gs-pr-cap">Raid nights</dt><dd class="gs-pr-num">3</dd>'));
     const over = out.slice(out.indexOf('aria-label="Awards per night"'));
     assert(over.indexOf('Sat Oct 3') < over.indexOf('Sat Oct 10') && over.indexOf('Sat Oct 10') < over.indexOf('Sun Oct 11'), 'oldest night first in the drops list');
     assert(out.includes('aria-label="Who has Nathrezim Mindblade"') && out.includes('href="#/g/g1/loot/n/r2"') && out.includes('Possible duplicate'));
@@ -1755,6 +1755,36 @@ function withState(fn) {
     assert.deepEqual(names(L.sortRows(bal, { column: 'counted', dir: 'asc' })), ['Emil', 'Dina', 'Abel', 'Bree', 'Cara'], 'counted: the same tie rule (equal counts: more raids first)');
     const standing = G.pages.personLoot.standingOf({ mode: 'perRaid', countTags: ['MS'], window: { weeks: 8 }, people: rows }, 'a');
     assert.equal(standing.rank, 4, 'the person page\'s due rank follows the same order');
+  }));
+
+  // F5: every Loot page is on Forge: the root carries gs-forge, its sections are the one panel (gs-hd-panel), and the old card looks are gone.
+  await check('F5: every Loot page root has gs-forge and its sections are gs-hd-panel (loading, empty and denied states too); no chip per line, no row edges', withState(async () => {
+    const root = html => (html.match(/^<div class="([^"]*)"/) || [])[1] || '';
+    const pages = {
+      'hub (officer)': hubPage(OFFICER_HUB(), OFFICER_CAN, { balance: BALANCE }),
+      'hub (member)': hubPage(hubData()),
+      'hub (denied)': G.pages.lootHub.hubHtml({ guildData: gd(MEMBER_CAN), state: { status: 'denied', teamId: 't1' } }),
+      'standings': G.pages.lootStandings.standingsHtml(standOpts()),
+      'standings (denied)': G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'denied', teamId: 't1' } })),
+      'raid night': nightPage(nightState()),
+      'raid night (denied)': nightPage({ gid: 'g1', rid: 'r1', status: 'denied' }),
+      'item': itemPage({ status: 'ok', itemId: '28770', data: ITEM_DATA }),
+      'item (none)': itemPage({ status: 'none', itemId: '1' }),
+      'person loot': G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_th', data: PERSON_LOOT }),
+      'loading': G.pages.loot.loadingHtml('Loot'),
+    };
+    Object.keys(pages).forEach(name => {
+      const html = pages[name];
+      assert(/\bgs-forge\b/.test(root(html)), name + ' root has gs-forge: ' + root(html));
+      assert(!/gs-card-sec|gs-osection(?!-bare)|gs-empty-card|gs-lhub|gs-ln-/.test(html), name + ' uses no old card or section look');
+      assert(!/class="gs-dtable-row[^"]*has-mark|--mark/.test(html), name + ' draws no row edge');
+      assert(!/gs-chip-tag/.test(html), name + ' shows the tag as a word, not a chip');
+    });
+    ['hub (officer)', 'hub (member)', 'standings', 'raid night', 'item', 'person loot'].forEach(name => assert(/<(section|div) class="gs-hd-panel/.test(pages[name]), name + ' sections are gs-hd-panel'));
+    ['hub (denied)', 'standings (denied)', 'raid night (denied)', 'item (none)'].forEach(name => assert(/<section class="gs-hd-panel gs-rs-state/.test(pages[name]), name + ' state is a gs-hd-panel'));
+    assert(pages.loading.includes('aria-busy="true"') && pages.loading.includes('gs-hd-sk') && pages.loading.includes('role="status"'));
+    assert((pages['raid night'].match(/gs-hd-chip/g) || []).length <= 2, 'the night shows chips only for exceptions (Guest / Not on roster / Edited), never one per line');
+    assert(G.pages.raidLoot.deleteDialogHtml({ id: 'a1', itemName: 'X', winner: { name: 'Y' } }).includes('class="gs-dialog-form gs-forge"'), 'the delete dialog carries gs-forge');
   }));
 
   console.log(`\n${passed} passed, ${failed} failed`);
