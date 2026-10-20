@@ -776,6 +776,8 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-menu-list { width: 240px; padding: 4px 0; }
 .gs-menu-list[hidden] { display: none; }
 .gs-menu-list.is-left { left: 0; right: auto; }
+/* A panel that clips its rows to its rounded corners (overflow: hidden) lets an open menu out instead of cutting it off. */
+.gs-hd-panel:has([data-menu] [aria-expanded="true"]) { overflow: visible; }
 .gs-menu-sep { margin: 4px 0; }
 .guild-page .gs-menu-item.is-danger { color: var(--danger-bright); }
 .gs-btn-eq { min-width: 128px; }
@@ -1740,6 +1742,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-dtable th[scope="row"] a { display: inline-flex; align-items: center; min-height: var(--control-h-phone); font-size: 18px; }
   .gs-dtable th[scope="row"] a::after { content: ""; position: absolute; inset: 0; }
   .gs-dtable td button, .gs-dtable td a, .gs-dtable td .gs-menu-wrap { position: relative; z-index: 1; }
+  .gs-dtable td .gs-menu-list { left: 0; right: auto; } /* a row's More sits at the card's left edge: its menu opens rightward, on screen */
   .gs-dtable-foot { padding: 0; }
   .gs-dtable td:has(> .gs-dash:only-child) { display: none; } /* a dash that only fills a cell (no off spec) is not a line on the card */
   .gs-sgrid { grid-template-columns: minmax(0, 1fr); gap: 16px; }

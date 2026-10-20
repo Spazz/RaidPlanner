@@ -269,6 +269,13 @@ function withState(fn) {
     assert(css.includes('.gs-pagehead-icon + .gs-pagehead-title { flex: 1 1 auto; }'), 'the title grows next to its icon on every width');
   });
 
+  await check('look: an open row menu is never cut off by its panel, and opens on screen on both widths', () => {
+    const css = read('guild.css');
+    assert(css.includes('.gs-hd-panel:has([data-menu] [aria-expanded="true"]) { overflow: visible; }'), 'a clipping panel lets an open menu out');
+    const phone = css.slice(css.indexOf('@media (max-width: 760px) {'));
+    assert(phone.includes('.gs-dtable td .gs-menu-list { left: 0; right: auto; }'), 'on a phone card the More sits at the left edge, so its menu opens rightward');
+  });
+
   await check('quality colours: each passes 4.5:1 on the panel, card and hover backgrounds', () => {
     const css = read('guild.css');
     const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
@@ -1400,6 +1407,7 @@ function withState(fn) {
     assert((out.match(/id="lm-[a-z0-9]+" data-action="menu-toggle"/g) || []).length === 5 && out.includes('aria-label="More for Nathrezim Mindblade"'));
     assert(out.includes('href="#/g/g1/loot/a/a1"') && out.includes('href="#/g/g1/loot/a/a1?edit=1"') && out.includes('data-action="ln-delete" data-aid="a1"'));
     assert.deepEqual(plain(menuLabels(out).slice(2, 5)), ['Open award', 'Edit details', 'Delete award']);
+    assert(!/id="lm-[a-z0-9]+-list"/.test(out.replace(/class="gs-menu gs-menu-list" id="lm-/g, '')), 'a row menu sits in the last column and opens leftward (not is-left)');
     assert(out.includes('href="#/g/g1/raids/r/r1"') && out.includes('Open the raid page') && out.includes('Import from Gargul'));
     assert(out.includes('All 5 awards, in the order they were awarded.'));
     assertNoRawAttrs(out);

@@ -18,11 +18,11 @@
   function dayText(raidOn) { return G.ui.weekdayDay(raidOn) || raidOn || 'Raid night'; }
   function href(route) { return G.router.format(route); }
 
-  // ── the More menu of an award row (edit holders) ──
+  // ── the More menu of an award row (edit holders); it sits in the last column, so it opens leftward ──
   function moreMenuHtml(gd, award) {
     const gid = gd.guild.id;
     const name = award.itemName || 'this award';
-    return G.ui.menuHtml({ id: 'lm-' + award.id, key: 'lm-' + award.id, icon: 'more', ariaLabel: 'More for ' + name, align: 'left', items: [
+    return G.ui.menuHtml({ id: 'lm-' + award.id, key: 'lm-' + award.id, icon: 'more', ariaLabel: 'More for ' + name, items: [
       { label: 'Open award', href: href({ name: 'lootaward', gid: gid, aid: award.id }), key: 'lm-open-' + award.id },
       { label: 'Edit details', href: href({ name: 'lootaward', gid: gid, aid: award.id, edit: true }), key: 'lm-edit-' + award.id },
       { separator: true },
