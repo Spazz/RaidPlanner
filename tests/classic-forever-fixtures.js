@@ -11,7 +11,7 @@
 // Realistic sign-up counts per raid, following architecture-map.md's spec-key
 // shape ([count, RaidHelperClassName, RaidHelperSpecName]) — same format
 // classic-tests.js/forever-tests.js use for their importSignUps() rosters.
-// Composition follows the 40-man convention in tasks/research-classic-buffs.md
+// Composition follows the 40-man convention in tasks/reference/research-classic-buffs.md
 // ("40-man comp conventions"): ~4-5 tanks, ~10-12 healers, 10-14 melee, 3-5
 // hunters, 10-12 casters, a handful of shamans/paladins as the totem/aura
 // providers riding inside those role buckets.

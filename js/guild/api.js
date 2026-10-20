@@ -130,7 +130,7 @@
     },
   };
 
-  // Every sign-up and raid-schedule call in one place (tasks/guild-phase6-signups-spec.md, "API (as built)"). Like the loot calls they go
+  // Every sign-up and raid-schedule call in one place (tasks/reference/guild-phase6-signups-spec.md, "API (as built)"). Like the loot calls they go
   // through G.api.get / put / ... at call time, so a test that replaces those methods sees them.
   function raidPath(gid, rid, tail) { return guildPath(gid, '/raids/' + encodeURIComponent(rid) + tail); }
   function schedulePath(gid, tid, tail) { return guildPath(gid, '/teams/' + encodeURIComponent(tid) + '/schedule' + (tail || '')); }

@@ -3,17 +3,17 @@
  * Run: node tools/generate-rules-data.js   (throws at once, see the guard below)
  *
  * RECORD OF THE MAPPING, NOT A TOOL. This script wrote the data files on 2026-10-11 (Phase 1 of
- * tasks/rules-data-refactor.md; its last run was at the start of Phase 2, before any hand edit, and left idealComp and
+ * tasks/reference/rules-data-refactor.md; its last run was at the start of Phase 2, before any hand edit, and left idealComp and
  * blessings out because they stay in code). It wrote js/rules/catalog.js, js/rules/tbc.js, js/rules/classic.js and js/rules/forever.js from the LIVE hand-written tables
  * (Config and Rulesets.tbc/classic/forever in js/rules.js, the optimizer's DPS_VALUE/MIT_VALUE/SUSTAIN_VALUE/DPS_WEIGHT*
- * tables, MODE_CONFIG, COOLDOWN_TOTEMS and the OpenSlots block), in the vocabulary of tasks/rules-data-refactor.md. Since
+ * tables, MODE_CONFIG, COOLDOWN_TOTEMS and the OpenSlots block), in the vocabulary of tasks/reference/rules-data-refactor.md. Since
  * Phase 2 those tables are gone from js/ and the data files are the source of truth, edited by hand: re-running the
  * generator would overwrite hand-written comments and spellIds, and the code below could not even find its inputs any
  * more. It is kept as documentation of how each field of the data files was derived from the old tables.
  *
  * Hand edits after the final run (all in the data files): Forever got its own copy of Classic's utilities list (it had
  * borrowed it through a getter fallback); the CONCENTRATION_AURA and RETRIBUTION_AURA entries of Classic and Forever were
- * swapped so the compiled paladinAuras keep today's order; spellId was filled from tasks/research-spell-ids.md; the
+ * swapped so the compiled paladinAuras keep today's order; spellId was filled from tasks/reference/research-spell-ids.md; the
  * comment blocks that explained the old tables moved next to the entries and sections they describe.
  *
  * When it ran, the page was loaded through tests/load-app.js WITHOUT its js/rules/*.js tags, so the output depended on
@@ -424,7 +424,7 @@ function headerComment({ title, summary, research }) {
       + GENERATED_ON + ' from the then-live tables by tools/generate-rules-data.js (now a guarded record of the mapping, which '
       + "refuses to run). Rulesets.compile() in js/rules.js turns it into the app's tables at load. Ids never change: saved plans "
       + 'and share links store them, and rules-data-tests.js pins them. Every number is explained: see README.md, Editing the rules. '
-      + 'Design and vocabulary: tasks/rules-data-refactor.md.',
+      + 'Design and vocabulary: tasks/reference/rules-data-refactor.md.',
     `Research behind the numbers: ${research}`,
     MECHANICS_IN_CODE,
   ];
@@ -496,7 +496,7 @@ function catalogFile(tables) {
       summary: 'Pure data shared by every game version: classes, roles, specs and their icons, the Raid-Helper maps, and the icon, '
         + 'abbreviation and CSS-class lookups of every buff and debuff id (including the ids that only Classic or Forever use). '
         + 'The per-version files (tbc.js, classic.js, forever.js) own everything else. Rulesets.compile() takes this catalog as its second argument.',
-      research: 'tasks/research-*.md (see the version files).',
+      research: 'tasks/reference/research-*.md (see the version files).',
     },
     sections,
   };
@@ -585,9 +585,9 @@ function versionFile(version, tables, report) {
     });
   }
   const research = {
-    tbc: 'tasks/research-synergy-sheet.md (Lokgol TBC synergy tiers) and gruul_dps_data.txt (DPS weights).',
-    classic: 'tasks/research-classic-buffs.md (Classic Era buffs, debuffs and raids).',
-    forever: 'tasks/research-forever.md (WoW Forever beta audit of 2026-10-10 against build 1.60.1.70338).',
+    tbc: 'tasks/reference/research-synergy-sheet.md (Lokgol TBC synergy tiers) and gruul_dps_data.txt (DPS weights).',
+    classic: 'tasks/reference/research-classic-buffs.md (Classic Era buffs, debuffs and raids).',
+    forever: 'tasks/reference/research-forever.md (WoW Forever beta audit of 2026-10-10 against build 1.60.1.70338).',
   }[version];
   const summaries = {
     tbc: 'WoW TBC: party buffs and raid debuffs with their weights, the optimizer tuning numbers, raids and utilities.',

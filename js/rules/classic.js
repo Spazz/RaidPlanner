@@ -8,9 +8,9 @@
    once on 2026-10-11 from the then-live tables by tools/generate-rules-data.js (now a guarded record of the
    mapping, which refuses to run). Rulesets.compile() in js/rules.js turns it into the app's tables at load.
    Ids never change: saved plans and share links store them, and rules-data-tests.js pins them. Every number
-   is explained: see README.md, Editing the rules. Design and vocabulary: tasks/rules-data-refactor.md.
+   is explained: see README.md, Editing the rules. Design and vocabulary: tasks/reference/rules-data-refactor.md.
 
-   Research behind the numbers: tasks/research-classic-buffs.md (Classic Era buffs, debuffs and raids).
+   Research behind the numbers: tasks/reference/research-classic-buffs.md (Classic Era buffs, debuffs and raids).
 
    Mechanics that stay in code (their numbers live in `conventions`, their logic does not move): Ferocious
    Inspiration stacking per BM hunter, the Enhancement Windfury bonus, the Windfury-coverage cost, drums,
@@ -33,7 +33,7 @@ RulesData.classic = {
   // with this one (the better-valued member wins). priority only orders the buff list per role in the UI. spellId is
   // the max-rank spell, a verification handle.
   //
-  // Buff and debuff numbers and existence are sourced from tasks/research-classic-buffs.md (compiled 2026-09-26). Where
+  // Buff and debuff numbers and existence are sourced from tasks/reference/research-classic-buffs.md (compiled 2026-09-26). Where
   // that research flags a value UNCONFIRMED, the description stays qualitative rather than inventing a number. Ids are
   // reused from the TBC file wherever Classic has the same spell (so the shared catalog's icon, abbreviation and
   // CSS-class maps need no Classic-specific entries beyond the two brand-new totems, Tranquil Air and Stoneskin); each
@@ -44,7 +44,7 @@ RulesData.classic = {
   // Totem of Wrath). The weights have the same shape as TBC's, scaled to what actually exists in Classic Era (no Wrath
   // of Air / Totem of Wrath / Ferocious Inspiration / Tree of Life). Values are heuristics, not measured percentages -
   // same disclaimer as TBC's weights. A trailing "classic research, <section>" comment on a weight names the section
-  // of tasks/research-classic-buffs.md that says who benefits from the buff; the research gives no weight values, only
+  // of tasks/reference/research-classic-buffs.md that says who benefits from the buff; the research gives no weight values, only
   // that recipient. A weight without one has no section naming its recipient (for example the paladin auras: the
   // research lists their effects, not who profits).
   buffs: {
@@ -904,7 +904,7 @@ RulesData.classic = {
 
   // Raids of this version in picker order; planning templates last.
   //
-  // The real Classic Era raids come in phase order (tasks/research-classic-buffs.md); their ids are unique across
+  // The real Classic Era raids come in phase order (tasks/reference/research-classic-buffs.md); their ids are unique across
   // versions, so they never collide with another version's raids. The classicN planning templates come after the real
   // raids so old saved plans (keyed on classicN) keep working.
   raids: {

@@ -2,14 +2,14 @@
  * PartyPlanner Web - run every test suite
  * Run: npm test   (or: node tests/run-all.js [name-filter])
  *
- * Each suite is a standalone script at the repo root that exits non-zero on
- * failure. They run as child processes, a few at a time; output is shown only
+ * Each suite is a standalone script under tests/planner, tests/guild or tests/site that
+ * exits non-zero on failure. They run as child processes, a few at a time; output is shown only
  * for failing suites. Exits 1 if any suite fails, so CI can rely on the exit code.
  *
- * Suites are discovered by file name so a new one cannot be forgotten:
+ * Suites are discovered by file name in those three folders so a new one cannot be forgotten:
  *   tests.js, *-tests.js, *-scenarios.js   -> suites
- *   scenarios.js                           -> fixture data for scenario-tests.js (not run)
- * A slow suite named in tests/shards.js runs as several `--shard i/n` processes.
+ *   scenarios.js (repo root)               -> fixture data for scenario-tests.js (not run)
+ * A slow suite named (by file name) in tests/shards.js runs as several `--shard i/n` processes.
  * PP_TEST_JOBS sets how many processes run at once (default: up to 3, never more than
  * the CPU count; 1 runs everything one after another).
  */
@@ -24,19 +24,21 @@ const SUITE_PATTERN = /^(?:.+-tests|tests|.+-scenarios)\.js$/;
 const filter = process.argv[2] || '';
 const jobs = Math.max(1, Number(process.env.PP_TEST_JOBS) || Math.min(3, os.cpus().length));
 
-const suites = fs.readdirSync(ROOT)
-  .filter(name => SUITE_PATTERN.test(name) && name.includes(filter))
-  .sort();
+const SUITE_DIRS = ['tests/planner', 'tests/guild', 'tests/site'];
+const suites = SUITE_DIRS
+  .flatMap(dir => fs.readdirSync(path.join(ROOT, dir)).map(name => ({ name, file: `${dir}/${name}` })))
+  .filter(({ name }) => SUITE_PATTERN.test(name) && name.includes(filter))
+  .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 if (!suites.length) {
-  console.error(`run-all: no test suites found in ${ROOT}${filter ? ` matching "${filter}"` : ''}`);
+  console.error(`run-all: no test suites found in ${SUITE_DIRS.join(', ')}${filter ? ` matching "${filter}"` : ''}`);
   process.exit(1);
 }
 
 // One unit per process: a plain suite, or one shard of a sharded suite.
-const units = suites.flatMap(name => {
+const units = suites.flatMap(({ name, file }) => {
   const count = SHARDS[name] || 0;
-  if (!count) return [{ label: name, args: [name] }];
-  return Array.from({ length: count }, (_, i) => ({ label: `${name} [${i + 1}/${count}]`, args: [name, '--shard', `${i + 1}/${count}`] }));
+  if (!count) return [{ label: name, args: [file] }];
+  return Array.from({ length: count }, (_, i) => ({ label: `${name} [${i + 1}/${count}]`, args: [file, '--shard', `${i + 1}/${count}`] }));
 });
 
 function runUnit(unit) {

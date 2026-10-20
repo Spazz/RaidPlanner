@@ -1,7 +1,7 @@
 // Attendance consolidation (pure): one outcome per person per raid from the evidence (sign-ups of any source, boss-pull
 // presence from the merged Warcraft Logs reports or an officer's manual ticks, officer decisions) and the resolved
 // policy; then the second pass that settles Other-team ("fill-in") cells across the raids of one guild-local date.
-// No D1, no fetch, no clock, and the input is never mutated. The rule table is in tasks/guild-phase3-spec.md,
+// No D1, no fetch, no clock, and the input is never mutated. The rule table is in tasks/reference/guild-phase3-spec.md,
 // "Consolidation".
 
 // The strongest sign-up kind wins across sources (a plan placement beats a Raid-Helper Absence). A volunteer standby ranks below a plan's bench (a

@@ -9,9 +9,9 @@
    once on 2026-10-11 from the then-live tables by tools/generate-rules-data.js (now a guarded record of the
    mapping, which refuses to run). Rulesets.compile() in js/rules.js turns it into the app's tables at load.
    Ids never change: saved plans and share links store them, and rules-data-tests.js pins them. Every number
-   is explained: see README.md, Editing the rules. Design and vocabulary: tasks/rules-data-refactor.md.
+   is explained: see README.md, Editing the rules. Design and vocabulary: tasks/reference/rules-data-refactor.md.
 
-   Research behind the numbers: tasks/research-forever.md (WoW Forever beta audit of 2026-10-10 against build
+   Research behind the numbers: tasks/reference/research-forever.md (WoW Forever beta audit of 2026-10-10 against build
    1.60.1.70338).
 
    Mechanics that stay in code (their numbers live in `conventions`, their logic does not move): Ferocious
@@ -38,7 +38,7 @@ RulesData.forever = {
   //
   // Vanilla/Classic Era baseline (no new classes or specs - the six new race/class combos and the Skyborne race only
   // widen WHO can play a class, never WHAT a class does), with the Forever deltas confirmed on 2026-10-10 against beta
-  // build 1.60.1.70338 layered on. Source: tasks/research-forever.md, "Audit 2026-10-10", which supersedes the 09-26
+  // build 1.60.1.70338 layered on. Source: tasks/reference/research-forever.md, "Audit 2026-10-10", which supersedes the 09-26
   // browser pass.
   //
   // Tranquil Air Totem, Wrath of Air Totem and Totem of Wrath do not exist in Forever and are left out of the buffs (no
@@ -56,13 +56,13 @@ RulesData.forever = {
   // Cat and Bear form, so Classic's 'DRUID:Feral': 0, a weapon-enchant rule, is overridden); Trueshot Aura buffs ranged
   // attack power only and Battle Shout melee only; Sanctity Aura does not exist; the paladin auras
   // carry no healing-taken rider, so the sustain weights equal Classic's. A trailing "research-forever W<n>" comment on
-  // a weight names the item of the 2026-10-10 audit (tasks/research-forever.md, "Audit 2026-10-10") that states why it
+  // a weight names the item of the 2026-10-10 audit (tasks/reference/research-forever.md, "Audit 2026-10-10") that states why it
   // is what it is, and "audit CONFIRMED" refers to that audit's list of unchanged facts. The audit gives facts, not
   // weight values. A weight without a comment has no audit item behind it.
   //
   // Known gaps, not modeled yet: hunter pet effects (Wolf Furious Howl party AP, Tallstrider armor, Carrion Bird AP;
   // need a per-player pet tag), Flametongue Totem, Healing Stream Totem, Vampiric Embrace, Vindication, Salvation and
-  // Mass Salvation, the Fire/Frost/Shadow Resistance Auras, Dark Inspiration (tasks/research-forever.md, "Audit 2026-10-16").
+  // Mass Salvation, the Fire/Frost/Shadow Resistance Auras, Dark Inspiration (tasks/reference/research-forever.md, "Audit 2026-10-16").
   buffs: {
     // Windfury Totem is a buff in Forever, no longer a weapon enchant, and its procs work in Cat/Bear form (Blizzard
     // 09-30 and 10-07), so a Feral gets value from it ('DRUID:Feral' weights, unlike Classic's 0). Raid-wide since the
@@ -306,7 +306,7 @@ RulesData.forever = {
     // ("Moonkin Aura now only increases Spell Critical Strike chance, and is Raid wide." / "Leader of the Pack now only
     // increases Melee and Ranged Critical Strike chance, and is Raid wide."). They now cover different kinds of crit, so each
     // buffs only its own roles. The notes do not say whether the two stack; they are no longer exclusive here, which is
-    // INFERRED from the split and not confirmed by Blizzard (tasks/research-forever.md, "Audit 2026-10-16").
+    // INFERRED from the split and not confirmed by Blizzard (tasks/reference/research-forever.md, "Audit 2026-10-16").
     LEADER_OF_THE_PACK: {
       name: 'Leader of the Pack',
       spellId: 17007,
@@ -873,7 +873,7 @@ RulesData.forever = {
   // Raids of this version in picker order; planning templates last.
   //
   // The real WoW Forever raids are confirmed via a full-page browser read of Wowhead's raids-overview guide
-  // (tasks/research-forever.md, "Browser verification" section, "Raids" table) - launching December 9, 2026. The 'f_'
+  // (tasks/reference/research-forever.md, "Browser verification" section, "Raids" table) - launching December 9, 2026. The 'f_'
   // prefix keeps these unique from Classic's 'ony' key (Onyxia exists in both games). The foreverN planning templates
   // come after the real raids so old saved plans (keyed on foreverN) keep working; they are planning capacities chosen
   // by the user, not claims about beta raid sizes.

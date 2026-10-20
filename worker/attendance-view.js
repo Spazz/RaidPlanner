@@ -45,7 +45,7 @@ export function groupBy(rows, key) {
 const userName = (row) => row.display_name || row.global_name || row.username;
 const parseFlags = (text) => { try { const value = JSON.parse(text); return Array.isArray(value) ? value : []; } catch { return []; } };
 
-// One read batch + the shaping. -> the raid detail object (see tasks/guild-phase3-spec.md, API), or throws 404.
+// One read batch + the shaping. -> the raid detail object (see tasks/reference/guild-phase3-spec.md, API), or throws 404.
 export async function loadRaidDetail(ctx, guildContext, raidId) {
   const { db } = ctx;
   const guild = guildContext.guild;

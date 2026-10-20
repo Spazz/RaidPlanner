@@ -10,9 +10,9 @@
    once on 2026-10-11 from the then-live tables by tools/generate-rules-data.js (now a guarded record of the
    mapping, which refuses to run). Rulesets.compile() in js/rules.js turns it into the app's tables at load.
    Ids never change: saved plans and share links store them, and rules-data-tests.js pins them. Every number
-   is explained: see README.md, Editing the rules. Design and vocabulary: tasks/rules-data-refactor.md.
+   is explained: see README.md, Editing the rules. Design and vocabulary: tasks/reference/rules-data-refactor.md.
 
-   Research behind the numbers: tasks/research-*.md (see the version files).
+   Research behind the numbers: tasks/reference/research-*.md (see the version files).
 
    Mechanics that stay in code (their numbers live in `conventions`, their logic does not move): Ferocious
    Inspiration stacking per BM hunter, the Enhancement Windfury bonus, the Windfury-coverage cost, drums,

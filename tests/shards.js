@@ -2,9 +2,9 @@
  * PartyPlanner Web - test sharding
  *
  * A slow suite lists itself in SHARDS with a shard count. tests/run-all.js then runs it as
- * that many separate processes (`node <suite> --shard i/n`, i from 1), which can run side by
+ * that many separate processes (`node tests/<area>/<suite> --shard i/n`, i from 1), which can run side by
  * side, and the suite itself keeps only its slice of the work via partition(). Running the
- * suite with no --shard argument still does everything, so `node scenario-tests.js` works
+ * suite with no --shard argument still does everything, so `node tests/planner/scenario-tests.js` works
  * exactly as before. shards-tests.js checks the slices are a true partition.
  */
 const SHARDS = {

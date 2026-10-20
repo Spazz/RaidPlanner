@@ -1,6 +1,6 @@
 /**
  * A stand-in for Cloudflare D1 on node:sqlite, so the Worker's SQL runs for real in `npm test`.
- * It copies the D1 behaviours that bite (see tasks/guild-phase1-spec.md, "D1 fake parity"):
+ * It copies the D1 behaviours that bite (see tasks/reference/guild-phase1-spec.md, "D1 fake parity"):
  *   - plain-object rows; first() is null without a row; first(col) throws on an unknown column
  *   - all()/run() return { results, success, meta: { changes, last_row_id, ... } }; RETURNING works
  *   - rejects a wrong number of bindings, undefined, booleans, objects, BigInt, named parameters

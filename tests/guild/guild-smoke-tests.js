@@ -1,0 +1,193 @@
+/**
+ * Raidsmith guild tracker - smoke harness tests
+ * Run: node tests/guild/guild-smoke-tests.js
+ *
+ * tools/guild-smoke.js starts an isolated, seeded copy of the tracker for API and DOM checks. Starting Wrangler is not something a unit suite does, so
+ * these checks pin the parts that keep it isolated and predictable: the argument parsing, the state dir and port rules (never 8787, never the live
+ * database, only chk-<name> folders are ever deleted), the Worker variables (placeholders only, a fake that is off points at a refused port), and the
+ * client helper `run` hands to a script.
+ */
+const assert = require('node:assert/strict');
+const http = require('node:http');
+const os = require('node:os');
+const path = require('node:path');
+const smoke = require('../../tools/guild-smoke.js');
+const dev = require('../../tools/guild-dev.js');
+
+let passed = 0;
+let failed = 0;
+const checks = [];
+function check(name, fn) { checks.push({ name, fn }); }
+
+const usageError = (argv, pattern) => assert.throws(() => smoke.parseArgs(argv), (error) => error.usage === true && pattern.test(error.message), argv.join(' '));
+
+check('up: a name alone gives the defaults (first free port later, discord + sources)', () => {
+  assert.deepEqual(smoke.parseArgs(['up', '--name', 'proof']), { command: 'up', name: 'proof', port: null, fakes: ['discord', 'sources'], open: false, script: null, scriptArgs: [] });
+});
+
+check('up: --port and --with, also in the --flag=value form; discord is always on and the order is fixed', () => {
+  const options = smoke.parseArgs(['up', '--name=a-1', '--port=8793', '--with', 'bnet,sources']);
+  assert.equal(options.port, 8793);
+  assert.deepEqual(options.fakes, ['discord', 'sources', 'bnet']);
+  assert.deepEqual(smoke.parseArgs(['up', '--name', 'x', '--with', 'discord']).fakes, ['discord']);
+  assert.deepEqual(smoke.parseArgs(['up', '--with', 'bnet', '--name', 'x', '--port', '8790']).fakes, ['discord', 'bnet']);
+});
+
+check('up: --open means no creator allowlist and takes no value, only on up; the variable is still passed (a comma, nobody listed), so a local .env cannot fill it', () => {
+  assert.equal(smoke.parseArgs(['up', '--name', 'x', '--open']).open, true);
+  assert.equal(smoke.parseArgs(['up', '--open', '--name', 'x', '--port', '8792']).port, 8792);
+  usageError(['up', '--name', 'x', '--open=1'], /--open takes no value/);
+  usageError(['down', '--name', 'x', '--open'], /unknown option --open/);
+  const value = (args) => Object.fromEntries(args.filter((_, index) => index % 2 === 1).map((arg) => [arg.slice(0, arg.indexOf(':')), arg.slice(arg.indexOf(':') + 1)])).GUILD_CREATOR_ALLOWLIST;
+  assert.equal(value(smoke.workerVars(8792, ['discord'], '110000000000000001')), '110000000000000001');
+  assert.equal(value(smoke.workerVars(8792, ['discord'], '110000000000000001', true)), ',');
+});
+
+check('up: the port must be 8790-8799, so 8787 (the live localhost) and anything else is refused', () => {
+  for (const port of ['8787', '8789', '8800', '80', '-1', 'abc', '8790.5', '']) usageError(['up', '--name', 'x', '--port', port], /--port must be 8790-8799|needs a value/);
+  for (const port of [8790, 8795, 8799]) assert.equal(smoke.parseArgs(['up', '--name', 'x', '--port', String(port)]).port, port);
+});
+
+check('--name: required, lower-case letters, digits and dashes only (it becomes a folder name)', () => {
+  usageError(['up'], /--name is required/);
+  usageError(['down'], /--name is required/);
+  for (const name of ['', 'Proof', 'a b', '../x', 'a/b', 'a\\b', '-x', 'x'.repeat(25), 'é']) {
+    assert.throws(() => smoke.parseArgs(['up', '--name', name]), (error) => error.usage === true, JSON.stringify(name));
+  }
+  usageError(['up', '--name'], /needs a value/);
+  usageError(['up', '--name', '--port', '8790'], /needs a value/);
+});
+
+check('--with: only discord, sources, bnet; empty and unknown names are errors', () => {
+  usageError(['up', '--name', 'x', '--with', 'redis'], /unknown fake "redis"/);
+  usageError(['up', '--name', 'x', '--with', ''], /needs a value|at least one/);
+  usageError(['up', '--name', 'x', '--with', 'discord,,wcl'], /unknown fake "wcl"/);
+});
+
+check('unknown commands and options, repeated options and stray arguments are errors', () => {
+  usageError([], /unknown command/);
+  usageError(['start', '--name', 'x'], /unknown command "start"/);
+  usageError(['up', '--name', 'x', '--bogus', '1'], /unknown option --bogus/);
+  usageError(['down', '--name', 'x', '--port', '8790'], /unknown option --port for down/);
+  usageError(['down', '--name', 'x', '--with', 'bnet'], /unknown option --with for down/);
+  usageError(['up', '--name', 'x', '--name', 'y'], /--name was given twice/);
+  usageError(['up', '--name', 'x', 'extra'], /unexpected argument "extra"/);
+  usageError(['down', '--name', 'x', 'script.js'], /unexpected argument/);
+});
+
+check('run: needs a script; everything after the script goes to it untouched', () => {
+  usageError(['run', '--name', 'x'], /run needs a script/);
+  const options = smoke.parseArgs(['run', '--name', 'x', 'check.js', '--name', 'inner', '--port', '1', 'file']);
+  assert.equal(options.script, 'check.js');
+  assert.deepEqual(options.scriptArgs, ['--name', 'inner', '--port', '1', 'file']);
+  assert.equal(options.name, 'x');
+  assert.equal(smoke.parseArgs(['run', '--name', 'x', 'a.js']).script, 'a.js');
+  assert.equal(smoke.stateDirFor('wrangler-state').endsWith('chk-wrangler-state'), true, 'a name can never select the live wrangler-state folder');
+});
+
+check('state dir: <home>/.raidsmith-dev/chk-<name>, short, and never the live wrangler-state', () => {
+  const home = path.join(os.tmpdir(), 'home');
+  const dir = smoke.stateDirFor('proof', home);
+  assert.equal(dir, path.join(home, '.raidsmith-dev', 'chk-proof'));
+  assert.notEqual(path.basename(dir), 'wrangler-state');
+  assert.notEqual(dir, dev.stateDir({}));
+  assert(smoke.stateDirFor('x'.repeat(24), 'C:\\Users\\someone').length < 80, 'short enough for workerd');
+  assert.equal(path.dirname(smoke.stateDirFor('proof')), path.dirname(dev.stateDir({})), 'same parent as the live state, different folder');
+});
+
+check('delete guard: only <home>/.raidsmith-dev/chk-<name> can be deleted', () => {
+  const home = path.join(os.tmpdir(), 'home');
+  const root = path.join(home, '.raidsmith-dev');
+  assert.equal(smoke.isDeletableStateDir(path.join(root, 'chk-proof'), home), true);
+  assert.equal(smoke.isDeletableStateDir(smoke.stateDirFor('a-b-9', home), home), true);
+  for (const bad of [path.join(root, 'wrangler-state'), root, home, path.join(root, 'chk-'), path.join(root, 'chk-Proof'), path.join(root, 'chk-proof', 'logs'),
+    path.join(root, '..', 'chk-proof'), path.join(root, 'chk-proof', '..', 'wrangler-state'), path.join(os.tmpdir(), 'chk-proof'), path.parse(home).root, '']) {
+    assert.equal(smoke.isDeletableStateDir(bad, home), false, bad);
+  }
+  assert.equal(smoke.isDeletableStateDir(dev.stateDir({}), os.homedir()), false, 'the live dev database');
+});
+
+check('ports: each fake sits at a fixed offset from the Worker port, none is 8787, and ranges of different Worker ports never overlap', () => {
+  assert.equal(smoke.fakePort('discord', 8793), 18793);
+  assert.equal(smoke.fakePort('sources', 8793), 19793);
+  assert.equal(smoke.fakePort('bnet', 8793), 20793);
+  const all = [];
+  for (let port = smoke.PORT_MIN; port <= smoke.PORT_MAX; port++) for (const fake of smoke.FAKES) all.push(smoke.fakePort(fake, port));
+  assert.equal(new Set(all).size, all.length, 'no two runs share a fake port');
+  assert(!all.includes(8787) && all.every((port) => port > 8799 && port < 65536));
+  assert.equal(smoke.fakeUrl('discord', 8790), 'http://127.0.0.1:18790');
+});
+
+check('Worker variables: placeholders only, loopback only, the redirect URIs follow the port, the allowlist is the Guild Master', () => {
+  const args = smoke.workerVars(8793, ['discord', 'sources'], '110000000000000001');
+  assert(args.every((arg, index) => (index % 2 === 0 ? arg === '--var' : /^[A-Z_]+:\S+$/.test(arg))));
+  const vars = Object.fromEntries(args.filter((_, index) => index % 2 === 1).map((arg) => [arg.slice(0, arg.indexOf(':')), arg.slice(arg.indexOf(':') + 1)]));
+  assert.equal(vars.DISCORD_API_BASE, 'http://127.0.0.1:18793');
+  assert.equal(vars.WCL_API_BASE, 'http://127.0.0.1:19793');
+  assert.equal(vars.RAID_HELPER_API_BASE, 'http://127.0.0.1:19793');
+  assert.equal(vars.BNET_API_BASE, 'http://127.0.0.1:9', 'a fake that is off points at a refused port, never a real service');
+  assert.equal(vars.DISCORD_REDIRECT_URI, 'http://127.0.0.1:8793/auth/callback');
+  assert.equal(vars.BNET_REDIRECT_URI, 'http://127.0.0.1:8793/auth/bnet/callback');
+  assert.equal(vars.GUILD_CREATOR_ALLOWLIST, '110000000000000001');
+  for (const [key, value] of Object.entries(vars)) {
+    if (/_API_BASE$|_REDIRECT_URI$/.test(key)) assert(value.startsWith('http://127.0.0.1:'), `${key} stays on loopback`);
+    else if (key !== 'GUILD_CREATOR_ALLOWLIST' && key !== 'DEV_VIEW_AS') assert(/^(smoke-|fake-)/.test(value), `${key} is a placeholder`);
+  }
+  assert(!args.join(' ').includes(':8787'), 'never the live port');
+  assert.equal(smoke.workerVars(8793, ['discord', 'sources', 'bnet'], '1').includes('BNET_API_BASE:http://127.0.0.1:20793'), true);
+});
+
+check('Worker variables cover every name the Worker reads from env, so a local .env can never fill one in', () => {
+  const fs = require('node:fs');
+  const names = new Set();
+  const walk = (dir) => { for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { const full = path.join(dir, entry.name); if (entry.isDirectory()) walk(full); else if (full.endsWith('.js')) for (const m of fs.readFileSync(full, 'utf8').matchAll(/\benv\.([A-Z][A-Z0-9_]+)/g)) names.add(m[1]); } };
+  walk(path.join(__dirname, '..', '..', 'worker'));
+  names.delete('DB');
+  const given = new Set(smoke.workerVars(8790, ['discord'], '1').filter((_, index) => index % 2 === 1).map((arg) => arg.slice(0, arg.indexOf(':'))));
+  assert.deepEqual([...names].filter((name) => !given.has(name)).sort(), [], 'add these to workerVars in tools/guild-smoke.js');
+});
+
+check('fromEnv / fromJson: api(who, ...) sends that person\'s cookie and the Origin header; an unknown person is an error; no JSON in the environment is an error', async () => {
+  const seen = [];
+  const server = http.createServer((request, response) => {
+    let body = '';
+    request.on('data', (chunk) => { body += chunk; });
+    request.on('end', () => {
+      seen.push({ method: request.method, url: request.url, cookie: request.headers.cookie, origin: request.headers.origin, body });
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ ok: true }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const data = { base, cookies: { gm: '__Host-rs_session=aaa', member: '__Host-rs_session=bbb' }, ids: { guildId: 'g_1' } };
+    const client = smoke.fromEnv({ GUILD_SMOKE_JSON: JSON.stringify(data) });
+    assert.equal(client.ids.guildId, 'g_1');
+    const res = await client.api('member', 'POST', '/api/x', { a: 1 });
+    assert.deepEqual([res.status, res.json], [200, { ok: true }]);
+    assert.deepEqual(seen[0], { method: 'POST', url: '/api/x', cookie: '__Host-rs_session=bbb', origin: base, body: '{"a":1}' });
+    await client.api('gm', 'GET', '/auth/me');
+    assert.equal(seen[1].cookie, '__Host-rs_session=aaa');
+    assert.equal(seen[1].body, '');
+    await assert.rejects(() => client.api('nobody', 'GET', '/x'), /no cookie for "nobody"/);
+  } finally {
+    server.close();
+  }
+  assert.throws(() => smoke.fromEnv({}), /GUILD_SMOKE_JSON is not set/);
+});
+
+(async () => {
+  for (const { name, fn } of checks) {
+    try {
+      await fn();
+      passed++;
+      console.log(`PASS  ${name}`);
+    } catch (error) {
+      failed++;
+      console.log(`FAIL  ${name}\n      ${error.message}`);
+    }
+  }
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exit(failed ? 1 : 0);
+})();

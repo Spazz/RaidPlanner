@@ -2,7 +2,7 @@
 // The tag / flag / item / winner builders live here; pages-raid-loot, pages-person-loot and pages-review use them.
 // The Loot section (#/g/:gid/loot) is the hub in pages-loot-hub.js (which also draws Standings); the raid night and item pages are in
 // pages-loot-night.js. This module also keeps the balance maths (balanceRows, sortRows) the standings use.
-// See the Phase 4 spec (tasks/guild-phase4-spec.md, sections 5 and 6). This file is safe to load alone: nothing here
+// See the Phase 4 spec (tasks/reference/guild-phase4-spec.md, sections 5 and 6). This file is safe to load alone: nothing here
 // runs at load time.
 (function (G) {
   'use strict';

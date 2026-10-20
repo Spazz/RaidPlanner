@@ -1,7 +1,7 @@
 // Native Raidsmith sign-ups: a member signs themselves up for an upcoming raid of a team they have a character on; officers and team
 // leads (raids.edit) add, change or remove anyone's, and close sign-ups early. A sign-up is a raid_signups row with source 'raidsmith'
 // (one per person per raid) that REPLACES the person's Raid-Helper row everywhere it is shown or counted, so nothing counts twice.
-// The attendance recompute reads it with the other sources and is otherwise unchanged. Spec: tasks/guild-phase6-signups-spec.md.
+// The attendance recompute reads it with the other sources and is otherwise unchanged. Spec: tasks/reference/guild-phase6-signups-spec.md.
 import { HttpError, jsonResponse } from '../http.js';
 import { raidAwayEffects, readNotices, teamCharactersStatement, teamNoticesStatement } from '../away-store.js';
 import { recomputeRaid } from '../attendance-store.js';

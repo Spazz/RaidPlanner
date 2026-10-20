@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * One-time builder: raw Phase 3 test data -> anonymized attendance fixtures.
- *   node tools/build-attendance-fixtures.js <absolute path to tasks/phase3-testdata> [output dir]
+ *   node tools/build-attendance-fixtures.js <absolute path to tasks/reference/phase3-testdata> [output dir]
  *
  * Reads <dir>/raidhelper/*.json (Raid-Helper events: Discord IDs and nicknames, personal data) and <dir>/wcl/*.derived.json
  * (derived presence per boss pull). The raw files are read-only input and are never copied. Writes, per event,
@@ -49,7 +49,7 @@ function readJson(file) {
 async function main() {
   const inputDir = process.argv[2];
   if (!inputDir || !path.isAbsolute(inputDir)) {
-    console.error('usage: node tools/build-attendance-fixtures.js <absolute path to tasks/phase3-testdata> [output dir]');
+    console.error('usage: node tools/build-attendance-fixtures.js <absolute path to tasks/reference/phase3-testdata> [output dir]');
     process.exit(2);
   }
   const outDir = process.argv[3] || path.join(__dirname, '..', 'tests', 'fixtures', 'attendance');

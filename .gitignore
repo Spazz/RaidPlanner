@@ -1,5 +1,5 @@
 # Whitelist: everything is ignored unless listed below. Globs cover the folders that grow (js/guild, worker, migrations, tests, tools)
-# and every root *-tests.js suite, so a new guild file needs no line here; only a new root file or a new Planner script does.
+# and every suite under tests/, so a new guild file or suite needs no line here; only a new root file or a new Planner script does.
 *
 !.gitignore
 !index.html
@@ -39,11 +39,8 @@
 !vercel.json
 !api/
 !api/share.js
-# Test suites are tracked and served as static files; `npm test` (tests/run-all.js) runs them under Node; scenarios.js is also the ?dev roster picker data
-!*-tests.js
-!tests.js
+# Test suites live in tests/planner, tests/guild and tests/site (covered by !tests/** below; `npm test` runs them under Node); scenarios.js stays at the root: it is the ?dev roster picker data
 !scenarios.js
-!classic-forever-scenarios.js
 !README.md
 !.vercelignore
 # Test runner, loader, fakes, fixtures and golden snapshots (everything under tests/), the dev tools (tools/*.js, plus the OG image script) and CI (npm test; GitHub Actions runs it)

@@ -1784,7 +1784,7 @@ const IdealComp = {
     return groups;
   },
 
-  // Classic Era 40-man/20-man reference comps (tasks/research-classic-buffs.md
+  // Classic Era 40-man/20-man reference comps (tasks/reference/research-classic-buffs.md
   // 40-man conventions + faction lock). Horde's Enhancement/Elemental/Resto
   // Shaman trio covers melee groups, caster groups AND the healer group —
   // Alliance has no caster-group equivalent (Paladins have no caster spec;
@@ -2040,7 +2040,7 @@ const IdealComp = {
   },
 
   // Forever reference comps — no faction lock, so unlike Classic these mix
-  // Shaman totems and Paladin auras in the SAME roster (tasks/research-forever.md
+  // Shaman totems and Paladin auras in the SAME roster (tasks/reference/research-forever.md
   // Browser verification: six new race/class combos put both classes on both
   // factions). Feral (LotP) and Balance (Moonkin) druids are raid-wide in
   // Forever (2026-10-16 notes), so where they sit is only a layout choice here.

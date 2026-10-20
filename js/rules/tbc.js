@@ -8,9 +8,9 @@
    once on 2026-10-11 from the then-live tables by tools/generate-rules-data.js (now a guarded record of the
    mapping, which refuses to run). Rulesets.compile() in js/rules.js turns it into the app's tables at load.
    Ids never change: saved plans and share links store them, and rules-data-tests.js pins them. Every number
-   is explained: see README.md, Editing the rules. Design and vocabulary: tasks/rules-data-refactor.md.
+   is explained: see README.md, Editing the rules. Design and vocabulary: tasks/reference/rules-data-refactor.md.
 
-   Research behind the numbers: tasks/research-synergy-sheet.md (Lokgol TBC synergy tiers) and
+   Research behind the numbers: tasks/reference/research-synergy-sheet.md (Lokgol TBC synergy tiers) and
    gruul_dps_data.txt (DPS weights).
 
    Mechanics that stay in code (their numbers live in `conventions`, their logic does not move): Ferocious
@@ -35,7 +35,7 @@ RulesData.tbc = {
   // the max-rank spell, a verification handle.
   //
   // The weights are tier values on a relative scale, NOT measured % gains. Ordering cross-checked against Lokgol's TBC
-  // synergy sheet (0-4 tiers; tasks/research-synergy-sheet.md): WF is the top tier, ToW / Moonkin / LotP / FI the next,
+  // synergy sheet (0-4 tiers; tasks/reference/research-synergy-sheet.md): WF is the top tier, ToW / Moonkin / LotP / FI the next,
   // WoA / SoE / GoA / UR / Sanctity below that. A trailing "synergy sheet tier N for X" comment on a weight gives the
   // sheet's own rating of that recipient, for comparison: this file's scale is its own, so compare the order of the
   // buffs, not the numbers. A weight without one has no tier in the sheet, which does not model Mana Spring, Mana Tide
@@ -1198,7 +1198,7 @@ RulesData.tbc = {
 
   // Class-presence utility checklist (the readiness sidebar's "Utility" section, Readiness.utilityCoverage()) -
   // separate from buffs and debuffs because these are one-off or in-combat abilities, not always-on party auras.
-  // providers lists { class, spec?, note? }; no spec = any spec of the class. See tasks/feature-backlog.md #3.
+  // providers lists { class, spec?, note? }; no spec = any spec of the class. See tasks/reference/feature-backlog.md #3.
   utilities: {
     BATTLE_REZ: {
       name: 'Battle Resurrection',

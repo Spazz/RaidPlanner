@@ -208,7 +208,7 @@ Object.defineProperty(Rulesets, 'compile', {
   value: (function () {
     const copy = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
     const problem = message => new Error(`Rulesets.compile: ${message}`);
-    // The closed vocabularies of the data files (tasks/rules-data-refactor.md); rules-data-tests.js pins the same lists.
+    // The closed vocabularies of the data files (tasks/reference/rules-data-refactor.md); rules-data-tests.js pins the same lists.
     // debuffType is descriptive only, but a typo in it still fails loudly here instead of staying unnoticed.
     const BUFF_TYPES = ['totem', 'paladinAura', 'warriorShout', 'passive'];
     const BUFF_SCOPES = ['party', 'raid'];

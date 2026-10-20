@@ -1,6 +1,6 @@
 // Loot: awards imported from Gargul's Detailed (JSON) export onto a past raid, their tags and notes, and the four views
 // (per raid, balance, by raid, by item, per person) plus the loot policy. Matching a winner to a person happens on read
-// (loot-store.js). Rules: tasks/guild-phase4-spec.md.
+// (loot-store.js). Rules: tasks/reference/guild-phase4-spec.md.
 import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { isPlainObject, makePolicyResolver, policyRowsStatement } from '../attendance-store.js';

@@ -1,7 +1,7 @@
 // The pre-raid loot board and manual awards (PM wave 5). An officer pastes the ThatsMyBIS (TMB) prio export and / or the softres.it export on a
 // raid (upcoming or past); the browser decodes and normalizes them (js/guild/tmb.js, softres.js) and the Worker keeps the rows the board needs. The
 // board (GET) lines the pasted prios and soft-reserves up against the people expected on the raid. A manual award is a loot_awards row with
-// manual = 1 and a checksum no Gargul export can produce. Rules: worker/loot-board.js; spec: tasks/guild-pm-wave5-spec.md.
+// manual = 1 and a checksum no Gargul export can produce. Rules: worker/loot-board.js; spec: tasks/reference/guild-pm-wave5-spec.md.
 import { HttpError, cleanText, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';

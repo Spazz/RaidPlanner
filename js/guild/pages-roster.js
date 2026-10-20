@@ -1,5 +1,5 @@
 // ── PAGE: ROSTER ────────────────────────────────────────────────
-// The roster of one team (design: tasks/roster-redesign-brief.md, boards A1, R2-1, R2-6, R2-7). Officers see the team shape (tiles against the recruiting
+// The roster of one team (design: tasks/open/roster-redesign-brief.md, boards A1, R2-1, R2-6, R2-7). Officers see the team shape (tiles against the recruiting
 // targets) and a "Needs you" line above the list; everyone sees the people, a role column each (a phone: one directory list), search and Active / Everyone.
 // A person is a link to their record. Data comes from GET /roster?team= (people, with raidRole and trialFlag) and, for officers, GET /recruiting?team=
 // (targets, counts and the buff coverage); every mutation goes through the person record page's handlers or the import pages. The Add person dialog is here.

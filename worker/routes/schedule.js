@@ -1,7 +1,7 @@
 // The weekly raid schedule of a team: its slots (weekday, start time, zone, optional title), how many weeks "Create upcoming raids"
 // fills (1 to 8) and whether an officer opening the Raids page fills them without asking. Filling creates a plain upcoming raid per
 // date and skips dates the team already has a raid on, so it can be run again and again. No cron: the browser asks.
-// Spec: tasks/guild-phase6-signups-spec.md.
+// Spec: tasks/reference/guild-phase6-signups-spec.md.
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';

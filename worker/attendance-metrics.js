@@ -1,5 +1,5 @@
 // Attendance metrics (pure): per person and window, from one team's stored rows. No D1, no clock (`today` is passed in),
-// the input is never mutated. Rules: tasks/guild-phase3-spec.md, "Metrics".
+// the input is never mutated. Rules: tasks/reference/guild-phase3-spec.md, "Metrics".
 import { addDays, weekStart } from './attendance-calendar.js';
 import { OUTCOMES } from './attendance-policy.js';
 

@@ -1,5 +1,5 @@
 // Loot balance (pure): per roster person, the raids they could have won loot in (attendedForLoot) and the items they received, over the attendance window and
-// all-time. No D1, no clock (`today` is passed in), the input is never mutated. Rules: tasks/guild-phase4-spec.md, section 4.
+// all-time. No D1, no clock (`today` is passed in), the input is never mutated. Rules: tasks/reference/guild-phase4-spec.md, section 4.
 import { LOOT_TAGS } from './loot-policy.js';
 
 const round3 = (value) => Math.round(value * 1000) / 1000;

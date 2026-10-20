@@ -12,9 +12,6 @@
 /tests/
 /tools/
 /.github/
-/*-tests.js
-/tests.js
-/*-scenarios.js
 /*.md
 /gruul_dps_data.txt
 /.git*

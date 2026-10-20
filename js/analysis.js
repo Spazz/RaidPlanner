@@ -895,7 +895,7 @@ Campfires.professionNames=[...new Set(Campfires.catalog.map(a=>a.profession))].s
 // "re-suggest only empty slots" falls out for free — there is no separate
 // suggest-then-freeze step to get stale.
 const Assignments = {
-  // Default Greater Blessing catalog — tasks/research-classic-buffs.md
+  // Default Greater Blessing catalog — tasks/reference/research-classic-buffs.md
   // confirms Classic Era Alliance fields the same five Blessings as TBC
   // (Kings/Might/Wisdom/Salvation/Light), so one static table covers both.
   // A future ruleset can still override it via activeRules().blessings.
@@ -1558,7 +1558,7 @@ const RaidSplit = {
 
 // ── RAID PREP (backlog #9 + #10) ───────────────────────────────────
 // Static, sourced encounter-prep notes and a consumables/world-buff checklist
-// per raid. Every entry carries a `source` URL — see tasks/research-wave3.md.
+// per raid. Every entry carries a `source` URL — see tasks/reference/research-wave3.md.
 // Facts that research pass flagged UNCONFIRMED (a specific number, an exact
 // itemization) were left out entirely rather than guessed; where a note's
 // general point was sourced but a number wasn't, only the qualitative point
@@ -1746,7 +1746,7 @@ const RaidPrep = {
 
     // ── Forever (beta) — raids open December 9, 2026; Wowhead's own source
     // lists boss lists, attunement and tier drops as "TBD" (research-wave3.md
-    // §1, per tasks/research-forever.md §4). No boss-specific mechanics exist
+    // §1, per tasks/reference/research-forever.md §4). No boss-specific mechanics exist
     // to cite yet, so every Forever raid gets the same placeholder note
     // pointing to the Camping/Campfire system as today's closest analog.
     f_barrow: {
