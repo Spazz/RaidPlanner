@@ -163,9 +163,9 @@ const keys = items => plain(items.map(i => i.key));
   const LOOT = people => ({ team: { id: 't1', name: 'Main team' }, window: { weeks: 8, switchWeeks: [8, 12], from: '2026-08-18' }, mode: 'perRaid', countTags: ['MS'], scope: 'team', people, teamAverage: { window: 0.4, all: 0.4 } });
   const standHtml = (data, can) => G.pages.lootStandings.standingsHtml({ guildData: gd(can || OFFICER_CAN), state: { status: 'ok', teamId: 't1', data } });
 
-  await check('loot: the viewer row is first in the standings table and the cards with You; the order and window switches are the T1 segment bar', () => {
-    const out = standHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9), lootPerson('p_m', 'Me', true, 0.1), lootPerson('p_z', 'Zed', false, 0.5)]));
-    assert.deepEqual([...out.matchAll(/<tr class="gs-dtable-row( is-you)?[^"]*"[^>]*><td[^>]*>[^<]*<\/td><th scope="row" class="gs-dtable-primary"><a[^>]*>([A-Za-z]+)/g)].map(m => [m[2], !!m[1]]), [['Me', true], ['Zed', false], ['Aimer', false]], 'You first although Me has the lowest per raid; the rest most due first');
+  await check('loot: the viewer row keeps its sorted place in the standings table, tinted with You; the order and window switches are the T1 segment bar', () => {
+    const out = standHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9), lootPerson('p_m', 'Me', true, 0.5), lootPerson('p_z', 'Zed', false, 0.1)]));
+    assert.deepEqual([...out.matchAll(/<tr class="gs-dtable-row( is-you)?[^"]*"[^>]*><td[^>]*>[^<]*<\/td><th scope="row" class="gs-dtable-primary"><a[^>]*>([A-Za-z]+)/g)].map(m => [m[2], !!m[1]]), [['Zed', false], ['Me', true], ['Aimer', false]], 'most due first; You stays in its sorted place (not moved to the top)');
     assert(out.includes('<span class="gs-you">You</span>'));
     assert(out.indexOf('class="gs-listbar"') < out.indexOf('data-action="loot-window"') && out.indexOf('data-action="loot-window"') < out.indexOf('<table class="gs-dtable"'));
     assert(!standHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9)])).includes('is-you'));
