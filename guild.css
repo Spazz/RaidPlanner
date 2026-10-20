@@ -2172,7 +2172,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .guild-page .gs-up-link::after { content: ""; position: absolute; inset: 0; border-radius: 8px; }
 .guild-page .gs-up-link:focus-visible { outline: none; }
 .guild-page .gs-up-link:focus-visible::after { outline: 2px solid var(--text-primary); outline-offset: 2px; }
-.gs-up-status { position: relative; z-index: 1; }
+.gs-up-status button, .gs-up-status a { position: relative; z-index: 1; }
 @media (hover: hover) { .gs-up:hover { background-image: linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03)), var(--hd-panel); border-color: rgba(255, 255, 255, 0.16); } }
 /* Selected status pill on the raid page You bar and its dialogs: the segment selected state. */
 .gs-forge .gs-su-kind[aria-pressed="true"], .gs-rpg-you .gs-su-kind[aria-pressed="true"], .gs-dialog-form.gs-forge .gs-su-kind[aria-pressed="true"] { background: var(--seg-on-bg); border-color: var(--border-field); color: var(--hd-white); }
