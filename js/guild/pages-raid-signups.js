@@ -562,6 +562,7 @@
     closedText: closedText,
     viewOf: function (state) { return state && state.status === 'ok' && state.data ? state.data : null; },
     boardHtml: boardHtml,
+    groupHeadHtml: groupHeadHtml,
     guestDialogHtml: guestDialogHtml,
     editDialogHtml: editDialogHtml,
     removeDialogHtml: removeDialogHtml,

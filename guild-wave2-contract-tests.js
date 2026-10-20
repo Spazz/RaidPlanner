@@ -544,14 +544,14 @@ check('attendance: a covering away notice filed before the raid makes a missed r
   // Hand-entered attendance without Thoren on both raids.
   const first = await enterByHand(s, A, await openRaid(s, A, withNotice), ['Kaelith']);
   let text = stripTags(first);
-  assert(text.includes("Thoren Paladin Can't come - - N Missed with notice 0%"), text.slice(text.indexOf('Everyone'), text.indexOf('Everyone') + 500));
+  assert(text.includes('Missed 1 Thoren (with notice)'), text.slice(text.indexOf('Everyone'), text.indexOf('Everyone') + 500));
   let row = (await s.rows("SELECT outcome, credit, signup_kind FROM attendance WHERE raid_id = ? AND player_id = ?", withNotice, s.people.Thoren))[0];
   assert.deepEqual(row, { outcome: 'missed_notice', credit: 0, signup_kind: 'absence' });
-  assert(text.includes('Kaelith Rogue No sign-up - - A Attended 100%'), 'the ticked player is present');
+  assert(/Melee 1 Kaelith/.test(text), 'the ticked player is present (Attended, in the Melee column)');
 
   const second = await enterByHand(s, A, await openRaid(s, A, withSignup), ['Kaelith']);
   text = stripTags(second);
-  assert(text.includes('Thoren Paladin &middot; Protection Signed up - - M Missed 0% No show') && !text.includes('Missed with notice'), text.slice(text.indexOf('Everyone'), text.indexOf('Everyone') + 500));
+  assert(text.includes('Thoren Protection Missed Signed up, not in the log Decide') && !text.includes('(with notice)'), text.slice(text.indexOf('Everyone'), text.indexOf('Everyone') + 500));
   row = (await s.rows("SELECT outcome, credit, signup_kind, flags FROM attendance WHERE raid_id = ? AND player_id = ?", withSignup, s.people.Thoren))[0];
   assert.deepEqual(row, { outcome: 'missed', credit: 0, signup_kind: 'signed', flags: '["no_show"]' });
 });

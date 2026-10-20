@@ -45,6 +45,33 @@ export function roleOf(classId, spec) {
   return (specs && ownValue(specs, spec)) || null;
 }
 
+// Ranged damage: all of Hunter, Mage and Warlock, and these specs. Every other damage spec is melee.
+const RANGED_CLASSES = ['HUNTER', 'MAGE', 'WARLOCK'];
+const RANGED_SPECS = { PRIEST: ['Shadow'], SHAMAN: ['Elemental'], DRUID: ['Balance'] };
+// A class signed up without a spec: only these say which group they are in; the rest are "no role yet".
+const CLASS_ONLY_GROUP = { ROGUE: 'melee', HUNTER: 'ranged', MAGE: 'ranged', WARLOCK: 'ranged' };
+
+// 'tank' | 'healer' | 'melee' | 'ranged' for a class + spec, or null when the spec is unknown and the class does not say.
+export function roleGroup(classId, spec) {
+  if (!classId) return null;
+  const role = spec ? roleOf(classId, spec) : null;
+  if (role === 'tank' || role === 'healer') return role;
+  if (role === 'dps') {
+    if (RANGED_CLASSES.includes(classId) || (ownValue(RANGED_SPECS, classId) || []).includes(spec)) return 'ranged';
+    return 'melee';
+  }
+  return ownValue(CLASS_ONLY_GROUP, classId) || null;
+}
+
+// The role group a sign-up row was signed with ('tank' | 'healer' | 'melee' | 'ranged' | null): a Raid-Helper "Tank" is a tank; otherwise the class and
+// spec the row names (a Raidsmith row names its class by class_name only).
+export function signUpRole(row) {
+  if (row.source === 'raid_helper' && row.class_name === 'Tank') return 'tank';
+  const spec = ownValue(RAID_HELPER_SPEC, row.spec_name);
+  const classId = row.source === 'raidsmith' ? (ownValue(RAID_HELPER_CLASS, row.class_name) || null) : (spec ? spec.class : (ownValue(RAID_HELPER_CLASS, row.class_name) || null));
+  return roleGroup(classId, spec ? spec.spec : null);
+}
+
 export function isSpecOf(classId, spec) {
   const specs = ownValue(SPEC_ROLE, classId);
   return !!specs && ownValue(specs, spec) !== undefined;

@@ -1,6 +1,6 @@
 /**
  * Raidsmith guild UI - the Raids tab redesign: the shared menu helper (ui.menuHtml / ui.menu), the raid page header with its one More menu,
- * the source chips, the people table (class badge, sign-up tags, pull bar, outcome pill, change button, phone cards), the Raids list header
+ * the source chips, the Attendance board (role columns, extra lines, Needs review list, Unmatched characters), the Raids list header
  * (New raid + More) with its stacked bars, and the tone colours (contrast and lightness).
  * Run: node guild-raidsux-ui-tests.js
  *
@@ -86,10 +86,10 @@ function detail(over) {
     sources: FULL_SOURCES,
     pulls: [{ encounter: 'Illidan', kill: true, startedAt: 1 }, { encounter: 'Illidan', kill: false, startedAt: 2 }, { encounter: 'Illidan', kill: false, startedAt: 3 }, { encounter: 'Illidan', kill: false, startedAt: 4 }],
     people: [
-      prow('p_a', 'Alliesha', { class: 'PALADIN', plan: 'G1' }),
-      prow('p_d', 'Daxxter', { class: 'MAGE', signup: 'late', plan: 'G5', pulls: { present: 3, total: 4, missedFirst: true, missedLast: false } }),
-      prow('p_t', 'Terani', { class: 'MAGE', signup: 'tentative', plan: 'bench', outcome: 'bench', pulls: { present: 0, total: 4, missedFirst: false, missedLast: false } }),
-      prow('p_x', 'Aimers', { class: 'HUNTER', signup: 'absence', outcome: 'missed_notice', credit: 0, pulls: { present: 0, total: 4, missedFirst: false, missedLast: false } }),
+      prow('p_a', 'Alliesha', { class: 'PALADIN', plan: 'G1', role: 'tank' }),
+      prow('p_d', 'Daxxter', { class: 'MAGE', role: 'ranged', signup: 'late', plan: 'G5', pulls: { present: 3, total: 4, missedFirst: true, missedLast: false } }),
+      prow('p_t', 'Terani', { class: 'MAGE', role: 'ranged', signup: 'tentative', plan: 'bench', outcome: 'bench', pulls: { present: 0, total: 4, missedFirst: false, missedLast: false } }),
+      prow('p_x', 'Aimers', { class: 'HUNTER', role: 'ranged', signup: 'absence', outcome: 'missed_notice', credit: 0, pulls: { present: 0, total: 4, missedFirst: false, missedLast: false } }),
       prow('p_n', 'Bearnnaked', { signup: null, outcome: 'no_signup', credit: null, pulls: { present: 0, total: 0, missedFirst: false, missedLast: false } }),
     ],
     unmatched: [],
@@ -297,7 +297,7 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert(/<h1 class="gs-h1" id="page-title" tabindex="-1">Sat Oct 17 - Black Temple<\/h1>/.test(out));
     const line = out.slice(out.indexOf('gs-pagehead-context'), out.indexOf('</p>', out.indexOf('gs-pagehead-context')));
     assert(line.includes('1 kill, 3 wipes') && line.includes('2 attended, 1 missed') && !line.includes('bench'), line);
-    assert.equal((out.match(/class="gs-hd-chip /g) || []).length, 1, 'ONE chip in the head');
+    assert.equal((out.slice(0, out.indexOf('id="raid-people"')).match(/class="gs-hd-chip /g) || []).length, 1, 'ONE chip in the head (the board has its own chips)');
     assert(out.includes('<span class="gs-hd-chip is-grey">Reviewed</span>') || out.includes('<span class="gs-hd-chip is-green">Complete</span>'), 'the state chip sits beside the title');
     assert.equal((out.match(/data-action="menu-toggle"/g) || []).length, 1 + 3, 'the More button and the Change menus of the event, the plan and the log');
     assert(/<button type="button" class="gs-btn gs-menu-trigger has-phone-icon" id="raid-actions"[^>]*aria-haspopup="menu" aria-expanded="false"[^>]*aria-label="More"[^>]*><span class="gs-menu-text">More<\/span>/.test(out), 'one labelled More button (a dots button on a phone)');
@@ -406,82 +406,117 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assertNoRawAttrs(out);
   });
 
-  // ═══ 5. The people table ═══
-  const bodyOf = out => out.slice(out.indexOf('<tbody>'), out.indexOf('</tbody>'));
-  const rowOf = (out, name) => bodyOf(out).split('<tr>').find(r => r.includes('>' + name + '<'));
+  // ═══ 5. The Attendance board (lane 3b) ═══
+  const panelOf = out => { const k = out.indexOf('id="raid-people"'); return out.slice(k, k + out.slice(k).indexOf('</div></section>')); };
+  const colOf = (out, title) => { const p = panelOf(out); const k = p.indexOf('aria-label="' + title + '"'); return k < 0 ? '' : p.slice(k); };
+  const lineOf = (out, title) => { const p = panelOf(out); const k = p.indexOf('<span class="gs-fg-ght">' + title + '</span>'); return k < 0 ? '' : p.slice(k, p.indexOf('</ul>', k)); };
+  const rowOf = (out, name) => panelOf(out).split('<li class="gs-rb-row').find(r => r.includes('>' + name + '<')) || '';
+  const withSignups = (me) => ({ status: 'ok', data: { entries: [], can: { edit: false, seeList: true }, raid: {}, me: me ? { personId: me } : null } });
+  const board = (over, opts) => raidPage(detail(over), Object.assign({ filter: 'all' }, opts || {}));
 
-  await check('people table: fixed-width columns, class badge + class colour + spec under the name, sign-up tag, plan, pull bar, outcome pill, Change button', () => {
-    const out = raidPage(detail(), { filter: 'all' });
-    const head = out.slice(out.indexOf('<thead>'), out.indexOf('</thead>'));
-    for (const c of ['gs-col-player', 'gs-col-signup', 'gs-col-plan', 'gs-col-pulls', 'gs-col-act']) assert(head.includes(c), c);
-    assert(['Player', 'Sign-up', 'Plan', 'Boss pulls', 'Outcome'].every(t => head.includes('>' + t + '<')) && head.includes('<span class="gs-sr">Change</span>'));
+  await check('attendance board: the Attendance panel keeps id raid-people; head has the title, "N attended", the muted bosses line and the Needs review / Everyone switch', () => {
+    const out = board();
+    assert(out.includes('<section class="gs-hd-panel gs-rb gs-rba" id="raid-people"') && out.includes('>Attendance</h2>'));
+    assert(!out.includes('Log and attendance') && !out.includes('Open review queue'));
+    assert(out.includes('<span class="gs-rb-fig">2 <span class="gs-rb-of">attended</span></span>'));
+    assert(out.includes('<span class="gs-rb-mut">') && /aria-pressed="false">Needs review <span class="gs-seg-count">0</.test(out) && /aria-pressed="true">Everyone <span class="gs-seg-count">5</.test(out));
+    assert(!out.includes('gs-table-raidpeople') && !out.includes('gs-pcard') && !out.includes('gs-pullbar') && !out.includes('gs-classbadge'), 'the old table, cards, pull bars and class badges are gone');
+  });
+
+  await check('attendance board: four role columns with gold heads and counts, A-Z rows with spec icon, name and muted spec; grey chips only for non-default outcomes', () => {
+    const out = board();
+    for (const t of ['Tanks', 'Healers', 'Melee', 'Ranged']) assert(panelOf(out).includes('<span class="gs-fg-ght">' + t + '</span>'), t);
+    assert(colOf(out, 'Tanks').includes('<span class="gs-fg-ghn">1</span>') && colOf(out, 'Ranged').includes('<span class="gs-fg-ghn">2</span>') && colOf(out, 'Healers').includes('<span class="gs-fg-ghn">0</span>'));
+    const ranged = colOf(out, 'Ranged');
+    assert(ranged.indexOf('>Daxxter<') < ranged.indexOf('>Terani<'), 'A-Z');
     const alli = rowOf(out, 'Alliesha');
-    assert(alli.includes('<span class="gs-classbadge gs-class-paladin" aria-hidden="true">PL</span>') && alli.includes('class="gs-char-link gs-class-paladin"'));
-    assert(alli.includes('<span class="gs-char-sub">Paladin &middot; Protection</span>'), 'Raid-Helper\'s Protection1 loses its digit: ' + alli.slice(0, 500));
-    assert(alli.includes('class="gs-tag gs-tag-signed">Signed up<') && alli.includes('<span class="gs-char-sub">Alli</span>'));
-    assert(alli.includes('<span class="gs-plan">G1</span>'));
-    assert(alli.includes('class="gs-pullbar"') && alli.includes('4/4'));
-    assert(alli.includes('<span class="gs-opill gs-opill-present"><span class="gs-cell gs-out-present" aria-hidden="true">A</span><span>Attended</span></span>'));
-    assert(alli.includes('class="gs-iconbtn"') && alli.includes('aria-label="Change outcome for Alliesha"') && alli.includes('data-action="decide-open"') && alli.includes('data-key="decide-p_a"'));
-    // The meta class of a Late row is not a class: the spec line falls back to the class alone.
-    assert(rowOf(out, 'Daxxter').includes('<span class="gs-char-sub">Mage</span>'));
+    assert(alli.includes('class="gs-spec-icon"') && alli.includes('<span class="gs-rb-sp">Protection</span>') && !alli.includes('gs-rb-chips'), 'a plain Attended row has no chip: ' + alli);
+    assert(rowOf(out, 'Terani').includes('<span class="gs-hd-chip is-grey">Bench</span>'));
+    const outs = detail({ people: ['late', 'left_early', 'late_left', 'fill_in'].map((o, i) => prow('p' + i, 'N' + i, { outcome: o, role: 'melee' })) });
+    const lo = raidPage(outs, { filter: 'all' });
+    assert(rowOf(lo, 'N0').includes('>Late<') && rowOf(lo, 'N1').includes('>Left early<') && rowOf(lo, 'N2').includes('>Late + left<') && !rowOf(lo, 'N3').includes('gs-hd-chip'), 'chips: Late, Left early, Late + left; Other team none');
+    assert(colOf(lo, 'Melee').includes('<span class="gs-fg-ghn">4</span>'));
     assertNoRawAttrs(out);
   });
 
-  await check('people table: the sign-up kinds get Signed green, Late amber, Tentative muted, Absence red and a grey No sign-up; the plan reads G5 / Bench / -', () => {
-    const out = raidPage(detail(), { filter: 'all' });
-    assert(rowOf(out, 'Alliesha').includes('gs-tag-signed'));
-    assert(rowOf(out, 'Daxxter').includes('class="gs-tag gs-tag-late">Late<') && rowOf(out, 'Daxxter').includes('<span class="gs-plan">G5</span>'));
-    assert(rowOf(out, 'Terani').includes('class="gs-tag gs-tag-tentative">Tentative<') && rowOf(out, 'Terani').includes('<span class="gs-plan is-bench">Bench</span>'));
-    assert(rowOf(out, 'Aimers').includes('class="gs-tag gs-tag-absence">Can&#39;t come<') && rowOf(out, 'Aimers').includes('<span class="gs-muted">-</span>'));
-    assert(rowOf(out, 'Bearnnaked').includes('class="gs-tag gs-tag-none">No sign-up<'));
-    const kinds = detail({ people: ['standby', 'bench', 'strange'].map((k, i) => prow('p' + i, 'N' + i, { signup: k })) });
-    const k = raidPage(kinds, { filter: 'all' });
-    assert(['N0', 'N1', 'N2'].every(n => rowOf(k, n).includes('gs-tag-tentative')), 'Standby, Bench and anything unknown are muted');
+  await check('attendance board: Missed, Not counted, No role and any other outcome get a line with an inline gold head; every person appears exactly once', () => {
+    const people = [
+      prow('p1', 'Aa', { role: 'tank' }), prow('p2', 'Bb', { role: null }), prow('p3', 'Cc', { role: 'ranged', outcome: 'missed', credit: 0 }), prow('p4', 'Dd', { role: 'melee', outcome: 'missed_notice', credit: 0 }),
+      prow('p5', 'Ee', { role: 'healer', outcome: 'no_signup', signup: null }), prow('p6', 'Ff', { role: 'healer', outcome: 'tentative' }), prow('p7', 'Gg', { role: 'melee', outcome: 'odd_new' }),
+    ];
+    const out = raidPage(detail({ people: people }), { filter: 'all' });
+    assert(lineOf(out, 'No role').includes('>Bb<') && lineOf(out, 'No role').includes('<span class="gs-fg-ghn">1</span>'));
+    const missed = lineOf(out, 'Missed');
+    assert(missed.includes('<span class="gs-fg-ghn">2</span>') && missed.includes('>Cc<') && missed.includes('>Dd<') && missed.includes('<span class="gs-rb-mut">(with notice)</span>') && (missed.match(/with notice/g) || []).length === 1);
+    assert(lineOf(out, 'Not counted').includes('>Ee<') && lineOf(out, 'Tentative').includes('>Ff<') && lineOf(out, 'odd_new').includes('>Gg<'), 'other outcomes keep a line with today\'s label');
+    for (const n of ['Aa', 'Bb', 'Cc', 'Dd', 'Ee', 'Ff', 'Gg']) assert.equal((panelOf(out).match(new RegExp('>' + n + '<', 'g')) || []).length, 1, n + ' once');
+    assert(!out.includes('Missed with notice'), 'the notice is a per-name note');
   });
 
-  await check('people table: the pull bar fills present of total (scaled to 12 cells on a long night, never empty or full by rounding), with the missed first / last chips', () => {
-    const out = raidPage(detail(), { filter: 'all' });
-    const bar = r => ({ cells: (r.match(/<span( class="is-on")?><\/span>/g) || []).length, on: (r.match(/class="is-on"/g) || []).length });
-    assert.deepEqual(bar(rowOf(out, 'Alliesha')), { cells: 4, on: 4 });
-    assert.deepEqual(bar(rowOf(out, 'Daxxter')), { cells: 4, on: 3 });
-    assert(rowOf(out, 'Daxxter').includes('3/4') && rowOf(out, 'Daxxter').includes('missed first'));
-    assert.deepEqual(bar(rowOf(out, 'Terani')), { cells: 4, on: 0 });
-    assert(rowOf(out, 'Bearnnaked').includes('<span class="gs-muted">-</span>') && !rowOf(out, 'Bearnnaked').includes('gs-pullbar'), 'no pulls, no bar');
-    const long = raidPage(detail({ people: [prow('p1', 'Long1', { pulls: { present: 16, total: 17, missedFirst: false, missedLast: false } }), prow('p2', 'Long2', { pulls: { present: 1, total: 40, missedFirst: false, missedLast: false } }), prow('p3', 'Long3', { pulls: { present: 17, total: 17, missedFirst: false, missedLast: false } })] }), { filter: 'all' });
-    assert.deepEqual(bar(rowOf(long, 'Long1')), { cells: 12, on: 11 }, '16 of 17 is not a full bar');
-    assert.deepEqual(bar(rowOf(long, 'Long2')), { cells: 12, on: 1 }, '1 of 40 is not an empty bar');
-    assert.deepEqual(bar(rowOf(long, 'Long3')), { cells: 12, on: 12 });
+  await check('attendance board: the later-joiner note stays, and Everyone leaves the later joiner out', () => {
+    const people = [prow('p1', 'Aa', { role: 'tank' }), prow('p2', 'Latecomer', { role: 'melee', joinedAfter: true, signup: null, pulls: { present: 0, total: 4, missedFirst: false, missedLast: false } })];
+    const out = raidPage(detail({ people: people }), { filter: 'all' });
+    assert(out.includes('id="raid-later-note"') && out.includes('1 person who joined the guild after this raid is not listed.') && !panelOf(out).includes('>Latecomer<'));
   });
 
-  await check('people table: outcomes are pills with their letter (Missed with notice N, No sign-up -); Decide stays in words on a flagged row; members see no change button', () => {
-    const out = raidPage(detail({ people: [prow('p1', 'Flagged', { outcome: 'late', credit: null, pending: true, needsReview: true, flags: ['late'] }), prow('p2', 'Notice', { outcome: 'missed_notice', credit: 0 }), prow('p3', 'Nobody', { outcome: 'no_signup', credit: null })] }), { filter: 'all' });
-    assert(rowOf(out, 'Flagged').includes('gs-out-late is-pending" aria-hidden="true">L?<') && rowOf(out, 'Flagged').includes('Late (awaiting review)') && rowOf(out, 'Flagged').includes('>Decide<') && !rowOf(out, 'Flagged').includes('gs-iconbtn'));
-    assert(rowOf(out, 'Notice').includes('>N</span><span>Missed with notice</span>'));
-    assert(rowOf(out, 'Nobody').includes('gs-opill-no_signup') && rowOf(out, 'Nobody').includes('>No sign-up</span></span>'));
-    const noReview = raidPage(detail({ can: { edit: true, review: false, seeAttendance: true, seeNicknames: false } }), { filter: 'all' });
-    assert(!noReview.includes('decide-open'));
-    const plainNames = raidPage(detail({ can: { edit: true, review: false, seeAttendance: false, seeNicknames: false } }), { filter: 'all' });
-    assert(!plainNames.includes('gs-char-link') && plainNames.includes('<span class="gs-char-name gs-class-paladin">Alliesha</span>'));
+  await check('attendance board: names are buttons for a reviewer (Decide on a flagged row, Change outcome on the others), links for attendance.view, plain otherwise; a flagged row has a rose chip', () => {
+    const people = [prow('p1', 'Aa', { role: 'tank' }), prow('p2', 'Flagged', { role: 'melee', outcome: 'late', credit: null, pending: true, needsReview: true, flags: ['late'] })];
+    const out = raidPage(detail({ people: people }), { filter: 'all' });
+    const a = rowOf(out, 'Aa'), f = rowOf(out, 'Flagged');
+    assert(a.includes('<button type="button" class="gs-rb-id gs-rb-btn" data-action="decide-open"') && a.includes('data-pid="p1"') && a.includes('data-where="raid"') && a.includes('aria-label="Change outcome for Aa"'));
+    assert(f.includes('aria-label="Decide for Flagged"') && f.includes('<span class="gs-hd-chip is-rose">Needs review</span>') && f.includes('>Late<'));
+    const viewer = raidPage(detail({ people: people, can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), { filter: 'all' });
+    assert(!viewer.includes('decide-open') && rowOf(viewer, 'Aa').includes('class="gs-char-link gs-class-druid" href="#/g/g1/') && rowOf(viewer, 'Aa').includes('<span class="gs-rb-id">'));
+    const plain = raidPage(detail({ people: people, can: { edit: false, review: false, seeAttendance: false, seeNicknames: false } }), { filter: 'all' });
+    assert(!plain.includes('gs-char-link') && !plain.includes('decide-open') && rowOf(plain, 'Aa').includes('<span class="gs-char-name gs-class-druid">Aa</span>'));
   });
 
-  await check('people table: the phone gets stacked cards (name, spec, change button; tags and pull bar; outcome pill) from the same pieces; the table hides at 600px', () => {
-    const out = raidPage(detail(), { filter: 'all' });
-    const cards = out.slice(out.indexOf('<ul class="gs-roster-cards gs-raid-cards"'));
-    const card = cards.split('<li class="gs-roster-card gs-pcard">').find(c => c.includes('>Daxxter<'));
-    assert(card.includes('class="gs-pcard-top"') && card.includes('gs-classbadge') && card.includes('Change outcome for Daxxter'));
-    assert(card.includes('gs-tag-late') && card.includes('<span class="gs-fine">Plan</span><span class="gs-plan">G5</span>') && card.includes('3/4') && card.includes('gs-opill-present'));
-    assert.equal((cards.match(/<li class="gs-roster-card gs-pcard">/g) || []).length, 5);
-    assert(/@media \(max-width: 600px\) \{[^}]*\n  \.gs-raids-table, \.gs-raid-people/.test(css) || /\.gs-raids-table, \.gs-raid-people, \.gs-pa-table, \.gs-att-table \{ display: none; \}/.test(css));
-    assert(/\.gs-roster-cards, \.gs-char-cards \{ display: flex;/.test(css), 'cards show on the phone');
+  await check('attendance board: the viewer\'s row is tinted and tagged You in its A-Z place', () => {
+    const out = raidPage(detail(), { filter: 'all', signups: withSignups('p_d') });
+    assert(panelOf(out).includes('<li class="gs-rb-row is-you" data-pid="p_d">'));
+    assert(rowOf(out, 'Daxxter').includes('<span class="gs-you">You</span>') && !rowOf(out, 'Alliesha').includes('gs-you'));
+    assert(!board().includes('gs-you'), 'no viewer, no tag');
   });
 
-  await check('people table: the toolbar keeps Needs review / Everyone and shows the coloured totals; hostile names, specs and nicknames are escaped', () => {
-    const out = raidPage(detail(), { filter: 'all' });
-    assert(/aria-pressed="false">Needs review <span class="gs-seg-count">0</.test(out) && /aria-pressed="true">Everyone <span class="gs-seg-count">5</.test(out));
-    assert(/<p class="gs-tally"><span class="gs-tally-present"><b>2<\/b> attended<\/span><span class="gs-tally-bench"><b>1<\/b> bench<\/span><span class="gs-tally-missed"><b>1<\/b> missed<\/span><\/p>/.test(out));
-    const bad = detail({ people: [prow('p_x', HOSTILE + QUOTES, { class: HOSTILE, signup: HOSTILE, plan: HOSTILE, outcome: HOSTILE, flags: [HOSTILE] })], signups: [{ source: 'raid_helper', kind: 'signed', className: HOSTILE, specName: HOSTILE, playerId: 'p_x', nickname: HOSTILE + QUOTES }] });
+  await check('attendance board: Needs review shows a short list (icon, name button, grey provisional outcome, evidence, Decide) instead of the columns; empty keeps its text', () => {
+    const people = [prow('p1', 'Aa', { role: 'tank' }), prow('p2', 'Flagged', { role: 'melee', outcome: 'late', credit: null, pending: true, needsReview: true, flags: ['late'], signup: 'signed', pulls: { present: 3, total: 12, missedFirst: true, missedLast: false } }),
+      prow('p3', 'Gone', { role: 'ranged', outcome: 'missed', credit: null, pending: true, needsReview: true, flags: ['no_show'], pulls: { present: 0, total: 0, missedFirst: false, missedLast: false } })];
+    const out = raidPage(detail({ people: people }), {});
+    assert(/aria-pressed="true">Needs review <span class="gs-seg-count">2</.test(out), 'default view while anything is flagged');
+    const p = panelOf(out);
+    assert(!p.includes('gs-rb-cols') && !p.includes('>Aa<'));
+    const f = rowOf(out, 'Flagged');
+    assert(f.includes('<span class="gs-hd-chip is-grey">Late</span>') && f.includes('In 3 of 12 pulls, missed the first pull') && f.includes('data-key="decide-btn-p2"') && f.includes('>Decide</button>'));
+    assert(rowOf(out, 'Gone').includes('Signed up, not in the log') && rowOf(out, 'Gone').includes('>Missed<'));
+    const empty = raidPage(detail(), { filter: 'review' });
+    assert(panelOf(empty).includes('Nothing needs review on this raid.'));
+    const noReview = raidPage(detail({ people: people, can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), {});
+    assert(!noReview.includes('>Decide</button>'));
+  });
+
+  await check('attendance board: no access and no people keep today\'s texts', () => {
+    assert(raidPage(detail({ people: null }), {}).includes("Attendance for this raid is visible to the team's members."));
+    assert(raidPage(detail({ people: [] }), {}).includes('No one is on this raid yet.'));
+  });
+
+  await check('unmatched characters: a panel under the board with class-coloured name, evidence and the three actions; viewers see it without the buttons', () => {
+    const unm = [{ key: 'k1', name: 'Zorgax', class: 'PRIEST', realm: null, pullsPresent: 4 }];
+    const out = raidPage(detail({ unmatched: unm }), { filter: 'all' });
+    const k = out.indexOf('id="unm-h"');
+    assert(k > out.indexOf('id="raid-people"') && out.includes('>Unmatched characters</h2>'));
+    const u = out.slice(k, out.indexOf('</section>', k));
+    assert(u.includes('gs-class-priest">Zorgax') && u.includes('Priest, in 4 pulls, no linked person'));
+    for (const act of ['unm-link', 'unm-person', 'unm-guest']) assert(u.includes('data-action="' + act + '"'), act);
+    assert(u.includes('Link to person...') && u.includes('Add as new person...') && u.includes('Mark as guest'));
+    const viewer = raidPage(detail({ unmatched: unm, can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), {});
+    assert(viewer.includes('Zorgax') && !viewer.includes('unm-link'));
+    assert(!raidPage(detail(), {}).includes('Unmatched characters'));
+  });
+
+  await check('attendance board: hostile names, specs, classes and outcomes are escaped', () => {
+    const bad = detail({ people: [prow('p_x', HOSTILE + QUOTES, { role: 'melee', class: HOSTILE, signup: HOSTILE, plan: HOSTILE, outcome: HOSTILE, flags: [HOSTILE] })], signups: [{ source: 'raid_helper', kind: 'signed', className: HOSTILE, specName: HOSTILE, playerId: 'p_x', nickname: HOSTILE + QUOTES }], unmatched: [{ key: 'k', name: HOSTILE + QUOTES, class: HOSTILE, realm: HOSTILE, pullsPresent: 1 }] });
     assertEscaped(raidPage(bad, { filter: 'all' }), 'people');
+    assertEscaped(raidPage(bad, { filter: 'review' }), 'review list');
     assertEscaped(raidPage(detail({ sources: { event: { id: '1', title: HOSTILE + QUOTES, syncedAt: 1, signups: 1, otherServer: true }, reports: [{ code: HOSTILE, pulls: 1 }], plan: { label: QUOTES, players: 2 } } }), {}), 'source chips');
   });
 

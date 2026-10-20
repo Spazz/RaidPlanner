@@ -146,7 +146,7 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const after = page(past(), { signups: sState(view({ me })), loot: lState([]) });
     for (const out of [before, after]) assert(!out.includes('gs-stage') && !out.includes('Raid stages'), 'no stage strip');
     for (const t of ['s-signups', 's-plan', 's-publish', 'su-me']) assert(before.includes(' id="' + t + '"'), t + ' is on the page before the raid');
-    for (const t of ['s-log', 's-loot', 's-plan', 's-publish', 'raid-people']) assert(after.includes(' id="' + t + '"'), t + ' is on the page after the raid');
+    for (const t of ['s-loot', 's-plan', 's-publish', 'raid-people']) assert(after.includes(' id="' + t + '"'), t + ' is on the page after the raid');
     assert(after.includes('id="s-signups"'), 'the sign-ups record keeps its address after the raid');
   });
 
@@ -251,12 +251,12 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
   await check('post-raid mode: the log and the people lead the main column, the sign-ups record sits behind Show sign-ups, the facts and the Loot awards card are the side column; Add a sign-up, Close sign-ups and the status buttons are gone', () => {
     const data = past({ sources: { event: { id: 'e1', title: 'BT', signups: 26, syncedAt: 1, otherServer: false }, reports: [{ code: 'WaghkY9zwDyvLX7m', flavour: 'fresh', startedAt: 1, pulls: 4 }], plan: { label: 'BT run', players: 19 } } });
     const out = page(data, { signups: sState(view({ raid: { id: 'r4', teamId: 't1', startsAt: 1, upcoming: false, locked: false, closed: 'started' }, me: meOf() })), loot: lState([]), roster: rState({ published: true, counts: { confirmed: 17, pending: 2, declined: 0 }, publishedAt: 1760000000000 }) });
-    assert.deepEqual(idsOf(out), ['raid-cols', 's-log', 's-loot']);
+    assert.deepEqual(idsOf(out), ['raid-cols', 's-loot']);
     assert(!out.includes('data-action="su-add"') && !out.includes('data-action="su-lock"') && !out.includes('data-action="su-kind"'), 'no Add a sign-up, Close sign-ups or status buttons');
     assert(!out.includes('Opens when the raid starts') && !out.includes('View line-up') && !out.includes('gs-srow-more"><summary>View'), 'nothing is locked, no summary rows');
     assert(out.includes('<details class="gs-srow-more gs-rpg-record" id="s-signups" tabindex="-1"><summary>Show sign-ups</summary>'), 'the sign-ups record opens on demand');
     assert(out.includes('id="s-publish"') && out.includes('Published, 17 of 19 confirmed'), stripTags(out).slice(0, 600));
-    assert(out.indexOf('id="s-log"') < out.indexOf('id="s-signups"') && out.indexOf('id="s-signups"') < out.indexOf('id="raid-facts"') && out.indexOf('id="raid-facts"') < out.indexOf('id="s-loot"'), 'main: log, sign-ups record; side: facts, then the loot awards');
+    assert(out.indexOf('id="raid-people"') < out.indexOf('id="s-signups"') && out.indexOf('id="s-signups"') < out.indexOf('id="raid-facts"') && out.indexOf('id="raid-facts"') < out.indexOf('id="s-loot"'), 'main: log, sign-ups record; side: facts, then the loot awards');
     const stage = page(past({ sources: { event: null, reports: [], plan: null }, people: [] }), {});
     assert(stage.includes('Awaiting log.') && stage.includes('id="raid-people"'));
     const lootLocked = page(past({ sources: { event: null, reports: [], plan: null }, people: [] }), {});

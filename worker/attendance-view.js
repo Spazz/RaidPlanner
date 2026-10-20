@@ -5,6 +5,7 @@ import { allows } from './permissions.js';
 import { findUnmatched, makePolicyResolver, presenceKey } from './attendance-store.js';
 import { DUTIES_SQL, dutiesView } from './duties.js';
 import { raidSizeFields } from './raid-zones.js';
+import { roleGroup, signUpRole } from './roster-data.js';
 import { SLOT_TIME_SQL, closeHoursOf, closesAtOf, windowFieldsOf } from './signup-window.js';
 
 export const OUTCOME_PRESENT = ['present', 'late', 'left_early', 'late_left', 'fill_in'];
@@ -61,7 +62,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     bind("SELECT source, signup_id, CASE WHEN kind = 'signed' AND standby = 1 THEN 'standby' ELSE kind END AS kind, class_name, spec_name, position, player_id, nickname FROM raid_signups WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY position, source, signup_id"),
     bind('SELECT name, name_key, group_number FROM raid_plan WHERE raid_id = ?2 ORDER BY rowid'),
     bind('SELECT * FROM attendance WHERE raid_id = ?2 AND guild_id = ?1'),
-    bind(`SELECT c.player_id, c.name, c.name_key, c.realm_key, c.class, c.team_id, c.is_main FROM characters c
+    bind(`SELECT c.player_id, c.name, c.name_key, c.realm_key, c.class, c.main_spec, c.team_id, c.is_main FROM characters c
            WHERE c.guild_id = ?1 AND (c.player_id IN (SELECT player_id FROM attendance WHERE raid_id = ?2)
               OR c.name_key IN (SELECT name_key FROM raid_presence WHERE raid_id = ?2)
               OR c.name_key IN (SELECT name_key FROM raid_manual_names WHERE raid_id = ?2)
@@ -108,6 +109,23 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     }
   }
 
+  // The role of a person on this raid: the role of their sign-up, else their main character's spec, else the class alone, else null (a "No role" line).
+  const signupRoleByPlayer = new Map();
+  for (const row of [...signupResult.results].sort((x, y) => Number(y.source === 'raidsmith') - Number(x.source === 'raidsmith'))) {
+    if (row.player_id && !signupRoleByPlayer.has(row.player_id)) {
+      const role = signUpRole(row);
+      if (role) signupRoleByPlayer.set(row.player_id, role);
+    }
+  }
+  const roleOfPerson = (playerId, character) => {
+    const main = (charactersByPlayer.get(playerId) || []).find((c) => c.is_main === 1);
+    return signupRoleByPlayer.get(playerId)
+      || (main && main.main_spec ? roleGroup(main.class, main.main_spec) : null)
+      || (character && character.class ? roleGroup(character.class, null) : null)
+      || (main ? roleGroup(main.class, null) : null)
+      || null;
+  };
+
   const joinedLater = new Set(laterResult.results.map((row) => row.id));
   let people = null;
   if (seeAttendance) {
@@ -122,6 +140,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
         playerId: row.player_id,
         name: character ? character.name : 'Unknown',
         class: character ? character.class : null,
+        role: roleOfPerson(row.player_id, character),
         signup: row.signup_kind,
         plan: planByPlayer.get(row.player_id) || null,
         pulls: { present: row.pulls_present, total: row.pulls_total, missedFirst: row.missed_first === 1, missedLast: row.missed_last === 1 },

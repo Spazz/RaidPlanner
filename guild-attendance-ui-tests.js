@@ -506,15 +506,16 @@ function teamData(over) {
     assert(out.includes('Warcraft Logs - 2 reports, 17 pulls') && out.includes('WaghkY9zwDyvLX7m') && out.includes('data-op="report-refresh"') && out.includes('data-code="h8VAwCFa79Jk1cvf"') && out.includes('data-op="report-add"'));
     assert(out.includes('BT run, 25 players') && out.includes('data-op="plan-replace"') && out.includes('data-op="plan-remove"'));
     assert(/aria-pressed="true">Needs review/.test(out), 'defaults to Needs review when flags exist');
-    const body = out.slice(out.indexOf('<tbody>'), out.indexOf('</tbody>'));
-    const names = [...body.matchAll(/gs-char-link[^>]*>([^<]*)</g)].map(m => m[1]);
+    const body = out.slice(out.indexOf('id="raid-people"'), out.indexOf('id="unm-h"'));
+    const names = [...body.matchAll(/gs-char-name[^>]*>([^<]*)</g)].map(m => m[1]);
     assert.deepEqual(names, ['Kanyan'], 'only rows with needsReview (a decided row keeps its flags but is closed)');
-    assert(body.includes('>Decide<') && body.includes('missed first') && body.includes('8/17') && body.includes('Kany') && body.includes('Pending'));
+    assert(body.includes('>Decide</button>') && body.includes('missed the first pull') && body.includes('In 8 of 17 pulls'));
     assert(out.includes('Unmatched characters') && out.includes('data-action="unm-link"') && out.includes('data-action="unm-guest"'));
     const all = raidPage(detail(), { filter: 'all' });
-    assert.deepEqual([...all.slice(all.indexOf('<tbody>')).matchAll(/gs-char-link[^>]*>([^<]*)</g)].map(m => m[1]).slice(0, 4), ['Kanyan', 'Alpha', 'Bravo', 'Terani']);
-    assert(all.includes('>Change<') && all.includes('Decided: Told the raid lead (Officer)'));
-    assert.equal((body.match(/>Decide</g) || []).length, 1);
+    const allNames = [...all.slice(all.indexOf('id="raid-people"'), all.indexOf('id="unm-h"')).matchAll(/gs-char-name[^>]*>([^<]*)</g)].map(m => m[1]);
+    assert(['Kanyan', 'Alpha', 'Bravo', 'Terani'].every(n => allNames.includes(n)), 'Everyone lists them all: ' + allNames);
+    assert(all.includes('aria-label="Decide for Kanyan"') && all.includes('aria-label="Change outcome for Alpha"'));
+    assert.equal((body.match(/>Decide<\/button>/g) || []).length, 1);
     assert(/Needs review <span class="gs-seg-count">1</.test(out), 'the Worker sends needsReview; decided rows are not counted');
     assertNoRawAttrs(out);
   });
@@ -525,7 +526,7 @@ function teamData(over) {
     assert(out.includes('Attendance for this raid is visible to the team\'s members.') && !out.includes('<table'));
     assert(!out.includes('data-op=') && !out.includes('Delete raid'));
     const noDecide = raidPage(detail({ can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), { guildData: gd(MEMBER_CAN) });
-    assert(!noDecide.includes('>Decide<') && !noDecide.includes('data-op='));
+    assert(!noDecide.includes('>Decide<') && !noDecide.includes('>Decide</button>') && !noDecide.includes('data-op='));
   });
 
   await check('raid detail: awaiting log, manual state line with Edit / Remove, stale banner, No log action, escaping', () => {
@@ -970,9 +971,8 @@ function teamData(over) {
     const closed = prow('p_c', 'Closed', { outcome: 'late', credit: 0.5, pending: false, needsReview: false, flags: ['late'], decision: { reason: 'ok', by: 'Officer', at: 1, applied: true } });
     const noCredit = prow('p_n', 'Unpaid', { outcome: 'missed', credit: 0, pending: false, needsReview: true, flags: ['no_show'] });
     const out = raidPage(detail({ people: [open, closed, noCredit] }), { filter: 'all' });
-    const row = n => out.slice(out.indexOf('<tbody>')).split('<tr>').find(r => r.includes('>' + n + '<')).split('</tr>')[0];
-    assert(row('Opened').includes('>Decide<') && row('Unpaid').includes('>Decide<') && row('Closed').includes('aria-label="Change outcome for Closed"') && !row('Closed').includes('>Decide<'));
-    assert(!row('Opened').includes('Change outcome for') && /Needs review <span class="gs-seg-count">2</.test(out) && out.includes('class="gs-tally"'));
+    assert(out.includes('aria-label="Decide for Opened"') && out.includes('aria-label="Decide for Unpaid"') && out.includes('aria-label="Change outcome for Closed"') && !out.includes('aria-label="Decide for Closed"'));
+    assert(!out.includes('Change outcome for Opened') && /Needs review <span class="gs-seg-count">2</.test(out));
   });
 
   await check('fix: paging uses hasMore from the reply, not the length of the page', async () => {
@@ -1400,18 +1400,15 @@ function teamData(over) {
     assert(shown.includes('Entered by hand by Officer on ') && shown.includes('Reason: Nobody uploaded'));
   });
 
-  await check('R3-4: "Decided" shows only for an applied decision; a stale one shows a muted hint to reviewers and nothing to others', () => {
+  await check('R3-4: the board shows no Decided note (the Decide dialog keeps the decision and its Undo)', () => {
     const rows = (decision) => [prow('p_a', 'Alpha', { outcome: 'missed', credit: 0, flags: ['no_show'], decision })];
     const applied = raidPage(detail({ people: rows({ reason: 'Told the raid lead', by: 'Officer', at: 1, applied: true }) }), { filter: 'all' });
-    assert(applied.includes('Decided: Told the raid lead (Officer)') && !applied.includes('no longer applies'));
-    const old = { reason: 'Told the raid lead', by: 'Officer', at: 1, applied: false };
-    const reviewer = raidPage(detail({ people: rows(old) }), { filter: 'all' });
-    assert(!reviewer.includes('Decided') && !reviewer.includes('Told the raid lead') && reviewer.includes('An earlier decision no longer applies'));
+    assert(!applied.includes('Told the raid lead') && applied.includes('aria-label="Change outcome for Alpha"'));
+    const dlg = G.pages.review.decideDialogHtml({ raid: detail().raid, row: rows({ reason: 'Told the raid lead', by: 'Officer', at: 1, applied: true })[0], where: 'raid' });
+    assert(dlg.includes('Decided: Told the raid lead (Officer)') && dlg.includes('gs-dialog-form gs-forge'));
     const noReview = { edit: false, review: false, seeAttendance: true, seeNicknames: false };
-    const member = raidPage(detail({ people: rows({ at: 1, applied: false }), can: noReview }), { guildData: gd(MEMBER_CAN), filter: 'all' });
-    assert(!member.includes('Decided') && !member.includes('no longer applies'));
-    const memberApplied = raidPage(detail({ people: rows({ at: 1, applied: true }), can: noReview }), { guildData: gd(MEMBER_CAN), filter: 'all' });
-    assert(memberApplied.includes('Decided') && !memberApplied.includes('Officer'));
+    const member = raidPage(detail({ people: rows({ at: 1, applied: true }), can: noReview }), { guildData: gd(MEMBER_CAN), filter: 'all' });
+    assert(!member.includes('Decided') && !member.includes('Officer') && !member.includes('decide-open'));
   });
 
   await check('fix: backfill sends expectedVersion from the roster list row version', () => {

@@ -87,7 +87,7 @@
         '<div class="gs-field"><label class="gs-label" for="undo-reason">Reason (required)</label><input class="gs-input" type="text" id="undo-reason" name="reason" maxlength="' + REASON_MAX + '" autocomplete="off">' +
         '<p class="gs-field-error" id="undo-err" role="alert" hidden></p></div>' +
         '<div class="gs-dialog-actions"><button type="submit" class="gs-btn">Undo decision</button></div></form>' : '';
-    return '<form class="gs-dialog-form" data-submit="decide-form" data-rid="' + esc(opts.raid.id) + '" data-pid="' + esc(row.playerId) + '" data-where="' + esc(opts.where) + '" data-flags="' + esc(JSON.stringify(row.flags || [])) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge" data-submit="decide-form" data-rid="' + esc(opts.raid.id) + '" data-pid="' + esc(row.playerId) + '" data-where="' + esc(opts.where) + '" data-flags="' + esc(JSON.stringify(row.flags || [])) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Decide: ' + esc(row.name) + '</h2>' +
       '<p class="gs-fine" id="dlg-help">' + esc(raidLabel) + '. ' + esc(evidenceText(row)) + '</p>' +
       '<div class="gs-field"><label class="gs-label" for="dlg-outcome">Outcome</label><select class="gs-input" id="dlg-outcome" name="outcome" data-change="decide-outcome">' +
@@ -130,7 +130,7 @@
       return '<li class="gs-pick-item" data-name="' + esc(String(name).toLowerCase()) + '"><div class="gs-check"><input type="radio" name="personId" id="pick-' + esc(p.id) + '" value="' + esc(p.id) + '" data-person-name="' + esc(name) + '"><label for="pick-' + esc(p.id) + '">' +
         G.ui.classNameHtml(name, main.class || shown.class) + ' <span class="gs-fine">' + esc(G.ui.statusLabel(p.status)) + (main.class ? ' &middot; ' + esc(G.ui.className(main.class)) : '') + '</span></label></div></li>';
     }).join('');
-    return '<form class="gs-dialog-form" data-submit="unm-link-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge" data-submit="unm-link-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Link ' + esc(u.name) + ' to a person</h2>' +
       '<p class="gs-fine" id="dlg-help">' + esc(unmatchedEvidence(u)) + '. Pick the person this character belongs to; it is added to their record as an Alt, or as their Main.</p>' +
       classFieldHtml(u, opts.guildData) +
@@ -146,7 +146,7 @@
   function personDialogHtml(opts) {
     const u = opts.unm;
     const statuses = ['raider', 'trial', 'reserve'].map(function (s) { return { value: s, label: G.ui.statusLabel(s) }; });
-    return '<form class="gs-dialog-form" data-submit="unm-person-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge" data-submit="unm-person-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Add ' + esc(u.name) + ' as a new person</h2>' +
       '<p class="gs-fine" id="dlg-help">' + esc(unmatchedEvidence(u)) + '. They are added to the roster with this character as their Main.</p>' +
       classFieldHtml(u, opts.guildData) +
@@ -159,7 +159,7 @@
 
   function guestDialogHtml(opts) {
     const u = opts.unm;
-    return '<form class="gs-dialog-form" data-submit="unm-guest-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge" data-submit="unm-guest-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Mark ' + esc(u.name) + ' as a guest</h2>' +
       '<p class="gs-fine" id="dlg-text">Guests are ignored in attendance and in the loot balance on every raid, now and later. ' + esc(unmatchedEvidence(u)) + '.</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +

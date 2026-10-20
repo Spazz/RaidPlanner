@@ -2809,6 +2809,22 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-rb-lbtn { min-height: 36px; padding: 0 2px; font-weight: 600; }
 .gs-rb-names .gs-you { margin-left: 6px; }
 .gs-rb-classes { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+/* -- Raid page Attendance board + Unmatched characters (raids revamp lane 3b; prefix gs-rba-, reuses gs-rb-). The board is the Line-up people board of lane 3a:
+   role columns, extra lines with gold heads, rose / grey chips; only the head's segmented switch, the Needs review rows and the Unmatched rows are new. -- */
+.gs-rba { scroll-margin-top: 16px; }
+.gs-rba:focus { outline: none; }
+.gs-rba-segs .gs-seg { min-height: 40px; }
+.gs-rb-names li.is-you { background: var(--you-bg); padding: 0 6px; }
+.gs-rb-names .gs-hd-chip { margin-left: 6px; align-self: center; }
+.gs-rba-list { gap: 4px; }
+.gs-rba-rev { flex-wrap: wrap; gap: 4px 12px; }
+.gs-rba-rev .gs-rb-id { flex: 0 1 220px; }
+.gs-rba-ev { flex: 1 1 200px; min-width: 0; font-size: 13px; }
+.gs-rba-rev .gs-btn { margin-left: auto; }
+.gs-rba-unmrow { justify-content: space-between; gap: 8px 16px; padding: 8px 6px; border-top: 1px solid var(--hd-hair); }
+.gs-rba-unmrow:first-child { border-top: 0; }
+.gs-rba-unmrow .gs-rb-id { flex: 1 1 220px; }
+.gs-rba-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .gs-dialog-form.gs-forge .gs-btn-danger { background: var(--danger); border-color: var(--danger); color: var(--text-on-accent); font-weight: 700; }
 .gs-dialog-form.gs-forge .gs-btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
 .gs-dialog-form.gs-forge .gs-btn-danger-outline { background: transparent; border-color: var(--danger); color: var(--danger-text); font-weight: 700; }
@@ -2821,4 +2837,11 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-rb-btn.gs-rb-id { min-height: 44px; justify-content: center; }
   .gs-rb-lbtn { min-height: 44px; padding: 0 4px; }
   .gs-rb-pb .gs-row-actions .gs-btn, .gs-rb-pb .gs-notice .gs-btn { min-height: 44px; }
+  .gs-rba-segs { width: 100%; }
+  .gs-rba-segs .gs-seg { flex: 1 1 0; min-height: 44px; }
+  .gs-rba-rev .gs-btn, .gs-rba-acts .gs-btn { min-height: 44px; }
+  .gs-rba-rev .gs-btn { flex: 1 1 100%; margin-left: 0; justify-content: center; }
+  .gs-rba-acts { flex: 1 1 100%; }
+  .gs-rba-acts .gs-btn { flex: 1 1 140px; justify-content: center; }
+  .gs-rb-names li.is-you { padding: 0 6px; }
 }

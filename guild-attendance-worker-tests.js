@@ -2251,6 +2251,19 @@ check('plannerName: a Main and an Alt that share the signed-up class -> the Main
   assert.equal(plannerName(row('Mage', 'Fire'), null), 'Nick', 'not on the roster: the Discord nickname');
 });
 
+check('raid detail people carry role: the sign-up role, else the main spec role, else the class alone, else null', async () => {
+  const s = await raidWorld();
+  // Aldric signed Arms (melee) but his main is Protection; Fenwick has no sign-up and a Protection main; Dunmar (Absence) a Hunter main without a spec;
+  // Eliora (Bench) a Priest main without a spec; Wanderfell no sign-up and a Priest / Holy main.
+  exec(s.w, `UPDATE characters SET class = 'WARRIOR', main_spec = 'Protection' WHERE player_id IN ('${s.p.aldric}', '${s.p.fenwick}')`);
+  exec(s.w, `UPDATE characters SET class = 'HUNTER', main_spec = NULL WHERE player_id = '${s.p.dunmar}'`);
+  exec(s.w, `UPDATE characters SET class = 'PRIEST', main_spec = NULL WHERE player_id = '${s.p.eliora}'`);
+  exec(s.w, `UPDATE characters SET class = 'PRIEST', main_spec = 'Holy' WHERE player_id = '${s.p.wander}'`);
+  const { detail } = await fullRaid(s);
+  const role = Object.fromEntries(detail.people.map((row) => [row.name, row.role]));
+  assert.deepEqual(role, { Aldric: 'melee', Brindle: 'ranged', Cassia: 'ranged', Dunmar: 'ranged', Eliora: null, Fenwick: 'tank', Wanderfell: 'healer' });
+});
+
 async function main() {
   let passed = 0;
   let failed = 0;

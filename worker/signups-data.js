@@ -2,7 +2,7 @@
 // the merge of Raidsmith and Raid-Helper rows by person, and the counts. worker/routes/signups.js reads the rows and calls these.
 import { displayCharacter } from './attendance-view.js';
 import {
-  RAID_HELPER_CLASS, RAID_HELPER_SPEC, SPEC_ROLE, nameKey, ownValue, roleOf,
+  RAID_HELPER_CLASS, RAID_HELPER_SPEC, SPEC_ROLE, nameKey, ownValue, roleGroup, signUpRole,
 } from './roster-data.js';
 
 // A member picks one of these for themselves; Bench is an officer's call. 'standby' ("happy to sit out if needed") is a Raidsmith sign-up
@@ -66,23 +66,7 @@ export function plannerName(row, characters) {
   return (named || sorted[0]).name;
 }
 
-// Ranged damage: all of Hunter, Mage and Warlock, and these specs. Every other damage spec is melee.
-const RANGED_CLASSES = ['HUNTER', 'MAGE', 'WARLOCK'];
-const RANGED_SPECS = { PRIEST: ['Shadow'], SHAMAN: ['Elemental'], DRUID: ['Balance'] };
-// A class signed up without a spec: only these say which group they are in; the rest are "no role yet".
-const CLASS_ONLY_GROUP = { ROGUE: 'melee', HUNTER: 'ranged', MAGE: 'ranged', WARLOCK: 'ranged' };
-
-// 'tank' | 'healer' | 'melee' | 'ranged' for a class + spec, or null when the spec is unknown and the class does not say.
-export function roleGroup(classId, spec) {
-  if (!classId) return null;
-  const role = spec ? roleOf(classId, spec) : null;
-  if (role === 'tank' || role === 'healer') return role;
-  if (role === 'dps') {
-    if (RANGED_CLASSES.includes(classId) || (ownValue(RANGED_SPECS, classId) || []).includes(spec)) return 'ranged';
-    return 'melee';
-  }
-  return ownValue(CLASS_ONLY_GROUP, classId) || null;
-}
+export { roleGroup };
 
 // Specs a person may sign up with on a character: its main spec and off spec first, then every other spec of the class.
 export function specChoices(character) {
@@ -121,7 +105,7 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
     else if (row.source === 'raidsmith') name = shown ? shown.name : null;
     else if (row.player_id && characters.length) name = plannerName(row, characters);
     else name = opts.seeNicknames ? row.nickname : null;
-    const group = row.source === 'raid_helper' && row.class_name === 'Tank' ? 'tank' : roleGroup(classId, spec);
+    const group = signUpRole(row);
     entries.push({
       key: row.player_id ? `p:${row.player_id}` : `x:${row.source}:${row.signup_id}`,
       personId: row.player_id || null,
