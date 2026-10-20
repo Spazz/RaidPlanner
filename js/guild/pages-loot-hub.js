@@ -136,7 +136,7 @@
     const nights = Array.isArray(me.byNight) ? me.byNight : [];
     const body = nights.length
       ? nights.map(function (n) {
-        return '<div class="gs-lt-day"><h3 class="gs-lt-dayhead"><a class="gs-fg-u" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '">' + esc(dayText(n.raid.raidOn)) + '</a> - ' + esc(plural(n.awards.length, 'item', 'items')) + '</h3>' +
+        return '<div class="gs-lt-day"><h3 class="gs-lt-dayhead"><a class="gs-lt-date" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '">' + esc(dayText(n.raid.raidOn)) + '</a><span>' + esc(plural(n.awards.length, 'item', 'items')) + '</span></h3>' +
           '<ul class="gs-loot-sublist" aria-label="My loot on ' + esc(dayText(n.raid.raidOn)) + '">' + n.awards.map(function (w) {
             return '<li class="gs-loot-subrow"><span class="gs-loot-item">' + L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span>' + L().tagTextHtml(w.tag, w.tagSetBy) + L().editedChipHtml(w) + '</li>';
           }).join('') + '</ul></div>';

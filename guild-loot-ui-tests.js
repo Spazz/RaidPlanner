@@ -276,11 +276,11 @@ function withState(fn) {
     assert(phone.includes('.gs-dtable td .gs-menu-list { left: 0; right: auto; }'), 'on a phone card the More sits at the left edge, so its menu opens rightward');
   });
 
-  await check('look: a raid night date reads like the person page (14 px, regular, sentence case), never a caps group head or bold', () => {
+  await check('look: every raid-night date on the Loot lists is the gold condensed-caps head (design spec 2.2), never <strong> or the grey group head', () => {
     const src = read('js/guild/pages-loot-hub.js') + read('js/guild/pages-loot-night.js');
     assert(!/<strong>' \+ esc\(dayText\(/.test(src) && !/gs-fg-gh"><a/.test(src), 'no date in <strong> or in a caps group head');
-    assert((src.match(/class="gs-lt-date">' \+ esc\(dayText\(/g) || []).length === 3 && src.includes('<h3 class="gs-lt-dayhead"><a class="gs-fg-u"'));
-    assert(read('guild.css').includes('.gs-lt-dayhead { margin: 0 0 4px; font-size: 14px; font-weight: 400; line-height: 1.4; letter-spacing: 0; text-transform: none;'));
+    assert((src.match(/class="gs-lt-date">' \+ esc\(dayText\(/g) || []).length === 3 && src.includes('<h3 class="gs-lt-dayhead"><a class="gs-lt-date" href='));
+    assert(read('guild.css').includes('.guild-page .gs-lt-date { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }'));
   });
 
   await check('quality colours: each passes 4.5:1 on the panel, card and hover backgrounds', () => {

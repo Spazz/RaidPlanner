@@ -2536,9 +2536,10 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-lt-figs dt, .gs-lt-figs dd { margin: 0; }
 .gs-lt-skel { padding: 8px 20px 20px; }
 .gs-lt-day { padding: 12px 20px 4px; border-top: 1px solid var(--hd-hair); }
-/* A raid night's date reads like the person page's dates: 14 px, regular weight, sentence case; a link one is the secondary underlined link. */
-.gs-lt-date { font-weight: 400; color: var(--text-primary); }
-.gs-lt-dayhead { margin: 0 0 4px; font-size: 14px; font-weight: 400; line-height: 1.4; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+/* A raid night's date on the Loot pages: the old night head (condensed caps) in gold - the one gold that is not a count (design spec 2.2, user 2026-10-19). */
+.guild-page .gs-lt-date { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }
+.guild-page a.gs-lt-date:hover, .guild-page a.gs-lt-link:hover .gs-lt-date { text-decoration: underline; text-underline-offset: 3px; }
+.gs-lt-dayhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 0 0 4px; font-size: 13px; font-weight: 400; line-height: 1.4; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
 .gs-lt-day .gs-loot-sublist { padding: 0; }
 .gs-lt-day .gs-loot-subrow:first-child { border-top: 0; }
 .gs-lt-night > details > summary { list-style: none; cursor: pointer; }
