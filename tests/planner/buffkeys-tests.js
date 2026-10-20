@@ -3,7 +3,7 @@
  * Run: node tests/planner/buffkeys-tests.js
  *
  * Swappable buff icons and picker rows are <button>s (Enter/Space open and pick for free),
- * with an accessible name; non-swappable icons (drums) stay divs. After a pick the
+ * with an accessible name; non-swappable icons stay divs; the drum icon is its own button beside the group name. After a pick the
  * re-render rebuilds the cards, so focus is handed back to the same icon.
  */
 const assert = require('node:assert/strict');
@@ -20,13 +20,14 @@ const norm = (s) => s.replace(/\r\n/g, '\n');
 const renderSrc = norm(app.slice('function renderGroups() {', '// Buff picker delegation'));
 const pickerSrc = norm(app.slice('function showBuffPicker(', 'function closeBuffPicker'));
 
-check('swappable buff icons render as buttons with an accessible name; drums stay divs', () => {
+check('swappable buff icons render as buttons with an accessible name; the drum icon is a button beside the group name', () => {
   const m = renderSrc.match(/const iconTag = isSwappable \? 'button' : 'div';/);
   assert(m, 'icon tag is chosen from isSwappable');
   assert(/const iconAttrs = isSwappable\s*\? ` type="button" aria-label="\$\{esc\(swappableBuffLabel\(b, from\)\)\}"`\s*: ` role="img" aria-label="\$\{esc\(b\.buff\.name\)\}"`;/.test(renderSrc),
     'button type and escaped label on swappable icons; role=img and the escaped buff name on the others');
   assert(/<\$\{iconTag\} class="buff-icon [^`]*<\/\$\{iconTag\}>/.test(renderSrc), 'icon uses the chosen tag for open and close');
-  assert(/<div class="buff-icon \$\{Config\.BuffCSSClass\.DRUMS\}[^`]*role="img" aria-label="Drums"/.test(renderSrc), 'drum icon is still a div, named for assistive tech');
+  assert(/<button type="button" class="gs-pb-drum" aria-label="\$\{drummers\.length === 1 \? 'Drummer' : 'Drummers'\}: \$\{esc\(names\)\}"/.test(renderSrc), 'drum icon is a focusable button named "Drummer: <name>"');
+  assert(!/BuffCSSClass\.DRUMS/.test(renderSrc), 'Drm no longer sits in the buff row');
   assert(!/<div class="buff-icon \$\{css\}/.test(renderSrc), 'no swappable-capable icon is a bare div any more');
 });
 
@@ -118,27 +119,28 @@ check('Open slot cards say Suggested (Optimize) or Requested (leader) in both th
   renderGroups();
   const cards = html.split('<div class="player-slot preferred-slot').slice(1);
   assert.equal(cards.length, 2, 'both Open slots render');
-  const words = (card) => [card.match(/<span class="player-spec" title="([^"]*)">([^<]*)</), card.match(/<span class="preferred-badge">([^<]*)</)];
+  const words = (card) => [card.match(/<span class="player-spec" title="([^"]*)">([^<]*)</), card.match(/<span class="preferred-badge gs-hd-chip is-open">([^<]*)</)];
   const [autoSpec, autoBadge] = words(cards[0]);
   assert.equal(autoSpec[2], 'Suggested by Optimize');
   assert.equal(autoSpec[1], 'Suggested by Optimize', 'the full text is on hover');
-  assert.equal(autoBadge[1], 'SUGGESTED');
+  assert.equal(autoBadge[1], 'Suggested');
   const [ownSpec, ownBadge] = words(cards[1]);
   assert.equal(ownSpec[2], 'Requested, awaiting sign-up');
-  assert.equal(ownBadge[1], 'REQUESTED');
+  assert.equal(ownBadge[1], 'Requested');
 });
 
 check('the Open slot spec line stays on one line and ends in an ellipsis', () => {
   assert(/\.preferred-slot \.player-spec \{[^}]*white-space: nowrap; overflow: hidden; text-overflow: ellipsis;/.test(norm(app.css)));
 });
 
-check('.player-spec is 10.5px on desktop and 11px in the phone block; Open slot colours are unchanged', () => {
+check('the tray keeps its .player-spec sizes; on the board the spec line is 12px and an Open slot is a chip row in its class colour', () => {
   const css = norm(app.css);
   assert(/\n\.player-spec \{ font-size: 10\.5px;/.test(css));
   const phone = css.slice(css.lastIndexOf('/* ── Slim phone layout'));
   assert(/\.player-spec \{ font-size: 11px; \}/.test(phone));
-  assert(/\.preferred-slot \{ border: 1px dashed var\(--preferred-color\);/.test(css));
-  assert(/\.preferred-badge \{ color: var\(--preferred-color\); font-size: 9px;/.test(css));
+  assert(/\.gs-pb-board \.player-spec \{ font-size: 12px;/.test(css), 'board spec line: 12px floor');
+  assert(/\.gs-pb-board \.preferred-slot \.player-name[^{]*\{ color: var\(--preferred-color/.test(css), 'Open slot name in its class colour');
+  assert(!/\.preferred-slot \{ border: 1px dashed/.test(css), 'no dashed coloured edge any more');
 });
 
 console.log(`\n${passed} buff keyboard checks passed`);

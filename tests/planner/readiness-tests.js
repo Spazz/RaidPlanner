@@ -4,7 +4,7 @@
  *
  * The readiness banner (status chips, a minimize toggle, the result row) and the rail summary count
  * party buffs and raid debuffs through ONE helper,
- * the rail names the gold corner, rail text carries a title for when it is cut off, the reference
+ * the rail names the swap arrow, rail text carries a title for when it is cut off, the reference
  * comp shows no live-plan fixes, and phones put the toast at the top.
  */
 const assert = require('node:assert/strict');
@@ -204,14 +204,15 @@ check('the reference comp shows no Switch or Swap In rows taken from the live pl
   api.State.activeTab = 'plan';
 });
 
-check('the Coverage rail opens with the gold-corner legend, and the corner it names is the swappable icon corner', () => {
+check('the Coverage rail opens with the swap-arrow legend, and the arrow it names is the swappable icon chevron', () => {
   const aside = app.html.slice(app.html.indexOf('<aside class="buff-sidebar'), app.html.indexOf('</aside>'));
-  assert(aside.includes('Icons with a gold corner can be swapped: click one to choose another buff.'));
+  assert(aside.includes('Icons with a small arrow can be swapped: click one to choose another buff.'));
   assert(aside.indexOf('id="sidebar-summary"') < aside.indexOf('swap-legend'), 'the legend sits at the bottom of the open rail');
   assert(aside.indexOf('id="buff-catalog-utility"') < aside.indexOf('swap-legend'), 'after Utility, the last thing in the rail body');
   assert(aside.indexOf('id="sidebar-body"') < aside.indexOf('swap-legend'), 'inside the body, so a collapsed rail hides it');
-  assert.match(app.css, /\.swap-legend i \{[^}]*background: var\(--accent-gold\)/);
-  assert.match(app.css, /\.buff-icon\.swappable::after \{[^}]*background: var\(--accent-gold\)/);
+  assert.match(app.css, /\.swap-legend i \{[^}]*border-radius: 50%/);
+  assert.match(app.css, /\.gs-pb-chev \{ position: absolute; right: -4px; bottom: -4px;/);
+  assert(!/\.buff-icon\.swappable::after/.test(app.css), 'the gold corner is gone');
 });
 
 // ── Coverage rail groups (4.4.0) ──

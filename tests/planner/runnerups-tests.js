@@ -167,11 +167,11 @@ check('a stacked slot renders as real buttons that fan out; a plain slot keeps i
   assert(stack.includes('data-group="2" data-slot="4"'));
   assert.equal((stack.match(/class="stack-peek /g) || []).length, 2, 'two peeking layers');
   assert(stack.includes('stack-peek-2 pref-mage') && stack.includes('stack-peek-1 pref-warlock'), 'peeks use their class colours');
-  assert(stack.includes('+2 close options'));
+  assert(stack.includes('Open slot - 2 close options'));
   assert(stack.includes('aria-label="Suggested Shadow Priest, 2 more options"'));
   assert(stack.includes('<button type="button" class="stack-card stack-front" data-stack-open aria-expanded="false"'));
   const one = suggestionStackHTML({ ...top, alts: [top.alts[0]] }, 0, 0, false);
-  assert(one.includes('+1 close option<') && one.includes('1 more option"'));
+  assert(one.includes('Open slot - 1 close option<') && one.includes('1 more option"'));
   const fan = suggestionStackHTML(top, 2, 4, true);
   assert.equal((fan.match(/<button /g) || []).length, 4, 'three cards and the Other spec link');
   assert(fan.includes('>Best<') && fan.includes('>-6%<') && fan.includes('>-11%<'));
@@ -187,7 +187,8 @@ check('a stacked slot renders as real buttons that fan out; a plain slot keeps i
 check('stack CSS sits beside the .preferred-slot rules and uses the class colour token', () => {
   const css = norm(app.css);
   assert(css.indexOf('.preferred-stack .stack-peek') > css.indexOf('.preferred-slot {'));
-  assert(/\.preferred-stack \.stack-card \{[^}]*var\(--preferred-color\)/.test(css));
+  assert(/\.preferred-stack \.stack-card:hover \{[^}]*var\(--preferred-color/.test(css));
+  assert(/\.preferred-stack \.stack-peek \{[^}]*var\(--preferred-color/.test(css));
   assert(/\.preferred-stack \.stack-peek-2 \{ transform: translate\(6px, 6px\)/.test(css));
 });
 

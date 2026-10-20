@@ -651,6 +651,7 @@ function referenceHarness({ phone = false } = {}) {
     extraSource: 'function esc(s) { return String(s); }\nfunction showToast(m) { __log.toasts.push(m); }\n' +
       'function initGroups() {}\nfunction commit() {}\nfunction getDominantRoleLabel() { return ""; }\nfunction classColorClass() { return ""; }\n' +
       'function getSpecIcon() { return ""; }\nfunction renderBuffCatalog() {}\nfunction renderUtilityCatalog() {}\n' +
+      app.slice('// ── GROUP PANELS', '// ── end GROUP PANELS') +
       app.slice('const IdealComp = {', '// Reference comp is a quiet link'),
   });
   return { api: c.api, elements, log, doc };

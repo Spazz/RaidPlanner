@@ -486,8 +486,8 @@ return { ${exported.join(', ')} };
 
   await check('the parties container is a list and every group card is a list item', () => {
     assert(/id="groups-container"[^>]*role="list"/.test(app.html));
-    const cards = app.script.match(/<div class="group-card"[^>]*>/g) || [];
-    assert.equal(cards.length, 2, 'plan and ideal-comp templates');
+    const cards = app.script.match(/<div class="group-card[^"]*"[^>]*>/g) || [];
+    assert.equal(cards.length, 1, 'one shared template (groupCardHTML) for the plan and the ideal comp');
     for (const card of cards) assert(/role="listitem"/.test(card), card);
   });
 

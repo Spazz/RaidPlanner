@@ -301,12 +301,13 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
     assert(ratio(faint, '#131416') >= 4.5, 'page background');
   });
 
-  await check('the "Buffs" labels are at least 10px', () => {
-    for (const sel of ['.buff-bar-label', '.buff-sidebar-sub']) {
+  await check('the board "Buffs" label is at least 12px, the rail sub-label at least 10px', () => {
+    assert(/class="gs-fg-lbl gs-pb-buffs-label">Buffs</.test(app.script), 'the foot label is a Forge label (.gs-fg-lbl, 12px)');
+    for (const [sel, min] of [['.gs-fg-lbl', 12], ['.buff-sidebar-sub', 10]]) {
       const rule = css.match(new RegExp(`${sel.replace('.', '\\.')}\\s*\\{([^}]*)\\}`));
       assert(rule, sel);
       const size = rule[1].match(/font-size:\s*(\d+(?:\.\d+)?)px/);
-      assert(size && Number(size[1]) >= 10, `${sel} font-size ${size && size[1]}px`);
+      assert(size && Number(size[1]) >= min, `${sel} font-size ${size && size[1]}px`);
     }
   });
 

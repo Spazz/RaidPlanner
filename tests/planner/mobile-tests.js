@@ -448,7 +448,7 @@ check('phone block defines the sheet views, the zoom reset and the fixed row hei
 
 check('no inline style or handler attributes in the new markup', () => {
   const INLINE = /[\s`'"](?:style|on[a-z]{3,})\s*=\s*(?:["'`\\]|\$\{)/i;
-  assert.doesNotMatch(between(html, '<main class="addon-frame" id="app"', '<!-- These raw export formats'), INLINE);
+  assert.doesNotMatch(between(html, '<main class="addon-frame gs-forge" id="app"', '<!-- These raw export formats'), INLINE);
   assert.doesNotMatch(editorViews().tpl, INLINE);
 });
 
@@ -514,10 +514,13 @@ check('the phone hit areas add up to 44px and do not overlap their neighbours', 
   assert.equal(down, 0, 'the toggle hit area does not reach into line 2');
 });
 
-check('the buff icon fallback label stays visible on phones at 9px', () => {
-  const r = rule('.buff-icon .buff-label');
-  assert.match(r, /font-size: 9px/);
-  assert.doesNotMatch(r, /display: none/);
+check('the buff icon fallback label stays visible (12px floor) where the image is missing; an icon with an image hides it', () => {
+  const board = read('guild.css');
+  const r = board.match(/\.gs-pb-board \.buff-icon \.buff-label \{([^}]*)\}/);
+  assert(r, 'board rule for the label');
+  assert.match(r[1], /font-size: 12px/);
+  assert.doesNotMatch(r[1], /display: none/);
+  assert.match(board, /\.gs-pb-board \.buff-icon\.has-icon \.buff-label \{ display: none; \}/);
 });
 
 check('landing restore link and saved-plan Delete buttons get 44px tap areas on phones', () => {

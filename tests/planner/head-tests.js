@@ -71,10 +71,11 @@ check('app.css has a global prefers-reduced-motion block that ends animations an
 });
 
 check('touch screens get a larger buff-icon hit area without overlapping neighbours', () => {
-  const block = app.css.match(/@media \(hover: none\) and \(pointer: coarse\) \{[\s\S]*?\n\}/)[0];
-  const inset = Number(block.match(/\.buff-icon::before \{[^}]*inset: -(\d+)px/)[1]);
-  const gap = Number(block.match(/\.buff-bar \{ gap: (\d+)px/)[1]);
-  assert(24 + 2 * inset >= 32, 'target is at least 32px');
+  const block = [...app.css.matchAll(/@media \(hover: none\) and \(pointer: coarse\) \{[\s\S]*?\n\}/g)].map(m => m[0]).find(b => /\.buff-icon::before/.test(b));
+  assert(block, 'a coarse-pointer block styles the board buff icons');
+  const inset = Number(block.match(/\.buff-icon::before[^{]*\{[^}]*inset: -(\d+)px/)[1]);
+  const gap = Number(block.match(/\.gs-pb-foot \{ gap: (\d+)px/)[1]);
+  assert(30 + 2 * inset >= 44, 'target is at least 44px');
   assert(gap >= 2 * inset, 'neighbouring hit areas do not overlap');
 });
 

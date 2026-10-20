@@ -216,7 +216,7 @@ function handleIconError(img) {
     img.remove();
     return 'removed';
   }
-  if (parent && (parent.classList.contains('buff-row-icon') || parent.classList.contains('role-icon'))) {
+  if (parent && (parent.classList.contains('buff-row-icon') || parent.classList.contains('role-icon') || parent.classList.contains('gs-pb-drum'))) {
     const text = document.createElement('span');
     text.textContent = img.getAttribute('alt') || '';
     img.replaceWith(text);
@@ -349,7 +349,6 @@ function seatedSlotHTML(p, gi, si) {
     ${lockBadge}
     ${constraintBadge}
     ${backupBadge}
-    ${getDragHandle()}
   </div>`;
 }
 
@@ -741,13 +740,13 @@ function suggestionGapLabel(gap) {
 function suggestionStackHTML(preference, gi, si, isOpen) {
   const alts = preference.alts;
   const label = p => p.spec + ' ' + RosterEdit.ClassLabel(p.class);
-  const more = alts.length === 1 ? '+1 close option' : '+' + alts.length + ' close options';
+  const more = 'Open slot - ' + alts.length + (alts.length === 1 ? ' close option' : ' close options');
   const attrs = `data-group="${gi}" data-slot="${si}"`;
   if (!isOpen) {
     return `<div class="player-slot preferred-slot preferred-stack${preferredColorClass(preference.class)}" ${attrs}>
       ${alts.map((a, i) => `<span class="stack-peek stack-peek-${alts.length - i}${preferredColorClass(a.class)}" aria-hidden="true"></span>`).join('')}
       <button type="button" class="stack-card stack-front" data-stack-open aria-expanded="false" aria-label="Suggested ${esc(label(preference))}, ${alts.length} more option${alts.length === 1 ? '' : 's'}">
-        ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(label(preference))}</span><span class="player-spec" title="${more}">${more}</span></div><span class="preferred-badge">SUGGESTED</span></button></div>`;
+        ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(label(preference))}</span><span class="player-spec" title="${more}">${more}</span></div><span class="preferred-badge gs-hd-chip is-open">Suggested</span></button></div>`;
   }
   const card = (p, gapText, attr, aria) => `<button type="button" class="stack-card${preferredColorClass(p.class)}" ${attr} aria-label="${esc(aria)}">
       ${getSpecIcon(p)}<div class="player-info"><span class="player-name">${esc(label(p))}</span></div><span class="stack-gap">${gapText}</span></button>`;
@@ -767,9 +766,9 @@ function renderGroups() {
   const numGroups = raidInfo ? raidInfo.groups : 5;
 
   // Apply grid layout class based on group count
-  container.className = 'groups-container';
+  container.className = 'groups-container gs-pb-board';
   if (numGroups === 5) container.classList.add('groups-5');
-  else if (numGroups === 4 || numGroups === 8) container.classList.add('groups-' + numGroups);
+  else if (numGroups === 2 || numGroups === 4 || numGroups === 8) container.classList.add('groups-' + numGroups);
 
   const coveredBuffIds = new Set();
   const cards = [];
@@ -778,7 +777,6 @@ function renderGroups() {
     const players = State.groups[gi] || [];
     const buffList = getGroupBuffs(players, gi);
     buffList.forEach(b => coveredBuffIds.add(b.id));
-    const roleLabel = getDominantRoleLabel(players);
 
     let slotsHTML = '';
     for (let si = 0; si < 5; si++) {
@@ -792,7 +790,7 @@ function renderGroups() {
         }
         const specLine = preference.auto ? 'Suggested by Optimize' : 'Requested, awaiting sign-up';
         slotsHTML += `<div class="player-slot preferred-slot${preferredColorClass(preference.class)}" role="button" tabindex="0" data-group="${gi}" data-slot="${si}">
-          ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(preference.spec + ' ' + RosterEdit.ClassLabel(preference.class))}</span><span class="player-spec" title="${specLine}">${specLine}</span></div><span class="preferred-badge">${preference.auto ? 'SUGGESTED' : 'REQUESTED'}</span></div>`;
+          ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(preference.spec + ' ' + RosterEdit.ClassLabel(preference.class))}</span><span class="player-spec" title="${specLine}">${specLine}</span></div><span class="preferred-badge gs-hd-chip is-open">${preference.auto ? 'Suggested' : 'Requested'}</span></div>`;
       } else {
         slotsHTML += `<div class="player-slot empty-slot" role="button" tabindex="0" data-group="${gi}" data-slot="${si}" aria-label="Group ${gi+1}, empty slot: add player or preferred spec">
           <span class="role-icon role-icon-empty">&#8226;</span>
@@ -801,53 +799,17 @@ function renderGroups() {
       }
     }
 
-    // TBC Drums (feature-backlog-3 #5) — not part of buffList/getGroupBuffs
-    // (see getDrumsCoverage for why), so it's appended here as its own icon,
-    // reusing the same abbreviation/CSS/icon/tooltip lookups as a real buff.
+    // TBC Drums (feature-backlog-3 #5) are not part of buffList/getGroupBuffs (see getDrumsCoverage for why): a tagged drummer
+    // shows as the drum icon button beside the group name, not as a buff icon.
     const groupDrummers = State.gameVersion === 'tbc' ? players.filter(p => Drummers.isDrummer(p.name)) : [];
 
-    let buffsHTML = '<span class="buff-bar-label">Buffs</span>';
-    if (buffList.length === 0 && !groupDrummers.length) {
+    let buffsHTML = '';
+    if (buffList.length === 0) {
       buffsHTML += `<span class="no-buffs">${GameVersions[State.gameVersion].modeled ? 'No buffs' : 'Rules pending'}</span>`;
     } else {
-      for (const b of buffList) {
-        const abbr = Config.BuffAbbreviations[b.id] || b.id;
-        const css = Config.BuffCSSClass[b.id] || '';
-        const from = b.sourceName ? b.sourceName.split('-')[0] : '';
-        const sourceColor = b.sourceClass ? (Config.ClassColors[b.sourceClass] || 'var(--text-secondary)') : 'var(--text-secondary)';
-        const iconUrl = Config.BuffIconURL(b.id);
-        const hasIcon = iconUrl ? ' has-icon' : '';
-        const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy" class="buff-img">` : '';
-        const isSwappable = !!buffSlotCategory(b.id);
-        const swapClass = isSwappable ? ' swappable' : '';
-        const overrideClass = b.isOverride ? ' overridden' : '';
-        const dataAttrs = isSwappable ? ` data-buff-id="${esc(b.id)}" data-group="${gi}" data-uid="${esc(b.sourceUid)}" data-source="${esc(b.sourceName)}" data-class="${esc(b.sourceClass)}" data-spec="${esc(b.sourceSpec || '')}"` : '';
-        const ttAttrs = ` data-tt-name="${esc(b.buff.name)}" data-tt-desc="${esc(b.buff.desc || '')}" data-tt-source="${esc(from)}" data-tt-source-color="${sourceColor}"`;
-        const iconTag = isSwappable ? 'button' : 'div';
-        const iconAttrs = isSwappable
-          ? ` type="button" aria-label="${esc(swappableBuffLabel(b, from))}"`
-          : ` role="img" aria-label="${esc(b.buff.name)}"`;
-        buffsHTML += `<${iconTag} class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${iconAttrs}${dataAttrs}${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></${iconTag}>`;
-      }
-      if (groupDrummers.length) {
-        const drumIconUrl = Config.BuffIconURL('DRUMS');
-        const drumImgTag = drumIconUrl ? `<img src="${drumIconUrl}" alt="Drm" loading="lazy" class="buff-img">` : '';
-        const drumNames = groupDrummers.map(p => (p.name || '').split('-')[0]).join(', ');
-        const drumDesc = 'Party-scoped haste/stat buff from a Leatherworker\'s drums. One effect active at a time per party — rotate multiple drummers for continuous uptime.';
-        buffsHTML += `<div class="buff-icon ${Config.BuffCSSClass.DRUMS}${drumIconUrl ? ' has-icon' : ''}" role="img" aria-label="Drums" data-tt-name="Drums" data-tt-desc="${esc(drumDesc)}" data-tt-source="${esc(drumNames)}">${drumImgTag}<span class="buff-label">${Config.BuffAbbreviations.DRUMS}</span></div>`;
-      }
+      for (const b of buffList) buffsHTML += groupBuffIconHTML(b, gi, true);
     }
-
-    cards.push(`<div class="group-card" role="listitem" data-group="${gi}">
-      <div class="group-header">
-        <h3>Group ${gi+1}</h3>
-        <div class="group-header-tags">
-          <span class="group-role-tag">${roleLabel}</span>
-        </div>
-      </div>
-      <div class="player-list">${slotsHTML}</div>
-      <div class="buff-bar">${buffsHTML}</div>
-    </div>`);
+    cards.push(groupCardHTML(gi, players, slotsHTML, buffsHTML, groupDrummers));
   }
   container.innerHTML = cards.join('');
 
@@ -873,6 +835,64 @@ function renderGroups() {
   renderAssignments();
   renderReadiness();
 }
+
+// ── GROUP PANELS (Planner board on Forge, T6) ───────────────────
+// One group = one Forge panel: a head (gold "Group N", the muted dominant role word, the drum icon when a drummer sits
+// here, the seated count), the player rows, a foot with the buff icons. Shared by the live board and the Reference comp.
+const GROUP_CHEVRON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>';
+const DRUMS_TOOLTIP = 'Party-scoped haste/stat buff from a Leatherworker\'s drums. One effect active at a time per party — rotate multiple drummers for continuous uptime.';
+
+// "Melee" for the muted word after the group name (getDominantRoleLabel keeps its capitals for the tank-group lookup).
+function groupRoleWord(players) {
+  const label = getDominantRoleLabel(players);
+  return label ? label.charAt(0) + label.slice(1).toLowerCase() : '';
+}
+
+// The drum icon button beside the group name: one button naming every drummer in the group, tooltip through the shared portal.
+function drumButtonHTML(drummers) {
+  if (!drummers.length) return '';
+  const names = drummers.map(p => (p.name || '').split('-')[0]).join(', ');
+  const drumIconUrl = Config.BuffIconURL('DRUMS');
+  const inner = drumIconUrl ? `<img src="${esc(drumIconUrl)}" alt="" loading="lazy" class="buff-img">` : esc(Config.BuffAbbreviations.DRUMS);
+  return `<button type="button" class="gs-pb-drum" aria-label="${drummers.length === 1 ? 'Drummer' : 'Drummers'}: ${esc(names)}" data-tt-name="Drums" data-tt-desc="${esc(DRUMS_TOOLTIP)}" data-tt-source="${esc(names)}">${inner}</button>`;
+}
+
+function groupCardHTML(gi, players, slotsHTML, buffsHTML, drummers) {
+  const role = groupRoleWord(players);
+  return `<div class="group-card gs-hd-panel gs-pb-group" role="listitem" data-group="${gi}">
+      <div class="gs-pb-head">
+        <h3 class="gs-fg-gh"><span class="gs-fg-ght">Group ${gi + 1}</span>${role ? `<span class="gs-fg-ghn gs-pb-role">${role}</span>` : ''}</h3>
+        ${drumButtonHTML(drummers)}
+        <span class="gs-pb-fill">${players.length}/5</span>
+      </div>
+      <div class="player-list">${slotsHTML}</div>
+      <div class="gs-pb-foot"><span class="gs-fg-lbl gs-pb-buffs-label">Buffs</span>${buffsHTML}</div>
+    </div>`;
+}
+
+// One buff icon in a group's foot. A swappable one (totem / aura choice) is a button with a small chevron and opens the picker;
+// the Reference comp passes allowSwap false (its icons are read-only).
+function groupBuffIconHTML(b, gi, allowSwap) {
+  const abbr = Config.BuffAbbreviations[b.id] || b.id;
+  const css = Config.BuffCSSClass[b.id] || '';
+  const from = b.sourceName ? b.sourceName.split('-')[0] : '';
+  const sourceColor = b.sourceClass ? (Config.ClassColors[b.sourceClass] || 'var(--text-secondary)') : 'var(--text-secondary)';
+  const iconUrl = Config.BuffIconURL(b.id);
+  const hasIcon = iconUrl ? ' has-icon' : '';
+  const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy" class="buff-img">` : '';
+  const isSwappable = allowSwap && !!buffSlotCategory(b.id);
+  const swapClass = isSwappable ? ' swappable' : '';
+  const overrideClass = b.isOverride ? ' overridden' : '';
+  const dataAttrs = isSwappable ? ` data-buff-id="${esc(b.id)}" data-group="${gi}" data-uid="${esc(b.sourceUid)}" data-source="${esc(b.sourceName)}" data-class="${esc(b.sourceClass)}" data-spec="${esc(b.sourceSpec || '')}"` : '';
+  const ttAttrs = ` data-tt-name="${esc(b.buff.name)}" data-tt-desc="${esc(b.buff.desc || '')}" data-tt-source="${esc(from)}" data-tt-source-color="${sourceColor}"`;
+  const iconTag = isSwappable ? 'button' : 'div';
+  const iconAttrs = isSwappable
+    ? ` type="button" aria-label="${esc(swappableBuffLabel(b, from))}"`
+    : ` role="img" aria-label="${esc(b.buff.name)}"`;
+  const chevron = isSwappable ? `<span class="gs-pb-chev" aria-hidden="true">${GROUP_CHEVRON}</span>` : '';
+  return `<${iconTag} class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${iconAttrs}${dataAttrs}${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span>${chevron}</${iconTag}>`;
+}
+// ── end GROUP PANELS ────────────────────────────────────────────
 
 // The rail groups what is missing by what fixes it: Fix now (one click: a Switch or a Swap In, or two warriors to
 // group together), Needs a recruit (nobody in the roster can; text only), then a Covered list behind a toggle.

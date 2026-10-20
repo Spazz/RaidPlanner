@@ -2475,6 +2475,114 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-hd-toast-x { min-height: 44px; min-width: 44px; }
 }
 
+/* ── Planner board on Forge (T6): the group panels (planner redesign, lane 1). Prefix gs-pb-. ─────────────────────────────────────
+   Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop groups, R3-details group head, R3-phone). One group = one .gs-hd-panel with a 44 px head
+   (gold group name, muted role word, drum icon button, muted 5/5), 44 px rows (20 px spec icon, class-coloured name over muted spec, then exceptions only)
+   and a Buffs foot. Hook classes of the old board (group-card, player-slot, buff-icon, preferred-slot, stack-*) stay on the same elements; this block restyles them.
+   Sizes are real pixels: above 600 px the planner frame is zoomed 1.5, so the board undoes it (zoom 2/3); the phone frame has no zoom. */
+.gs-pb-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px; align-items: stretch; }
+@media (min-width: 601px) { .gs-pb-board { zoom: 0.6666667; } }
+.gs-pb-board.groups-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gs-pb-board.groups-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Five groups: three on top, two centred below (6-column grid). */
+.gs-pb-board.groups-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.gs-pb-board.groups-5 .group-card:nth-child(1), .gs-pb-board.groups-5 .group-card:nth-child(2), .gs-pb-board.groups-5 .group-card:nth-child(3) { grid-column: span 2; }
+.gs-pb-board.groups-5 .group-card:nth-child(4) { grid-column: 2 / span 2; }
+.gs-pb-board.groups-5 .group-card:nth-child(5) { grid-column: 4 / span 2; }
+@media (width <= 900px) {
+  .gs-pb-board, .gs-pb-board.groups-2, .gs-pb-board.groups-4, .gs-pb-board.groups-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gs-pb-board.groups-5 .group-card:nth-child(n) { grid-column: auto; }
+}
+@media (width <= 600px) {
+  .gs-pb-board, .gs-pb-board.groups-2, .gs-pb-board.groups-4, .gs-pb-board.groups-5 { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px 16px; }
+}
+
+.gs-pb-group { display: flex; flex-direction: column; min-width: 0; overflow: clip; }
+.gs-pb-group.drag-over { border-color: var(--text-primary); }
+.gs-pb-head { display: flex; align-items: center; gap: 10px; box-sizing: border-box; height: 44px; padding: 0 16px; }
+.gs-pb-head .gs-fg-gh { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; align-items: baseline; gap: 0 8px; }
+.gs-pb-role { font-weight: 500; }
+.gs-pb-fill { margin-left: auto; flex: none; font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* The drum icon button: 24 px beside the group name, only when the group has a tagged drummer. */
+.gs-pb-drum { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--text-primary); font: 700 12px/1 var(--font-body); cursor: pointer; }
+.gs-pb-drum img { display: block; width: 24px; height: 24px; border-radius: 3px; object-fit: cover; }
+
+/* Rows: 44 px, no coloured edge, no role dot. */
+.gs-pb-board .player-list { padding: 0; }
+.gs-pb-board .player-slot { box-sizing: border-box; min-height: 44px; padding: 0 16px; gap: 10px; border-left: 0; }
+.gs-pb-board .player-slot + .player-slot { border-top: 1px solid var(--hd-hair); }
+.gs-pb-board .player-slot:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); border-left-color: transparent; }
+.gs-pb-board .player-slot.drag-target { background: color-mix(in srgb, var(--text-primary) 8%, transparent); border-left-color: transparent; box-shadow: inset 0 0 0 2px var(--text-primary); }
+.gs-pb-board .player-slot:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+.gs-pb-board .player-slot.editing { outline-color: var(--text-primary); }
+.gs-pb-board .player-slot.needs-review { background: none; }
+.gs-pb-board .role-icon { width: 20px; height: 20px; border-radius: 3px; background: none; box-shadow: none; }
+.gs-pb-board .role-icon img { border-radius: 3px; }
+.gs-pb-board .spec-icon img, .gs-pb-board .player-slot:hover .spec-icon img { filter: none; }
+.gs-pb-board .spec-icon::after { content: none; }
+.gs-pb-board .role-icon-empty { opacity: 0.5; font-size: 14px; color: var(--text-muted); }
+.gs-pb-board .player-info { gap: 1px; }
+.gs-pb-board .player-name { font-size: 15px; font-weight: 600; line-height: 1.2; text-shadow: none; }
+.gs-pb-board .player-spec { font-size: 12px; line-height: 1.2; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-pb-board .empty-slot { cursor: pointer; }
+.gs-pb-board .empty-slot .player-name { color: var(--text-muted); font-weight: 500; }
+.gs-pb-board .lock-badge, .gs-pb-board .constraint-badge { font-size: 14px; line-height: 1; }
+
+/* Exceptions are chips: the same 24 px, 12 px caps recipe as .gs-hd-chip, tinted with the status roles. */
+.gs-pb-board :is(.status-tag, .marker-tag, .changed-tag, .review-badge, .backup-badge) { display: inline-flex; align-items: center; flex: none; box-sizing: border-box; height: 24px; padding: 0 8px; border: 1px solid var(--status-neutral-edge); border-radius: 4px; background: var(--status-neutral-bg); color: var(--status-neutral-ink); font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+.gs-pb-board .marker-tag { flex: 0 1 auto; min-width: 0; max-width: 11em; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 22px; }
+.gs-pb-board .status-late, .gs-pb-board .marker-also { border-color: var(--status-info-edge); background: var(--status-info-bg); color: var(--status-info-ink); }
+.gs-pb-board .status-absent, .gs-pb-board .marker-away, .gs-pb-board .review-badge { border-color: var(--status-danger-edge); background: var(--status-danger-bg); color: var(--status-danger-ink); }
+.gs-pb-board .marker-late, .gs-pb-board .marker-leaving { border-color: var(--status-warning-edge); background: var(--status-warning-bg); color: var(--status-warning-ink); }
+.gs-pb-board .changed-tag { border-color: currentColor; background: none; color: var(--changed-color, var(--status-neutral-ink)); }
+.gs-pb-board .changed-status .changed-tag { color: var(--status-info-ink); }
+.gs-pb-board .player-slot.changed-status { box-shadow: inset 0 0 0 2px var(--status-info-ink); }
+.gs-pb-board .player-slot.changed-status:focus-visible { box-shadow: inset 0 0 0 4px var(--status-info-ink); }
+.gs-pb-board .gs-hd-chip { align-self: center; }
+
+/* Open slots (requested / suggested) and the runner-up stack. */
+.gs-pb-board .preferred-slot { cursor: pointer; }
+.gs-pb-board .preferred-slot .player-name, .gs-pb-board .stack-card .player-name { color: var(--preferred-color, var(--text-primary)); }
+.gs-pb-board .preferred-slot .player-spec { font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-pb-board .preferred-slot img { opacity: 0.7; }
+.gs-pb-board .player-slot.preferred-stack { position: relative; display: block; min-height: 0; padding: 4px 14px 10px 8px; cursor: default; }
+.gs-pb-board .preferred-stack .stack-card { appearance: none; position: relative; display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 0 12px; font: inherit; color: inherit; text-align: left; cursor: pointer; border: 1px solid var(--hd-panel-edge); border-radius: 4px; background: var(--bg-panel); }
+.gs-pb-board .preferred-stack .stack-card:hover { background: color-mix(in srgb, var(--preferred-color, var(--text-primary)) 10%, var(--bg-panel)); }
+.gs-pb-board .preferred-stack .stack-peek { position: absolute; inset: 4px 14px 10px 8px; border: 1px solid var(--border-medium); border-radius: 4px; background: color-mix(in srgb, var(--preferred-color, var(--text-primary)) 14%, var(--bg-card)); box-shadow: 0 1px 2px var(--bg-deepest); pointer-events: none; }
+.gs-pb-board .preferred-stack .stack-peek-1 { transform: translate(3px, 3px); }
+.gs-pb-board .preferred-stack .stack-peek-2 { transform: translate(6px, 6px); }
+.gs-pb-board .preferred-stack.preferred-fan { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px 8px; }
+.gs-pb-board .stack-gap { flex: none; color: var(--text-secondary); font-size: 13px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gs-pb-board .preferred-fan .stack-other { appearance: none; align-self: flex-start; min-height: 36px; margin: 0; padding: 0 4px; background: none; border: 0; color: var(--text-secondary); font: 600 13px/1 var(--font-body); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.gs-pb-board .preferred-fan .stack-other:hover { color: var(--text-primary); }
+
+/* Foot: the Buffs label and the icon row. A swappable buff stays a button; a small chevron replaces the old gold corner. */
+.gs-pb-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: auto; padding: 10px 16px; border-top: 1px solid var(--hd-hair); }
+.gs-pb-buffs-label { margin-right: 6px; }
+.gs-pb-board .no-buffs { font-size: 12px; color: var(--text-muted); }
+.gs-pb-board .buff-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; width: 30px; height: 30px; padding: 0; border: 1px solid var(--hd-panel-edge); border-radius: 4px; cursor: default; }
+.gs-pb-board .buff-icon.has-icon { background: var(--bg-frame); }
+.gs-pb-board .buff-icon img { display: block; width: 26px; height: 26px; border-radius: 3px; object-fit: cover; }
+.gs-pb-board .buff-icon .buff-label { display: inline; font-size: 12px; font-weight: 700; letter-spacing: 0; }
+.gs-pb-board .buff-icon.has-icon .buff-label { display: none; }
+.gs-pb-board .buff-icon:hover { border-color: var(--border-field); }
+.gs-pb-board .buff-icon.swappable { border-color: var(--border-field); cursor: pointer; }
+.gs-pb-board .buff-icon.swappable:hover { border-color: var(--text-secondary); }
+.gs-pb-board .buff-icon.swappable:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-pb-board .buff-icon.overridden { outline: 1px solid var(--text-secondary); outline-offset: 1px; }
+.gs-pb-chev { position: absolute; right: -4px; bottom: -4px; display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1px solid var(--bg-frame); border-radius: 7px; background: var(--border-strong); color: var(--text-primary); }
+.gs-pb-chev svg { display: block; }
+/* Fingers: a 30 px icon gets an invisible 44 px hit area, the gap is widened so neighbours do not overlap. */
+@media (hover: none) and (pointer: coarse) {
+  .gs-pb-foot { gap: 14px; }
+  .gs-pb-board .buff-icon { -webkit-touch-callout: none; }
+  .gs-pb-board .buff-icon::before, .gs-pb-drum::before { content: ''; position: absolute; inset: -7px; }
+  .gs-pb-drum::before { inset: -10px; }
+}
+@media (width <= 600px) {
+  .gs-pb-board .preferred-fan .stack-other { min-height: 44px; }
+}
+
 /* Watch list: Reviewed / Undo on an entry; a reviewed entry stays listed, muted, with who reviewed it and when it comes back */
 .gs-watch-act { grid-column: 1 / -1; justify-self: start; }
 .gs-watch-reviewed { grid-column: 1 / -1; margin: 0; }

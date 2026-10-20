@@ -2239,9 +2239,9 @@ function renderIdealComp() {
   const groups = IdealComp.generate(State.selectedRaid);
   const numGroups = groups.length;
 
-  container.className = 'groups-container';
+  container.className = 'groups-container gs-pb-board';
   if (numGroups === 5) container.classList.add('groups-5');
-  else if (numGroups === 4 || numGroups === 8) container.classList.add('groups-' + numGroups);
+  else if (numGroups === 2 || numGroups === 4 || numGroups === 8) container.classList.add('groups-' + numGroups);
 
   const coveredBuffIds = new Set();
   const cards = [];
@@ -2250,7 +2250,6 @@ function renderIdealComp() {
     const players = groups[gi] || [];
     const buffList = getGroupBuffs(players, gi, groups);
     buffList.forEach(b => coveredBuffIds.add(b.id));
-    const roleLabel = getDominantRoleLabel(players);
 
     let slotsHTML = '';
     for (let si = 0; si < 5; si++) {
@@ -2271,31 +2270,13 @@ function renderIdealComp() {
       }
     }
 
-    let buffsHTML = '<span class="buff-bar-label">Buffs</span>';
+    let buffsHTML = '';
     if (buffList.length === 0) {
       buffsHTML += '<span class="no-buffs">No buffs</span>';
     } else {
-      for (const b of buffList) {
-        const abbr = Config.BuffAbbreviations[b.id] || b.id;
-        const css = Config.BuffCSSClass[b.id] || '';
-        const iconUrl = Config.BuffIconURL(b.id);
-        const hasIcon = iconUrl ? ' has-icon' : '';
-        const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy" class="buff-img">` : '';
-        const ttAttrs = ` data-tt-name="${esc(b.buff.name)}" data-tt-desc="${esc(b.buff.desc || '')}"`;
-        buffsHTML += `<div class="buff-icon ${css}${hasIcon}" role="img" aria-label="${esc(b.buff.name)}"${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></div>`;
-      }
+      for (const b of buffList) buffsHTML += groupBuffIconHTML(b, gi, false);
     }
-
-    cards.push(`<div class="group-card" role="listitem" data-group="${gi}">
-      <div class="group-header">
-        <h3>Group ${gi+1}</h3>
-        <div class="group-header-tags">
-          <span class="group-role-tag">${roleLabel}</span>
-        </div>
-      </div>
-      <div class="player-list">${slotsHTML}</div>
-      <div class="buff-bar">${buffsHTML}</div>
-    </div>`);
+    cards.push(groupCardHTML(gi, players, slotsHTML, buffsHTML, []));
   }
   container.innerHTML = cards.join('');
 
@@ -2476,10 +2457,10 @@ document.addEventListener('DOMContentLoaded', function() {
   const portal = document.getElementById('buff-tooltip-portal');
   if (!portal) return;
 
-  document.addEventListener('mouseover', function(e) {
-    const icon = e.target.closest('[data-tt-name]');
-    if (!icon) return;
-
+  // One show/hide pair serves every way in: hover (mouse), focus (keyboard) and tap (touch).
+  let shownFor = null;
+  let lastTouchAt = 0;
+  function showTooltip(icon) {
     const name = icon.getAttribute('data-tt-name');
     const desc = icon.getAttribute('data-tt-desc');
     const source = icon.getAttribute('data-tt-source');
@@ -2513,6 +2494,7 @@ document.addEventListener('DOMContentLoaded', function() {
       portal.appendChild(sourceEl);
     }
     portal.style.display = 'block';
+    shownFor = icon;
 
     const rect = icon.getBoundingClientRect();
     const width = portal.offsetWidth;
@@ -2526,6 +2508,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
     portal.style.left = left + 'px';
     portal.style.top = top + 'px';
+  }
+  function hideTooltip() {
+    portal.style.display = 'none';
+    shownFor = null;
+  }
+  // A focus that came from the keyboard (or from code after a keyboard action) is :focus-visible; a mouse click's focus is not
+  // (the hover already shows it). Where :focus-visible is unknown, any focus counts.
+  function focusIsVisible(el) {
+    try { return el.matches(':focus-visible'); } catch (err) { return true; }
+  }
+
+  document.addEventListener('mouseover', function(e) {
+    const icon = e.target.closest('[data-tt-name]');
+    if (!icon) return;
+    if (Date.now() - lastTouchAt < 700) return; // the mouseover a tap synthesizes: the tap handler below owns touch
+    showTooltip(icon);
   });
 
   document.addEventListener('mouseout', function(e) {
@@ -2533,14 +2531,35 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!icon) return;
     const related = e.relatedTarget;
     if (related && icon.contains(related)) return;
-    portal.style.display = 'none';
+    hideTooltip();
   });
 
-  // Touch has no mouseout: a tap on an icon shows the tooltip (via the
-  // synthesized mouseover), so a tap anywhere else has to hide it.
+  // Keyboard: Tab onto an icon shows its tooltip, leaving it hides it.
+  document.addEventListener('focusin', function(e) {
+    const icon = e.target.closest && e.target.closest('[data-tt-name]');
+    if (icon && focusIsVisible(e.target)) showTooltip(icon);
+  });
+  document.addEventListener('focusout', function(e) {
+    const icon = e.target.closest && e.target.closest('[data-tt-name]');
+    if (icon && shownFor === icon) hideTooltip();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && portal.style.display === 'block') hideTooltip();
+  });
+
+  // Touch has no hover: a tap on an icon toggles its tooltip, a tap anywhere else closes it.
+  document.addEventListener('pointerdown', function(e) {
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    lastTouchAt = Date.now();
+    const icon = e.target.closest('[data-tt-name]');
+    if (!icon) { hideTooltip(); return; }
+    if (shownFor === icon && portal.style.display === 'block') hideTooltip();
+    else showTooltip(icon);
+  });
   document.addEventListener('touchstart', function(e) {
+    lastTouchAt = Date.now();
     if (e.target.closest('[data-tt-name]')) return;
-    portal.style.display = 'none';
+    hideTooltip();
   }, { passive: true });
 });
 
