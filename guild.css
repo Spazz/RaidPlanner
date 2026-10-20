@@ -2804,7 +2804,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-rb-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding-top: 12px; border-top: 1px solid var(--hd-hair); }
 .gs-rb-line > .gs-fg-gh { flex: none; }
 .gs-rb-names { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 0; min-width: 0; flex: 1 1 200px; font-size: 14px; font-weight: 600; }
-.gs-rb-names li { display: inline-flex; align-items: baseline; }
+.gs-rb-names li { display: inline-flex; align-items: baseline; gap: 4px; }
 .gs-rb-names li:not(:last-child)::after { content: ","; margin: 0 6px 0 0; color: var(--text-muted); font-weight: 400; }
 .gs-rb-lbtn { min-height: 36px; padding: 0 2px; font-weight: 600; }
 .gs-rb-names .gs-you { margin-left: 6px; }
