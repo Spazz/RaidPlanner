@@ -317,7 +317,7 @@ function formFor(teamId, values) {
       const html = (r) => G.pages.raids.raidsHtml({ guildData: S.guilds.g1, teamId: 't1', data: { team: { id: 't1', name: 'Team KJ', archived: false, size: 25, signupCloseHours: 0 }, today: '2027-01-15', can: { edit: true, signup: false }, schedule: null, hasMore: false, upcoming: [r], raids: [] }, tab: 'upcoming' });
       const out = html(row());
       assertNoRawAttrs(out);
-      assert(stripTags(out).includes('Sign-ups refreshed 12 min ago'), stripTags(out).slice(0, 400));
+      assert(!stripTags(out).includes('Sign-ups refreshed'), 'the card drops the freshness line (the raid page carries the source)');
       assert(!stripTags(out).includes('Raid-Helper has this event on'));
       const moved = stripTags(html(row({ eventMovedOn: '2027-01-18' })));
       assert(moved.includes(`Raid-Helper has this event on ${G.ui.weekdayDay('2027-01-18')}. The raid was not moved.`));

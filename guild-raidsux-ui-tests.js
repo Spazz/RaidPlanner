@@ -519,7 +519,7 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert.equal(rects[0].x, 0);
     assert(Math.abs(rects[0].w - 80) < 0.11 && Math.abs(rects[1].w - 3.3) < 0.11 && Math.abs(rects[2].w - 16.7) < 0.11, JSON.stringify(rects));
     assert(Math.abs(rects[0].x + rects[0].w - rects[1].x) < 0.11 && Math.abs(rects[1].x + rects[1].w - rects[2].x) < 0.11 && Math.abs(rects[2].x + rects[2].w - 100) < 0.2, 'segments touch and fill the bar');
-    assert(rows[2].includes('data-label="Attended / Bench / Missed"><span class="gs-muted">-</span>'), 'counts null: a dash');
+    assert(rows[2].includes('data-label="Attended / bench / missed"><span class="gs-muted">-</span>'), 'counts null: a dash');
     assert(!rows[3].includes('<svg') && rows[3].includes('0 / 0 / 0'), 'an empty raid has no bar, only 0 / 0 / 0');
     assert(out.includes('<span class="gs-stack"><svg') && out.includes('24 / 1 / 5'), 'one markup: the phone card has the bar and the numbers too');
     assertNoRawAttrs(out);

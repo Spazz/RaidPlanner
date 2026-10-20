@@ -51,42 +51,71 @@
     };
   }
 
+  // "Every Friday 7:00 PM ET": the rail row's name (the zone and title are the raid's, not the slot's).
+  function railSlotText(slot) {
+    return 'Every ' + (WEEKDAYS[slot.weekday] || '') + ' ' + timeLabel(slot.startTime) + ' ET';
+  }
+
+  function kindLabel(kind) {
+    const hit = KIND_CHOICES.filter(function (k) { return k[0] === kind; })[0];
+    return hit ? hit[1] : 'Signed up';
+  }
+
+  function characterLabel(row, characters) {
+    const c = row.characterId ? characters.filter(function (x) { return x.id === row.characterId; })[0] : null;
+    return c ? c.name : 'My usual character';
+  }
+
+  // One schedule slot in the rail: its name, an On / Off toggle (aria-pressed) and, under an On row, "Signed up - My usual character - Change".
   function rowHtml(slot, row, characters) {
     const wd = slot.weekday;
-    const off = row.checked ? '' : ' disabled';
-    const kind = '<div class="gs-field"><label class="gs-sr" for="st-kind-' + wd + '">Status for ' + esc(slotText(slot)) + '</label><select class="gs-input" id="st-kind-' + wd + '" data-change="st-kind" data-wd="' + wd + '" data-key="st-kind-' + wd + '"' + off + '>' +
-      G.ui.optionsHtml(KIND_CHOICES.map(function (k) { return { value: k[0], label: k[1] }; }), row.kind) + '</select></div>';
-    const chars = characters.length > 1
-      ? '<div class="gs-field"><label class="gs-sr" for="st-char-' + wd + '">Character for ' + esc(slotText(slot)) + '</label><select class="gs-input" id="st-char-' + wd + '" data-change="st-char" data-wd="' + wd + '" data-key="st-char-' + wd + '"' + off + '>' +
-        G.ui.optionsHtml([{ value: '', label: 'My usual character' }].concat(characters.map(function (c) { return { value: c.id, label: c.name + (c.mainSpec ? ' (' + c.mainSpec + ')' : '') }; })), row.characterId) + '</select></div>'
+    const name = railSlotText(slot);
+    const toggle = '<button type="button" class="gs-rl-tog' + (row.checked ? ' is-on' : '') + '" aria-pressed="' + (row.checked ? 'true' : 'false') + '" aria-label="' + esc(name) + '" data-action="st-toggle" data-wd="' + wd + '" data-key="st-in-' + wd + '">' + (row.checked ? 'On' : 'Off') + '</button>';
+    const line = row.checked
+      ? '<p class="gs-rl-line">' + esc(kindLabel(row.kind) + ' - ' + characterLabel(row, characters)) + ' - <button type="button" class="gs-rl-link" data-action="st-change" data-wd="' + wd + '" data-key="st-change-' + wd + '" aria-label="Change sign-up for ' + esc(name) + '">Change</button></p>'
       : '';
-    return '<li class="gs-st-row"><div class="gs-st-slot" role="group" aria-labelledby="st-slot-' + wd + '"><span class="gs-st-name" id="st-slot-' + wd + '">' + esc(slotText(slot)) + '</span>' +
-      '<div class="gs-check"><input type="checkbox" id="st-in-' + wd + '" data-change="st-toggle" data-wd="' + wd + '" data-key="st-in-' + wd + '"' + (row.checked ? ' checked' : '') + '><label for="st-in-' + wd + '">I\'m in</label></div>' +
-      kind + chars + '</div></li>';
+    return '<li class="gs-st-row"><div class="gs-rl-row"><span class="gs-st-name" id="st-slot-' + wd + '">' + esc(name) + '</span>' + toggle + '</div>' + line + '</li>';
   }
 
   // opts: { guildData, teamId, canSignUp (the Raids list's can.signup), state: a().standing }. Nothing while it loads, for a viewer who cannot sign up, or without a person.
+  // A rail panel (.gs-hd-panel): the title, one row per slot, Save standing sign-ups and the help sentence.
   function cardHtml(opts) {
     const gd = opts.guildData;
     const s = opts.state;
     if (!opts.canSignUp || !s || s.gid !== gd.guild.id || s.teamId !== opts.teamId || s.status === 'loading' || s.status === 'denied') return '';
-    const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="st-h">Standing sign-ups</h2></div>';
+    const head = '<div class="gs-rl-head"><h2 class="gs-hd-sl" id="st-h">Your standing sign-ups</h2></div>';
     if (s.status === 'error') {
-      return '<section class="gs-card-sec gs-st" aria-labelledby="st-h">' + head + '<div class="gs-card-sec-body"><p class="gs-alert" role="alert">' + esc(s.message || 'Could not load your standing sign-ups.') +
+      return '<section class="gs-hd-panel gs-rl-panel gs-st" aria-labelledby="st-h">' + head + '<div class="gs-rl-body"><p class="gs-alert" role="alert">' + esc(s.message || 'Could not load your standing sign-ups.') +
         '</p><div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="st-retry" data-key="st-retry">Try again</button></div></div></section>';
     }
     if (!s.data || !s.data.personId) return '';
     const entry = teamEntry(s.data, opts.teamId);
     if (!entry || !entry.slots.length) {
-      return '<section class="gs-card-sec gs-st" aria-labelledby="st-h">' + head + '<div class="gs-card-sec-body"><p class="gs-fine">This team has no raid schedule yet. When your officers set one, you can sign up for its days here.</p></div></section>';
+      return '<section class="gs-hd-panel gs-rl-panel gs-st" aria-labelledby="st-h">' + head + '<div class="gs-rl-body"><p class="gs-fine">This team has no raid schedule yet. When your officers set one, you can sign up for its days here.</p></div></section>';
     }
     const draft = s.draft || draftFrom(entry);
     const rows = entry.slots.map(function (slot, i) { return rowHtml(slot, draft[i] || { weekday: slot.weekday, checked: false, kind: 'signed', characterId: '' }, entry.characters || []); }).join('');
-    return '<section class="gs-card-sec gs-st" aria-labelledby="st-h">' + head + '<div class="gs-card-sec-body"><p class="gs-fine" id="st-explain">' + esc(EXPLAIN) + '</p>' +
+    return '<section class="gs-hd-panel gs-rl-panel gs-st" aria-labelledby="st-h">' + head + '<div class="gs-rl-body">' +
       (s.note ? '<div class="gs-notice" role="status"><span>' + esc(s.note) + '</span></div>' : '') +
       '<form class="gs-st-form" data-submit="standing-form" novalidate aria-describedby="st-explain"><ul class="gs-st-list" aria-label="Days of the weekly schedule">' + rows + '</ul>' +
       '<p class="gs-alert" id="st-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p>' +
-      '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm" data-key="st-save"' + (s.busy ? ' disabled' : '') + '>Save standing sign-ups</button></div></form></div></section>';
+      '<div class="gs-row-actions"><button type="submit" class="gs-btn" data-key="st-save"' + (s.busy ? ' disabled' : '') + '>Save standing sign-ups</button></div></form>' +
+      '<p class="gs-fine" id="st-explain">' + esc(EXPLAIN) + '</p></div></section>';
+  }
+
+  // The Change dialog of one On row: Status and Character, ghost Cancel and the dialog's one molten Save.
+  function changeDialogHtml(slot, row, characters) {
+    const kind = '<div class="gs-field"><label class="gs-label" for="st-dlg-kind">Status</label><select class="gs-input" id="st-dlg-kind" name="kind">' +
+      G.ui.optionsHtml(KIND_CHOICES.map(function (k) { return { value: k[0], label: k[1] }; }), row.kind) + '</select></div>';
+    const chars = characters.length > 1
+      ? '<div class="gs-field"><label class="gs-label" for="st-dlg-char">Character</label><select class="gs-input" id="st-dlg-char" name="character">' +
+        G.ui.optionsHtml([{ value: '', label: 'My usual character' }].concat(characters.map(function (c) { return { value: c.id, label: c.name + (c.mainSpec ? ' (' + c.mainSpec + ')' : '') }; })), row.characterId) + '</select></div>'
+      : '';
+    return G.ui.dialogHtml({
+      kind: 'form', className: 'gs-forge', title: railSlotText(slot), bodyHtml: kind + chars,
+      cancel: { variant: 'ghost' }, primary: { label: 'Save', attrs: { id: 'dlg-submit' } },
+      formAttrs: { 'data-submit': 'standing-change-form', 'data-wd': slot.weekday },
+    });
   }
 
   // ── data ──
@@ -133,20 +162,33 @@
     return row ? { s: s, row: row } : null;
   }
 
-  G.handlers.change['st-toggle'] = function (el) {
+  G.handlers.click['st-toggle'] = function (el) {
     const f = rowOf(el);
     if (!f) return;
-    f.row.checked = !!el.checked;
+    f.row.checked = !f.row.checked;
     f.s.error = ''; f.s.note = '';
     G.app.render();
   };
-  G.handlers.change['st-kind'] = function (el) {
+  G.handlers.click['st-change'] = function (el) {
     const f = rowOf(el);
-    if (f) f.row.kind = el.value === 'late' ? 'late' : 'signed';
+    const entry = f ? teamEntry(f.s.data, f.s.teamId) : null;
+    const slot = entry ? entry.slots.filter(function (x) { return x.weekday === f.row.weekday; })[0] : null;
+    if (!slot) return;
+    G.ui.openDialog(changeDialogHtml(slot, f.row, entry.characters || []), { labelledBy: 'dlg-title' });
+    const first = typeof document !== 'undefined' ? document.getElementById('st-dlg-kind') : null;
+    if (first) first.focus();
   };
-  G.handlers.change['st-char'] = function (el) {
-    const f = rowOf(el);
-    if (f) f.row.characterId = el.value || '';
+  // The dialog's Save: the row's status and character into the draft, then the same save as the panel's (every toggle in the panel goes with it).
+  G.handlers.submit['standing-change-form'] = function (form) {
+    const s = cur();
+    const wd = Number(form.getAttribute ? form.getAttribute('data-wd') : NaN);
+    const row = s && s.draft ? s.draft.filter(function (r) { return r.weekday === wd; })[0] : null;
+    if (!row) return;
+    const e = form.elements || {};
+    row.kind = e.kind && e.kind.value === 'late' ? 'late' : 'signed';
+    if (e.character) row.characterId = e.character.value || '';
+    G.ui.closeDialogOf(form);
+    return save();
   };
   G.handlers.click['st-retry'] = function () {
     const s = a().standing;
@@ -157,7 +199,7 @@
   };
 
   // Save: the Worker replaces my set for the team and answers with the team's entry; the Raids list is read again (new sign-ups carry the "standing" tag).
-  G.handlers.submit['standing-form'] = function () {
+  function save() {
     const s = cur();
     const gd = currentGd();
     if (!s || !gd || s.busy) return;
@@ -186,12 +228,14 @@
       G.app.render();
       return null;
     });
-  };
+  }
+  G.handlers.submit['standing-form'] = function () { return save(); };
 
   G.pages.standing = {
     EXPLAIN: EXPLAIN,
     timeLabel: timeLabel,
     slotText: slotText,
+    railSlotText: railSlotText,
     draftFrom: draftFrom,
     bodyFrom: bodyFrom,
     cardHtml: cardHtml,

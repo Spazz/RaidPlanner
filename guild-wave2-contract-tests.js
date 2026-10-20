@@ -233,9 +233,9 @@ check('sizes: Team settings sets the team size (PATCH); the Raids list counts ag
   for (const rid of [hyjal, barrow, open]) await E.api.signups.save(s.gid, rid, { kind: 'signed' });
   const list = await openList(s, E);
   text = ws(stripTags(list()));
-  assert(text.includes('Hyjal Summit - 20 1 / 20 signed up'), text.slice(0, 900));
-  assert(text.includes('Barrow Deeps - 10 1 / 10 signed up'), text.slice(0, 900));
-  assert(text.includes('Mon Oct 26, 8:00 PM ET 40-player 1 / 40 signed up'), 'no zone: the team\'s 40: ' + text.slice(0, 900));
+  assert(/Hyjal Summit\s*1 \/ 20 signed up/.test(text), text.slice(0, 900));
+  assert(/Barrow Deeps\s*1 \/ 10 signed up/.test(text), text.slice(0, 900));
+  assert(/Mon Oct 26\s*8:00 PM ET\s*40-player\s*1 \/ 40 signed up/.test(text), 'no zone: the team\'s 40: ' + text.slice(0, 900));
 });
 
 check('raid settings: the officer\'s card sets a raid\'s own size and sign-up deadline (one PATCH), the page, the list and the member\'s panel follow, and Automatic / Team default clear them', async () => {
@@ -254,7 +254,7 @@ check('raid settings: the officer\'s card sets a raid\'s own size and sign-up de
   assert.deepEqual((await s.rows('SELECT size, signup_close_hours FROM raids WHERE id = ?', hyjal))[0], { size: 40, signup_close_hours: 12 }, 'one PATCH stored both');
   text = ws(stripTags(page()));
   assert(text.includes('In effect: 40 players, set for this raid.') && text.includes('12 hours before the start') && text.includes('Raid settings saved.'), text.slice(0, 900));
-  assert(ws(stripTags((await openList(s, E))())).includes('Hyjal Summit - 40 1 / 40 signed up'), 'the list follows the raid\'s own size');
+  assert(/Hyjal Summit\s*1 \/ 40 signed up/.test(ws(stripTags((await openList(s, E))()))), 'the list follows the raid\'s own size');
   const panel = ws(stripTags((await openRaid(s, E, hyjal))()));
   assert(panel.includes('Open until Sat Oct 24, 8:00 AM ET (sign-ups close 12 hours before the start)') && panel.includes('Expected 1 / 40'), panel.slice(0, 700));
 
@@ -382,7 +382,7 @@ check('date-only raid: the raid page and the list say "Time not set"; the fetche
   text = ws(stripTags((await openRaid(s, E, timed))()));
   assert(text.includes('Starts Sun Oct 25, 8:00 PM ET') && !text.includes('Time not set'), text.slice(0, 500));
   text = ws(stripTags((await openList(s, E))()));
-  assert(/Sat Oct 24[^]*?time not set/.test(text) && text.includes('Sun Oct 25, 8:00 PM ET'), text.slice(0, 700));
+  assert(/Sat Oct 24\s*Time not set/.test(text) && /Sun Oct 25\s*8:00 PM ET/.test(text), text.slice(0, 700));
 
   // The calendar link, fetched the way a calendar app would.
   const made = await E.api.calendar.create(s.gid, s.teamId);
@@ -476,7 +476,7 @@ check('away notices in the views: the officer\'s Raids card and the person secti
   A.pages.away.afterRender({ name: 'section', section: 'raids' });
   await settle();
   let text = stripTags(list());
-  assert(/Away, next 4 weeks/.test(text) && text.includes('Thoren') && text.includes('Away Oct 24 - Oct 25') && text.includes('Reason: Wedding trip') && text.includes('Away every Thursday') && text.includes('Reason: Work shift'), text.slice(0, 1500));
+  assert(/Away in the next 4 weeks/.test(text) && text.includes('Thoren') && text.includes('Away Oct 24 - Oct 25') && text.includes('Reason: Wedding trip') && text.includes('Away every Thursday') && text.includes('Reason: Work shift'), text.slice(0, 1500));
   const record = await A.api.get(`${s.base}/roster/${s.people.Thoren}`);
   A.app.state.person = { gid: s.gid, pid: s.people.Thoren, record };
   A.pages.away.afterRender({ name: 'person', pid: s.people.Thoren });
@@ -629,7 +629,7 @@ check('standby: the panel\'s Standby button is one real request; the counts say 
   const officer = stripTags((await openRaid(s, A, rid))());
   assert(/Expected 1 \/ 25/.test(officer) && /Standby 1/.test(officer) && /Thoren/.test(officer), officer.slice(0, 700));
   text = ws(stripTags((await openList(s, E))()));
-  assert(text.includes('1 / 25 signed up, 1 standby'), text.slice(0, 700));
+  assert(/1 \/ 25 signed up/.test(text) && text.includes('Standby'), text.slice(0, 700));
 
   // The Worker's own numbers agree, and the seed words it as signed (class and spec) with kind standby and the marker.
   const view = await E.api.signups.view(s.gid, rid);
@@ -662,11 +662,11 @@ check('standing sign-ups: the Raids page card saves the days (one PUT); the sche
   const s = await standingWorld();
   const { A, E } = s;
   let text = ws(stripTags(s.card()));
-  assert(text.includes('Standing sign-ups') && text.includes('Every Tuesday 8:00 PM') && text.includes("I'm in"), text.slice(0, 900));
+  assert(text.includes('Your standing sign-ups') && text.includes('Every Tuesday 8:00 PM ET') && text.includes('Off'), text.slice(0, 900));
   const puts = [];
   const realSave = E.api.standing.save;
   E.api.standing.save = (gid, tid, body) => { puts.push(plain(body)); return realSave(gid, tid, body); };
-  E.handlers.change['st-toggle'](el({ 'data-wd': '2' }, { checked: true }));
+  E.handlers.click['st-toggle'](el({ 'data-wd': '2' }));
   await E.handlers.submit['standing-form']();
   assert.deepEqual(puts, [{ slots: [{ weekday: 2, kind: 'signed' }] }]);
   assert.deepEqual(await s.rows('SELECT weekday, kind, character_id FROM standing_signups'), [{ weekday: 2, kind: 'signed', character_id: null }]);
@@ -683,7 +683,7 @@ check('standing sign-ups: the Raids page card saves the days (one PUT); the sche
   await s.refresh(A, E);
   const html = (await openList(s, E))();
   text = ws(stripTags(html));
-  assert((text.match(/Signed up - Thoren/g) || []).length >= 3 && />standing</.test(html), text.slice(0, 1200));
+  assert((html.match(/is-green">Signed up</g) || []).length >= 3 && />Standing</.test(html), text.slice(0, 1200));
   const panel = await openRaid(s, E, raids[0].id);
   text = stripTags(panel());
   assert(text.includes('This sign-up comes from your standing sign-up. Skip this week sets you to Can\'t come for this raid only.') && text.includes('Skip this week'), text.slice(0, 900));
@@ -785,14 +785,14 @@ check('published line-up: the officer publishes the plan (it asks first); a memb
   page = await openRaidWithRoster(s, E, s.rid);
   text = stripTags(page());
   assert(text.includes('Your group') && text.includes('You\'re in Group 1 as Protection Paladin (Thoren)') && text.includes('Tell the officers if you\'re coming.'), text.slice(0, 900));
-  assert(stripTags((await openList(s, E))()).includes('Group 1 - confirm?'), 'the Raids list row has the chip');
+  assert((await openList(s, E))().includes('is-grey">Group 1</span>'), 'the Raids list row has the chip');
   page = await openRaidWithRoster(s, E, s.rid);
   await E.handlers.click['seat-confirm'](el({}));
   await settle();
   text = stripTags(page());
   assert(text.includes('You told the officers you\'re coming.') && !/>Confirm</.test(page()), text.slice(0, 700));
   assert.equal(await s.statusOf('Thoren'), 'confirmed');
-  assert(stripTags((await openList(s, E))()).includes('Group 1 - confirmed'), 'and follows the answer');
+  assert((await openList(s, E))().includes('is-grey">Group 1</span>'), 'and still has it (the card does not show the answer)');
 });
 
 check('published line-up: Can\'t come asks, makes the sign-up Absent and reaches Home; Re-publish after a plan change keeps unchanged answers; Unpublish takes the line-up down', async () => {

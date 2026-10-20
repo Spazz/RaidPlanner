@@ -272,13 +272,13 @@ check('Home and Raids: what the scheduler found - an event on another day, a web
     const route = { name: 'section', gid: s.gid, section: 'raids' };
     await A.pages.raids.load(route, A.guildData);
     const list = stripTags(A.pages.raids.main(route, A.guildData));
-    assert(list.includes('Sign-ups refreshed 12 min ago'), list.slice(0, 600));
+    assert(!list.includes('Sign-ups refreshed'), 'the card has no freshness line');
     assert(list.includes(`Raid-Helper has this event on ${day('2026-10-19')}. The raid was not moved.`));
-    // A member sees the freshness, not the officers' warning.
+    // A member does not see the officers' warning.
     pageState(s, s.E);
     await s.E.pages.raids.load(route, s.E.guildData);
     const mine = stripTags(s.E.pages.raids.main(route, s.E.guildData));
-    assert(mine.includes('Sign-ups refreshed 12 min ago') && !mine.includes('Raid-Helper has this event on'));
+    assert(!mine.includes('Raid-Helper has this event on'));
   } finally { Date.now = realNow; }
 });
 

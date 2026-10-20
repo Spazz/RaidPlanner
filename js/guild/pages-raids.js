@@ -1,8 +1,8 @@
 // ── PAGES: RAIDS LIST and NEW RAID ──────────────────────────────
-// The list of one team's raids (GET /raids?team=): Upcoming (raids that have not started, soonest first, with the zone and size, the
-// sign-up count against the size, the viewer's own sign-up with the sign-up deadline and a one-click Sign up; a date-only raid says "time
-// not set") and Past (newest first, with status pills) tabs, "Create upcoming raids" from the team's
-// weekly schedule (also run by itself when the team's schedule says so), "Subscribe in your calendar" (pages-calendar.js), and the New raid page, which
+// The list of one team's raids (GET /raids?team=) on the Forge look (T1 + a right rail): Upcoming (raids that have not started, soonest first, as cards: gold date,
+// time, title in ONE link, the sign-up figure and bar, then ONE status item - the officer's Plan chip or the member's Sign up / chip) and Past (newest first, a
+// table with one status chip) tabs, "Create upcoming raids" from the team's weekly schedule (also run by itself when the team's schedule says so), "Subscribe in
+// your calendar" (pages-calendar.js), the rail (standing sign-ups, the officer's away panel, the member's away line) and the New raid page, which
 // runs its calls in order (create raid, event, each report, plan) with a status line per source. A failure stops that
 // source only: the raid exists, the page links to it and offers Retry. Dates are the guild's calendar dates.
 (function (G) {
@@ -12,6 +12,7 @@
   const RAID_DATE = /^\d{4}-\d{2}-\d{2}$/;
   const RAID_TIME = /^\d{2}:\d{2}$/;
   const DEFAULT_START = '20:00';
+  const CARD_LIMIT = 8; // upcoming cards before "Show all N"
 
   function A() { return G.pages.attendance; }
   function st() { return G.app.state; }
@@ -90,30 +91,51 @@
       '<rect class="gs-sb-missed" x="' + Math.round((presentW + benchW) * 10) / 10 + '" y="0" width="' + missedW + '" height="8"/></svg>';
   }
 
-  // Past raids as the T1 data table (phone: one card per raid, the date is the link and the whole card is the tap area). The Sources column and the review /
-  // recalculation chips are the officers' (people who can review the team); a member sees Reviewed and Awaiting log only.
-  function pastTableHtml(gd, raids, officer) {
+  // The Past table's Status: ONE gs-hd-chip word. Officers: Needs recalculation and N to review are the attention (rose); the rest grey. A stale raid shows only
+  // "Needs recalculation", whatever else its stored state says; a manual raid with open flags says "N to review" (the work to do). A member sees Reviewed and
+  // Awaiting log only, and nothing for a stale raid (the review and recalculation words are the officers' work states).
+  function statusChipHtml(r, memberView) {
+    const chip = function (tone, text) { return '<span class="gs-hd-chip is-' + tone + '">' + esc(text) + '</span>'; };
+    const flags = r.openFlags > 0 ? r.openFlags : 0;
+    if (memberView) {
+      if (r.stale || r.state === 'stale') return '';
+      return r.state === 'reviewed' ? chip('grey', 'Reviewed') : (r.state === 'awaiting_log' ? chip('grey', 'Awaiting log') : '');
+    }
+    if (r.stale || r.state === 'stale') return chip('rose', 'Needs recalculation');
+    switch (r.state) {
+      case 'upcoming': return chip('grey', 'Upcoming');
+      case 'awaiting_log': return chip('grey', 'Awaiting log');
+      case 'manual': return flags ? chip('rose', flags + ' to review') : chip('grey', 'No log - by hand');
+      case 'to_review': return chip('rose', flags + ' to review');
+      case 'reviewed': return chip('grey', 'Reviewed');
+      default: return chip('grey', String(r.state == null ? '' : r.state).replace(/_/g, ' '));
+    }
+  }
+
+  // Past raids as the T1 data table: Date (the link, the row header) | Raid (zone bold, size muted) | Bosses | Attended / bench / missed | Status. Below 760 px the
+  // helper turns the rows into cards. The sources of a raid are on its page (the Raid panel), not here.
+  function pastTableHtml(gd, raids, officer, showAll) {
     const gid = gd.guild.id;
     const columns = [
       { key: 'date', label: 'Date', primary: true },
-      { key: 'zone', label: 'Zone' },
+      { key: 'raid', label: 'Raid' },
       { key: 'bosses', label: 'Bosses' },
-      officer ? { key: 'sources', label: 'Sources' } : null,
-      { key: 'counts', label: 'Attended / Bench / Missed' },
+      { key: 'counts', label: 'Attended / bench / missed' },
       { key: 'status', label: 'Status' },
-    ].filter(Boolean);
+    ];
     const rows = raids.map(function (r) {
-      const where = zoneSizeText(r.zone, r.size);
+      const size = typeof r.size === 'number' && r.size > 0 ? r.size + '-player' : '';
+      const name = r.zone || r.title || size;
+      const sub = name !== size ? size : '';
       return { id: r.id, cells: {
         date: '<a class="gs-raid-link" href="' + esc(raidHref(gid, r.id)) + '">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + '</a>',
-        zone: where ? esc(where) : '<span class="gs-muted">-</span>',
+        raid: name ? '<strong class="gs-rp-zone">' + esc(name) + '</strong>' + (sub ? '<span class="gs-rp-size">' + esc(sub) + '</span>' : '') : '<span class="gs-muted">-</span>',
         bosses: esc(bossesText(r.bosses)),
-        sources: sourceChipsHtml(r.sources),
         counts: r.counts ? '<span class="gs-stack">' + stackBarHtml(r.counts) + '<span class="gs-stack-num">' + esc(countsText(r.counts)) + '</span></span>' : '<span class="gs-muted">-</span>',
-        status: statePillsHtml(r, !officer),
+        status: statusChipHtml(r, !officer),
       } };
     });
-    return G.ui.dataTableHtml({ label: 'Raids', columns: columns, rows: rows, showAll: true, noun: 'raids' });
+    return G.ui.dataTableHtml({ label: 'Raids', columns: columns, rows: rows, showAll: !!showAll, showAllAction: 'raids-past-all', noun: 'raids' });
   }
 
   // ── upcoming ──
@@ -181,35 +203,7 @@
     return parts.join(', ');
   }
 
-  // The title, then the zone with the raid's size ('Prog night - Hyjal Summit - 20'); '-' when there is nothing to say.
-  // The sign-ups of a raid with a Raid-Helper event say how fresh they are: the automatic refresh reads them every 12 h, every 2 h inside the last 48 h before the
-  // start. An officer also sees when Raid-Helper has the event on another day (the refresh never moves a raid; Needs attention lists it too).
-  function refreshedHtml(r, now) {
-    if (!r.eventSourced) return '';
-    let html = '';
-    if (typeof r.eventSyncedAt === 'number') html += '<span class="gs-fine gs-refreshed">Sign-ups refreshed ' + esc(G.ui.agoText(r.eventSyncedAt, now)) + '</span>';
-    if (r.eventMovedOn) html += '<span class="gs-fine gs-refreshed gs-refreshed-warn">Raid-Helper has this event on ' + esc(G.ui.weekdayDay(r.eventMovedOn) || r.eventMovedOn) + '. The raid was not moved.</span>';
-    return html;
-  }
-
-  function eventCellHtml(r, now) {
-    const where = zoneSizeText(r.zone, r.size);
-    const name = [r.title ? '<span class="gs-ev-title">' + esc(r.title) + '</span>' : '', where ? esc(where) : ''].filter(Boolean).join(' &middot; ');
-    return (name || '<span class="gs-muted">-</span>') + (r.eventSourced ? ' <span class="gs-fine">(Raid-Helper)</span>' : '') + refreshedHtml(r, now);
-  }
-
   function planPillHtml(r) { return r.planned ? pillHtml('ok', 'Planned') : pillHtml('muted', 'Not planned'); }
-
-  // The officer's row actions: Plan in Planner (the one secondary) and a More icon button named for the raid, which holds Refresh sign-ups.
-  function upcomingActionsHtml(r, canEdit) {
-    if (!canEdit) return '';
-    const plan = G.ui.buttonHtml({ label: 'Plan in Planner', size: 'sm', attrs: { 'data-action': 'raids-plan', 'data-rid': r.id, 'data-key': 'rp-' + r.id } });
-    const refresh = r.eventSourced && r.eventId
-      ? G.ui.menuHtml({ id: 'rm-' + r.id, icon: 'more', ariaLabel: 'More actions for ' + (G.ui.weekdayDay(r.raidOn) || r.raidOn) + ' raid', key: 'rm-' + r.id,
-        items: [{ label: 'Refresh sign-ups', key: 'rr-' + r.id, data: { action: 'raids-refresh', rid: r.id } }] })
-      : '';
-    return '<div class="gs-row-actions">' + plan + refresh + '</div>';
-  }
 
   // "Sign-ups close Thu 7:30 PM" while the window is open and the team (or the raid) has a deadline; nothing otherwise.
   function deadlineHtml(r, gd) {
@@ -218,48 +212,69 @@
     return when ? '<span class="gs-fine">Sign-ups close ' + esc(when) + '</span>' : '';
   }
 
-  // The viewer's own sign-up on an upcoming row: what they are down as, and a Sign up button while they may and are not already signed, and
-  // when the window closes. canSignUp: the viewer has a character on the team (the Worker's can.signup). gd: for the deadline's time zone.
-  function mineHtml(r, canSignUp, gd) {
-    if (!canSignUp) return '';
-    const m = r.mine;
-    const label = m && m.kind ? (m.source === 'away' ? 'Away (notice)' : A().KIND_LABELS[m.kind] || m.kind) : '';
-    // A seat on a published roster can come without any sign-up (kind null): the roster chip is then the whole row.
-    const chip = (m && m.kind ? G.ui.chipHtml(Object.assign({}, m.source === 'away' ? { tone: 'warning', label: label } : G.ui.SIGNUP_CHIPS[m.kind] || { tone: 'neutral', label: label }, { label: label + (m.characterName ? ' - ' + m.characterName : '') })) + (m.standing ? '<span class="gs-chip gs-chip-src">standing</span>' : '') : '') +
-      (G.pages.raidRoster ? G.pages.raidRoster.listChipHtml(r) : '');
-    if (r.signupsOpen && !(m && m.kind === 'signed')) {
-      return chip + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>' + deadlineHtml(r, gd);
-    }
-    if (!r.signupsOpen && !(m && (m.kind || m.roster))) return '<span class="gs-fine">Sign-ups closed</span>';
-    return chip + deadlineHtml(r, gd);
+  // The raid's title on a card: the event title, else the zone, else the size ("25-player").
+  function cardTitleText(r) {
+    const size = typeof r.size === 'number' && r.size > 0 ? r.size + '-player' : '';
+    return r.title || r.zone || size || 'Raid';
   }
 
-  // Upcoming raids as the T1 data table (phone: cards). Columns by who looks: a member with a character sees Your sign-up; Plan and the row actions are the
-  // officers' (raids.edit). Over 10 rows show 10 and "Show all N".
+  // "13 / 25" and a thin neutral bar (an SVG: the page allows no inline style) while the viewer may see counts (r.signups); nothing otherwise. Without a size the
+  // figure is the count alone.
+  function cardFigureHtml(r) {
+    const s = r.signups;
+    if (!s) return '';
+    const signed = (s.signed || 0) + (s.late || 0);
+    const count = typeof s.expected === 'number' ? s.expected : signed + (s.standby || 0);
+    const size = typeof r.size === 'number' && r.size > 0 ? r.size : 0;
+    const pct = size ? Math.max(0, Math.min(100, Math.round(count / size * 1000) / 10)) : 0;
+    const bar = size ? '<svg class="gs-rc-bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="gs-rc-bar-track" x="0" y="0" width="100" height="4"/><rect class="gs-rc-bar-fill" x="0" y="0" width="' + pct + '" height="4"/></svg>' : '';
+    return '<div class="gs-rc-signups"><span class="gs-rc-fig">' + esc(count) + (size ? ' <span class="gs-rc-of">/ ' + esc(size) + '</span>' : '') + '<span class="gs-sr"> signed up</span></span>' + bar + '</div>';
+  }
+
+  // The ONE status item of a card, outside its link.
+  //   Officer (raids.edit): a grey Plan chip while the raid is not planned (the list does not say planned-but-not-published, so there is no Publish); nothing
+  //   otherwise; the Raid-Helper moved warning stays as a muted line.
+  //   Member with a character (signups.self): a seat in a published line-up = grey Group N / Bench; a sign-up = green Signed up (+ muted Standing) or a grey chip
+  //   with its word; none yet = Sign up while the window is open, else the muted "Sign-ups closed".
+  function cardStatusHtml(r, canEdit, canSignUp) {
+    const chip = function (tone, text) { return '<span class="gs-hd-chip is-' + tone + '">' + esc(text) + '</span>'; };
+    if (canEdit) {
+      return (r.planned ? '' : chip('grey', 'Plan')) +
+        (r.eventMovedOn ? '<p class="gs-rc-note">Raid-Helper has this event on ' + esc(G.ui.weekdayDay(r.eventMovedOn) || r.eventMovedOn) + '. The raid was not moved.</p>' : '');
+    }
+    if (!canSignUp) return '';
+    const m = r.mine;
+    if (m && m.roster) return chip('grey', m.roster.group ? 'Group ' + m.roster.group : 'Bench');
+    if (m && m.kind) {
+      if (m.source === 'away') return chip('grey', 'Away');
+      if (m.kind === 'signed') return chip('green', 'Signed up') + (m.standing ? '<span class="gs-rc-note">Standing</span>' : '');
+      return chip('grey', A().KIND_LABELS[m.kind] || m.kind);
+    }
+    if (r.signupsOpen) return '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>';
+    return '<span class="gs-rc-note">Sign-ups closed</span>';
+  }
+
+  // One upcoming raid as a card: ONE link (to the raid page) around the gold date, the time and the title; the sign-up figure and bar; then the status item.
+  function cardHtml(gd, r, canEdit, canSignUp) {
+    const zone = gd && gd.guild ? gd.guild.timeZone : '';
+    const day = G.ui.weekdayDay(r.raidOn) || r.raidOn;
+    const time = r.timeKnown === false ? '' : timeText(r.startsAt, zone);
+    const status = cardStatusHtml(r, canEdit, canSignUp);
+    return '<li class="gs-rc"><a class="gs-rc-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '"><span class="gs-hd-daydate gs-rc-date">' + esc(day) + '</span>' +
+      '<span class="gs-rc-time">' + esc(time || 'Time not set') + '</span><span class="gs-rc-title">' + esc(cardTitleText(r)) + '</span></a>' +
+      cardFigureHtml(r) + (status ? '<div class="gs-rc-status">' + status + '</div>' : '') + '</li>';
+  }
+
+  // Upcoming raids as cards in a grid (one per row on a phone): the first 8, then "Show all N".
   function upcomingHtml(gd, upcoming, canEdit, canSignUp, showAll) {
     if (!upcoming.length) {
       return G.ui.emptyStateHtml({ kind: 'filtered', title: 'No upcoming raids', text: canEdit ? 'Use New raid to add one, or Create upcoming raids from the weekly schedule.' : 'Your officers haven\'t scheduled one yet.' });
     }
-    const gid = gd.guild.id;
-    const columns = [
-      { key: 'date', label: 'Date', primary: true },
-      { key: 'event', label: 'Raid' },
-      { key: 'signups', label: 'Sign-ups' },
-      canSignUp ? { key: 'mine', label: 'Your sign-up' } : null,
-      canEdit ? { key: 'plan', label: 'Plan' } : null,
-      canEdit ? { key: 'actions', label: 'Row actions', srLabel: true, hideLabel: true } : null,
-    ].filter(Boolean);
-    const rows = upcoming.map(function (r) {
-      return { id: r.id, cells: {
-        date: '<a class="gs-raid-link" href="' + esc(raidHref(gid, r.id)) + '">' + esc(whenText(r, gd)) + '</a>' + timeNotSetHtml(r),
-        event: eventCellHtml(r),
-        signups: esc(signupsText(r.signups, r.size)),
-        mine: canSignUp ? '<div class="gs-su-cell">' + mineHtml(r, canSignUp, gd) + '</div>' : '',
-        plan: planPillHtml(r),
-        actions: upcomingActionsHtml(r, canEdit),
-      } };
-    });
-    return G.ui.dataTableHtml({ label: 'Upcoming raids', columns: columns, rows: rows, limit: 10, showAll: !!showAll, showAllAction: 'raids-show-all', noun: 'raids' });
+    const shown = showAll || upcoming.length <= CARD_LIMIT ? upcoming : upcoming.slice(0, CARD_LIMIT);
+    const foot = shown.length < upcoming.length
+      ? '<div class="gs-dtable-foot gs-rc-foot"><span class="gs-fine">Showing ' + shown.length + ' of ' + upcoming.length + ' raids</span><button type="button" class="gs-linkbtn" data-action="raids-show-all">Show all ' + upcoming.length + '</button></div>'
+      : '';
+    return '<ul class="gs-rc-grid" aria-label="Upcoming raids">' + shown.map(function (r) { return cardHtml(gd, r, canEdit, canSignUp); }).join('') + '</ul>' + foot;
   }
 
   // A sign-up view (the Worker's answer to a sign-up write) folded into its upcoming row: what the viewer is down as, the counts, whether it is open.
@@ -315,9 +330,43 @@
       '<h2 class="gs-h2 gs-h2-lg" id="raids-empty-h">No raids yet</h2>' + body + '</section>';
   }
 
+  // The tab strip (Forge .gs-subtabs): Upcoming / Past with gold count badges, Progress when the board exists. Buttons: a tab changes the list in place.
+  function tabsHtml(tab, upcomingCount, pastCount) {
+    const items = [
+      { key: 'upcoming', label: 'Upcoming', count: upcomingCount },
+      { key: 'past', label: 'Past', count: pastCount },
+      G.pages.progress ? { key: 'progress', label: 'Progress' } : null,
+    ].filter(Boolean);
+    return '<nav aria-label="Raids"><ul class="gs-subtabs gs-raids-tabs">' + items.map(function (it) {
+      const on = it.key === tab;
+      return '<li><button type="button" class="gs-subtab' + (on ? ' is-active' : '') + '" aria-pressed="' + (on ? 'true' : 'false') + '" data-action="raids-tab" data-value="' + it.key + '" data-key="rt-' + it.key + '">' +
+        esc(it.label) + (it.count != null ? ' <span class="gs-tab-count">' + esc(it.count) + '</span>' : '') + '</button></li>';
+    }).join('') + '</ul></nav>';
+  }
+
+  // The rail beside the cards / table (below it under 1024 px): the viewer's standing sign-ups; for an officer the away panel with Create upcoming raids; for a
+  // member the one away line. Pieces that are not ready (still loading, no person) draw nothing.
+  function railHtml(gd, x) {
+    const teamId = x.teamId;
+    const can = x.data && x.data.can;
+    const canEdit = G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', teamId);
+    const hasSlots = !!(x.data && x.data.schedule && x.data.schedule.slots > 0);
+    const standing = G.pages.standing ? G.pages.standing.cardHtml({ guildData: gd, teamId: teamId, canSignUp: !!(can && can.signup), state: a().standing }) : '';
+    let away = '';
+    if (canEdit) {
+      const fill = hasSlots ? '<button type="button" class="gs-btn gs-rl-fill" data-action="raids-fill" data-key="rail-raids-fill">Create upcoming raids</button>' : '';
+      away = G.pages.away ? G.pages.away.teamCardHtml({ guildData: gd, teamId: teamId, state: a().awayTeam, footHtml: fill }) : '';
+    } else if (G.pages.away && G.pages.away.memberLineHtml) {
+      away = G.pages.away.memberLineHtml({ guildData: gd, state: a().away });
+    }
+    return standing + away;
+  }
+
   // opts: { guildData, teamId, data (GET /raids?team=) , progress, alert, note, more (bool), tab ('upcoming' | 'past' | 'progress'; default: Upcoming when there is one),
-  //         progressHtml (the Progress tab's board, pages-progress.js), showAll (the Upcoming table shows every row) }
-  // T1 list page: the header (title, one context line, the one More menu, New raid as the one primary), the Upcoming / Past / Progress segments, the table.
+  //         progressHtml (the Progress tab's board, pages-progress.js), showAll (Upcoming shows every card), showAllPast (Past shows every loaded row),
+  //         railHtml (the rail's panels, see railHtml) }
+  // T1 list page on Forge: the header (title, one context line, the one More menu, New raid as the one primary), the Upcoming / Past / Progress tabs, then the main
+  // column (cards or the Past table) and the rail.
   function raidsHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
@@ -346,11 +395,7 @@
     more.push({ label: 'My away notices', href: G.router.format({ name: 'away', gid: gid }) });
     const head = { title: 'Raids', context: context, more: { id: 'raids-more', key: 'raids-more', items: more }, primary: canEdit ? { label: 'New raid', href: G.router.format({ name: 'raidnew', gid: gid }) } : null };
     const empty = !raids.length && !upcoming.length;
-    const bar = empty ? '' : G.ui.segmentsHtml({ label: 'Raids', action: 'raids-tab', selected: tab, items: [
-      { key: 'upcoming', label: 'Upcoming', count: upcoming.length, dataKey: 'rt-upcoming' },
-      { key: 'past', label: 'Past', count: pastCount, dataKey: 'rt-past' },
-      G.pages.progress ? { key: 'progress', label: 'Progress', dataKey: 'rt-progress' } : null,
-    ] });
+    const bar = empty ? '' : tabsHtml(tab, upcoming.length, pastCount);
     let body;
     if (empty) {
       body = emptyHtml(gd, canEdit);
@@ -362,17 +407,15 @@
       body = G.ui.emptyStateHtml({ title: 'No past raids yet', icon: 'raids', text: 'Raids move here after they start.' + (canEdit ? ' Attach a Warcraft Logs report to a finished raid to record attendance.' : ''),
         actions: canEdit ? [{ label: 'Backfill from Warcraft Logs', variant: 'secondary', href: G.router.format({ name: 'backfill', gid: gid }) }] : [] });
     } else {
-      body = pastTableHtml(gd, raids, officer) +
+      body = pastTableHtml(gd, raids, officer, opts.showAllPast) +
         (opts.more ? '<div class="gs-actions"><button type="button" class="gs-btn" data-action="raids-older" data-key="raids-older">Show older raids</button></div>' : '');
     }
-    const foot = !empty && tab === 'upcoming'
-      ? esc(plural(upcoming.length, 'upcoming raid', 'upcoming raids')) + '.' + (canEdit ? ' <a href="' + esc(G.router.format({ name: 'settings', gid: gid, tab: 'schedule' })) + '">Edit weekly schedule</a>' : '') : '';
-    return G.ui.listPageHtml({
-      head: head,
-      noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (opts.note ? '<div class="gs-notice" role="status"><span>' + esc(opts.note) + '</span></div>' : '') +
-        A().staleBannerHtml(staleCount, canEdit, opts.progress) + flagBannerHtml(gd, opts.teamId, raids),
-      barHtml: bar, bodyHtml: body + (opts.awayHtml || ''), footHtml: foot,
-    });
+    const rail = opts.railHtml || '';
+    return '<div class="gs-page gs-list-page gs-forge gs-raids-page">' + G.ui.pageHeadHtml(head) +
+      G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (opts.note ? '<div class="gs-notice" role="status"><span>' + esc(opts.note) + '</span></div>' : '') +
+      A().staleBannerHtml(staleCount, canEdit, opts.progress) + flagBannerHtml(gd, opts.teamId, raids) +
+      bar + '<div class="gs-listbody gs-raids-split' + (rail ? ' has-rail' : '') + '" aria-live="polite"><div class="gs-raids-main">' + body + '</div>' +
+      (rail ? '<aside class="gs-raids-rail" aria-label="Your sign-ups and away notices">' + rail + '</aside>' : '') + '</div></div>';
   }
 
   function loadList(r, gd) {
@@ -416,10 +459,8 @@
     const x = a().raids;
     if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
     if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
-    return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, tab: x.tab, showAll: x.showAll, progress: a().recalc, alert: st().pageAlert, note: x.note,
-      progressHtml: G.pages.progress ? G.pages.progress.tabHtml(x) : '',
-      awayHtml: (G.pages.standing ? G.pages.standing.cardHtml({ guildData: gd, teamId: x.teamId, canSignUp: !!(x.data && x.data.can && x.data.can.signup), state: a().standing }) : '') +
-        (G.pages.away ? G.pages.away.teamCardHtml({ guildData: gd, teamId: x.teamId, state: a().awayTeam }) : '') });
+    return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, tab: x.tab, showAll: x.showAll, showAllPast: x.showAllPast, progress: a().recalc, alert: st().pageAlert, note: x.note,
+      progressHtml: G.pages.progress ? G.pages.progress.tabHtml(x) : '', railHtml: railHtml(gd, x) });
   }
 
   G.handlers.click['raids-tab'] = function (el) {
@@ -585,6 +626,13 @@
     const x = a().raids;
     if (!x) return;
     x.showAll = true;
+    G.app.render();
+  };
+
+  G.handlers.click['raids-past-all'] = function () {
+    const x = a().raids;
+    if (!x) return;
+    x.showAllPast = true;
     G.app.render();
   };
 
@@ -934,7 +982,7 @@
 
   G.pages.raids = {
     raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, timeNotSetHtml: timeNotSetHtml, momentText: momentText, deadlineHtml: deadlineHtml, closeNoteText: closeNoteText, zoneSizeText: zoneSizeText, signupsText: signupsText, planPillHtml: planPillHtml,
-    planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, mineHtml: mineHtml, fillText: fillText, applySignupView: applySignupView, reloadList: reloadList, load: loadList, main: mainList,
+    planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, statusChipHtml: statusChipHtml, cardHtml: cardHtml, fillText: fillText, applySignupView: applySignupView, reloadList: reloadList, load: loadList, main: mainList,
   };
   G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

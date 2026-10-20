@@ -56,7 +56,7 @@
   function noticeActionsHtml(n, o) {
     const label = noticeText(n, o.today) + (o.who ? ' for ' + n.name : '');
     return '<div class="gs-row-actions">' + G.ui.buttonHtml({ label: 'Edit', size: 'sm', ariaLabel: 'Edit: ' + label, attrs: noticeAttrs(n, o, 'away-edit', 'an-edit-') }) +
-      G.ui.buttonHtml({ label: 'Remove', size: 'sm', variant: 'ghost', ariaLabel: 'Remove: ' + label, attrs: noticeAttrs(n, o, 'away-remove', 'an-remove-') }) + '</div>';
+      G.ui.buttonHtml({ label: 'Remove', size: 'sm', variant: o.ctx === 'team' ? 'secondary' : 'ghost', ariaLabel: 'Remove: ' + label, attrs: noticeAttrs(n, o, 'away-remove', 'an-remove-') }) + '</div>';
   }
 
   function rowHtml(n, o) {
@@ -147,13 +147,19 @@
     return mineHtml({ guildData: gd, state: x, alert: G.app.state.pageAlert });
   }
 
-  // ── the officers' card on the Raids page ──
-  // opts: { guildData, teamId, state: a().awayTeam }. Nothing while it loads or for anyone without raids.edit on the team.
+  // ── the officers' panel in the Raids list's rail ──
+  // opts: { guildData, teamId, state: a().awayTeam, footHtml (a button under the list: Create upcoming raids) }. Nothing for anyone without raids.edit on the team,
+  // and nothing while it loads unless there is a footHtml to show.
   function teamCardHtml(opts) {
     const gd = opts.guildData;
     const s = opts.state;
-    if (!s || s.gid !== gd.guild.id || s.teamId !== opts.teamId || !G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', opts.teamId)) return '';
-    if (s.status === 'loading') return '';
+    if (!G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', opts.teamId)) return '';
+    const foot = opts.footHtml || '';
+    const ready = s && s.gid === gd.guild.id && s.teamId === opts.teamId && s.status !== 'loading';
+    const panel = function (headExtra, body) {
+      return '<section class="gs-hd-panel gs-rl-panel gs-an-team" aria-labelledby="an-team-h"><div class="gs-rl-head"><h2 class="gs-hd-sl" id="an-team-h">Away in the next 4 weeks</h2>' + headExtra + '</div><div class="gs-rl-body">' + body + foot + '</div></section>';
+    };
+    if (!ready) return foot ? panel('', '') : '';
     const add = G.ui.buttonHtml({ label: 'Add a notice', size: 'sm', attrs: { 'data-action': 'away-add', 'data-ctx': 'team', 'data-key': 'an-team-add' } });
     let body;
     if (s.status === 'error') {
@@ -161,9 +167,23 @@
     } else {
       const d = s.data || {};
       const entries = Array.isArray(d.entries) ? d.entries : [];
-      body = entries.length ? listHtml(entries, { ctx: 'team', today: d.today, who: true, gid: gd.guild.id }, 'Away notices of the next 4 weeks') : '<p class="gs-empty">No one has an away notice for the next 4 weeks.</p>';
+      body = entries.length ? listHtml(entries, { ctx: 'team', today: d.today, who: true, gid: gd.guild.id }, 'Away notices of the next 4 weeks') : '<p class="gs-fine">No one has an away notice for the next 4 weeks.</p>';
     }
-    return '<section class="gs-card-sec gs-an-team" aria-labelledby="an-team-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="an-team-h">Away, next 4 weeks</h2>' + (s.status === 'error' ? '' : add) + '</div><div class="gs-card-sec-body">' + body + '</div></section>';
+    return panel(s.status === 'error' ? '' : add, body);
+  }
+
+  // A member's line in the rail: "You're away Nov 4 - Add a notice" when their own notices were already read (GET /away/mine, the Away notices page), else just the
+  // link to that page. The link is the way to add a notice; the Raids list makes no call of its own for it.
+  // opts: { guildData, state: a().away }
+  function memberLineHtml(opts) {
+    const gd = opts.guildData;
+    const x = opts.state;
+    const href = esc(G.router.format({ name: 'away', gid: gd.guild.id }));
+    const d = x && x.gid === gd.guild.id && x.data && x.data.personId ? x.data : null;
+    const mine = d ? split(d.notices, d.today).current.filter(function (n) { return n.kind === 'away'; })[0] : null;
+    const text = mine ? "You're away " + (mine.weekday != null ? 'every ' + WEEKDAYS[mine.weekday] : (mine.to && mine.to !== mine.from ? dayText(mine.from) + ' - ' + dayText(mine.to) : dayText(mine.from))) + ' - ' : '';
+    return '<section class="gs-hd-panel gs-rl-panel gs-an-mine" aria-label="Away notice"><div class="gs-rl-body"><p class="gs-rl-line gs-rl-away">' + esc(text) +
+      '<a class="gs-rl-link" href="' + href + '">' + (mine ? 'Add a notice' : 'Add an away notice') + '</a></p></div></section>';
   }
 
   function loadTeam(gid, teamId, forList) {
@@ -524,6 +544,7 @@
     split: split,
     mineHtml: mineHtml,
     teamCardHtml: teamCardHtml,
+    memberLineHtml: memberLineHtml,
     personSectionOf: personSectionOf,
     personCardHtml: personCardHtml,
     dialogHtml: dialogHtml,

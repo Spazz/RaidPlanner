@@ -796,7 +796,7 @@
     const head = (o.step ? '<p class="gs-dialog-step">' + esc(o.step) + '</p>' : '') + '<h2 class="gs-dialog-title" id="' + titleId + '">' + esc(o.title) + '</h2>';
     const body = (o.text ? '<p class="gs-confirm-text" id="dlg-text">' + esc(o.text) + '</p>' : '') + (o.bodyHtml || '');
     const actions = '<div class="gs-dialog-actions">' + back + cancel + primary + '</div>';
-    const cls = 'gs-dialog-form gs-dialog-' + kind + (o.wide ? ' gs-dialog-preview' : '');
+    const cls = 'gs-dialog-form gs-dialog-' + kind + (o.wide ? ' gs-dialog-preview' : '') + (o.className ? ' ' + esc(o.className) : '');
     if (o.formless) return '<div class="' + cls + '">' + head + body + actions + '</div>';
     return '<form class="' + cls + '"' + attrsHtml(o.formAttrs) + ' novalidate>' + head + body + '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' + actions + '</form>';
   };

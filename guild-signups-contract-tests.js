@@ -304,12 +304,12 @@ check('Raids list: a member sees Your sign-up with a Sign up button that is one 
   const route = { name: 'section', gid: s.gid, section: 'raids' };
   await E.pages.raids.load(route, E.guildData);
   let html = E.pages.raids.main(route, E.guildData);
-  assert(/Your sign-up/.test(html) && /data-action="raids-signup"/.test(html), 'the table has the column and the button');
-  assert(/No sign-ups yet/.test(stripTags(html)));
+  assert(/data-action="raids-signup"/.test(html), 'the card has the button');
+  assert(/0 \/ \d+ signed up/.test(stripTags(html)));
   await E.handlers.click['raids-signup'](el({ 'data-rid': s.rid }));
   html = E.pages.raids.main(route, E.guildData);
   const text = stripTags(html);
-  assert(/Signed up - Thoren/.test(text), text);
+  assert(/is-green">Signed up</.test(html), text);
   assert(/1 \/ \d+ signed up/.test(text), 'the counts follow the answer, against the raid size');
   assert(!/data-action="raids-signup"/.test(html), 'signed up: no button');
   assert.equal(await s.world.db.prepare("SELECT COUNT(*) AS n FROM raid_signups WHERE source = 'raidsmith'").first('n'), 1);
@@ -317,7 +317,7 @@ check('Raids list: a member sees Your sign-up with a Sign up button that is one 
   pageState(s, H);
   await H.pages.raids.load(route, H.guildData);
   const hank = H.pages.raids.main(route, H.guildData);
-  assert(!/Your sign-up|raids-signup/.test(hank), 'a member with no character cannot sign up');
+  assert(!/raids-signup/.test(hank), 'a member with no character cannot sign up');
   // The officer sees the sign-up count and Raid schedule, and no sign-up column of their own.
   pageState(s, A);
   await A.pages.raids.load(route, A.guildData);
@@ -328,7 +328,7 @@ check('Raids list: a member sees Your sign-up with a Sign up button that is one 
   pageState(s, E);
   await E.pages.raids.load(route, E.guildData);
   const locked = E.pages.raids.main(route, E.guildData);
-  assert(!/raids-signup/.test(locked) && /Signed up - Thoren/.test(stripTags(locked)));
+  assert(!/raids-signup/.test(locked) && /is-green">Signed up</.test(locked));
 });
 
 check('schedule: Settings > Raid schedule saves slots with the real validation and fills the raids; the Raids page shows them and fills by itself when the team says so', async () => {
@@ -376,8 +376,8 @@ check('schedule: Settings > Raid schedule saves slots with the real validation a
   pageState(s, A);
   await A.pages.raids.load(list, A.guildData);
   const listHtml = A.pages.raids.main(list, A.guildData);
-  assert(/Create upcoming raids/.test(listHtml) && /Upcoming <span class="gs-seg-count">7<\/span>/.test(listHtml));
-  assert(/Mon, Oct 19, 7:30 PM|Mon Oct 19, 7:30 PM/.test(stripTags(listHtml)), stripTags(listHtml).slice(0, 600));
+  assert(/Create upcoming raids/.test(listHtml) && /Upcoming <span class="gs-tab-count">7<\/span>/.test(listHtml));
+  assert(/Mon Oct 19\s*7:30\s*PM/.test(stripTags(listHtml)), stripTags(listHtml).slice(0, 600));
   // Again: nothing new. The button on the Raids page says so.
   await A.handlers.click['raids-fill'](el({}));
   assert.equal(A.app.state.att.raids.note, 'Nothing new to create: the next 3 weeks already have their raids.');

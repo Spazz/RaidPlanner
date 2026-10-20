@@ -433,7 +433,7 @@ class ApiErr extends Error {
   }, over || {});
   const listPage = (data, can, over) => G.pages.raids.raidsHtml(Object.assign({ guildData: gd(can || MEMBER_CAN), teamId: 't1', data, tab: 'upcoming' }, over || {}));
 
-  await check('Raids list: a Your sign-up column for those who can sign up - a Sign up button, the chip with the character, Sign-ups closed - on the table and the cards', () => {
+  await check('Raids list: the status item of a card for those who can sign up - a Sign up button, a chip with the kind, Sign-ups closed', () => {
     const out = listPage(LIST({ upcoming: [
       UP(),
       UP({ id: 'u2', mine: { kind: 'signed', source: 'raidsmith', characterName: 'Eliora' } }),
@@ -441,14 +441,14 @@ class ApiErr extends Error {
       UP({ id: 'u4', signupsOpen: false, locked: true }),
       UP({ id: 'u5', signupsOpen: false, locked: true, mine: { kind: 'late', source: 'raid_helper', characterName: null } }),
     ] }));
-    assert(out.includes('<th scope="col" class="">Your sign-up</th>'));
     const btn = id => new RegExp('data-action="raids-signup" data-rid="' + id + '"');
-    assert(btn('u1').test(out) && !btn('u2').test(out) && btn('u3').test(out) && !btn('u4').test(out) && !btn('u5').test(out));
-    assert.equal(out.split('data-action="raids-signup"').length - 1, 2, 'u1 and u3, one row each (it is the phone card too)');
-    assert(out.includes('Signed up - Eliora') && out.includes('Can&#39;t come - Eliora') && out.includes('gs-su-cell'), 'a not-coming sign-up is Can\'t come everywhere');
-    assert(out.includes('Sign-ups closed') && />Late</.test(out));
+    assert(btn('u1').test(out) && !btn('u2').test(out) && !btn('u3').test(out) && !btn('u4').test(out) && !btn('u5').test(out));
+    assert.equal(out.split('data-action="raids-signup"').length - 1, 1, 'u1 only: a sign-up of any kind shows its word instead');
+    assert(out.includes('<span class="gs-hd-chip is-green">Signed up</span>') && out.includes('<span class="gs-hd-chip is-grey">Can&#39;t come</span>'), 'a not-coming sign-up is Can\'t come everywhere');
+    assert(out.includes('Sign-ups closed') && out.includes('<span class="gs-hd-chip is-grey">Late</span>'));
     assert.equal(out.split('Sign-ups closed').length - 1, 1, 'u4 only');
-    assert(G.pages.raids.mineHtml(UP(), false) === '' && !listPage(LIST({ can: { edit: false, signup: false } })).includes('Your sign-up'));
+    const noChar = listPage(LIST({ can: { edit: false, signup: false } }));
+    assert(!noChar.includes('raids-signup') && !noChar.includes('Sign-ups closed') && !noChar.includes('gs-rc-status'), 'a viewer with no character gets no status item');
     assertNoRawAttrs(out);
   });
 

@@ -348,10 +348,13 @@ function teamData(over) {
   await check('raids list: columns, kills/wipes, source chips, counts, one status pill per state, stale pill', () => {
     const out = raidsHtml();
     assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Raids</h1>'));
-    for (const col of ['Date', 'Zone', 'Bosses', 'Sources', 'Attended / Bench / Missed', 'Status']) assert(out.includes('>' + col + '<'), col);
-    assert(out.includes('1 kill, 16 wipes') && out.includes('>Sign-ups<') && out.includes('Log x2') && out.includes('>Plan<'));
+    for (const col of ['Date', 'Raid', 'Bosses', 'Attended / bench / missed', 'Status']) assert(out.includes('>' + col + '<'), col);
+    assert(!out.includes('>Sources<') && !out.includes('Log x2') && !out.includes('>Zone<'), 'the Sources column is dropped');
+    assert(out.includes('1 kill, 16 wipes') && out.includes('<strong class="gs-rp-zone">BT / Hyjal</strong>'));
     assert(out.includes('24 / 1 / 3') && out.includes('href="#/g/g1/raids/r/r4"') && out.includes('Sat Oct 10'));
-    assert(out.includes('5 to review') && out.includes('Awaiting log') && out.includes('>Needs recalculation<') && !out.includes('>Reviewed<') && !out.includes('>Recalculate<</span>') && out.includes('No log - by hand') && out.includes('1 to review'));
+    assert(out.includes('<span class="gs-hd-chip is-rose">5 to review</span>') && out.includes('<span class="gs-hd-chip is-grey">Awaiting log</span>') && out.includes('<span class="gs-hd-chip is-rose">Needs recalculation</span>') && !out.includes('>Reviewed<') && !out.includes('>Recalculate<</span>'));
+    assert(out.includes('<span class="gs-hd-chip is-rose">1 to review</span>') && !out.includes('No log - by hand'), 'ONE chip per row: a manual raid with open flags says what is to do');
+    assert(G.pages.raids.statusChipHtml({ state: 'manual', openFlags: 0 }, false).includes('No log - by hand') && G.pages.raids.statusChipHtml({ state: 'reviewed' }, false).includes('is-grey">Reviewed'));
     assert(out.includes('Rules or roster changed under 1 raid'));
     assert(G.pages.raids.statePillsHtml({ state: 'reviewed', openFlags: 0, stale: false }).includes('>Reviewed<'));
     assert(out.includes('2 raids have open flags: Oct 10 and Oct 2.'), 'flag banner for reviewers');
@@ -362,7 +365,7 @@ function teamData(over) {
   await check('raids list: a member has no actions or counts column data; empty states for officers and members', () => {
     const member = raidsHtml({ guildData: gd(MEMBER_CAN), data: { team: 't1', raids: RAIDS.map(r => Object.assign({}, r, { counts: null })) } });
     assert(!member.includes('New raid') && !member.includes('open flags') && !member.includes('att-recalc'));
-    assert(member.includes('data-label="Attended / Bench / Missed"><span class="gs-muted">-</span>'));
+    assert(member.includes('data-label="Attended / bench / missed"><span class="gs-muted">-</span>'));
     // Officer-only parts are not drawn for a member: the Sources column, the review and recalculation chips.
     const memberFull = raidsHtml({ guildData: gd(MEMBER_CAN) });
     assert(!memberFull.includes('>Sources<') && !memberFull.includes('Log x2') && !memberFull.includes('to review') && !memberFull.includes('Needs recalculation') && !memberFull.includes('No log - by hand'));
@@ -408,33 +411,36 @@ function teamData(over) {
   await check('raids tabs: Upcoming (n) and Past (n) buttons, opens on Upcoming when there is one, else Past; the chosen tab wins', () => {
     const out = withUp();
     // The segment bar of the T1 list: Upcoming / Past with counts (the same pressed-button group as the other lists).
-    assert(out.includes('Upcoming <span class="gs-seg-count">2</span>') && out.includes('Past <span class="gs-seg-count">4</span>'));
+    assert(out.includes('Upcoming <span class="gs-tab-count">2</span>') && out.includes('Past <span class="gs-tab-count">4</span>') && out.includes('class="gs-forge') === false && out.includes('gs-forge'));
     assert(/aria-pressed="true" data-action="raids-tab" data-value="upcoming"/.test(out) && /aria-pressed="false" data-action="raids-tab" data-value="past"/.test(out));
-    assert(out.includes('Upcoming raids') && !out.includes('Attended / Bench / Missed') && out.includes('2 upcoming, 4 past'));
+    assert(out.includes('Upcoming raids') && !out.includes('Attended / bench / missed') && out.includes('2 upcoming, 4 past'));
     const past = withUp({ tab: 'past' });
-    assert(/aria-pressed="true" data-action="raids-tab" data-value="past"/.test(past) && past.includes('Attended / Bench / Missed') && !past.includes('Refresh sign-ups'));
+    assert(/aria-pressed="true" data-action="raids-tab" data-value="past"/.test(past) && past.includes('Attended / bench / missed') && !past.includes('Refresh sign-ups'));
     const none = raidsHtml();
-    assert(none.includes('Upcoming <span class="gs-seg-count">0</span>') && /aria-pressed="true" data-action="raids-tab" data-value="past"/.test(none));
+    assert(none.includes('Upcoming <span class="gs-tab-count">0</span>') && /aria-pressed="true" data-action="raids-tab" data-value="past"/.test(none));
     assert(raidsHtml({ tab: 'upcoming' }).includes('No upcoming raids'));
-    assert(withUp({ more: true, tab: 'past' }).includes('Past <span class="gs-seg-count">4+</span>'));
-    assert(raidsHtml({ data: { team: 't1', raids: [], upcoming: UP } }).includes('Past <span class="gs-seg-count">0</span>'));
+    assert(withUp({ more: true, tab: 'past' }).includes('Past <span class="gs-tab-count">4+</span>'));
+    assert(raidsHtml({ data: { team: 't1', raids: [], upcoming: UP } }).includes('Past <span class="gs-tab-count">0</span>'));
     assert(raidsHtml({ data: { team: 't1', raids: [], upcoming: UP }, tab: 'past' }).includes('No past raids yet'));
     assert(raidsHtml({ data: { team: 't1', raids: [], upcoming: [] } }).includes('No raids yet'));
   });
 
-  await check('raids upcoming: columns, date and time, event hint, sign-up counts, plan status, Refresh sign-ups for event raids only', () => {
+  await check('raids upcoming: one card per raid (gold date, time, title in ONE link), figure and bar, officer Plan chip, no row actions', () => {
     const out = withUp();
-    for (const col of ['Date', 'Raid', 'Sign-ups', 'Plan']) assert(out.includes('>' + col + '<'), col);
-    assert(out.indexOf('u1') < out.indexOf('u2'), 'soonest first');
-    assert(out.includes('href="#/g/g1/raids/r/u1"') && out.includes('Sat Oct 24, '));
-    assert(out.includes('Black Temple <span class="gs-fine">(Raid-Helper)</span>') && out.includes('>Prog night<'));
-    assert(out.includes('23 signed, 2 bench, 1 can&#39;t come') && out.includes('No sign-ups yet'));
-    assert(out.includes('>Planned<') && out.includes('>Not planned<'));
-    assert.equal(out.split('data-action="raids-refresh"').length - 1, 1, 'one menu item: in the More icon button of the Raid-Helper raid');
-    assert(/data-action="raids-refresh" data-rid="u1"/.test(out) && !/data-action="raids-refresh" data-rid="u2"/.test(out));
-    assert(out.includes('aria-label="More actions for Sat Oct 24 raid"'), 'the row menu is named for the row');
+    assert(out.indexOf('/u1"') < out.indexOf('/u2"'), 'soonest first');
+    assert.equal(out.split('class="gs-rc"').length - 1, 2, 'one card per raid');
+    assert(out.includes('class="gs-rc-grid"') && out.includes('<span class="gs-hd-daydate gs-rc-date">Sat Oct 24</span>') && out.includes('<span class="gs-rc-title">Black Temple</span>') && out.includes('<span class="gs-rc-title">Prog night</span>'));
+    const card = out.split('<li class="gs-rc">')[1].split('</li>')[0];
+    assert.equal(card.split('<a ').length - 1, 1, 'ONE link per card');
+    assert(card.includes('href="#/g/g1/raids/r/u1"') && /<a class="gs-rc-link"[^>]*>.*gs-hd-daydate.*gs-rc-time.*gs-rc-title.*<\/a>/.test(card.replace(/\n/g, '')));
+    assert(!/<a [^>]*>[^<]*<\/a>.*<a /.test(card) && !card.split('</a>')[1].includes('<a '), 'the status sits outside the link');
+    assert(card.includes('gs-rc-fig'), 'figure');
+    assert(/<span class="gs-rc-time">\d{1,2}:\d{2} [AP]M [A-Z]{2,4}<\/span>/.test(out), 'time is written with the guild zone');
+    assert(out.includes('<span class="gs-hd-chip is-grey">Plan</span>'), 'an unplanned raid carries the Plan chip');
+    assert.equal(out.split('>Plan<').length - 1, 1, 'the planned raid carries none');
+    assert(!out.includes('raids-refresh') && !out.includes('raids-plan') && !out.includes('Plan in Planner') && !out.includes('upcoming raids.') && !out.includes('Edit weekly schedule') && !out.includes('Sign-ups refreshed'));
     const member = withUp({ guildData: gd(MEMBER_CAN) });
-    assert(!member.includes('raids-refresh') && !member.includes('raids-plan') && !member.includes('>Plan<') && !member.includes('>Not planned<') && !member.includes('>Planned<'), 'the Plan column and the row actions are the officers');
+    assert(!member.includes('>Plan<') && !member.includes('Not planned') && !member.includes('Planned'), 'the Plan chip is the officers');
     assert.equal(G.pages.raids.signupsText(null), '-');
     assertEscaped(withUp({ data: { team: 't1', raids: RAIDS, upcoming: UP.map(u => Object.assign({}, u, { title: HOSTILE + QUOTES, zone: HOSTILE + QUOTES })) } }), 'upcoming');
     assertNoRawAttrs(out);
@@ -1156,13 +1162,9 @@ function teamData(over) {
     assertEscaped(raidPage(up, panel(hostile)), 'upcoming signups');
   });
 
-  await check('Plan in Planner: a button on each upcoming row and card for those who may edit (event or not), and Open in Planner in the Actions menu of the raid page (never for a member); Refresh sign-ups lives on the Raid-Helper chip', () => {
+  await check('Plan in Planner: no button on the Raids list cards (the raid page has it), and Open in Planner in the Actions menu of the raid page (never for a member); Refresh sign-ups lives on the Raid-Helper chip', () => {
     const out = withUp();
-    assert.equal(out.split('data-action="raids-plan"').length - 1, 2, 'two raids, one row each (the row is the phone card too)');
-    assert(/data-action="raids-plan" data-rid="u1"/.test(out) && /data-action="raids-plan" data-rid="u2"/.test(out));
-    assert(out.includes('>Plan in Planner<'));
-    assert(!withUp({ guildData: gd(MEMBER_CAN) }).includes('raids-plan'));
-    assert(!withUp({ tab: 'past' }).includes('raids-plan'));
+    assert(!out.includes('raids-plan') && !out.includes('Plan in Planner') && !out.includes('raids-refresh'));
     assertNoRawAttrs(out);
     const up = detail({
       raid: { id: 'u1', team: 't1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, title: null, zone: 'Black Temple', state: 'awaiting_log', openFlags: 0, stale: false, version: 1 },

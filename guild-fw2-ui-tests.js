@@ -205,30 +205,30 @@ const keys = items => plain(items.map(i => i.key));
     const member = raidsHtml(MEMBER_CAN);
     const officer = raidsHtml(OFFICER_CAN);
     for (const text of ['>Plan<', 'Planned', 'Not planned', 'raids-plan', 'raids-refresh', 'Plan in Planner']) assert(!member.includes(text), 'member: ' + text);
-    for (const text of ['>Plan<', 'Not planned', 'raids-plan', 'raids-refresh']) assert(officer.includes(text), 'officer: ' + text);
-    assert(member.includes('Your sign-up') && !officer.includes('Your sign-up'), 'the member\'s column is theirs');
+    assert(officer.includes('<span class="gs-hd-chip is-grey">Plan</span>') && !officer.includes('raids-plan') && !officer.includes('raids-refresh') && !officer.includes('Plan in Planner'), 'officer: the Plan chip, no row actions');
+    assert(member.includes('data-action="raids-signup"') && !officer.includes('data-action="raids-signup"'), 'the member\'s status item is theirs');
     const pastMember = raidsHtml(MEMBER_CAN, { tab: 'past' });
     const pastOfficer = raidsHtml(OFFICER_CAN, { tab: 'past' });
-    for (const text of ['>Sources<', 'Log x2', '2 to review']) { assert(!pastMember.includes(text), 'member past: ' + text); assert(pastOfficer.includes(text), 'officer past: ' + text); }
+    for (const text of ['2 to review']) { assert(!pastMember.includes(text), 'member past: ' + text); assert(pastOfficer.includes(text), 'officer past: ' + text); }
+    for (const text of ['>Sources<', 'Log x2']) { assert(!pastMember.includes(text), 'member past: ' + text); assert(!pastOfficer.includes(text), 'no Sources column: ' + text); }
     assert(pastMember.includes('>Reviewed<') && pastMember.includes('Oct 3'), 'a member still sees Reviewed');
-    assert(raidsHtml(MEMBER_CAN).includes('Sign-ups refreshed'), 'the freshness of the sign-ups is for everyone');
   });
 
   await check('raids list: the row is one tap target on a phone (the date link covers the card), one secondary action plus a More icon named for the row; the page head has New raid as the one primary', () => {
     const out = raidsHtml(OFFICER_CAN);
-    assert(out.includes('<table class="gs-dtable" aria-label="Upcoming raids">') && out.includes('<a class="gs-raid-link" href="#/g/g1/raids/r/u1">'));
-    assert(out.includes('aria-label="More actions for Sat Oct 24 raid"') && count(out, /Plan in Planner/g) === 2);
+    assert(out.includes('<ul class="gs-rc-grid" aria-label="Upcoming raids">') && out.includes('<a class="gs-rc-link" href="#/g/g1/raids/r/u1">'), 'a card is one link');
+    assert(!out.includes('More actions for') && count(out, /Plan in Planner/g) === 0);
     assert(count(out, /gs-btn-molten/g) === 1 && out.includes('<span>New raid</span>'), 'one primary');
     assert(/\.gs-dtable th\[scope="row"\] a::after \{ content: ""; position: absolute; inset: 0; \}/.test(css), 'the stretched link of the data table');
     assert(/\.gs-dtable td button, \.gs-dtable td a, \.gs-dtable td \.gs-menu-wrap \{ position: relative; z-index: 1; \}/.test(css), 'row buttons stay above it');
     assert(/\.gs-loot-card a\.gs-char-link::after \{ content: ""; position: absolute; inset: 0; \}/.test(css), 'and the Loot card');
-    assert(/Upcoming <span class="gs-seg-count">2<\/span>/.test(out) && out.includes('Main team'.slice(0, 0)) && out.includes('2 upcoming, 2 past'));
+    assert(/Upcoming <span class="gs-tab-count">2<\/span>/.test(out) && out.includes('Main team'.slice(0, 0)) && out.includes('2 upcoming, 2 past'));
   });
 
   await check('"Can\'t come": the Raids list, the sign-up chips and the policy sentences say it; "Absence" is gone from the screens', () => {
     assert.equal(G.pages.attendance.KIND_LABELS.absence, 'Can\'t come');
     const out = raidsHtml(MEMBER_CAN, { data: { team: 't1', raids: [], upcoming: [UP('u1', { mine: { kind: 'absence', source: 'raidsmith', characterName: 'Eliora' } })], can: { signup: true } } });
-    assert(out.includes('Can&#39;t come - Eliora') && !out.includes('Absence'), stripTags(out).slice(0, 300));
+    assert(out.includes('is-grey">Can&#39;t come</span>') && !out.includes('Absence'), stripTags(out).slice(0, 300));
     assert(G.pages.raids.signupsText({ signed: 3, late: 0, bench: 0, tentative: 0, absence: 2 }) === '3 signed, 2 can\'t come');
     const lines = G.pages.attendance.describePolicy ? G.pages.attendance.describePolicy({ absence: 'excused' }) : null;
     if (lines) assert(lines.some(l => l.includes('A Can\'t come sign-up is left out of the percentage.')) && !lines.some(l => l.includes('Absence')));
