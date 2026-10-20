@@ -55,15 +55,18 @@
     return Object.keys(by).map(Number).sort(function (x, y) { return (x === 0 ? 99 : x) - (y === 0 ? 99 : y); }).map(function (g) { return { group: g, entries: by[g] }; });
   }
 
-  function entryHtml(e) {
+  // A row of the Line-up panel: spec icon, class-coloured name, muted spec; a chip only for an answer that is not the default (Confirmed shows nothing).
+  function entryHtml(e, myPersonId) {
     const status = e.status === 'confirmed' || e.status === 'declined' ? e.status : 'pending';
-    return '<li class="gs-su-item gs-ro-item is-' + status + '"><span class="gs-su-who">' + G.ui.classNameHtml(e.name, e.class) + '</span>' +
-      (e.spec ? '<span class="gs-su-spec">' + esc(e.spec) + '</span>' : '') + pill(status) + '</li>';
+    const chip = status === 'pending' ? '<span class="gs-hd-chip is-grey">Waiting</span>' : status === 'declined' ? '<span class="gs-hd-chip is-rose">Can\'t come</span>' : '';
+    const me = !!(myPersonId && e.personId && e.personId === myPersonId);
+    return '<li class="gs-rb-row' + (me ? ' is-you' : '') + '">' + G.ui.specIconHtml(e.class, e.spec, 20) + '<span class="gs-rb-id"><span class="gs-rb-nm">' + G.ui.classNameHtml(e.name, e.class) + '</span>' +
+      (e.spec ? '<span class="gs-rb-sp">' + esc(e.spec) + '</span>' : '') + '</span>' + (chip ? '<span class="gs-rb-chips">' + chip + '</span>' : '') + (me ? '<span class="gs-you">You</span>' : '') + '</li>';
   }
 
   function countsText(c) {
     const x = c || {};
-    return (x.confirmed || 0) + ' confirmed, ' + (x.pending || 0) + ' waiting, ' + (x.declined || 0) + ' can\'t come';
+    return (x.confirmed || 0) + ' confirmed, ' + (x.pending || 0) + ' waiting' + (x.declined ? ', ' + x.declined + ' can\'t come' : '');
   }
 
   // Whether the line-up can be published now (the raid page's More menu offers it too): an officer, a raid that has not started, a plan, nothing published yet.
@@ -72,44 +75,47 @@
     return !!(data.raid && data.raid.upcoming && data.sources && data.sources.plan);
   }
 
-  // opts: { guildData, data (the raid detail), state }. Hidden without raids.edit; before a plan exists nothing to publish; after the start the list only.
+  function groupColumnHtml(g, myPersonId) {
+    const title = g.group ? 'Group ' + g.group : 'Bench';
+    const key = function (e) { return String(e.name || '').toLowerCase(); };
+    return '<section class="gs-rb-col" aria-label="' + esc(title) + '"><h3 class="gs-fg-gh"><span class="gs-fg-ght">' + esc(title) + '</span><span class="gs-fg-ghn">' + g.entries.length + '</span></h3><ul class="gs-rb-list">' +
+      g.entries.slice().sort(function (x, y) { return key(x) < key(y) ? -1 : key(x) > key(y) ? 1 : 0; }).map(function (e) { return entryHtml(e, myPersonId); }).join('') + '</ul></section>';
+  }
+
+  // opts: { guildData, data (the raid detail), state, myPersonId (the viewer's person, to tint their row) }. Hidden without raids.edit; before a plan exists nothing to publish; after the start the list only.
   function cardHtml(opts) {
     const gd = opts.guildData;
     const s = opts.state;
     const data = opts.data;
     if (!data.can || !data.can.edit || !s) return '';
     const upcoming = !!(data.raid && data.raid.upcoming);
-    const head = function (extra) { return '<div class="gs-card-sec-head"><h2 class="gs-h2" id="ro-h">Line-up</h2>' + (extra || '') + '</div>'; };
-    const wrap = function (extra, body) { return '<section class="gs-card-sec gs-ro" aria-labelledby="ro-h">' + head(extra) + '<div class="gs-card-sec-body">' + body + '</div></section>'; };
+    const panel = function (headHtml, body) {
+      return '<section class="gs-hd-panel gs-rb gs-ro" aria-labelledby="ro-h"><div class="gs-rb-ph"><h2 class="gs-pr-h" id="ro-h">Line-up</h2>' + headHtml + '</div><div class="gs-rb-pb">' + body + '</div></section>';
+    };
     if (s.status === 'error') {
-      return upcoming ? wrap('', '<p class="gs-alert" role="alert">' + esc(s.message || 'Could not load the line-up.') + '</p><div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="ro-retry" data-key="ro-retry">Try again</button></div>') : '';
+      return upcoming ? panel('', '<p class="gs-alert" role="alert">' + esc(s.message || 'Could not load the line-up.') + '</p><div class="gs-row-actions"><button type="button" class="gs-btn" data-action="ro-retry" data-key="ro-retry">Try again</button></div>') : '';
     }
     if (s.status !== 'ok' || !s.data) return '';
     const d = s.data;
     const err = '<p class="gs-alert" id="ro-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p>';
     if (!d.published) {
       if (!upcoming || !(data.sources && data.sources.plan)) return '';
-      return wrap('', '<p class="gs-fine">Publish the plan as the line-up. ' + esc(PUBLISH_TEXT) + '</p>' +
-        '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm gs-btn-molten" data-action="roster-publish" data-op="publish" data-key="ro-publish">Publish line-up</button></div>' + err);
+      return panel('', '<p class="gs-fine">Publish the plan as the line-up. ' + esc(PUBLISH_TEXT) + '</p>' +
+        '<div class="gs-row-actions"><button type="button" class="gs-btn" data-action="roster-publish" data-op="publish" data-key="ro-publish">Publish line-up</button></div>' + err);
     }
     const entries = Array.isArray(d.entries) ? d.entries : [];
     const when = d.publishedAt && G.pages.raids.momentText ? G.pages.raids.momentText(d.publishedAt, gd) : '';
     const by = d.publishedBy ? (typeof d.publishedBy === 'object' ? d.publishedBy.displayName || d.publishedBy.name : d.publishedBy) : '';
+    const meta = '<span class="gs-rb-mut">Published' + (when ? ' ' + esc(when) : '') + (by ? ' by ' + esc(by) : '') + '</span><span class="gs-rb-mut" id="ro-counts">' + esc(countsText(d.counts)) + '</span>';
     const actions = upcoming
-      ? '<span class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="roster-publish" data-op="republish" data-key="ro-republish">Re-publish line-up</button>' +
-        '<button type="button" class="gs-btn gs-btn-sm" data-action="roster-publish" data-op="unpublish" data-key="ro-unpublish">Unpublish</button></span>'
+      ? '<span class="gs-rb-acts"><button type="button" class="gs-btn" data-action="roster-publish" data-op="republish" data-key="ro-republish">Re-publish line-up</button>' +
+        '<button type="button" class="gs-btn" data-action="roster-publish" data-op="unpublish" data-key="ro-unpublish">Unpublish</button></span>'
       : '';
     const changed = d.planChanged && upcoming
-      ? '<div class="gs-notice" role="status"><span>The plan changed since you published.</span><button type="button" class="gs-btn gs-btn-sm" data-action="roster-publish" data-op="republish" data-key="ro-changed">Re-publish</button></div>'
+      ? '<div class="gs-notice" role="status"><span>The plan changed since you published.</span><button type="button" class="gs-btn" data-action="roster-publish" data-op="republish" data-key="ro-changed">Re-publish</button></div>'
       : '';
-    const groups = groupsOf(entries).map(function (g) {
-      const title = g.group ? 'Group ' + g.group : 'Bench';
-      return '<section class="gs-su-group" aria-labelledby="ro-g-' + g.group + '"><h3 class="gs-su-group-h" id="ro-g-' + g.group + '">' + esc(title) + ' <span class="gs-su-count">' + g.entries.length + '</span></h3><ul class="gs-su-list">' +
-        g.entries.map(entryHtml).join('') + '</ul></section>';
-    }).join('');
-    return wrap(actions, '<p class="gs-fine">Published' + (when ? ' ' + esc(when) : '') + (by ? ' by ' + esc(by) : '') + '.</p>' +
-      '<p class="gs-ro-counts" id="ro-counts">' + esc(countsText(d.counts)) + '</p>' + changed +
-      (groups ? '<div class="gs-su-groups">' + groups + '</div>' : '<p class="gs-empty">No one is in the line-up.</p>') + err);
+    const groups = groupsOf(entries).map(function (g) { return groupColumnHtml(g, opts.myPersonId); }).join('');
+    return panel(meta + actions, changed + (groups ? '<div class="gs-rb-cols gs-rb-cols3">' + groups + '</div>' : '<p class="gs-empty">No one is in the line-up.</p>') + err);
   }
 
   // ── data ──

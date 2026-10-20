@@ -473,21 +473,28 @@ check('guest sign-up link dialog: the links with their state, a form for how man
   s.restore();
 }));
 
-check('sign-ups panel: a guest is listed with a Guest chip; an officer can remove it, nobody else sees the button', () => {
+check('sign-ups panel: a guest is listed with a Guest chip; an officer gets a name button that opens the guest dialog, nobody else sees it', () => {
   const entry = { key: 'x:raidsmith:3', personId: null, source: 'raidsmith', kind: 'signed', name: 'Guestmage', classId: 'MAGE', className: 'Mage', spec: 'Frost', role: 'ranged', note: 'From Beta', matched: false, isMe: false, nickname: null, guest: true, signupId: 3 };
-  const html = (edit) => G.pages.raidSignups.listHtml ? G.pages.raidSignups.listHtml({ raid: { size: 10 }, can: { edit, self: false, seeList: true, seeNicknames: edit }, counts: null, entries: [entry], notices: [], roster: [] }, edit) : '';
+  const html = (edit) => G.pages.raidSignups.boardHtml ? G.pages.raidSignups.boardHtml({ raid: { size: 10 }, can: { edit, self: false, seeList: true, seeNicknames: edit }, counts: null, entries: [entry], notices: [], roster: [] }, edit) : '';
   const officer = html(true);
   assert(officer.includes('>Guest<') && officer.includes('Guestmage') && officer.includes('From Beta'));
-  assert(officer.includes('data-action="su-guest-remove" data-sid="3"') && officer.includes('Remove the guest Guestmage'));
-  assert(!html(false).includes('su-guest-remove'));
+  assert(officer.includes('data-action="su-guest-open" data-sid="3"') && officer.includes('aria-label="Change the guest sign-up of Guestmage"'));
+  assert(!html(false).includes('su-guest') && !html(false).includes('<button'));
 });
 
-check('sign-ups panel: Remove on a guest asks the Worker for that sign-up number and draws the new list', withState(async (S) => {
+check('sign-ups panel: the guest dialog\'s Remove guest asks the Worker for that sign-up number and draws the new list', withState(async (S, probe) => {
   S.guilds.g1 = gd(OFFICER, 'tbc'); S.currentGid = 'g1';
   S.att.raid = { gid: 'g1', rid: 'u1', data: RAID({}, { id: 'u1', upcoming: true }) };
-  S.att.raidSignups = { gid: 'g1', rid: 'u1', status: 'ok', data: { raid: { size: 10 }, can: { edit: true }, entries: [], counts: null, roster: [] }, ui: G.pages.raidSignups.freshUi({ raid: { size: 10 }, can: { edit: true }, entries: [], counts: null, roster: [] }) };
+  const guest = { key: 'x:raidsmith:3', personId: null, source: 'raidsmith', kind: 'signed', name: 'Guestmage', classId: 'MAGE', className: 'Mage', spec: 'Frost', role: 'ranged', guest: true, signupId: 3 };
+  const seen = { raid: { size: 10 }, can: { edit: true }, entries: [guest], counts: null, roster: [] };
+  S.att.raidSignups = { gid: 'g1', rid: 'u1', status: 'ok', data: seen, ui: G.pages.raidSignups.freshUi(seen) };
   const s = stub(() => okRes({ raid: { size: 10 }, can: { edit: true }, entries: [], counts: null, roster: [] }));
-  G.handlers.click['su-guest-remove'](el({ 'data-sid': '3' }));
+  G.handlers.click['su-guest-open'](el({ 'data-sid': '3' }));
+  const dlg = probe.opened[probe.opened.length - 1].html;
+  assert(dlg.includes('Guest sign-up') && dlg.includes('Remove guest') && dlg.includes('data-sid="3"') && s.calls.length === 0, 'opening the dialog sends nothing');
+  const closedDlg = [];
+  G.ui.closeDialogOf = (x) => closedDlg.push(x);
+  G.handlers.submit['su-guest-form'](formEl({}, { 'data-sid': '3' }));
   await settle();
   assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['del', '/api/guild/g1/raids/u1/guests/3']]);
   assert.equal(S.att.raidSignups.data.entries.length, 0);

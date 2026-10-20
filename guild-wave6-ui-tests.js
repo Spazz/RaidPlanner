@@ -135,13 +135,13 @@ class ApiErr extends Error {
     const detail = { raid: { id: 'u1', team: { id: 't1', name: 'Team KJ' }, teamId: 't1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 24, 12), timeKnown: false, upcoming: true, title: null, zone: 'Karazhan', state: 'awaiting_log', openFlags: 0, stale: false, version: 1 }, can: { edit: false }, sources: {}, pulls: [], people: [], unmatched: [], signups: [] };
     const html = G.pages.raidSignups.panelHtml({ guildData: gdata, data: detail, state: { gid: 'g1', rid: 'u1', status: 'ok', data: v, ui: G.pages.raidSignups.freshUi(v) } });
     const text = stripTags(html);
-    assert(/Open until Sat Oct 24, 8:00 PM CT \(this raid has only a date, so sign-ups close at the time of the schedule slot that day\)/.test(text), text.slice(0, 400));
+    assert(!/Open until/.test(text), 'the panel carries no pill: the head chip and context line say when it closes');
     const dflt = G.pages.raidSignups.panelHtml({ guildData: gdata, data: detail, state: { gid: 'g1', rid: 'u1', status: 'ok', ui: G.pages.raidSignups.freshUi(v), data: Object.assign({}, v, { raid: Object.assign({}, v.raid, { closesSource: 'default', closesAt: Date.UTC(2026, 9, 24, 23, 0) }) }) } });
-    assert(/Open until Sat Oct 24, 6:00 PM CT \(this raid has only a date and the team has no schedule slot that day, so sign-ups close at 18:00 guild time\)/.test(stripTags(dflt)));
+    assert(!/Open until/.test(stripTags(dflt)));
     // A raid with a start time is as before.
     const timed = Object.assign({}, v, { raid: Object.assign({}, v.raid, { closesSource: undefined, timeKnown: true, closeHours: 2, closesAt: closes }) });
     const timedText = stripTags(G.pages.raidSignups.panelHtml({ guildData: gdata, data: detail, state: { gid: 'g1', rid: 'u1', status: 'ok', ui: G.pages.raidSignups.freshUi(timed), data: timed } }));
-    assert(/Open until Sat Oct 24, 8:00 PM CT \(sign-ups close 2 hours before the start\)/.test(timedText), timedText.slice(0, 300));
+    assert(!/Open until/.test(timedText), timedText.slice(0, 300));
     // The officer's raid settings: "In effect".
     const raidDetail = { raid: Object.assign({}, detail.raid, { closeHours: 0, closeHoursOverride: null, teamCloseHours: 0, closesAt: closes, closesSource: 'slot', sizeOverride: null, size: 25 }), can: { edit: true }, sources: {}, pulls: [], people: [], unmatched: [], signups: [] };
     const settings = stripTags(G.pages.raid.settingsDialogHtml(gdata, raidDetail));

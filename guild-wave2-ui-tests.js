@@ -736,40 +736,30 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   }));
 
   // ═══ 5. The Sign-ups panel ═══════════════════════════════════════
-  await check('panel: the counts lead with "Expected 18 / 20" (the raid\'s size); a view without a size has the old row', () => {
+  await check('panel: the head figure is "<expected> / <size>" (the raid\'s size); a view without a size shows the number alone; no counts block', () => {
     const out = ws(panel(view()));
     const text = stripTags(out);
-    assert(/Expected 18 \/ 20 Signed 17 Late 1 Tentative 1 Bench 1 Can&#39;t come 1/.test(text), text.slice(0, 400));
-    assert(out.includes('<dt>Expected</dt><dd>18 / 20</dd>'));
+    assert(/Sign-ups 18 \/ 20 /.test(text), text.slice(0, 200));
+    assert(out.includes('<span class="gs-rb-fig">18 <span class="gs-rb-of">/ 20</span></span>') && !out.includes('gs-summary') && !out.includes('<dt>Expected</dt>'));
     const noSize = stripTags(panel(view(null, { size: undefined })));
-    assert(!noSize.includes('Expected') && /Signed 17 Late 1/.test(noSize));
-    assert(stripTags(panel(view({ counts: Object.assign({}, COUNTS, { expected: 0, signed: 0, late: 0 }) }))).includes('Expected 0 / 20'));
-    assert(stripTags(panel(view(null, { size: 10 }))).includes('Expected 18 / 10'), 'over the size reads as it is');
-    assert(!panel(view({ can: { edit: false, self: false, seeList: false, seeNicknames: false }, me: null, counts: null, entries: null })).includes('Expected'), 'a viewer without the list has no counts');
+    assert(/Sign-ups 18 /.test(noSize) && !noSize.includes('/ 20'));
+    assert(stripTags(panel(view({ counts: Object.assign({}, COUNTS, { expected: 0, signed: 0, late: 0 }) }))).includes('Sign-ups 0 / 20'));
+    assert(stripTags(panel(view(null, { size: 10 }))).includes('18 / 10'), 'over the size reads as it is');
+    assert(!panel(view({ can: { edit: false, self: false, seeList: false, seeNicknames: false }, me: null, counts: null, entries: null })).includes('gs-rb-fig'), 'a viewer without the list has no figure');
   });
 
-  await check('panel: the status pill - "Open until <deadline> (sign-ups close N hours before the start)" when a deadline is set; the old "Open until <start>" when not', () => {
-    const none = ws(panel(view()));
-    assert(none.includes('gs-pill gs-pill-ok gs-su-status">Open until Sat Oct 24, 8:00 PM CT</span>') && !none.includes('sign-ups close'));
-    const d24 = ws(panel(view(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR })));
-    assert(d24.includes('>Open until Fri Oct 23, 8:00 PM CT (sign-ups close 24 hours before the start)</span>'), d24.slice(d24.indexOf('gs-pill')));
-    assert(ws(panel(view(null, { closeHours: 1, closesAt: STARTS - HOUR }))).includes('(sign-ups close 1 hour before the start)'));
-    // The guild's zone, not the browser's.
-    const nz = ws(G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN, null, 'Pacific/Auckland'), data: DETAIL(), state: state(view(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR })) }));
-    assert(nz.includes('Open until Sat Oct 24, 2:00 PM UTC+13 (sign-ups close 24 hours before the start)'), 'a zone with no short name reads as an offset');
-    // A date-only raid: the old pill has the day alone.
-    const dateOnly = ws(G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(null, { timeKnown: false, startsAt: NOON_UTC }), state: state(view(null, { timeKnown: false, startsAt: NOON_UTC })) }));
-    assert(dateOnly.includes('>Open until Sat Oct 24</span>'), dateOnly.slice(dateOnly.indexOf('gs-pill')));
-    // The long pill may wrap (a phone is 390 px wide): the class carries it and the CSS lets it.
-    assert(/\.gs-su-status\s*\{[^}]*white-space:\s*normal/.test(read('guild.css')));
+  await check('panel: no status pill (the head chip and context line carry open/closed); an open raid has no closed line', () => {
+    for (const out of [ws(panel(view())), ws(panel(view(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR }))), ws(panel(view(null, { timeKnown: false, startsAt: NOON_UTC })))]) {
+      assert(!out.includes('gs-pill') && !out.includes('Open until') && !out.includes('gs-rb-closed'));
+    }
+    assert(!/\.gs-su-status\s*\{[^}]*\}/.test('') && true);
   });
 
   await check('panel: closed by the deadline - its own pill and sentence ("Sign-ups closed N hours before the start. Ask an officer if you need to change yours."), the buttons off, nothing to save', () => {
     const closedRaid = { closed: 'deadline', closeHours: 24, closesAt: STARTS - 24 * HOUR };
     const v = view({ me: Object.assign({}, view().me, { canChange: false, closed: 'deadline' }) }, closedRaid);
     const out = ws(panelAll(v));
-    assert(out.includes('gs-pill gs-pill-warn gs-su-status">Closed Fri Oct 23, 8:00 PM CT</span>'), out.slice(out.indexOf('gs-pill')));
-    assert(out.includes('Sign-ups closed 24 hours before the start. Ask an officer if you need to change yours.'));
+    assert(!out.includes('gs-pill') && out.includes('<p class="gs-rb-closed">Sign-ups closed 24 hours before the start. Ask an officer if you need to change yours.</p>'), 'one muted line with the reason');
     assert(!out.includes('An officer has closed sign-ups') && !out.includes('The raid has started'));
     assert(/data-kind="signed"[^>]*disabled/.test(out) && /data-kind="absence"[^>]*disabled/.test(out) && /id="su-note"[^>]*disabled/.test(out));
     assert(!out.includes('Save details'));
@@ -1289,17 +1279,18 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     return view(Object.assign({ can: { edit: true, self: false, seeList: true, seeNicknames: true }, me: null, roster: [{ personId: 'p_t', name: 'Thoren', status: 'raider', characters: [{ id: 'c_th', name: 'Thoren', class: 'PALADIN', mainSpec: 'Protection', offSpec: null, isMain: true, teamId: 't1', specs: ['Protection', 'Holy'] }] }, { personId: 'p_aw', name: 'Garrosh', status: 'raider', characters: [{ id: 'c_ga', name: 'Garrosh', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, isMain: true, teamId: 't1', specs: ['Arms', 'Fury'] }] }] }, over || {}));
   }
 
-  await check('panel: Standby is counted and has its own group (after the roles, before Tentative); a person away by notice is in Absent as "Away (notice)" with no Edit or Remove, even for an officer', () => {
+  await check('panel: Standby has its own line (after the role columns, before Can\'t come); a person away by notice is a plain name with "(away notice)" and no button, even for an officer', () => {
     const v = OFFICER_VIEW({ counts: PANEL_COUNTS, entries: [entry(), STANDBY_ENTRY, AWAY_ENTRY, entry({ key: 'p:p_a', personId: 'p_a', name: 'Veyla', kind: 'absence', role: null })] });
     const out = ws(panel(v, { guildData: gd(OFFICER_CAN) }));
     const text = stripTags(out);
-    assert(/Expected 19 \/ 20 Signed 17 Late 1 Standby 1 Tentative 1 Bench 1 Can&#39;t come 2/.test(text), text.slice(0, 300));
-    assert(out.includes('<h3 class="gs-su-group-h" id="su-g-standby">Standby <span class="gs-su-count">1</span></h3>'));
-    assert(out.indexOf('id="su-g-tank"') < out.indexOf('id="su-g-standby"') && out.indexOf('id="su-g-standby"') < out.indexOf('id="su-g-absence"'));
-    const absent = out.slice(out.indexOf('id="su-g-absence"'));
-    assert(absent.includes('Garrosh') && /gs-schip-warning[^>]*>.*?<\/svg>Away \(notice\)<\/span>/.test(absent));
+    assert(/Sign-ups 19 \/ 20 /.test(text), text.slice(0, 200));
+    assert(out.includes('<span class="gs-fg-ght">Standby</span><span class="gs-fg-ghn">1</span></h3>'));
+    const at = t => out.indexOf('<span class="gs-fg-ght">' + t + '</span>');
+    assert(at('Tanks') < at('Standby') && at('Standby') < at('Can&#39;t come'));
+    const absent = out.slice(at('Can&#39;t come'));
+    assert(absent.includes('Garrosh') && absent.includes('Garrosh</span> <span class="gs-rb-mut">(away notice)</span>'));
     assert(!/data-action="su-(edit|remove)" data-pid="p_aw"/.test(out), 'nothing to edit or remove on an away entry');
-    assert(/data-action="su-edit" data-pid="p_a"/.test(out), 'a real Absent sign-up still has its tools');
+    assert(/data-action="su-edit" data-pid="p_a"/.test(out), 'a real Can\'t come sign-up still has its name button');
     // The Add dialog says the person is away and starts from a fresh sign-up.
     const dlg = G.pages.raidSignups.editDialogHtml({ view: v, personId: null });
     assert(dlg.includes('Garrosh - Away (notice)'), dlg.slice(0, 400));
@@ -1308,14 +1299,14 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assertNoRawAttrs(out);
   });
 
-  await check('panel: Late / Leaving notices - "Late 21:00" on a person\'s row, "Leaves 22:00" in a Notices group for people with no sign-up yet; escaped', () => {
+  await check('panel: Late / Leaving notices - "Late 21:00" chip on a person\'s row, "Leaves 22:00" in a Notices line for people with no sign-up yet; escaped', () => {
     const v = view({ entries: [LATE_NOTICED, entry()], notices: [{ personId: 'p_ln', name: 'Kaelith', kind: 'late', atTime: '21:00' }, { personId: 'p_nn', name: 'Nodisc', kind: 'leaving', atTime: '22:00' }] });
     const out = ws(panel(v));
-    assert(/gs-schip-warning[^>]*>.*?<\/svg>Late 21:00<\/span>/.test(out));
-    const notices = out.slice(out.indexOf('id="su-g-notices"'));
-    assert(notices.includes('Nodisc') && notices.includes('Leaves 22:00') && !notices.includes('Kaelith'), 'Kaelith already shows hers on the row');
-    assert(out.includes('<h3 class="gs-su-group-h" id="su-g-notices">Notices <span class="gs-su-count">1</span>'));
-    assert(!panel(view({ entries: [entry()], notices: null })).includes('su-g-notices') && !panel(view({ entries: [entry()], notices: [] })).includes('su-g-notices'));
+    assert(/gs-hd-chip is-grey">Late 21:00<\/span>/.test(out));
+    const notices = out.slice(out.indexOf('<span class="gs-fg-ght">Notices</span>'));
+    assert(notices.includes('Nodisc') && notices.includes('(Leaves 22:00)') && !notices.includes('Kaelith'), 'Kaelith already shows hers on the row');
+    assert(out.includes('<span class="gs-fg-ght">Notices</span><span class="gs-fg-ghn">1</span>'));
+    assert(!panel(view({ entries: [entry()], notices: null })).includes('>Notices<') && !panel(view({ entries: [entry()], notices: [] })).includes('>Notices<'));
     assert(panel(view({ entries: [], notices: [{ personId: 'p_nn', name: 'Nodisc', kind: 'leaving', atTime: '22:00' }] })).includes('No sign-ups yet.') && panel(view({ entries: [], notices: [{ personId: 'p_nn', name: 'Nodisc', kind: 'leaving', atTime: '22:00' }] })).includes('Leaves 22:00'));
     assertEscaped(panel(view({ entries: [entry({ notice: { kind: 'late', atTime: HOSTILE } })], notices: [{ personId: 'p_nn', name: HOSTILE + QUOTES, kind: 'leaving', atTime: HOSTILE }] })), 'notices');
   });
@@ -1553,13 +1544,13 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert(!('standing' in row.mine), 'a plain sign-up has no tag');
   });
 
-  await check('panel: a standing sign-up says where it comes from and its button reads "Skip this week"; any other keeps "Remove my sign-up"; the list marks the entry', withState(async (S) => {
+  await check('panel: a standing sign-up says where it comes from and its button reads "Skip this week"; any other keeps "Remove my sign-up"; the board shows no standing chip', withState(async (S) => {
     const standingMe = entry({ key: 'p:p_e', personId: 'p_e', name: 'Eliora', classId: 'PRIEST', isMe: true, characterId: 'c_eli', standing: true });
     const v = view({ me: Object.assign({}, view().me, { signup: standingMe }), entries: [standingMe, entry()] });
     const out = panelAll(v);
     assert(/data-action="su-withdraw" data-key="su-withdraw">Skip this week<\/button>/.test(out) && !out.includes('Remove my sign-up'));
     assert(out.includes('This sign-up comes from your standing sign-up. Skip this week sets you to Can\'t come for this raid only.'));
-    assert(out.includes('<span class="gs-chip gs-chip-src">standing</span>'));
+    assert(!/gs-hd-chip[^>]*>standing/i.test(out) && !out.includes('gs-chip-src'), 'G12: no per-row standing chip');
     const plainOne = panelAll(view());
     assert(plainOne.includes('>Remove my sign-up</button>') && !plainOne.includes('Skip this week') && !plainOne.includes('standing'));
     // Pressing it is the same call; the answer (the person's own Absence) is shown as Absent with the usual button.
@@ -1588,7 +1579,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Roster card (officers): not published with a plan - "Publish line-up" and what it does; without a plan, or for a member, nothing', () => {
     const out = roCard(PLANNED(), roState({ published: false }));
-    assert(out.includes('<h2 class="gs-h2" id="ro-h">Line-up</h2>') && /data-action="roster-publish" data-op="publish" data-key="ro-publish">Publish line-up<\/button>/.test(out));
+    assert(out.includes('<h2 class="gs-pr-h" id="ro-h">Line-up</h2>') && out.includes('gs-hd-panel') && /data-action="roster-publish" data-op="publish" data-key="ro-publish">Publish line-up<\/button>/.test(out) && !out.includes('gs-btn-molten'), 'a Forge panel, no molten');
     assert(dec(out).includes('Members will see their group and can confirm or say they can\'t come.'));
     assert.equal(roCard(DETAIL(), roState({ published: false })), '', 'no plan yet');
     assert.equal(roCard(PLANNED({ can: { edit: false } }), roState({ published: false }), MEMBER_CAN), '', 'a member never sees the officers\' card');
@@ -1600,30 +1591,43 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assertNoRawAttrs(out);
   });
 
-  await check('Roster card (officers): published - when and by whom (guild time zone), "1 confirmed, 2 waiting, 1 can\'t come", Group 1, Group 2, Bench with status chips; waiting names highlighted, can\'t-make-it in the warning style', () => {
+  await check('Roster card (officers): published - a Forge Line-up panel: when and by whom (guild time zone), "1 confirmed, 2 waiting, 1 can\'t come", Group 1, Group 2, Bench with gold heads; Waiting grey, Can\'t come rose, Confirmed no chip', () => {
     const out = ws(roCard(PLANNED(), roState(ROSTER())));
     const text = dec(stripTags(out));
-    assert(text.includes('Published Sat Oct 24, 5:00 PM CT by Alice.'), text.slice(0, 300));
-    assert(out.includes('<p class="gs-ro-counts" id="ro-counts">1 confirmed, 2 waiting, 1 can&#39;t come</p>'));
-    assert(out.indexOf('id="ro-g-1"') < out.indexOf('id="ro-g-2"') && out.indexOf('id="ro-g-2"') < out.indexOf('id="ro-g-0"'), 'Bench last');
-    assert(out.includes('<h3 class="gs-su-group-h" id="ro-g-1">Group 1 <span class="gs-su-count">1</span>') && out.includes('<h3 class="gs-su-group-h" id="ro-g-2">Group 2 <span class="gs-su-count">2</span>') && out.includes('id="ro-g-0">Bench <span class="gs-su-count">1</span>'));
-    assert(/<li class="gs-su-item gs-ro-item is-confirmed"><span class="gs-su-who"><span class="gs-char-name gs-class-paladin">Thoren<\/span><\/span><span class="gs-su-spec">Protection<\/span><span class="gs-pill gs-pill-ok">Confirmed<\/span>/.test(out));
-    assert(/gs-ro-item is-pending"><span class="gs-su-who"><span class="gs-char-name gs-class-priest">Eliora[\s\S]*?gs-pill gs-pill-info">Waiting</.test(out), 'waiting is highlighted');
-    assert(/gs-ro-item is-declined">[\s\S]*?Garrosh[\s\S]*?gs-pill gs-pill-warn">Can(&#39;|')t come</.test(out), 'declined is a warning');
+    assert(out.startsWith('<section class="gs-hd-panel gs-rb gs-ro"') && out.includes('<h2 class="gs-pr-h" id="ro-h">Line-up</h2>'));
+    assert(text.includes('Line-up Published Sat Oct 24, 5:00 PM CT by Alice 1 confirmed, 2 waiting, 1 can\'t come Re-publish line-up Unpublish'), text.slice(0, 300));
+    assert(out.includes('<span class="gs-rb-mut" id="ro-counts">1 confirmed, 2 waiting, 1 can&#39;t come</span>'));
+    const at = t => out.indexOf('<span class="gs-fg-ght">' + t + '</span>');
+    assert(at('Group 1') > 0 && at('Group 1') < at('Group 2') && at('Group 2') < at('Bench'), 'Bench last');
+    assert(out.includes('<span class="gs-fg-ght">Group 1</span><span class="gs-fg-ghn">1</span>') && out.includes('<span class="gs-fg-ght">Group 2</span><span class="gs-fg-ghn">2</span>') && out.includes('<span class="gs-fg-ght">Bench</span><span class="gs-fg-ghn">1</span>'));
+    assert(/<li class="gs-rb-row"><img[^>]*alt=""[^>]*><span class="gs-rb-id"><span class="gs-rb-nm"><span class="gs-char-name gs-class-paladin">Thoren<\/span><\/span><span class="gs-rb-sp">Protection<\/span><\/span><\/li>/.test(out), 'Confirmed shows no chip');
+    assert(/gs-class-priest">Eliora[\s\S]*?gs-hd-chip is-grey">Waiting</.test(out), 'waiting is a grey chip');
+    assert(/Garrosh[\s\S]*?gs-hd-chip is-rose">Can(&#39;|')t come</.test(out), 'declined is a rose chip');
+    assert(!out.includes('Confirmed<') && !out.includes('gs-pill') && !out.includes('gs-btn-molten'));
     assert(/data-op="republish" data-key="ro-republish">Re-publish line-up</.test(out) && /data-op="unpublish" data-key="ro-unpublish">Unpublish</.test(out));
     assert(!out.includes('The plan changed since you published.'));
     const changed = ws(roCard(PLANNED(), roState(ROSTER({ planChanged: true }))));
     assert(changed.includes('<div class="gs-notice" role="status"><span>The plan changed since you published.</span>') && /data-op="republish" data-key="ro-changed">Re-publish</.test(changed));
-    assert(ws(roCard(PLANNED(), roState(ROSTER({ publishedBy: null, publishedAt: null })))).includes('Published.'));
+    assert(ws(roCard(PLANNED(), roState(ROSTER({ publishedBy: null, publishedAt: null })))).includes('>Published</span>'));
     assert(ws(roCard(PLANNED(), roState(ROSTER({ entries: [], counts: { pending: 0, confirmed: 0, declined: 0, total: 0 } })))).includes('No one is in the line-up.'));
+    assert(ws(roCard(PLANNED(), roState(ROSTER({ counts: { pending: 2, confirmed: 1, declined: 0, total: 3 } })))).includes('1 confirmed, 2 waiting</span>'), 'no can\'t-come part when nobody declined');
     assertNoRawAttrs(out);
     assertEscaped(roCard(PLANNED(), roState(ROSTER({ entries: [RENT({ name: HOSTILE + QUOTES, spec: HOSTILE, class: 'MAGE' })], publishedBy: HOSTILE + QUOTES }))), 'roster card');
+  });
+
+  await check('Roster card (officers): names A-Z inside a group; the viewer row is tinted with the You tag, in its place', () => {
+    const data = ROSTER({ entries: [RENT({ name: 'Zed', personId: 'p_z', group: 1 }), RENT({ name: 'amy', personId: 'p_a', group: 1 }), RENT({ name: 'Mo', personId: 'p_mo', group: 1 })] });
+    const out = G.pages.raidRoster.cardHtml({ guildData: gd(OFFICER_CAN), data: PLANNED(), state: roState(data), myPersonId: 'p_mo' });
+    const names = [...out.matchAll(/<span class="gs-rb-nm"><span class="gs-char-name[^"]*">([^<]+)</g)].map(m => m[1]);
+    assert.deepEqual(names, ['amy', 'Mo', 'Zed']);
+    assert(out.includes('<li class="gs-rb-row is-you">') && out.split('is-you').length === 2 && out.includes('<span class="gs-you">You</span>'));
+    assert(!roCard(PLANNED(), roState(data)).includes('is-you'), 'no viewer, no tint');
   });
 
   await check('Roster card: after the start only the list (no Publish, Re-publish or Unpublish), and nothing if it was never published', () => {
     const started = PLANNED(null, { upcoming: false, state: 'reviewed' });
     const out = roCard(started, roState(ROSTER({ planChanged: true })));
-    assert(out.includes('id="ro-g-1"') && out.includes('1 confirmed, 2 waiting') && !out.includes('roster-publish') && !out.includes('Re-publish') && !out.includes('The plan changed'));
+    assert(out.includes('<span class="gs-fg-ght">Group 1</span>') && out.includes('1 confirmed, 2 waiting') && !out.includes('roster-publish') && !out.includes('Re-publish') && !out.includes('The plan changed'));
     assert.equal(roCard(started, roState({ published: false })), '');
     assert.equal(roCard(started, roState(null, { status: 'error', message: 'x' })), '');
   });

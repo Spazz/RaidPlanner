@@ -181,7 +181,7 @@ class ApiErr extends Error {
 
   await check('panel (member): header says when it closes; the You bar has the status pills with the current one pressed; the dialog has character, spec and note; no officer tools', () => {
     const out = panelAll(view());
-    assert(out.includes('id="su-h">Sign-ups<') && /Open until Sat, Oct 24, 8:00 PM|Open until Sat Oct 24, 8:00 PM/.test(out), out.slice(0, 600));
+    assert(out.includes('id="su-h">Sign-ups<') && !out.includes('Open until') && !out.includes('gs-pill'), 'the head chip and context line carry open/closed: no pill in the panel');
     for (const [kind, label] of [['signed', 'Signed up'], ['late', 'Late'], ['tentative', 'Tentative'], ['absence', 'Can&#39;t come']]) {
       assert(new RegExp('data-action="su-kind" data-kind="' + kind + '"[^>]*aria-pressed="' + (kind === 'signed' ? 'true' : 'false') + '"[^>]*>' + label.replace('&#39;', "(?:'|&#39;)") + '<').test(out), kind);
     }
@@ -195,53 +195,115 @@ class ApiErr extends Error {
     assertNoRawAttrs(out);
   });
 
-  await check('panel (member): counts, the class strip, and the list by role then by status with class colours; Late and Raid-Helper rows marked; notes shown', () => {
-    const out = panel(view());
+  await check('panel (member): figure, four role columns A-Z with gold group heads, the viewer in place, extra group lines, muted class words', () => {
+    const out = panel(view({ raid: Object.assign({}, view().raid, { size: 25 }) }));
     const text = stripTags(out);
-    assert(/Signed 4 Late 1 Tentative 1 Bench 1 Can&#39;t come 1/.test(text), text.slice(0, 500));
-    assert(/Paladin 1/.test(text) && /Priest 1/.test(text) && /Rogue 2/.test(text) && /Hunter 1/.test(text) && !/Mage 1/.test(stripTags(out.slice(out.indexOf('gs-su-classes'), out.indexOf('</ul>', out.indexOf('gs-su-classes'))))));
-    const order = ['Tanks', 'Healers', 'Melee', 'Ranged', 'Tentative', 'Bench', 'Can&#39;t come'].map(t => out.indexOf('>' + t + ' <span'));
-    assert(order.every(i => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]), 'groups in role order, then status: ' + order);
-    assert(!out.includes('No role yet'), 'an empty group is left out');
+    assert(/Sign-ups 5 \/ 25 /.test(text), text.slice(0, 120));
+    assert(out.includes('<h3 class="gs-fg-gh"><span class="gs-fg-ght">Tanks</span><span class="gs-fg-ghn">1</span></h3>'));
+    const heads = ['Tanks', 'Healers', 'Melee', 'Ranged'].map(t => out.indexOf('<span class="gs-fg-ght">' + t + '</span>'));
+    assert(heads.every(i => i > 0) && heads.every((i, k) => k === 0 || i > heads[k - 1]), 'role columns in order: ' + heads);
+    const colText = (name) => stripTags(out.slice(out.indexOf('aria-label="' + name + '"'), out.indexOf('</section>', out.indexOf('aria-label="' + name + '"'))));
+    assert(colText('Tanks').includes('Thoren Protection'));
+    assert(colText('Melee').includes('Kaelith Combat Back by 8:15 Late'), 'Late chip and the note under the spec: ' + colText('Melee'));
+    assert(colText('Healers').includes('Eliora Holy You'), 'viewer: name, spec, You tag');
+    const extra = ['Tentative', 'Bench', 'Can&#39;t come'].map(t => out.indexOf('<span class="gs-fg-ght">' + t + '</span>'));
+    assert(extra.every(i => i > heads[3]) && extra.every((i, k) => k === 0 || i > extra[k - 1]), 'one line per extra group, after the columns');
+    assert(!out.includes('No role yet'), 'the unmatched Rogue has the melee role');
     assert(out.includes('class="gs-char-name gs-class-paladin">Thoren<') && out.includes('gs-class-priest">Eliora<'));
-    assert(/Back by 8:15/.test(out) && out.includes('class="gs-su-note"'));
-    assert(/gs-schip-warning[^>]*>.*?<\/svg>Late<\/span>/.test(out), 'Late is marked in its role group');
-    assert(out.includes('<span class="gs-chip gs-chip-src">Raid-Helper</span>'));
     assert(out.includes('Unmatched sign-up') && out.includes('Rogue - Subtlety'), 'a row nobody may name still says what was signed up');
-    assert(out.includes('<span class="gs-chip gs-chip-main">You</span>') && out.includes('class="gs-su-item is-me"'));
-    assert(out.includes('<h3 class="gs-su-group-h" id="su-g-melee">Melee <span class="gs-su-count">2</span>'), 'Kaelith (late) and the unmatched Rogue are melee');
+    assert(!out.includes('Raid-Helper') && !out.includes('standing'), 'the per-row Raid-Helper and standing chips are gone');
+    assert(out.includes('<li class="gs-rb-row is-you">') && out.includes('<span class="gs-you">You</span>'));
+    assert(!/gs-hd-chip[^>]*>(Confirmed|Signed)/.test(out), 'the default shows no chip');
+    const cls = out.slice(out.indexOf('<p class="gs-rb-classes"'), out.indexOf('</p>', out.indexOf('<p class="gs-rb-classes"')));
+    assert(stripTags(cls) === 'Paladin 1 - Hunter 1 - Rogue 2 - Priest 1', stripTags(cls));
+    assert(!/gs-class-|gs-char-name/.test(cls), 'the class counts are plain muted words, never class colours');
+  });
+
+  await check('panel: names are A-Z inside a column and the viewer keeps that place; a nickname shows only when it differs from the character name', () => {
+    const mk = (name, extra) => entry(Object.assign({ key: 'p:' + name, personId: 'p_' + name, name, classId: 'MAGE', className: 'Mage', spec: 'Fire', role: 'ranged' }, extra || {}));
+    const v = view({ entries: [mk('Zed'), mk('amy'), mk('Mo', { isMe: true }), mk('Bea', { nickname: 'Bea' }), mk('Cy', { nickname: 'Cyrus', source: 'raid_helper' })] });
+    const out = panel(v);
+    const names = [...out.matchAll(/<span class="gs-rb-nm"><span class="gs-char-name[^"]*">([^<]+)</g)].map(m => m[1]);
+    assert.deepEqual(names, ['amy', 'Bea', 'Cy', 'Mo', 'Zed']);
+    assert(out.includes('>Cyrus<') && !out.includes('>Bea</span></span></span><span class="gs-rb-sp">Bea'), 'the nickname only when it differs');
+  });
+
+  await check('panel: the lines under the columns - No role yet, Standby, Tentative, Bench, Can\'t come, Notices - hold comma-separated names with gold heads; the empty ones are left out', () => {
+    const mk = (name, kind, role) => entry({ key: 'p:' + name, personId: 'p_' + name, name, kind, role, classId: 'MAGE', className: 'Mage', spec: 'Fire' });
+    const v = view({ entries: [mk('Ana', 'signed', null), mk('Bo', 'standby', 'ranged'), mk('Cid', 'standby', 'ranged'), mk('Di', 'tentative', 'ranged'), mk('Ed', 'bench', 'ranged'), mk('Flo', 'absence', 'ranged')], notices: [{ personId: 'p_n', name: 'Nia', kind: 'late', atTime: '21:00' }] });
+    const out = panel(v);
+    const order = ['No role yet', 'Standby', 'Tentative', 'Bench', 'Can&#39;t come', 'Notices'].map(t => out.indexOf('<span class="gs-fg-ght">' + t + '</span>'));
+    assert(order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1])), 'today\'s group order: ' + order);
+    assert(out.includes('<span class="gs-fg-ght">Standby</span><span class="gs-fg-ghn">2</span></h3><ul class="gs-rb-names"><li><span class="gs-char-name gs-class-mage">Bo</span></li><li><span class="gs-char-name gs-class-mage">Cid</span>'), 'two names on one Standby line');
+    assert(out.includes('Nia <span class="gs-rb-mut">(Late 21:00)</span>'), 'a notice without a sign-up is a plain name with its note');
+    const none = panel(view({ entries: [mk('Bo', 'standby', 'ranged')] }));
+    assert(!none.includes('No role yet') && !none.includes('Notices'));
+  });
+
+  await check('panel: row extras only when they apply - Late, Guest, the notice chip - and an away entry has no name button', () => {
+    const base = { classId: 'MAGE', className: 'Mage', spec: 'Fire', role: 'ranged' };
+    const v = OFFICER_VIEW({ entries: [
+      entry(Object.assign({ key: 'g1', personId: null, name: 'Gus', guest: true, signupId: 'sg1' }, base)),
+      entry(Object.assign({ key: 'a1', personId: 'p_aw', name: 'Awa', source: 'away', kind: 'absence' }, base)),
+      entry(Object.assign({ key: 'n1', personId: 'p_nn', name: 'Nel', notice: { kind: 'leaving', atTime: '22:00' } }, base)),
+      entry(Object.assign({ key: 'l1', personId: 'p_ll', name: 'Lou', kind: 'late' }, base)),
+      entry(Object.assign({ key: 'p1', personId: 'p_pl', name: 'Pat' }, base)),
+    ] });
+    const out = panel(v, { guildData: gd(OFFICER_CAN) });
+    const rowOf = n => { const i = out.indexOf('>' + n + '<'); return out.slice(i, out.indexOf('</li>', i)); };
+    assert(rowOf('Gus').includes('>Guest</span>') && out.includes('data-action="su-guest-open" data-sid="sg1"'));
+    assert(out.includes('Awa</span> <span class="gs-rb-mut">(away notice)</span>') && !out.includes('data-pid="p_aw"'));
+    assert(rowOf('Nel').includes('>Leaves 22:00</span>') && rowOf('Lou').includes('>Late</span>'));
+    assert(!/gs-hd-chip/.test(rowOf('Pat')), 'a plain sign-up shows nothing extra');
+  });
+
+  await check('panel: officer name buttons open Change a sign-up; members and the unmatched row get plain names; Remove is not on the board', () => {
+    const v = OFFICER_VIEW({ entries: ENTRIES.map(e => (e.name === 'Mirabel' ? Object.assign({}, e, { nickname: 'Mira-nick' }) : e)) });
+    const out = panel(v, { guildData: gd(OFFICER_CAN) });
+    assert(out.includes('data-action="su-add"') && out.includes('data-action="su-lock" data-lock="1"') && out.includes('>Close sign-ups<'));
+    assert(!out.includes('id="su-me-h"'), 'an officer who is not on the roster has no sign-up of their own');
+    assert.equal(out.split('data-action="su-edit"').length - 1, 7, 'every row with a person: the columns and the extra lines');
+    assert(!out.includes('data-action="su-remove"') && !out.includes('>Edit<') && !out.includes('>Remove<'), 'the old row tools are gone');
+    assert(/<button type="button" class="gs-rb-id gs-rb-btn" data-action="su-edit" data-pid="p_m"[^>]*aria-label="Change the sign-up of Mirabel"><span class="gs-rb-nm"><span class="gs-char-name gs-class-hunter">Mirabel/.test(out));
+    assert(out.includes('Mira-nick'));
+    assert(/<button[^>]*data-pid="p_a"/.test(out), 'the Can\'t come line names are buttons too');
+    assert(out.includes('<span class="gs-muted">Unmatched sign-up</span>') && !/<button[^>]*>(?:(?!<\/button>).)*Unmatched/.test(out), 'the unmatched row has no button');
+    const closed = panel(OFFICER_VIEW({ raid: { id: 'u1', teamId: 't1', startsAt: STARTS, upcoming: true, locked: true, closed: 'locked' } }), { guildData: gd(OFFICER_CAN) });
+    assert(closed.includes('data-lock="0"') && closed.includes('>Reopen sign-ups<'));
+    assert(closed.includes('<p class="gs-rb-closed">An officer has closed sign-ups.'), 'one muted line with the reason');
+    const member = panel(view());
+    assert(!member.includes('<button') && !member.includes('data-action'), 'a member sees plain names and no tools in the panel');
+    assertNoRawAttrs(out);
+  });
+
+  await check('dialogs: Change a sign-up carries Remove sign-up for a Raidsmith sign-up only (it opens today\'s confirm); the guest dialog has Remove guest', () => {
+    const v = OFFICER_VIEW();
+    const own = G.pages.raidSignups.editDialogHtml({ view: v, personId: 'p_t' });
+    assert(own.includes('gs-dialog-form gs-forge') && own.includes('Change a sign-up') && /class="gs-btn gs-btn-danger-outline" data-action="su-remove" data-pid="p_t"[^>]*>Remove sign-up</.test(own));
+    assert(!G.pages.raidSignups.editDialogHtml({ view: v, personId: 'p_m' }).includes('su-remove'), 'a Raid-Helper sign-up is changed by saving over it');
+    assert(!G.pages.raidSignups.editDialogHtml({ view: v, personId: null }).includes('su-remove'), 'Add a sign-up has no Remove');
+    const rm = G.pages.raidSignups.removeDialogHtml('p_t', 'Thoren');
+    assert(rm.includes('gs-forge') && rm.includes('Remove this sign-up?') && rm.includes('A Raid-Helper sign-up of theirs, if there is one, shows again.') && rm.includes('gs-btn-danger">Remove sign-up<'));
+    const g = G.pages.raidSignups.guestDialogHtml({ signupId: 'sg1', name: 'Gus', className: 'Mage', spec: 'Fire' });
+    assert(g.includes('gs-forge') && g.includes('Guest sign-up') && g.includes('data-submit="su-guest-form"') && g.includes('Remove guest<'));
   });
 
   await check('panel: closed by an officer or started - buttons disabled with the reason; officers keep their tools; a past raid shows the panel only to officers or when there are sign-ups', () => {
     const locked = view({ raid: { id: 'u1', teamId: 't1', startsAt: STARTS, upcoming: true, locked: true, closed: 'locked' }, me: Object.assign({}, view().me, { canChange: false, closed: 'locked' }) });
     const out = panelAll(locked);
-    assert(out.includes('Closed by an officer') && out.includes('An officer has closed sign-ups.'));
+    assert(out.includes('An officer has closed sign-ups.'));
     assert(/data-kind="signed"[^>]*disabled/.test(out) && /data-kind="absence"[^>]*disabled/.test(out) && /id="su-note"[^>]*disabled/.test(out));
     assert(!out.includes('Save details'), 'nothing to save while it is closed');
     const started = view({ raid: { id: 'u1', teamId: 't1', startsAt: STARTS, upcoming: false, locked: false, closed: 'started' }, me: Object.assign({}, view().me, { canChange: false, closed: 'started' }) });
     const past = DETAIL({ raid: Object.assign({}, DETAIL().raid, { upcoming: false }) });
     const pastOut = panel(started, { data: past });
-    assert(pastOut.includes('The raid has started'), 'the pill says so');
+    assert(!pastOut.includes('The raid has started'), 'no pill and no sentence in the record');
     assert(!pastOut.includes('data-action="su-kind"') && !pastOut.includes('so sign-ups can no longer be changed here.') && !pastOut.includes('id="su-me"'), 'after the start there is no status form, not even a disabled one');
     assert.equal(panel(Object.assign({}, started, { entries: [] }), { data: past }), '', 'a past raid nobody signed up for: no panel for a member');
     const officerPast = panel(Object.assign({}, OFFICER_VIEW(), { entries: ENTRIES }), { data: past, guildData: gd(OFFICER_CAN) });
     assert(!officerPast.includes('data-action="su-add"') && !officerPast.includes('data-action="su-lock"'), 'after the start: no Add a sign-up and no Close sign-ups');
     assert(officerPast.includes('data-action="su-edit"'), 'the officer still sees the sign-ups and can correct a row');
     assert(panel(Object.assign({}, OFFICER_VIEW(), { entries: [] }), { data: past, guildData: gd(OFFICER_CAN) }).includes('No sign-ups yet.'), 'officers see the empty panel');
-  });
-
-  await check('panel (officer): Add a sign-up and Close sign-ups, Edit on every person row, Remove only on Raidsmith rows; the unmatched row has no tools; nicknames shown', () => {
-    const v = OFFICER_VIEW({ entries: ENTRIES.map(e => (e.name === 'Mirabel' ? Object.assign({}, e, { nickname: 'Mira-nick' }) : e)) });
-    const out = panel(v, { guildData: gd(OFFICER_CAN) });
-    assert(out.includes('data-action="su-add"') && out.includes('data-action="su-lock" data-lock="1"') && out.includes('>Close sign-ups<'));
-    assert(!out.includes('id="su-me-h"'), 'an officer who is not on the roster has no sign-up of their own');
-    assert.equal(out.split('data-action="su-edit"').length - 1, 7, 'every row with a person');
-    assert.equal(out.split('data-action="su-remove"').length - 1, 6, 'the Raidsmith rows only (Mirabel is a Raid-Helper row)');
-    assert(/data-action="su-edit" data-pid="p_m"/.test(out) && !/data-action="su-remove" data-pid="p_m"/.test(out));
-    assert(out.includes('Mira-nick'));
-    const closed = panel(OFFICER_VIEW({ raid: { id: 'u1', teamId: 't1', startsAt: STARTS, upcoming: true, locked: true, closed: 'locked' } }), { guildData: gd(OFFICER_CAN) });
-    assert(closed.includes('data-lock="0"') && closed.includes('>Reopen sign-ups<'));
-    assertNoRawAttrs(out);
   });
 
   await check('panel: a member of another team sees the sentence, not the list; the Raid-Helper sign-up of the viewer says what pressing a button does', () => {

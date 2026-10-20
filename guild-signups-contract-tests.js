@@ -190,7 +190,6 @@ check('member: the raid page offers four buttons; Sign up, Late, a change of cha
   for (const label of ['Signed up', 'Late', 'Tentative', 'Can']) assert(text.includes(label), label);
   E.handlers.click['su-details-open'](el({}));
   assert(/Thoren \(Paladin\)/.test(stripTags(E.dialogs[E.dialogs.length - 1])) && /Thorenmage \(Mage\)/.test(stripTags(E.dialogs[E.dialogs.length - 1])), 'both characters are offered in Change character or note');
-  assert(/Open until Sat, Oct 24, 8:00 PM|Open until Sat Oct 24, 8:00 PM/.test(text), 'the close time is in the guild\'s zone: ' + text.slice(0, 300));
   assert(!/Add a sign-up|Close sign-ups/.test(text), 'no officer tools for a member');
 
   await E.handlers.click['su-kind'](el({ 'data-kind': 'signed' }));
@@ -199,7 +198,7 @@ check('member: the raid page offers four buttons; Sign up, Late, a change of cha
   html = page();
   text = stripTags(html);
   assert(/Tanks 1/.test(text) && /Thoren/.test(text) && /Protection/.test(text), text);
-  assert(/Signed 1 Late 0/.test(text), 'the counts follow: ' + text.slice(0, 600));
+  assert(text.includes('Sign-ups 1 / 25 '), 'the figure follows: ' + text.slice(0, 600));
   assert(html.includes('aria-pressed="true"') && /data-kind="signed"[^>]*aria-pressed="true"/.test(html));
   assert(/Signed up - Thoren\s*, Protection/.test(stripTags(html)), 'the You bar says it');
 
@@ -217,10 +216,10 @@ check('member: the raid page offers four buttons; Sign up, Late, a change of cha
 
   await E.handlers.click['su-kind'](el({ 'data-kind': 'late' }));
   assert.equal((await rows(s.world, "SELECT kind FROM raid_signups WHERE source = 'raidsmith'"))[0].kind, 'late');
-  assert(/Late 1/.test(stripTags(page())));
+  assert(/Thorenmage Frost on my mage this week Late/.test(stripTags(page())), 'the Late chip on the row');
   await E.handlers.click['su-kind'](el({ 'data-kind': 'absence' }));
   html = page();
-  assert(/Can&#39;t come 1/.test(stripTags(html)) && /data-kind="absence"[^>]*aria-pressed="true"/.test(html));
+  assert(/Can&#39;t come 1 Thorenmage/.test(stripTags(html)) && /data-kind="absence"[^>]*aria-pressed="true"/.test(html));
 
   await E.handlers.click['su-withdraw'](el({}));
   assert.equal(await s.world.db.prepare('SELECT COUNT(*) AS n FROM raid_signups').first('n'), 0);
@@ -236,7 +235,7 @@ check('officer: the panel carries the tools; the Add / Edit dialogs are built fr
   let html = page();
   let text = stripTags(html);
   assert(/Add a sign-up/.test(text) && /Close sign-ups/.test(text), text.slice(0, 500));
-  assert(/data-action="su-edit" data-pid="/.test(html) && /data-action="su-remove"/.test(html));
+  assert(/data-action="su-edit" data-pid="/.test(html) && !/data-action="su-remove"/.test(html), 'a name button per sign-up; Remove lives in the dialog');
   assert(!/id="su-me-h"/.test(html), 'the Guild Master has no character, so no sign-up of their own');
   assert(/Thoren/.test(text) && /Tanks 1/.test(text));
 
@@ -248,7 +247,7 @@ check('officer: the panel carries the tools; the Add / Edit dialogs are built fr
   const kaelithChar = (await rows(s.world, "SELECT id FROM characters WHERE name = 'Kaelith'"))[0].id;
   await A.handlers.submit['su-edit-form']({ elements: { person: { value: kaelith }, kind: { value: 'bench' }, character: { value: kaelithChar }, spec: { value: 'Combat' }, note: { value: 'standby' } } });
   text = stripTags(page());
-  assert(/Bench 1/.test(text) && /Kaelith/.test(text) && /standby/.test(text), text);
+  assert(/Bench 1 Kaelith/.test(text), text);
   assert.equal((await rows(s.world, "SELECT kind, updated_by FROM raid_signups WHERE player_id = ?", kaelith))[0].kind, 'bench');
 
   // Add Mirabel through the Add dialog (the first person of the roster is not her: the dialog's person select picks).
@@ -259,19 +258,21 @@ check('officer: the panel carries the tools; the Add / Edit dialogs are built fr
   assert(/Ranged 1/.test(stripTags(page())));
   assert.equal((await rows(s.world, "SELECT spec_name FROM raid_signups WHERE player_id = ?", s.people.Mirabel))[0].spec_name, null, 'no spec chosen = none');
 
-  // Remove asks, then does it.
+  // Remove is inside the Change a sign-up dialog; it asks, then does it.
+  A.handlers.click['su-edit'](el({ 'data-pid': kaelith }));
+  assert(/data-action="su-remove" data-pid="/.test(A.dialogs[2]) && /Remove sign-up/.test(A.dialogs[2]), 'the dialog carries Remove sign-up');
   A.handlers.click['su-remove'](el({ 'data-pid': kaelith }));
-  assert(/Remove this sign-up\?/.test(A.dialogs[2]) && /Kaelith/.test(A.dialogs[2]));
+  assert(/Remove this sign-up\?/.test(A.dialogs[3]) && /Kaelith/.test(A.dialogs[3]));
   await A.handlers.submit['su-remove-form'](el({}, { getAttribute: (k) => (k === 'data-pid' ? kaelith : null) }));
   assert(!/Kaelith/.test(stripTags(page())));
 
   // Close sign-ups: the member's page, built from the Worker's answer, is closed; their next click is a 409 with the reason.
   await A.handlers.click['su-lock'](el({ 'data-lock': '1' }));
   html = page();
-  assert(/Reopen sign-ups/.test(stripTags(html)) && /Closed by an officer/.test(html));
+  assert(/Reopen sign-ups/.test(stripTags(html)) && /An officer has closed sign-ups\./.test(stripTags(html)));
   const memberPage = await openRaid(s, E);
   const mText = stripTags(memberPage());
-  assert(/Closed by an officer/.test(mText) && /An officer has closed sign-ups\./.test(mText));
+  assert(/An officer has closed sign-ups\./.test(mText));
   assert(/data-kind="signed"[^>]*disabled/.test(memberPage()), 'the buttons are disabled');
   // A page that was open before the lock: its click reaches the Worker, which says why not; the panel then shows the closed state.
   await s.world.db.prepare('UPDATE raids SET signups_locked = 0 WHERE id = ?').bind(s.rid).run();

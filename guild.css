@@ -2774,3 +2774,51 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-rpg-chg .gs-btn { min-height: 44px; }
   .gs-dialog-form.gs-forge .gs-su-kind { min-height: 44px; flex: 1 1 calc(50% - 4px); }
 }
+
+/* -- Raid page people board + Line-up panel (raids revamp lane 3a; prefix gs-rb-). One Forge panel: head (title, figure or meta, buttons), four role columns,
+   one line per extra group, the class words. Gold is the group heads only; class colour is the name only; the viewer row is --you-bg + the You tag. -- */
+.gs-rb { container-type: inline-size; }
+.gs-rb-ph { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-height: 52px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--hd-hair); }
+.gs-rb-fig { font: 700 15px/1.2 var(--font-body); color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-rb-of { font-weight: 400; color: var(--text-muted); }
+.gs-rb-mut { font-size: 13px; line-height: 1.4; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gs-rb-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.gs-rb-pb { display: flex; flex-direction: column; gap: 16px; padding: 16px 20px 20px; min-width: 0; }
+.gs-rb-pb > .gs-empty, .gs-rb-pb > .gs-alert, .gs-rb-pb > .gs-notice, .gs-rb-pb > .gs-row-actions { margin: 0; }
+.gs-rb-closed { margin: 0; font-size: 13px; line-height: 1.4; color: var(--text-muted); }
+.gs-rb-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.gs-rb-cols3 { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+@container (min-width: 560px) { .gs-rb-cols:not(.gs-rb-cols3) { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.gs-rb-col { min-width: 0; }
+.gs-rb-col > .gs-fg-gh { padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--hd-hair); }
+.gs-rb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.gs-rb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; box-sizing: border-box; min-height: 44px; padding: 4px 6px; min-width: 0; }
+.gs-rb-row.is-you { background: var(--you-bg); }
+.gs-rb-row .gs-you { margin-left: auto; }
+.gs-rb-id { flex: 1 1 80px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; }
+.gs-rb-btn { appearance: none; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.gs-rb-btn:hover .gs-char-name { text-decoration: underline; text-underline-offset: 3px; }
+.gs-rb-nm { font-size: 14px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.gs-rb-sp { font-size: 12px; line-height: 1.3; color: var(--text-muted); overflow-wrap: anywhere; }
+.gs-rb-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.gs-rb-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding-top: 12px; border-top: 1px solid var(--hd-hair); }
+.gs-rb-line > .gs-fg-gh { flex: none; }
+.gs-rb-names { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 0; min-width: 0; flex: 1 1 200px; font-size: 14px; font-weight: 600; }
+.gs-rb-names li { display: inline-flex; align-items: baseline; }
+.gs-rb-names li:not(:last-child)::after { content: ","; margin: 0 6px 0 0; color: var(--text-muted); font-weight: 400; }
+.gs-rb-lbtn { min-height: 36px; padding: 0 2px; font-weight: 600; }
+.gs-rb-names .gs-you { margin-left: 6px; }
+.gs-rb-classes { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+.gs-dialog-form.gs-forge .gs-btn-danger { background: var(--danger); border-color: var(--danger); color: var(--text-on-accent); font-weight: 700; }
+.gs-dialog-form.gs-forge .gs-btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
+.gs-dialog-form.gs-forge .gs-btn-danger-outline { background: transparent; border-color: var(--danger); color: var(--danger-text); font-weight: 700; }
+.gs-dialog-form.gs-forge .gs-btn-danger-outline:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--danger); }
+@media screen and (max-width: 600px) {
+  .gs-rb-ph { padding: 12px 16px; }
+  .gs-rb-acts { flex: 1 1 100%; margin-left: 0; }
+  .gs-rb-acts .gs-btn { flex: 1 1 140px; min-height: 44px; justify-content: center; }
+  .gs-rb-pb { padding: 16px; }
+  .gs-rb-btn.gs-rb-id { min-height: 44px; justify-content: center; }
+  .gs-rb-lbtn { min-height: 44px; padding: 0 4px; }
+  .gs-rb-pb .gs-row-actions .gs-btn, .gs-rb-pb .gs-notice .gs-btn { min-height: 44px; }
+}

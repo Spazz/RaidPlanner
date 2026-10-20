@@ -284,8 +284,9 @@
   }
 
   // The Line-up card (officers) of the published line-up (pages-raid-roster.js); nothing while its data is not loaded. A member's own group is the You bar.
-  function rosterCardHtml(gd, data, roster) {
-    return G.pages.raidRoster ? G.pages.raidRoster.cardHtml({ guildData: gd, data: data, state: roster }) : '';
+  function rosterCardHtml(gd, data, roster, signups) {
+    const sv = G.pages.raidSignups ? G.pages.raidSignups.viewOf(signups) : null;
+    return G.pages.raidRoster ? G.pages.raidRoster.cardHtml({ guildData: gd, data: data, state: roster, myPersonId: sv && sv.me ? sv.me.personId : null }) : '';
   }
 
   // ── the raid page (design framework T2: object page with a stage strip) ──
@@ -437,7 +438,7 @@
   // Before the raid: the Sign-ups panel, the Line-up card (officers, once published), the Loot prios card.
   function mainBefore(gd, data, opts) {
     const roster = rosterViewOf(opts.roster);
-    const lineup = rosterCardHtml(gd, data, opts.roster);
+    const lineup = rosterCardHtml(gd, data, opts.roster, opts.signups);
     return bareSection('s-signups', signupsPanelHtml(gd, data, opts.signups)) +
       bareSection('s-lineup', roster && roster.published ? lineup : (opts.roster && opts.roster.status === 'error' ? lineup : '')) +
       bareSection('s-board', boardCardHtml(gd, data, opts.board));
