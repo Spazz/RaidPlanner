@@ -827,11 +827,11 @@ check('diffBuffReach uses the singular role word for a change of one player', ()
   assert.equal(word({ tank: 1 }, { healer: 2 }), 'player', 'a mix of one player');
 });
 
-check('CSS: a changed slot is a neutral white inset ring (focus keeps the outline), never gold or orange', () => {
+check('CSS: a changed slot is the neutral raised fill, no ring (focus keeps the outline), never gold or orange', () => {
   const css = app.css;
-  const ring = css.match(/\.player-slot\.changed \{[^}]*\}/)[0];
-  assert.match(ring, /box-shadow: inset 0 0 0 2px var\(--hd-white\)/);
-  assert.doesNotMatch(ring, /outline|accent-gold|warning|molten/);
+  const ring = css.match(/\.player-slot\.changed:not\(\.drag-target\) \{[^}]*\}/)[0];
+  assert.match(ring, /background: var\(--next-bg\)/);
+  assert.doesNotMatch(ring, /box-shadow|outline|accent-gold|warning|molten/);
   assert.doesNotMatch(css, /--changed-color/, 'no per-kind ring colours');
   assert.match(css, /\.player-slot\.changed\.dragging \{ opacity: 0\.3; \}/, 'a highlighted card still dims while dragged');
   const tag = css.match(/\.changed-tag \{[^}]*\}/g).pop();
@@ -839,9 +839,7 @@ check('CSS: a changed slot is a neutral white inset ring (focus keeps the outlin
   assert.match(css, /\.gs-pb-changes \.gs-btn \{ min-height: 44px; \}/, 'phone tap targets');
   assert.match(css, /\.gs-pb-changes \.changes-log-more \{ min-height: 44px; \}/, 'the Show all toggle is a 44px target on phones');
   assert.doesNotMatch(css, /\.changes-log-kind-(benched|seated|status|moved|added)\s*\{/, 'the kind words are neutral ink');
-  const focus = css.match(/\.player-slot\.changed:focus-visible \{[^}]*\}/);
-  assert(focus, 'changed cards restyle focus');
-  assert.match(focus[0], /box-shadow: inset 0 0 0 4px var\(--hd-white\)/);
+  assert.doesNotMatch(css, /\.player-slot\.changed:focus-visible/, 'focus keeps the shared outline');
 });
 
 setTimeout(() => console.log(`\nChange report tests: ${passed} passed, 0 failed, ${passed} total`), 50);

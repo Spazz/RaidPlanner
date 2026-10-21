@@ -2534,9 +2534,10 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 :is(.gs-pb-board, .gs-pb-pool) .status-absent, .gs-pb-board .marker-away, .gs-pb-board .review-badge { border-color: var(--status-danger-edge); background: var(--status-danger-bg); color: var(--status-danger-ink); }
 :is(.gs-pb-board, .gs-pb-pool) .marker-late, .gs-pb-board .marker-leaving { border-color: var(--status-warning-edge); background: var(--status-warning-bg); color: var(--status-warning-ink); }
 :is(.gs-pb-board, .gs-pb-pool) .changed-tag { border-color: currentColor; background: none; color: var(--hd-white); }
-/* Unseen change: a white inset ring plus the change tag (neutral, never gold or orange; the focus outline stays 2 px white outside it). */
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed { box-shadow: inset 0 0 0 2px var(--hd-white); opacity: 1; }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed:focus-visible { box-shadow: inset 0 0 0 4px var(--hd-white); }
+/* Unseen change: the raised neutral fill of the next-step bar plus the change tag (user pick D 2026-10-21, canvas
+   2gENk76tuyuenj8MAxcnwL; no ring, never gold or orange). A drop target keeps its own fill and ring. */
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed:not(.drag-target) { background: var(--next-bg); opacity: 1; }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed:not(.drag-target):hover { background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
 :is(.gs-pb-board, .gs-pb-pool) .player-slot.changed.dragging { opacity: 0.3; }
 :is(.gs-pb-board, .gs-pb-pool) .gs-hd-chip { align-self: center; }
 
