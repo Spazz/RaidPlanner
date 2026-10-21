@@ -42,7 +42,7 @@ check('the plan view has no title bar: its h1 is the plan name button in the hea
 
 check('the plan name is a 28px white h1 button with the underline-only hover and an ellipsis that lets it give way first', () => {
   const g = read('guild.css');
-  assert.match(g, /\.gs-pb-h1 \{[^}]*font: 700 28px\/1\.15[^}]*color: var\(--hd-white\)/);
+  assert.match(g, /\.gs-pb-h1 \{[^}]*font: 700 28px\/1\.1 var\(--font-cond\)[^}]*text-transform: uppercase; color: var\(--text-primary\)/);
   assert.match(g, /\.gs-pb-name:hover \{ text-decoration: underline;/);
   assert.match(g, /\.gs-pb-name svg \{[^}]*opacity: 0\.6/);
   assert.match(g, /#roster-name-text \{[^}]*min-width: 0;[^}]*text-overflow: ellipsis/);

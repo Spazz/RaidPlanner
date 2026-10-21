@@ -297,7 +297,7 @@ check('Coverage dialog text is 13-14px, the row icon 28px, and the fix buttons a
 
 check('version tabs get a 44px hit area; the plan name button, back link and bar buttons are 44px tall on a phone', () => {
   assert.match(rule('.game-version-tab::before'), /inset: -9px 0/);
-  assert.match(lane3aPhone, /\.gs-pb-name \{ min-height: 44px; \}/);
+  assert.match(css, /.gs-pb-name {[^}]*min-height: 44px;/, "the plan name button is 44px tall at every width");
   assert.match(lane3aPhone, /\.gs-pb-back \{ min-height: 44px; \}/);
   assert.match(lane3aPhone, /\.gs-pb-sharewrap > \.gs-btn \{ width: 100%; min-height: 44px; \}/);
 });

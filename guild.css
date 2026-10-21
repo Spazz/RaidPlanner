@@ -2691,18 +2691,18 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-pb-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: var(--text-secondary); font: 500 14px/1.3 var(--font-body); cursor: pointer; }
 .gs-pb-back:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
 .gs-pb-headrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
-.gs-pb-id { flex: 1 1 auto; min-width: 0; }
-.gs-pb-titleline { display: flex; align-items: center; gap: 4px 14px; min-height: 44px; }
-.gs-pb-h1 { min-width: 0; margin: 0; font: 700 28px/1.15 var(--font-body); color: var(--hd-white); }
+.gs-pb-id { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.gs-pb-titleline { display: flex; align-items: center; gap: 4px 14px; margin: -7px 0; } /* the 44 px name button overhangs its text, so the title-to-context gap reads like the Raid page's */
+.gs-pb-h1 { min-width: 0; margin: 0; font: 700 28px/1.1 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-primary); } /* the same recipe as .gs-h1, the Raid page title */
 .gs-pb-h1:focus { outline: none; }
-.gs-pb-name { display: flex; align-items: center; gap: 8px; max-width: 100%; min-height: 36px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.gs-pb-name { display: flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
 .gs-pb-name:hover { text-decoration: underline; text-underline-offset: 4px; }
 .gs-pb-name svg { flex: none; opacity: 0.6; }
 #roster-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gs-pb-titleline .gs-hd-chip { align-self: center; }
 .gs-pb-titleline .gs-hd-chip[hidden] { display: none; }
-.gs-pb-ctxrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin-top: 2px; }
-.gs-pb-context { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-muted); }
+.gs-pb-ctxrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
+.gs-pb-context { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 0; font-size: 15px; line-height: 1.4; color: var(--text-secondary); }
 .gs-pb-lastrun { font-size: 13px; color: var(--text-muted); }
 .gs-pb-lastrun:empty { display: none; }
 .gs-pb-actions { display: flex; align-items: center; flex: none; gap: 8px; }
@@ -2765,9 +2765,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-pb-back { min-height: 44px; }
   .gs-pb-headrow { display: block; }
   .gs-pb-titleline { min-height: 0; }
-  .gs-pb-h1 { font-size: 24px; line-height: 1.2; }
-  .gs-pb-name { min-height: 44px; }
-  .gs-pb-ctxrow { margin-top: 0; }
+  .gs-pb-context { font-size: 14px; }
   .gs-pb-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; box-sizing: border-box; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--bg-frame); border-top: 1px solid var(--hd-panel-edge); box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.4); }
   .gs-pb-actions > :is(#btn-undo, #btn-redo) { order: 1; flex: none; width: 44px; min-height: 44px; }
   .gs-pb-actions > #btn-optimize { order: 2; flex: 2 1 0; min-width: 0; min-height: 48px; padding: 0 12px; font-size: 16px; }
