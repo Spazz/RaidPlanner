@@ -312,7 +312,7 @@ async function standaloneLife(env) {
       const use = new RegExp(`(?<![\\w$.'"/-])${name}(?=[.(])`); // a call or member access, not part of another word, a string or a comment
       for (const file of files) {
         if (file === 'js/plansync.js') continue; // its own file
-        const lines = read(file).split('\n');
+        const lines = read(file).split(/\r?\n/); // CRLF checkouts: a trailing \r would keep `.*$` from stripping comments
         let own = false;
         lines.forEach((raw, index) => {
           if (name === 'PlanAttach' && file === 'js/modals.js') { // its own block: from its banner to the next one
