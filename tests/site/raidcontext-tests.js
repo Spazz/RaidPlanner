@@ -130,7 +130,7 @@ function makeEnv(server = makeServer(), userName = 'Me') {
     btoa, atob, escape, unescape, AbortSignal, AbortController, Date: FakeDate,
     __env: env, localStorage: env.storage, document: env.document,
     window: { location, localStorage: env.storage, addEventListener() {}, Guild: { api: guildApi, router: guildParts.router, planSource: guildParts.planSource, ui: guildParts.ui } },
-    history: { replaceState() {} }, navigator: {},
+    history: { replaceState(s, t, url) { const i = String(url).indexOf('#'); location.hash = i < 0 ? '' : String(url).slice(i); } }, navigator: {},
     fetch: async (url, init = {}) => {
       const call = { url, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null };
       env.calls.push(call);
@@ -733,7 +733,12 @@ function benchByHand(env, name) {
     assert.equal(env.els['btn-raid-remove'].hidden, true);
     assert.equal(env.els['autosave-status'].dataset.failed, 'true');
     assert.match(env.els['autosave-status'].textContent, /you can no longer edit it/);
+    env.location.hash = '#/planner?raid=g1.r1';
+    assert(PlanStore.read(env.storage).some(p => p.data.planId === 'raid:r1'), 'raid entry saved before Keep');
     RaidContext.keepCopy();
+    assert(!/raid=/.test(env.location.hash), 'address bar no longer names the raid');
+    assert.equal(env.location.hash, '#/planner');
+    assert(!PlanStore.read(env.storage).some(p => p.data.planId === 'raid:r1'), 'stale raid entry gone from Your plans');
     assert.match(State.planId, /^plan:/);
     assert(State.rosterName.endsWith('(my copy)'));
     assert.equal(State.notes, 'last words');

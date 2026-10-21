@@ -1723,12 +1723,21 @@ const RaidContext = {
   keepCopy() {
     const c = this.current;
     if (!c || !c.loaded || State.planId !== c.planId) return;
+    const raidKey = LiveLinks.planKey(State);
     this.stopDb(c);
     PlanStore.flush();
     State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     State.rosterName = State.rosterName + ' (my copy)';
     commit(); // the plan left the raid: onCommit ends the context
+    // The raid's own saved entry and binding go: the copy is the only plan left.
+    try {
+      PlanStore.remove(linkStorage(), raidKey);
+      LiveLinks.drop(linkStorage(), raidKey);
+      if (typeof PlanDbLinks !== 'undefined') PlanDbLinks.forget(linkStorage(), raidKey);
+    } catch {}
     syncAddressBar();
+    // A reload must not reopen the raid: plain #/planner, replaced in place (no hashchange, no second route render).
+    history.replaceState(null, '', window.location.pathname + window.location.search + '#/planner');
     showToast('Saved your own copy. Changes now stay in this browser.');
   },
 
