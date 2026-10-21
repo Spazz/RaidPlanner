@@ -689,7 +689,7 @@ function assertNoRawAttrs(out) {
     assert.deepEqual(plain(help.children.map(c => c.key)), ['whats-new', 'roadmap', 'how-it-works', 'faq']);
     assert.equal(items.filter(i => ['whats-new', 'roadmap', 'how-it-works', 'faq'].includes(i.key)).length, 0, 'none of the four is a top-level item any more');
     const slots = G.shell.slots(base);
-    assert(slots.sidebar.includes('<button type="button" class="gs-nav-link gs-nav-foldbtn" data-action="help-toggle" data-key="help-toggle-side" aria-expanded="false" aria-controls="nav-fold-help-side" aria-label="Help">'));
+    assert(slots.sidebar.includes('<button type="button" class="gs-nav-link gs-nav-foldbtn" data-action="help-toggle" data-fold="help" data-key="help-toggle-side" aria-expanded="false" aria-controls="nav-fold-help-side" aria-label="Help">'));
     assert(slots.sidebar.includes('<ul class="gs-nav-sub" id="nav-fold-help-side" hidden>'));
     assert(slots.drawer.includes('aria-controls="nav-fold-help-drawer"') && slots.drawer.includes('id="nav-fold-help-drawer"'));
     for (const href of ['/whats-new.html', '#/roadmap', '#how-it-works', '/faq.html']) assert(slots.sidebar.includes('href="' + href + '"'), href);

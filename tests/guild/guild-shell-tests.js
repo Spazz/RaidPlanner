@@ -156,6 +156,12 @@ function makeEnv(opts) {
   sandbox.location = loc;
   sandbox.history = history;
   sandbox.localStorage = localStorage;
+  const sessionStore = {};
+  sandbox.sessionStorage = {
+    getItem: k => (Object.prototype.hasOwnProperty.call(sessionStore, k) ? sessionStore[k] : null),
+    setItem: (k, v) => { sessionStore[k] = String(v); },
+    removeItem: k => { delete sessionStore[k]; },
+  };
   sandbox.fetch = fetchFn;
   sandbox.addEventListener = on('window');
   sandbox.setTimeout = (fn, ms) => { timers.push({ fn, ms, live: true }); return timers.length; };
@@ -169,7 +175,7 @@ function makeEnv(opts) {
     vm.runInContext(text, sandbox, { filename: src });
   });
   const env = {
-    G: sandbox.Guild, sandbox, els, body, store, loc, history, fetchCalls, timers, plannerCalls, documentFake, listeners, fire, fireCapture,
+    G: sandbox.Guild, sessionStore, sandbox, els, body, store, loc, history, fetchCalls, timers, plannerCalls, documentFake, listeners, fire, fireCapture,
     setUnseen: v => { o.unseen = v; },
     html: id => els[id].innerHTML,
     fetched: needle => fetchCalls.filter(c => c.url.indexOf(needle) >= 0).length,
@@ -645,25 +651,19 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
   });
 
   // ── collapse ───────────────────────────────────────────────────
-  await check('collapse: contexts - plan view (planner section with a plan open) vs default; defaults plan = collapsed, other = expanded', async () => {
+  await check('collapse: one state for every page - default expanded; a plan view, the landing and a guild page all read the same value', async () => {
     const env = makeEnv({ url: '/' });
     await settle();
-    assert.equal(env.G.app.collapseContext(), 'default');
-    assert.equal(env.G.app.collapsedFor('default'), false);
-    assert.equal(env.G.app.collapsedFor('plan'), true);
+    assert.equal(env.G.app.sidebarCollapsed(), false);
     assert(!env.els['guild-root'].classList.contains('is-collapsed'));
     env.body.attrs['data-planner-view'] = 'app';
     env.fire('document', 'planner:view', {});
-    assert.equal(env.G.app.collapseContext(), 'plan');
-    assert(env.els['guild-root'].classList.contains('is-collapsed'), 'a plan open collapses by default');
-    assert(env.html('shell-sidebar').includes('aria-label="Expand sidebar"'));
-    const guild = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes() });
-    await settle();
-    guild.body.attrs['data-planner-view'] = 'app';
-    assert.equal(guild.G.app.collapseContext(), 'default', 'a guild section is never the plan context');
+    assert.equal(env.G.app.sidebarCollapsed(), false, 'a plan open no longer collapses by default');
+    assert(!env.els['guild-root'].classList.contains('is-collapsed'));
+    assert.equal(env.G.app.collapseContext, undefined);
   });
 
-  await check('collapse: signed out - the toggle works, writes the context\'s local key, and each context is remembered separately', async () => {
+  await check('collapse: signed out - the toggle writes the one local key; plan view, landing and static pages keep it', async () => {
     const env = makeEnv({ url: '/' });
     await settle();
     env.click({ 'data-action': 'toggle-sidebar' });
@@ -672,36 +672,69 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(env.els['guild-root'].classList.contains('is-collapsed'));
     env.body.attrs['data-planner-view'] = 'app';
     env.fire('document', 'planner:view', {});
-    assert.equal(env.G.app.collapsedFor('plan'), true, 'the plan context kept its own default');
+    assert(env.els['guild-root'].classList.contains('is-collapsed'), 'plan view: same state');
+    env.body.attrs['data-planner-view'] = 'landing';
+    env.fire('document', 'planner:view', {});
+    assert(env.els['guild-root'].classList.contains('is-collapsed'), 'landing: same state');
     env.click({ 'data-action': 'toggle-sidebar' });
-    assert.equal(env.store['raidsmith.shell.planSidebarCollapsed'], '0');
-    assert.equal(env.store['raidsmith.shell.sidebarCollapsed'], '1');
+    assert.equal(env.store['raidsmith.shell.sidebarCollapsed'], '0');
     assert.equal(env.fetchCalls.length, 0, 'signed out: nothing sent to the server');
-    // a fresh page load reads the keys
-    const again = makeEnv({ url: '/', storage: { 'raidsmith.shell.sidebarCollapsed': '1' } });
+    // fresh page loads (plan, landing, FAQ) read the key
+    for (const [page, url] of [['app', '/'], ['app', '/tbc/abc1234'], ['faq', '/faq.html'], ['whats-new', '/whats-new.html']]) {
+      const again = makeEnv({ page, url, storage: { 'raidsmith.shell.sidebarCollapsed': '1' } });
+      await settle();
+      assert(again.els['guild-root'].classList.contains('is-collapsed'), url);
+    }
+    const plan = makeEnv({ url: '/tbc/abc1234', storage: { 'raidsmith.shell.planSidebarCollapsed': '0' } });
     await settle();
-    assert(again.els['guild-root'].classList.contains('is-collapsed'));
+    assert(!plan.els['guild-root'].classList.contains('is-collapsed'));
   });
 
-  await check('collapse: signed in - the toggle writes the server pref of its context and the local key; first paint reads the local keys until /auth/me answers', async () => {
+  await check('collapse: signed in - the toggle writes the one server pref and the local key; the old plan pref is ignored; first paint reads the local key until /auth/me answers', async () => {
     const env = makeEnv({ url: '/', hint: true, storage: { 'raidsmith.shell.sidebarCollapsed': '1' }, routes: signedInRoutes(null, { '/auth/me': 'hang' }) });
     await settle();
     assert(env.els['guild-root'].classList.contains('is-collapsed'), 'local key before the session answers');
-    const done = makeEnv({ url: '/', hint: true, routes: signedInRoutes() });
+    const done = makeEnv({ url: '/#/g/g1/roster', hint: true, routes: signedInRoutes() });
     await settle();
-    assert(!done.els['guild-root'].classList.contains('is-collapsed'));
+    assert(!done.els['guild-root'].classList.contains('is-collapsed'), 'the old plan pref (true) is ignored');
     done.click({ 'data-action': 'toggle-sidebar' });
     await settle();
-    const patches = done.fetchCalls.filter(c => c.method === 'PATCH');
-    assert.deepEqual(patches.map(c => JSON.parse(c.body)), [{ sidebarCollapsed: true }]);
+    assert.deepEqual(done.fetchCalls.filter(c => c.method === 'PATCH').map(c => JSON.parse(c.body)).filter(b => 'sidebarCollapsed' in b), [{ sidebarCollapsed: true }]);
     assert.equal(done.store['raidsmith.shell.sidebarCollapsed'], '1');
     done.body.attrs['data-planner-view'] = 'app';
     done.fire('document', 'planner:view', {});
-    assert(done.els['guild-root'].classList.contains('is-collapsed'), 'plan context: the server default (collapsed)');
+    assert(done.els['guild-root'].classList.contains('is-collapsed'), 'plan view: same state');
+    done.body.attrs['data-planner-view'] = 'landing';
+    done.fire('document', 'planner:view', {});
+    assert(done.els['guild-root'].classList.contains('is-collapsed'), 'landing: same state');
     done.click({ 'data-action': 'toggle-sidebar' });
     await settle();
-    assert.deepEqual(done.fetchCalls.filter(c => c.method === 'PATCH').map(c => JSON.parse(c.body)), [{ sidebarCollapsed: true }, { planSidebarCollapsed: false }]);
-    assert.equal(done.store['raidsmith.shell.planSidebarCollapsed'], '0');
+    assert.deepEqual(done.fetchCalls.filter(c => c.method === 'PATCH').map(c => JSON.parse(c.body)).filter(b => 'sidebarCollapsed' in b), [{ sidebarCollapsed: true }, { sidebarCollapsed: false }]);
+    assert.equal(done.store['raidsmith.shell.planSidebarCollapsed'], undefined);
+  });
+
+  await check('Help fold: a manual open/closed choice survives a route change and a re-render; no choice keeps the current-page rule', async () => {
+    const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes() });
+    await settle();
+    const fold = () => env.html('shell-sidebar').match(/<li class="gs-nav-fold[^"]*"><button[^>]*aria-expanded="(\w+)"/);
+    assert.equal(fold()[1], 'false', 'no choice, no Help page current: closed');
+    const list = { hidden: true };
+    const calls = [];
+    env.documentFake.getElementById = id => (id === 'nav-fold-help-side' ? list : env.els[id]);
+    const btn = { getAttribute: k => ({ 'aria-controls': 'nav-fold-help-side', 'data-fold': 'help' })[k] || null, setAttribute: (k, v) => calls.push([k, v]) };
+    env.G.handlers.click['help-toggle'](btn);
+    assert.equal(env.sessionStore['raidsmith.shell.fold.help'], '1');
+    env.loc.hash = '#/g/g1/raids';
+    await settle();
+    assert.equal(fold()[1], 'true', 'opened by hand: still open on another page');
+    env.sessionStore['raidsmith.shell.fold.help'] = '0';
+    env.loc.hash = '#/g/g1/roster';
+    await settle();
+    assert.equal(fold()[1], 'false', 'closed by hand: stays closed');
+    delete env.sessionStore['raidsmith.shell.fold.help'];
+    const faq = makeEnv({ page: 'faq', url: '/faq.html' });
+    await settle();
+    assert(/gs-nav-fold is-open/.test(faq.html('shell-sidebar')), 'no choice: open while a Help page is current');
   });
 
   // ── the session question ───────────────────────────────────────
@@ -1084,17 +1117,17 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(menu.hidden, false, 'a click inside the account area keeps it');
   });
 
-  await check('fix1 nit: planner:view redraws only when the collapse context changed', async () => {
+  await check('fix1 nit: planner:view never redraws the sidebar (one collapse state)', async () => {
     const env = makeEnv({ url: '/' });
     await settle();
     const writes = env.els['shell-sidebar'].writes;
     env.fire('document', 'planner:view', {});
-    assert.equal(env.els['shell-sidebar'].writes, writes, 'same context: no redraw');
+    assert.equal(env.els['shell-sidebar'].writes, writes, 'no redraw');
     env.body.attrs['data-planner-view'] = 'app';
     env.fire('document', 'planner:view', {});
-    assert.equal(env.els['shell-sidebar'].writes, writes + 1, 'landing -> plan: redraw');
+    assert.equal(env.els['shell-sidebar'].writes, writes, 'landing -> plan: no redraw');
     env.fire('document', 'planner:view', {});
-    assert.equal(env.els['shell-sidebar'].writes, writes + 1);
+    assert.equal(env.els['shell-sidebar'].writes, writes);
   });
 
   await check('fix1 nit: the no-guild notice shows with the planner only (the guild section has its own card with the same ids)', async () => {

@@ -9,9 +9,8 @@
 
   const TEAM_KEY = 'raidsmith.guild.team.';
   const HINT_KEY = 'raidsmith.shell.signedIn';
-  const COLLAPSE_KEYS = { default: 'raidsmith.shell.sidebarCollapsed', plan: 'raidsmith.shell.planSidebarCollapsed' };
-  const COLLAPSE_PREFS = { default: 'sidebarCollapsed', plan: 'planSidebarCollapsed' };
-  const COLLAPSE_DEFAULTS = { default: false, plan: true };
+  const COLLAPSE_KEY = 'raidsmith.shell.sidebarCollapsed';
+  const COLLAPSE_PREF = 'sidebarCollapsed';
   const SESSION_TIMEOUT_MS = 3000;
   const NAV_CLICK_WINDOW_MS = 1000;
   const ATTENTION_MAX_AGE_MS = 60000; // the Home count is read again on a guild route change once it is older than this
@@ -93,7 +92,6 @@
   let originalTitle = '';
   let replaceNext = false;    // go(hash, true) replaced the history entry: the previous-page trail swaps its top instead of adding one
   let lastNavClickAt = 0;     // a plain click on a link just happened (its popstate is a navigation, not Back / Forward)
-  let lastCollapseContext = null;
   let sessionGen = 0;         // bumped by resetSession: an answer that arrives after a sign-out is dropped
   const attentionReads = {};  // gid -> the GET /attention in flight
 
@@ -280,22 +278,15 @@
   }
 
   // ── sidebar collapse ──
-  // Two contexts, each remembered on its own: `plan` (the planner section with a plan open) and `default`.
-  function collapseContext() {
-    return state.section === 'planner' && bodyAttr('data-planner-view') === 'app' ? 'plan' : 'default';
-  }
-
-  // Signed in: the server pref. Otherwise (signed out, or the session question still open) the local key, so the
-  // first paint has no width jump. No stored choice: sidebarCollapsed is false, planSidebarCollapsed is true.
-  function collapsedFor(context) {
+  // One state for every page and section. Signed in: the server pref. Otherwise (signed out, or the session question
+  // still open) the local key, so the first paint has no width jump. No stored choice: expanded.
+  function sidebarCollapsed() {
     if (state.me && state.me.user) {
-      const v = prefs()[COLLAPSE_PREFS[context]];
+      const v = prefs()[COLLAPSE_PREF];
       if (typeof v === 'boolean') return v;
     }
-    const local = storageGet(COLLAPSE_KEYS[context]);
-    if (local === '1') return true;
-    if (local === '0') return false;
-    return COLLAPSE_DEFAULTS[context];
+    const local = storageGet(COLLAPSE_KEY);
+    return local === '1';
   }
 
   // ── navigation ──
@@ -878,7 +869,7 @@
     }
     return {
       section: state.section || 'guild', page: state.page, me: me, signedOut: state.loaded && !me, pending: !state.loaded,
-      route: r || null, guildData: gd, teamId: gd ? teamFor(gd) : null, collapsed: collapsedFor(collapseContext()),
+      route: r || null, guildData: gd, teamId: gd ? teamFor(gd) : null, collapsed: sidebarCollapsed(),
       whatsNewUnseen: whatsNewUnseen(),
       devNotice: state.devNotice || '',
       attentionCount: gd ? attentionCountFor(gd.guild.id) : 0,
@@ -920,6 +911,15 @@
     return !!(d && d.open);
   }
 
+  // The sidebar's own scroll position survives the redraw (read with no argument, restored with one).
+  function sidebarScroll(top) {
+    const slot = byId('shell-sidebar');
+    const el = slot && slot.querySelector ? slot.querySelector('.gs-sidebar') : null;
+    if (!el) return 0;
+    if (typeof top === 'number') { if (top) el.scrollTop = top; return top; }
+    return el.scrollTop || 0;
+  }
+
   function writeSlot(id, html) {
     const el = byId(id);
     if (!el) return;
@@ -938,7 +938,9 @@
     const ctx = buildCtx(r);
     const s = G.shell.slots(ctx);
     writeSlot('shell-rail', s.rail);
+    const sideScroll = sidebarScroll();
     writeSlot('shell-sidebar', s.sidebar);
+    sidebarScroll(sideScroll);
     writeSlot('shell-topbar-lead', s.lead);
     writeSlot('shell-topbar-account', s.account);
     writeSlot('shell-devbar', s.devbar);
@@ -952,7 +954,6 @@
       const drawer = byId('gs-drawer');
       if (drawer && !drawer.open && drawer.showModal) drawer.showModal();
     }
-    lastCollapseContext = collapseContext();
     root.classList.toggle('has-guild', section === 'guild' && !!ctx.guildData);
     root.classList.toggle('is-collapsed', !!ctx.collapsed);
     document.body.classList.toggle('is-signed-out', state.loaded && !state.me);
@@ -1034,8 +1035,7 @@
   app.closeOverlays = closeOverlays;
   app.loadMe = loadMe;
   app.teamFor = teamFor;
-  app.collapsedFor = collapsedFor;
-  app.collapseContext = collapseContext;
+  app.sidebarCollapsed = sidebarCollapsed;
   app.buildCtx = buildCtx;
 
   // Every mutation reply that carries `rosterFlags`, `attendanceFlags` or `pendingClaims` refreshes the nav badge without a refetch.
@@ -1148,7 +1148,6 @@
     if (open) { const first = menu.querySelector('[role="menuitem"]'); if (first) first.focus(); }
   };
 
-  // Writes the current context's choice (plan view or everywhere else); works signed out (local key only).
   // The Help fold of the sidebar and the drawer: shows or hides its four pages (the markup is shell.js foldHtml).
   G.handlers.click['help-toggle'] = function (btn) {
     const list = byId(btn.getAttribute('aria-controls'));
@@ -1156,6 +1155,11 @@
     const open = !!list.hidden;
     list.hidden = !open;
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    // Remembered for the tab, shared by the sidebar and the drawer (shell.js foldHtml reads it back on every redraw).
+    const fold = btn.getAttribute('data-fold');
+    if (fold) { try { window.sessionStorage.setItem(G.shell.FOLD_KEY_PREFIX + fold, open ? '1' : '0'); } catch (e) { /* storage may be blocked */ } }
+    const li = btn.closest ? btn.closest('.gs-nav-fold') : null;
+    if (li && li.classList) li.classList.toggle('is-open', open);
   };
 
   // "Skip to content": focus the main area that is showing (the guild page, the planner, or a static page's own main), without touching the hash.
@@ -1169,14 +1173,13 @@
     return true;
   }
 
-  // Writes the current context's choice (plan view or everywhere else); works signed out (local key only).
+  // Flips the one sidebar state for every page; works signed out (local key only).
   G.handlers.click['toggle-sidebar'] = function () {
-    const context = collapseContext();
-    const next = !collapsedFor(context);
-    storageSet(COLLAPSE_KEYS[context], next ? '1' : '0');
+    const next = !sidebarCollapsed();
+    storageSet(COLLAPSE_KEY, next ? '1' : '0');
     if (state.me && state.me.user) {
       const body = {};
-      body[COLLAPSE_PREFS[context]] = next;
+      body[COLLAPSE_PREF] = next;
       state.me.user.prefs = Object.assign({}, prefs(), body);
       patchPrefs(body);
     }
@@ -1398,10 +1401,8 @@
     document.addEventListener('submit', onSubmit);
     document.addEventListener('change', function (ev) { dispatch('change', 'data-change', ev); });
     document.addEventListener('input', function (ev) { dispatch('input', 'data-input', ev); });
-    // The planner switches between its landing and a plan: the sidebar collapse context follows.
-    // Only a change of that context redraws (a redraw closes an open account menu).
+    // The planner switches between its landing and a plan: the sidebar keeps its state, nothing to redraw.
     document.addEventListener('planner:view', function (ev) {
-      if (state.section === 'planner' && collapseContext() !== lastCollapseContext) render();
       if (ev && ev.detail && ev.detail.view === 'landing') refreshPlannerLanding();
     });
     window.addEventListener('hashchange', function () { routeAll(); });

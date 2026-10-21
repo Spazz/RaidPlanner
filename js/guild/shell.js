@@ -278,10 +278,20 @@
 
   // The Help fold: a button that shows or hides its pages (data-action="help-toggle" in app.js). It is open while one of its pages is the current one.
   // listId keeps the ids unique when the sidebar and the phone drawer both draw it.
+  // The user's own open/closed choice for a fold (sessionStorage, written by app.js help-toggle); null = no choice yet.
+  const FOLD_KEY_PREFIX = 'raidsmith.shell.fold.';
+  function foldChoice(key) {
+    try {
+      const v = window.sessionStorage.getItem(FOLD_KEY_PREFIX + key);
+      return v === '1' ? true : v === '0' ? false : null;
+    } catch (e) { return null; }
+  }
+
   function foldHtml(item, ctx, listId) {
-    const open = item.children.some(function (child) { return isCurrentItem(child, ctx); });
+    const manual = foldChoice(item.key);
+    const open = manual !== null ? manual : item.children.some(function (child) { return isCurrentItem(child, ctx); });
     const id = 'nav-fold-' + item.key + '-' + listId;
-    return '<li class="gs-nav-fold' + (open ? ' is-open' : '') + '"><button type="button" class="gs-nav-link gs-nav-foldbtn" data-action="help-toggle" data-key="' + esc(item.key) + '-toggle-' + esc(listId) + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + esc(id) + '" aria-label="' + esc(item.ariaLabel || item.label) + '">' +
+    return '<li class="gs-nav-fold' + (open ? ' is-open' : '') + '"><button type="button" class="gs-nav-link gs-nav-foldbtn" data-action="help-toggle" data-fold="' + esc(item.key) + '" data-key="' + esc(item.key) + '-toggle-' + esc(listId) + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + esc(id) + '" aria-label="' + esc(item.ariaLabel || item.label) + '">' +
       ic(item.icon, 20) + '<span class="gs-label-full">' + esc(item.label) + '</span><span class="gs-label-short" aria-hidden="true">' + esc(item.short) + '</span>' + newMarkHtml(item) + ic('chevronDown', 16) + '</button>' +
       '<ul class="gs-nav-sub" id="' + esc(id) + '"' + (open ? '' : ' hidden') + '>' + item.children.map(function (child) { return navLinkHtml(child, ctx); }).join('') + '</ul></li>';
   }
@@ -652,6 +662,7 @@
   }
 
   G.shell = {
+    FOLD_KEY_PREFIX: FOLD_KEY_PREFIX,
     hasAction: hasAction,
     canSeeSettings: canSeeSettings,
     canSeeAttention: canSeeAttention,
