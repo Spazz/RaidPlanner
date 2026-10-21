@@ -123,10 +123,11 @@ check('the strip is hidden until the plan has something in it; an unmodeled vers
   assert.equal(els['coverage-summary'].textContent, '');
 });
 
-check('mixed factions: one chip in the strip, only for a mixed Classic roster', () => {
+check('mixed factions: a notice in the next-step bar, only for a mixed Classic roster', () => {
   const { api, els } = makeSandbox();
   seedRaid(api);
   api.renderReadiness();
+  assert.equal(els['mixed-factions-banner'].hidden, true);
   assert.doesNotMatch(els['raid-check-tiles'].innerHTML, /Mixed factions/);
   const players = [
     { name: 'Sham', class: 'SHAMAN', spec: 'Enhancement', role: 'melee_dps', groupNumber: 1 },
@@ -137,7 +138,8 @@ check('mixed factions: one chip in the strip, only for a mixed Classic roster', 
   api.State.bench = [];
   api.State.roster = players;
   api.renderReadiness();
-  assert.match(els['raid-check-tiles'].innerHTML, /<span class="gs-hd-chip is-short" title="Mixed Horde\/Alliance roster — impossible in Classic Era">Mixed factions<\/span>/);
+  assert.equal(els['mixed-factions-banner'].hidden, false);
+  assert.doesNotMatch(els['raid-check-tiles'].innerHTML, /Mixed factions/);
 });
 
 // ── Strip icons and dialog rows come from one model ──
@@ -358,12 +360,12 @@ check('the tooltip portal stays a body-level element, and #autosave-status stays
 });
 
 check('the notice slot keeps the save-failed chip and the result line with their ids, for the notice queue', () => {
-  const slot = htmlText.slice(htmlText.indexOf('id="notice-slot"'), htmlText.indexOf('id="raid-context-banner"'));
+  const slot = htmlText.slice(htmlText.indexOf('id="notice-slot"'), htmlText.indexOf('id="raid-check"'));
   for (const part of ['id="save-failed" hidden', 'id="save-failed-chip"', 'id="result-line" hidden', 'id="result-line-text"', 'id="btn-result-dismiss" aria-label="Dismiss"']) assert(slot.includes(part), part);
   assert.doesNotMatch(htmlText, /plan-feedback/);
   const script = app.script.replace(/\r\n/g, '\n');
   const list = script.match(/const planOnly = \[([^\]]*)\]/)[1];
-  assert(list.includes("'notice-slot'") && list.includes("'manual-changes'"), list);
+  assert(!list.includes("'notice-slot'") && list.includes("'manual-changes'"), list); // the bar manages its own visibility (NoticeQueue)
   assert(!list.includes('readiness-banner'), list);
 });
 
@@ -450,8 +452,8 @@ check('strip styles: tokens only, 36px icon buttons, one neutral edge between th
 check('the old board chrome rules left app.css: summary bar, banner chips, right rail, phone sheet, Manual changes box', () => {
   const appOnly = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'app.css'), 'utf8');
   assert.doesNotMatch(appOnly, /\.summary-(bar|chip|main|divider|missing)|\.readiness-banner|\.rb-(row|chips|toggle|bar|arrow|note)\b|\.buff-sidebar|\.sidebar-|\.coverage-sheet|\.manual-changes-section|\.buff-row|\.insight-btn|\.swap-legend|\.cov-toggle|\.balance-warning/);
-  assert.match(appOnly, /\.result-line \{/, 'the result line keeps its base rule for the notice queue');
-  assert.match(appOnly, /\.rb-failed \{/, 'so does the save-failed chip');
+  assert.doesNotMatch(appOnly, /[.](result-line|rb-failed|sync-banner)/, 'the next-step bar rules live in guild.css (lane 3b)');
+  assert.match(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'guild.css'), 'utf8'), /[.]gs-pb-notices [.]result-line/);
 });
 
 check('phone toast: top, under the 40px header and safe area, 13px, above the player editor sheet', () => {

@@ -668,7 +668,7 @@ check('the reference comp view shows the banner with the selected raid size, and
       `<strong>Reference comp, not your raid:</strong> a standard ${size}-man layout to compare against.`);
   }
   const html = app.html.replace(/\r\n/g, '\n');
-  assert.match(html, /<button type="button" class="btn btn-primary" id="btn-back-to-raid">Back to my raid<\/button>/);
+  assert.match(html, /<button type="button" class="gs-btn gs-btn-sm" id="btn-back-to-raid">Back to my raid<\/button>/);
   assert.doesNotMatch(html, /btn-back-to-plan/, 'the plain back link is gone');
   assert.equal((html.match(/>\s*Reference comp\s*</g) || []).length, 1, 'the More menu item is renamed (it moves into the sheet on a phone)');
   assert.match(html, /id="btn-ideal-comp-link" title="Reference comp"/);

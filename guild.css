@@ -2689,7 +2689,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
    Interim: the blocks that are not on Forge yet (notice banners, Changes panel, Campfire, Assignments, the sign-up tray, the Save modal) keep
    their old 1.5 scale on their own element until lane 3b / 4 / 6 rebuild them; each lane deletes its selector from the rule below. */
 @media (min-width: 601px) {
-  #app .notice-slot, #app .sync-banner, #app .changes-log-panel, #app #campfire-panel, #app #assignments-panel, #app .bench-section, #app .save-modal { zoom: 1.5; }
+  #app .changes-log-panel, #app #campfire-panel, #app #assignments-panel, #app .bench-section, #app .save-modal { zoom: 1.5; }
 }
 .gs-pb-planhead { display: flex; flex-direction: column; gap: 6px; padding: 16px 16px 0; }
 .gs-pb-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: var(--text-secondary); font: 500 14px/1.3 var(--font-body); cursor: pointer; }
@@ -2786,6 +2786,41 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-pb-rs .gs-fg-segs { align-self: stretch; }
   .gs-pb-rs .gs-fg-seg { flex: 1 1 0; height: 44px; }
   .gs-pb-rs .gs-btn { min-height: 44px; }
+}
+
+/* ── Planner board on Forge (T6), lane 3b: the next-step bar (notice queue). Frames: R3-desktop and R3-phone (one notice + "N more"). ──
+   #notice-slot holds every banner in priority order; NoticeQueue (js/modals.js) marks the first visible one (.nq-first) and the rest
+   (.nq-rest, shown while .is-open), and hides the bar when nothing is visible. Real pixels, tokens only, no molten. */
+.gs-pb-notices { display: none; }
+.gs-pb-notices.has-notice { display: flex; flex-wrap: wrap; align-items: stretch; box-sizing: border-box; margin: 16px 16px 0; background: var(--next-bg); border: 1px solid var(--border-subtle); border-left: 3px solid var(--text-primary); }
+.gs-pb-notices .gs-pb-notice, .gs-pb-notices .result-line { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-height: 56px; margin: 0; padding: 8px 16px; font: 400 15px/1.4 var(--font-body); color: var(--text-primary); }
+.gs-pb-notices .gs-pb-notice strong { color: var(--text-primary); }
+.gs-pb-notices .gs-pb-notice[hidden], .gs-pb-notices .result-line[hidden], .gs-pb-notices .result-line.nq-off, .gs-pb-notices .gs-pb-notice-more[hidden] { display: none; }
+.gs-pb-notices .gs-pb-notice.nq-first, .gs-pb-notices .result-line { order: 0; flex: 1 1 0; min-width: 0; }
+.gs-pb-notices .gs-pb-notice.nq-rest { display: none; order: 2; flex: 0 0 100%; border-top: 1px solid var(--border-subtle); }
+.gs-pb-notices.is-open .gs-pb-notice.nq-rest { display: flex; }
+.gs-pb-notices .result-line { flex-wrap: nowrap; color: var(--text-secondary); }
+.gs-pb-notices .gs-pb-notice > span:not(.raid-context-main) { flex: 1 1 240px; min-width: 0; }
+.gs-pb-notices .sync-banner-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gs-pb-notices .gs-pb-notice-more { order: 1; align-self: center; flex: none; margin: 0 8px; }
+.gs-pb-notices .raid-context-main { display: flex; flex: 1 1 240px; flex-direction: column; gap: 2px; min-width: 0; }
+.gs-pb-notices .raid-context-status { color: var(--text-secondary); }
+.gs-pb-notices .raid-context-status:empty { display: none; }
+.gs-pb-notices .raid-context-status.error { color: var(--danger-text); }
+.gs-pb-notices .rb-failed .chip { padding: 0; border: 0; background: none; color: var(--danger-text); font: 600 15px/1.4 var(--font-body); text-transform: none; white-space: normal; }
+.gs-pb-notices .result-line-dismiss { flex: none; min-width: 32px; min-height: 32px; margin: 0; padding: 0; background: none; border: 0; color: var(--text-secondary); font-size: 18px; line-height: 1; cursor: pointer; }
+.gs-pb-notices .result-line-dismiss:hover { color: var(--text-primary); }
+.gs-pb-notices .result-line-dismiss:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+@media (width <= 600px) {
+  .gs-pb-notices.has-notice { margin: 12px 16px 0; }
+  .gs-pb-notices .gs-pb-notice.nq-first, .gs-pb-notices .result-line { flex: 0 0 100%; }
+  .gs-pb-notices .gs-pb-notice { padding: 12px; }
+  .gs-pb-notices .gs-pb-notice > span:not(.raid-context-main), .gs-pb-notices .raid-context-main { flex: 0 0 100%; }
+  .gs-pb-notices .sync-banner-actions { flex-direction: column; align-items: stretch; width: 100%; }
+  .gs-pb-notices .sync-banner-actions .gs-btn, .gs-pb-notices .gs-pb-notice-more { width: 100%; min-height: 44px; }
+  .gs-pb-notices .gs-pb-notice-more { flex: 0 0 auto; margin: 0; }
+  .gs-pb-notices .result-line { flex-wrap: nowrap; padding: 8px 0 8px 12px; }
+  .gs-pb-notices .result-line-dismiss { min-width: 44px; min-height: 44px; }
 }
 
 /* Watch list: Reviewed / Undo on an entry; a reviewed entry stays listed, muted, with who reviewed it and when it comes back */

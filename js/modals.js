@@ -333,6 +333,45 @@ const ResultLine = {
   },
 };
 
+// The next-step bar (#notice-slot): a layout/visibility layer over the banners. Each banner keeps its own id, hidden logic and
+// buttons; this only marks the first visible one (.nq-first), the rest (.nq-rest, shown while expanded) and the quiet
+// Last Optimize line (#result-line, shown only while no notice is visible). DOM order of the slot is the priority order.
+const NoticeQueue = {
+  expanded: false,
+  refresh() {
+    const slot = document.getElementById('notice-slot');
+    if (!slot || typeof slot.querySelectorAll !== 'function') return; // the unit-test DOM stubs have no layout layer
+    const items = [...slot.querySelectorAll('.gs-pb-notice')];
+    const shown = items.filter(n => !n.hidden);
+    items.forEach(n => { n.classList.remove('nq-first', 'nq-rest'); });
+    shown.forEach((n, i) => n.classList.add(i === 0 ? 'nq-first' : 'nq-rest'));
+    const quiet = document.getElementById('result-line');
+    const showQuiet = !shown.length && !!quiet && !quiet.hidden;
+    if (quiet) quiet.classList.toggle('nq-off', shown.length > 0);
+    slot.classList.toggle('has-notice', shown.length > 0 || showQuiet);
+    const more = Math.max(0, shown.length - 1);
+    if (!more) this.expanded = false;
+    slot.classList.toggle('is-open', this.expanded);
+    const btn = document.getElementById('btn-notice-more');
+    if (!btn || typeof btn.setAttribute !== 'function') return;
+    if (btn.hidden !== !more) btn.hidden = !more; // an unchanged write would still re-fire the observer
+    btn.textContent = this.expanded ? 'Show less' : `${more} more`;
+    btn.setAttribute('aria-expanded', String(this.expanded));
+  },
+  toggle() { this.expanded = !this.expanded; this.refresh(); },
+  init() {
+    const slot = document.getElementById('notice-slot');
+    if (!slot || typeof slot.querySelectorAll !== 'function') return;
+    const moreBtn = document.getElementById('btn-notice-more');
+    if (moreBtn && typeof moreBtn.addEventListener === 'function') moreBtn.addEventListener('click', () => this.toggle());
+    if (typeof MutationObserver === 'function') {
+      new MutationObserver(() => this.refresh()).observe(slot, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
+    }
+    this.refresh();
+  },
+};
+NoticeQueue.init();
+
 function persistWorkingPlan() {
   const result = PlanSession.observe();
   TabWatch.dropIfElsewhere();
@@ -386,16 +425,15 @@ function renderReadiness() {
   if (!strip) return;
   renderPlanHead(); // the head's chip counts the same gaps
   strip.hidden = !hasLoadedWork();
+  // Classic Era is faction-locked: Shaman and Paladin cannot exist in the same real raid. A roster that has both is a data
+  // problem worth calling out (a notice in the next-step bar), not something the optimizer should silently paper over.
+  const mixed = document.getElementById('mixed-factions-banner');
+  const rules = activeRules();
+  if (mixed) mixed.hidden = strip.hidden || !(rules.rules && rules.rules.factionLock && Faction.current() === 'mixed');
   if (strip.hidden) return;
   const tiles = document.getElementById('raid-check-tiles');
   if (!GameVersions[State.gameVersion].modeled) { tiles.innerHTML = ''; return; }
   renderRaidCheckTiles(State.roster, Optimizer.floorsFor(Config.Raids[State.selectedRaid]?.size || 25));
-  // Classic Era is faction-locked: Shaman and Paladin cannot exist in the same real raid. A roster that has both is a data
-  // problem worth calling out, not something the optimizer should silently paper over.
-  const rules = activeRules();
-  if (rules.rules && rules.rules.factionLock && Faction.current() === 'mixed') {
-    tiles.insertAdjacentHTML('beforeend', '<span class="gs-hd-chip is-short" title="Mixed Horde/Alliance roster — impossible in Classic Era">Mixed factions</span>');
-  }
 }
 
 // ── RAID NOTES (backlog #11) ────────────────────────────────────
@@ -1158,8 +1196,8 @@ const RaidHelperSync = {
       ? `Standby ready: ${list[0].backupName.split('-')[0]} can take ${list[0].primaryName.split('-')[0]}'s seat.`
       : `${list.length} Standby players are ready to swap in.`;
     actions.innerHTML = list.map((item, i) =>
-      `<button type="button" class="btn btn-primary" data-backup-swap="${i}">Swap in ${esc(item.backupName.split('-')[0])}</button>`
-    ).join('') + '<button type="button" class="link-btn" id="backup-banner-dismiss">Dismiss</button>';
+      `<button type="button" class="gs-btn gs-btn-sm" data-backup-swap="${i}">Swap in ${esc(item.backupName.split('-')[0])}</button>`
+    ).join('') + '<button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="backup-banner-dismiss">Dismiss</button>';
     actions.querySelectorAll('[data-backup-swap]').forEach(btn => {
       btn.addEventListener('click', () => {
         const item = list[Number(btn.dataset.backupSwap)];

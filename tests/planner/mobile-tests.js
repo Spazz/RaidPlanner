@@ -37,7 +37,7 @@ function between(src, start, end) {
 
 // ── Phone head and bottom bar (Planner board on Forge, lane 3a) ─────────────────────────────
 
-const lane3a = (() => { const g = read('guild.css'); return g.slice(g.indexOf('Planner board on Forge (T6), lane 3a'), g.indexOf('/* Watch list: Reviewed')); })();
+const lane3a = (() => { const g = read('guild.css'); return g.slice(g.indexOf('Planner board on Forge (T6), lane 3a'), g.indexOf('Planner board on Forge (T6), lane 3b')); })();
 const lane3aPhone = lane3a.slice(lane3a.lastIndexOf('@media (width <= 600px)'));
 
 check('the phone context row is gone from the page and the code: no summary toggle, no Edit body, no relocation slots for it', () => {
@@ -265,14 +265,14 @@ const rule = (sel, src = phoneBlock) => {
   return line;
 };
 
-check('phone banner actions stack full width at 44px with 13px text; banner text is 14px / 1.4', () => {
-  assert.match(rule('.sync-banner-actions'), /flex-direction: column/);
-  assert.match(rule('.sync-banner-actions'), /width: 100%/);
-  const btn = rule('.sync-banner .btn, .sync-banner .link-btn, .sync-banner-actions .btn');
-  assert.match(btn, /width: 100%/);
-  assert.match(btn, /min-height: 44px/);
-  assert.match(btn, /font-size: 13px/);
-  assert.match(rule('.sync-banner'), /font-size: 14px; line-height: 1\.4/);
+check('phone notices stack their actions full width at 44px; notice text is 15px / 1.4 (lane 3b next-step bar)', () => {
+  const g = read('guild.css');
+  const lane3b = g.slice(g.indexOf('Planner board on Forge (T6), lane 3b'), g.indexOf('/* Watch list: Reviewed'));
+  const phone = lane3b.slice(lane3b.lastIndexOf('@media (width <= 600px)'));
+  assert.match(phone, new RegExp('gs-pb-notices .sync-banner-actions [{][^}]*flex-direction: column[^}]*width: 100%'));
+  assert.match(phone, new RegExp('gs-pb-notice-more [{][^}]*width: 100%; min-height: 44px'));
+  assert.ok(lane3b.includes('font: 400 15px/1.4'));
+  assert.ok(!/(sync-banner|result-line|rb-failed)/.test(read('app.css')));
 });
 
 check('the landing import card is ordered before the hero text without touching the DOM', () => {

@@ -298,70 +298,82 @@
     </div>
   </div>
 
-  <div class="notice-slot" id="notice-slot">
-    <div class="rb-failed" id="save-failed" hidden><span class="chip danger" id="save-failed-chip"></span></div>
+  <!-- Next-step bar (lane 3b): the first visible notice shows, "N more" reveals the rest in this DOM order (NoticeQueue in js/modals.js).
+       Every banner keeps its id, hidden logic and buttons; nothing here is styled by hand per banner. -->
+  <section class="gs-pb-notices" id="notice-slot" aria-label="Next step">
+    <div class="sync-banner gs-pb-notice ref-banner" id="reference-banner" hidden>
+      <span id="reference-banner-text"></span>
+      <div class="sync-banner-actions"><button type="button" class="gs-btn gs-btn-sm" id="btn-back-to-raid">Back to my raid</button></div>
+    </div>
+    <div class="rb-failed gs-pb-notice" id="save-failed" hidden><span class="chip danger" id="save-failed-chip"></span></div>
+    <!-- Another tab saved this plan; this tab's next change would overwrite it. -->
+    <div class="sync-banner gs-pb-notice" id="tab-conflict-banner" hidden aria-live="polite">
+      <span id="tab-conflict-text">This plan was changed in another tab. Your next change here will overwrite it.</span>
+      <div class="sync-banner-actions">
+        <button type="button" class="gs-btn gs-btn-sm" id="btn-tab-load">Load their version</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-tab-keep">Keep mine</button>
+      </div>
+    </div>
+    <!-- Live link: a co-editor's change replaced the plan; stays until acted on. -->
+    <div class="sync-banner gs-pb-notice" id="remote-update-banner" hidden aria-live="polite">
+      <span id="remote-update-text">Roster updated by someone else.</span>
+      <div class="sync-banner-actions">
+        <button type="button" class="gs-btn gs-btn-sm" id="btn-remote-undo">Undo</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-remote-changes">See changes</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-remote-dismiss">Dismiss</button>
+      </div>
+    </div>
+    <!-- Live link opened from someone else: says the plan is shared and editable; stays until acted on. -->
+    <div class="sync-banner gs-pb-notice" id="shared-plan-banner" hidden aria-live="polite">
+      <span id="shared-plan-text"></span>
+      <div class="sync-banner-actions">
+        <button type="button" class="gs-btn gs-btn-sm" id="btn-shared-gotit">Got it</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-shared-copy">Make my own copy</button>
+      </div>
+    </div>
+    <!-- Opened from a raid of the guild tracker (Plan in Planner): names the raid, saves the plan back to it, returns to its page. -->
+    <div class="sync-banner gs-pb-notice raid-context-banner" id="raid-context-banner" hidden>
+      <span class="raid-context-main"><strong id="raid-context-text"></strong><span class="raid-context-status" id="raid-context-status" role="status"></span></span>
+      <div class="sync-banner-actions">
+        <button type="button" class="gs-btn gs-btn-sm" id="btn-raid-save">Save to raid</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-raid-back">Back to raid</button>
+      </div>
+    </div>
+    <div class="sync-banner gs-pb-notice" id="sync-banner" hidden aria-live="polite">
+      <span id="sync-banner-text"></span>
+      <div class="sync-banner-actions">
+        <button type="button" class="gs-btn gs-btn-sm" id="btn-sync-apply">Refresh roster</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-sync-dismiss">Dismiss</button>
+      </div>
+    </div>
+    <!-- Backlog #13: non-blocking suggestion when an imported Raid-Helper event's
+         templateId implies a different game version than the one currently active. -->
+    <div class="sync-banner gs-pb-notice" id="version-suggest-banner" hidden aria-live="polite">
+      <span id="version-suggest-text"></span>
+      <div class="sync-banner-actions">
+        <button type="button" class="gs-btn gs-btn-sm" id="btn-version-switch">Switch</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-version-dismiss">Dismiss</button>
+      </div>
+    </div>
+    <div class="sync-banner gs-pb-notice" id="split-banner" hidden aria-live="polite">
+      <span id="split-banner-text"></span>
+      <div class="sync-banner-actions">
+        <button type="button" class="gs-btn gs-btn-sm" id="btn-split-offer">Split into two raids</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-split-dismiss">Dismiss</button>
+      </div>
+    </div>
+    <div class="sync-banner gs-pb-notice" id="backup-banner" hidden aria-live="polite">
+      <span id="backup-banner-text"></span>
+      <div class="sync-banner-actions" id="backup-banner-actions"></div>
+    </div>
+    <!-- Classic Era only: a roster with Shaman and Paladin together (shown by renderReadiness). -->
+    <div class="sync-banner gs-pb-notice" id="mixed-factions-banner" hidden aria-live="polite">
+      <span>Horde and Alliance players are both on this roster, which can't happen in Classic Era.</span>
+    </div>
+    <!-- Quiet fallback: today's last Optimize/import/sync result, shown only while no notice is. -->
     <div class="result-line" id="result-line" hidden><span id="result-line-text"></span><button type="button" class="result-line-dismiss" id="btn-result-dismiss" aria-label="Dismiss">&times;</button></div>
-  </div>
-  <!-- Opened from a raid of the guild tracker (Plan in Planner): names the raid, saves the plan back to it, returns to its page. -->
-  <div class="sync-banner raid-context-banner" id="raid-context-banner" hidden>
-    <span class="raid-context-main"><strong id="raid-context-text"></strong><span class="raid-context-status" id="raid-context-status" role="status"></span></span>
-    <div class="sync-banner-actions">
-      <button type="button" class="btn btn-primary" id="btn-raid-save">Save to raid</button>
-      <button type="button" class="link-btn" id="btn-raid-back">Back to raid</button>
-    </div>
-  </div>
-  <div class="sync-banner" id="sync-banner" hidden aria-live="polite">
-    <span id="sync-banner-text"></span>
-    <div class="sync-banner-actions">
-      <button type="button" class="btn btn-primary" id="btn-sync-apply">Refresh roster</button>
-      <button type="button" class="link-btn" id="btn-sync-dismiss">Dismiss</button>
-    </div>
-  </div>
-  <div class="sync-banner" id="backup-banner" hidden aria-live="polite">
-    <span id="backup-banner-text"></span>
-    <div class="sync-banner-actions" id="backup-banner-actions"></div>
-  </div>
-  <div class="sync-banner" id="split-banner" hidden aria-live="polite">
-    <span id="split-banner-text"></span>
-    <div class="sync-banner-actions">
-      <button type="button" class="btn btn-primary" id="btn-split-offer">Split into two raids</button>
-      <button type="button" class="link-btn" id="btn-split-dismiss">Dismiss</button>
-    </div>
-  </div>
-  <!-- Backlog #13: non-blocking suggestion when an imported Raid-Helper event's
-       templateId implies a different game version than the one currently active. -->
-  <div class="sync-banner" id="version-suggest-banner" hidden aria-live="polite">
-    <span id="version-suggest-text"></span>
-    <div class="sync-banner-actions">
-      <button type="button" class="btn btn-primary" id="btn-version-switch">Switch</button>
-      <button type="button" class="link-btn" id="btn-version-dismiss">Dismiss</button>
-    </div>
-  </div>
-  <!-- Live link: a co-editor's change replaced the plan; stays until acted on. -->
-  <div class="sync-banner" id="remote-update-banner" hidden aria-live="polite">
-    <span id="remote-update-text">Roster updated by someone else.</span>
-    <div class="sync-banner-actions">
-      <button type="button" class="btn btn-primary" id="btn-remote-undo">Undo</button>
-      <button type="button" class="link-btn" id="btn-remote-changes">See changes</button>
-      <button type="button" class="link-btn" id="btn-remote-dismiss">Dismiss</button>
-    </div>
-  </div>
-  <!-- Live link opened from someone else: says the plan is shared and editable; stays until acted on. -->
-  <div class="sync-banner" id="shared-plan-banner" hidden aria-live="polite">
-    <span id="shared-plan-text"></span>
-    <div class="sync-banner-actions">
-      <button type="button" class="btn btn-primary" id="btn-shared-gotit">Got it</button>
-      <button type="button" class="link-btn" id="btn-shared-copy">Make my own copy</button>
-    </div>
-  </div>
-  <!-- Another tab saved this plan; this tab's next change would overwrite it. -->
-  <div class="sync-banner" id="tab-conflict-banner" hidden aria-live="polite">
-    <span id="tab-conflict-text">This plan was changed in another tab. Your next change here will overwrite it.</span>
-    <div class="sync-banner-actions">
-      <button type="button" class="btn btn-primary" id="btn-tab-load">Load their version</button>
-      <button type="button" class="link-btn" id="btn-tab-keep">Keep mine</button>
-    </div>
-  </div>
+    <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost gs-pb-notice-more" id="btn-notice-more" aria-expanded="false" hidden></button>
+  </section>
 
   <section class="gs-hd-panel gs-pb-check" id="raid-check" aria-label="Raid check" hidden>
     <div class="gs-pb-tiles" id="raid-check-tiles"></div>
@@ -388,10 +400,6 @@
   <section id="assignments-panel" class="assignments-panel" hidden aria-label="Assignments"></section>
   <div class="app-body">
     <div class="main-column">
-      <div class="sync-banner ref-banner" id="reference-banner" hidden>
-        <span id="reference-banner-text"></span>
-        <div class="sync-banner-actions"><button type="button" class="btn btn-primary" id="btn-back-to-raid">Back to my raid</button></div>
-      </div>
       <div class="gs-pb-groupsline" id="groups-line">
         <h2 class="gs-hd-sl"><span>Groups</span><span class="gs-pb-seated" id="seated-count"></span></h2>
       </div>
