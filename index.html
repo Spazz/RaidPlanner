@@ -346,6 +346,15 @@
         <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-raid-back">Back to raid</button>
       </div>
     </div>
+    <!-- A Raid-Helper import by a signed-in officer whose guild has no raid for the event: offers to create one (PlanAttach in js/modals.js). -->
+    <div class="sync-banner gs-pb-notice" id="attach-banner" hidden aria-live="polite">
+      <span class="raid-context-main"><strong id="attach-banner-text"></strong><span class="raid-context-status" id="attach-banner-detail"></span></span>
+      <div class="sync-banner-actions">
+        <label class="gs-pb-attach-team" id="attach-team-field" hidden><span class="gs-fg-lbl">Team</span><select id="attach-team"></select></label>
+        <button type="button" class="gs-btn gs-btn-sm" id="btn-attach-create">Create a raid</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-attach-skip">Skip, keep it on this device</button>
+      </div>
+    </div>
     <div class="sync-banner gs-pb-notice" id="sync-banner" hidden aria-live="polite">
       <span id="sync-banner-text"></span>
       <div class="sync-banner-actions">

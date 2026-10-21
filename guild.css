@@ -2804,8 +2804,14 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-pb-notices .rb-failed .chip { padding: 0; border: 0; background: none; color: var(--danger-text); font: 600 15px/1.4 var(--font-body); text-transform: none; white-space: normal; }
 .gs-pb-notices .result-line-dismiss { flex: none; min-width: 32px; min-height: 32px; margin: 0; padding: 0; background: none; border: 0; color: var(--text-secondary); font-size: 18px; line-height: 1; cursor: pointer; }
 .gs-pb-notices .result-line-dismiss:hover { color: var(--text-primary); }
+/* The import offer "Create a raid for this event?" (PlanAttach): the team pick sits with the buttons. */
+.gs-pb-notices .gs-pb-attach-team { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gs-pb-notices .gs-pb-attach-team[hidden] { display: none; }
+.gs-pb-notices .gs-pb-attach-team select { box-sizing: border-box; min-width: 0; max-width: 100%; min-height: var(--control-h-sm); padding: 0 10px; background: var(--bg-input); border: 1px solid var(--border-medium); border-radius: 0; color: var(--text-primary); font: 400 14px/1.2 var(--font-body); color-scheme: dark; }
 .gs-pb-notices .result-line-dismiss:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 @media (width <= 600px) {
+  .gs-pb-notices .gs-pb-attach-team { flex-direction: column; align-items: stretch; gap: 4px; width: 100%; }
+  .gs-pb-notices .gs-pb-attach-team select { width: 100%; min-height: 44px; }
   .gs-pb-notices.has-notice { margin: 12px 16px 0; }
   .gs-pb-notices .gs-pb-notice.nq-first, .gs-pb-notices .result-line { flex: 0 0 100%; }
   .gs-pb-notices .gs-pb-notice { padding: 12px; }

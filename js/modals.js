@@ -951,6 +951,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     showToast('Loaded saved roster');
     return true;
   }
+  if (src.eventId && Array.isArray(metadata.signUps) && typeof PlanAttach !== 'undefined') PlanAttach.noteEvent(src.eventId, metadata);
   if (src.eventId && Array.isArray(metadata.signUps)) {
     let existing;
     try { existing = PlanStore.read(localStorage).find(p => p.data.planId === 'event:' + src.eventId && (p.data.gameVersion || 'tbc') === State.gameVersion); } catch {}
@@ -1380,6 +1381,211 @@ document.getElementById('btn-split-cancel').addEventListener('click', () => docu
 document.getElementById('btn-split-create').addEventListener('click', () => SplitFlow.create());
 document.getElementById('btn-split-export').addEventListener('click', () => document.getElementById('btn-export-json').click());
 
+// ── RAID-HELPER IMPORT ATTACH (guild raid plans in the database) ──────────────────────────────────────────────
+// A signed-in officer who imports a Raid-Helper event link: the guild's raid made from that event opens in the Planner (its plan is in the
+// guild's database), or, when the guild has none, the board offers to create one. Only with an event id, a signed-in guild and raids.edit on
+// some team; otherwise nothing here makes a network call and the import is the standalone flow it always was. A failed lookup is the
+// standalone flow too, with no notice. "Skip, keep it on this device" is remembered for the session, per event.
+// The create is the Raids page's own call (POST /raids {teamId, eventSource}, built by Guild.pages.raidNew.createBody). The plan the officer
+// just arranged is this browser's 'event:<id>' plan, which RaidContext.migrate re-keys into the raid's first plan when it opens.
+const PlanAttach = {
+  MAX_GUILDS: 5,
+  SKIP_KEY: 'pp_attach_skipped',
+  seen: null,              // the event the import in flight just read: { eventId, title, startMs, signUps }
+  offer: null,             // the open offer: { eventId, title, startMs, signUps, targets, pick, mode, existing, message, busy }
+  token: 0,                // the newest import wins
+  skippedNow: new Set(),   // this page's skips, for a browser that keeps no sessionStorage
+
+  // The guild tools of the signed-in shell, or null (signed out, or the guild scripts did not load).
+  tools() {
+    const g = typeof window !== 'undefined' ? window.Guild : null;
+    const ok = g && g.api && g.app && g.app.state && g.app.state.me && g.pages && g.pages.raids && g.pages.raidNew && g.pages.plannerLanding;
+    return ok ? g : null;
+  },
+  forget() { this.seen = null; },
+  noteEvent(eventId, metadata) {
+    const signUps = (metadata.signUps || []).filter(s => s && s.className !== 'Absence').length;
+    const title = typeof metadata.title === 'string' ? metadata.title.trim() : '';
+    this.seen = { eventId: String(eventId), title, startMs: PlanStore.eventStart(metadata), signUps };
+  },
+
+  skipped(eventId) {
+    if (this.skippedNow.has(eventId)) return true;
+    try { return JSON.parse(sessionStorage.getItem(this.SKIP_KEY) || '[]').includes(eventId); } catch { return false; }
+  },
+  remember(eventId) {
+    this.skippedNow.add(eventId);
+    try {
+      const list = JSON.parse(sessionStorage.getItem(this.SKIP_KEY) || '[]');
+      if (!list.includes(eventId)) sessionStorage.setItem(this.SKIP_KEY, JSON.stringify(list.concat(eventId).slice(-50)));
+    } catch {}
+  },
+
+  // The guilds (at most MAX_GUILDS of the viewer's) with a team the viewer may plan for. `unsure` = a guild could not be read.
+  async editableGuilds(g) {
+    const entries = Array.isArray(g.app.state.me.guilds) ? g.app.state.me.guilds.slice(0, this.MAX_GUILDS) : [];
+    const list = [];
+    let unsure = false;
+    for (const entry of entries) {
+      let gd = g.app.state.guilds && g.app.state.guilds[entry.id];
+      if (!gd) { try { gd = await g.app.fetchGuild(entry.id); } catch { unsure = true; continue; } }
+      const teams = g.pages.plannerLanding.planTeams(gd);
+      if (teams.length) list.push({ gid: entry.id, name: gd.guild.name, zone: gd.guild.timeZone || '', teams: teams.map(t => ({ id: t.id, name: t.name })) });
+    }
+    return { list, unsure };
+  },
+
+  // Called by runImport once an import succeeded. Resolves true when the raid's plan was opened or the offer is showing.
+  async afterImport() {
+    const seen = this.seen;
+    this.seen = null;
+    this.hide();
+    const token = ++this.token;
+    if (!seen || !/^\d{6,25}$/.test(seen.eventId) || State.planId !== 'event:' + seen.eventId) return false;
+    if (this.skipped(seen.eventId)) return false;
+    const g = this.tools();
+    if (!g) return false;
+    try {
+      const { list, unsure: unread } = await this.editableGuilds(g);
+      if (!list.length || token !== this.token) return false;
+      let unsure = unread;
+      let found = null;
+      for (const gd of list) {
+        try {
+          const res = await g.api.get('/api/guild/' + encodeURIComponent(gd.gid) + '/raid-for-event?event=' + encodeURIComponent(seen.eventId));
+          if (res && res.raid && res.raid.id) { found = { gd, raid: res.raid }; break; }
+        } catch { unsure = true; }
+      }
+      if (token !== this.token) return false; // a newer import replaced this one while it was asking
+      if (found) return await this.openRaid(g, found.gd, found.raid.id, seen, found.raid.raidOn, "Opened the raid's plan.");
+      if (unsure) return false; // a raid may exist where it could not be asked: no offer, the plan stays on this device
+      this.show(list, seen);
+      return true;
+    } catch { return false; }
+  },
+
+  // Opens a raid's plan with planInPlanner. An upcoming raid takes its sign-ups from the event again first, as the Plan button does; when that
+  // fails the plan opens as the guild has it. `toast` is said once the Planner was opened.
+  async openRaid(g, gd, rid, seen, raidOn, toast) {
+    const upcoming = !raidOn || raidOn >= (g.ui.dayKeyInZone(Date.now(), gd.zone) || '');
+    const event = upcoming && seen ? { id: seen.eventId, otherServer: false } : null;
+    let opened;
+    try { opened = await g.pages.raids.planInPlanner(gd.gid, rid, event); }
+    catch (err) {
+      if (!event) throw err;
+      opened = await g.pages.raids.planInPlanner(gd.gid, rid, null);
+    }
+    if (opened && toast) { await this.settled(); showToast(toast); }
+    return !!opened;
+  },
+
+  // Resolves once the Planner has the raid's plan on screen (RaidContext.open ran for the address just set), so the notice is not replaced by the
+  // sync toast the opening makes; where RaidContext does not exist there is nothing to wait for.
+  async settled() {
+    if (typeof RaidContext === 'undefined') return;
+    for (let i = 0; i < 40 && !(RaidContext.current && RaidContext.current.opening); i++) await new Promise(resolve => setTimeout(resolve, 50));
+    try { if (RaidContext.current && RaidContext.current.opening) await RaidContext.current.opening; } catch {}
+  },
+
+  show(list, seen) {
+    const targets = [];
+    list.forEach(gd => gd.teams.forEach(t => targets.push({ gd, teamId: t.id, label: (list.length > 1 ? gd.name + ' - ' : '') + t.name })));
+    this.offer = { eventId: seen.eventId, title: seen.title || State.rosterName, startMs: seen.startMs, signUps: seen.signUps, targets, pick: 0, mode: 'create', existing: null, message: '', busy: false };
+    this.render();
+  },
+  hide() {
+    this.offer = null;
+    this.render();
+  },
+
+  // "Raid night, Wed Oct 21, 8:00 PM ET, 24 sign-ups": the time is the chosen guild's.
+  detailText(o) {
+    const zone = o.targets[o.pick] ? o.targets[o.pick].gd.zone : '';
+    const g = this.tools();
+    const when = o.startMs && g && g.ui && g.ui.dateTimeInZone ? g.ui.dateTimeInZone(o.startMs, zone) : '';
+    return [o.title, when, `${o.signUps} sign-up${o.signUps === 1 ? '' : 's'}`].filter(Boolean).join(', ');
+  },
+
+  render() {
+    const banner = document.getElementById('attach-banner');
+    if (!banner) return;
+    const o = this.offer;
+    banner.hidden = !o;
+    if (!o) return;
+    const text = document.getElementById('attach-banner-text');
+    const detail = document.getElementById('attach-banner-detail');
+    if (text) text.textContent = o.mode === 'create' ? 'Create a raid for this event?' : o.message;
+    if (detail) {
+      detail.textContent = o.mode !== 'create' ? '' : o.message || this.detailText(o);
+      detail.classList.toggle('error', o.mode === 'create' && !!o.message);
+    }
+    const create = document.getElementById('btn-attach-create');
+    if (create) {
+      create.textContent = o.busy ? 'Creating...' : o.mode === 'other' ? 'Import anyway' : o.mode === 'exists' ? "Open that raid's plan" : 'Create a raid';
+      create.disabled = o.busy;
+    }
+    const skip = document.getElementById('btn-attach-skip');
+    if (skip) skip.disabled = o.busy;
+    const field = document.getElementById('attach-team-field');
+    const select = document.getElementById('attach-team');
+    const several = o.mode === 'create' && o.targets.length > 1;
+    if (field) field.hidden = !several;
+    if (select && several) {
+      select.innerHTML = o.targets.map((t, i) => `<option value="${i}"${i === o.pick ? ' selected' : ''}>${esc(t.label)}</option>`).join('');
+      select.disabled = o.busy;
+    }
+  },
+
+  pickTarget(index) {
+    const o = this.offer;
+    if (!o || !o.targets[index]) return;
+    o.pick = index;
+    this.render();
+  },
+
+  skip() {
+    if (this.offer) this.remember(this.offer.eventId);
+    this.hide();
+  },
+
+  async create() {
+    const o = this.offer;
+    const g = this.tools();
+    if (!o || o.busy || !g) return;
+    const target = o.targets[o.pick];
+    if (!target) return;
+    if (State.planId !== 'event:' + o.eventId) { this.hide(); return; } // another plan is on screen now: the offer is stale
+    o.busy = true;
+    this.render();
+    try {
+      if (o.mode === 'exists') {
+        const rid = o.existing;
+        this.hide();
+        await this.openRaid(g, target.gd, rid, null, null, '');
+        return;
+      }
+      const form = { teamId: target.teamId, date: '', event: o.eventId, mode: 'log', reports: [], plan: '', size: '' };
+      const res = await g.api.post('/api/guild/' + encodeURIComponent(target.gd.gid) + '/raids', g.pages.raidNew.createBody(form, o.mode === 'other', null));
+      this.hide();
+      await this.openRaid(g, target.gd, res.raid.id, null, null, 'Created the raid and opened its plan.'); // made from the event a moment ago: its sign-ups are current
+    } catch (err) {
+      o.busy = false;
+      const code = err && err.code;
+      if (code === 'other_server') { o.mode = 'other'; o.message = err.message || 'That event was posted in a different Discord server.'; }
+      else if (code === 'raid_exists' && err.body && err.body.raidId) { o.mode = 'exists'; o.existing = err.body.raidId; o.message = err.message || 'That team already has a raid on that date.'; }
+      else { o.message = g.api.classify(err).text; }
+      this.render();
+    }
+  },
+};
+
+{
+  const wire = (id, type, fn) => { const el = document.getElementById(id); if (el && typeof el.addEventListener === 'function') el.addEventListener(type, fn); };
+  wire('btn-attach-create', 'click', () => PlanAttach.create());
+  wire('btn-attach-skip', 'click', () => PlanAttach.skip());
+  wire('attach-team', 'change', e => PlanAttach.pickTarget(Number(e.target.value)));
+}
+
 // ── SHARED IMPORT RUNNER ────────────────────────────────────────
 // Landing page and the in-app Import dialog both go through this: empty paste
 // is reported inline, the button stays disabled while the import runs (it may
@@ -1405,8 +1611,13 @@ async function runImport(inputId, statusId, btnId, onSuccess) {
   btn.setAttribute('aria-busy', 'true');
   report('', false);
   try {
+    if (typeof PlanAttach !== 'undefined') PlanAttach.forget();
     const ok = await importFromText(text, report);
-    if (ok) { report('', false); input.value = ''; onSuccess(); }
+    if (ok) {
+      report('', false); input.value = ''; onSuccess();
+      // A signed-in officer's import may belong to a guild raid (PlanAttach); its answer never blocks or fails the import.
+      if (typeof PlanAttach !== 'undefined') PlanAttach.afterImport().catch(() => {});
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = idleLabel;
