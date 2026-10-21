@@ -1108,12 +1108,12 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(planner.html('planner-notice').includes('Owls'));
   });
 
-  await check('fix1 nit: focus falls back to the next displayed target, then #planner-root, when the title-bar h1 is not displayed', async () => {
+  await check('fix1 nit: focus falls back to the next displayed target, then #planner-root, when the plan name h1 is not displayed', async () => {
     const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(), beforeApp: sb => { sb.PP.shell.view = () => 'app'; } });
     await settle();
     const hidden = new FakeEl('h1');
     hidden.getClientRects = () => [];
-    env.documentFake.selectors['#shell-topbar-plan h1'] = hidden;
+    env.documentFake.selectors['#app h1.gs-pb-h1'] = hidden;
     env.click({ 'data-action': 'open-planner' });
     await settle();
     assert.equal(hidden.focused, 0, 'a hidden heading cannot take focus');
@@ -1121,7 +1121,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(env.els['planner-root'].getAttribute('tabindex'), '-1');
     const shown = new FakeEl('h1');
     shown.getClientRects = () => [{}];
-    env.documentFake.selectors['#shell-topbar-plan h1'] = shown;
+    env.documentFake.selectors['#app h1.gs-pb-h1'] = shown;
     env.G.app.go('#/g/g1/roster');
     await settle();
     env.click({ 'data-action': 'open-planner' });

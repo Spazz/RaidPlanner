@@ -652,7 +652,7 @@ function referenceHarness({ phone = false } = {}) {
       'function initGroups() {}\nfunction commit() {}\nfunction getDominantRoleLabel() { return ""; }\nfunction classColorClass() { return ""; }\n' +
       'function getSpecIcon() { return ""; }\nfunction renderBuffCatalog() {}\nfunction renderUtilityCatalog() {}\nfunction renderRaidCheckTiles() {}\n' +
       app.slice('// ── GROUP PANELS', '// ── end GROUP PANELS') +
-      app.slice('const IdealComp = {', '// Reference comp is a quiet link'),
+      app.slice('const IdealComp = {', '// Reference comp is a More menu item'),
   });
   return { api: c.api, elements, log, doc };
 }
@@ -670,7 +670,7 @@ check('the reference comp view shows the banner with the selected raid size, and
   const html = app.html.replace(/\r\n/g, '\n');
   assert.match(html, /<button type="button" class="btn btn-primary" id="btn-back-to-raid">Back to my raid<\/button>/);
   assert.doesNotMatch(html, /btn-back-to-plan/, 'the plain back link is gone');
-  assert.equal((html.match(/>\s*Reference comp\s*</g) || []).length, 2, 'desktop and phone links are renamed');
+  assert.equal((html.match(/>\s*Reference comp\s*</g) || []).length, 1, 'the More menu item is renamed (it moves into the sheet on a phone)');
   assert.match(html, /id="btn-ideal-comp-link" title="Reference comp"/);
   const userFacing = html + '\n' + app.script.split(/\r?\n/).filter(l => !/^\s*\/\//.test(l)).join('\n');
   assert.doesNotMatch(userFacing.replace(/'One action row: [^\n]*Compare to ideal comp[^\n]*'/, ''), /Compare to ideal comp/i);
@@ -687,7 +687,7 @@ check('opening the reference comp on a phone moves focus to Back to my raid; on 
   assert.deepEqual(desktop.log.focused, []);
 });
 
-check('Back to my raid returns to the plan, hides the banner and focuses the Reference comp link', () => {
+check('Back to my raid returns to the plan, hides the banner and focuses the More button (the Reference comp item sits in a closed menu)', () => {
   const { api, elements, log } = referenceHarness();
   api.State.gameVersion = 'tbc';
   api.State.selectedRaid = 'ssc';
@@ -696,14 +696,14 @@ check('Back to my raid returns to the plan, hides the banner and focuses the Ref
   api.switchTab('plan');
   assert.equal(api.State.activeTab, 'plan');
   assert.equal(elements['reference-banner'].hidden, true);
-  assert.deepEqual(log.focused, ['btn-ideal-comp-link']);
-  // on a phone the desktop link is not rendered: focus falls to the phone link
+  assert.deepEqual(log.focused, ['btn-settings-menu']);
+  // on a phone the desktop More button is not rendered: focus falls to the phone one
   const phone = referenceHarness();
   phone.api.State.gameVersion = 'tbc'; phone.api.State.selectedRaid = 'ssc';
   phone.api.switchTab('ideal');
-  phone.doc.getElementById('btn-ideal-comp-link').unfocusable = true;
+  phone.doc.getElementById('btn-settings-menu').unfocusable = true;
   phone.api.switchTab('plan');
-  assert.deepEqual(phone.log.focused, ['btn-ideal-comp-link-phone']);
+  assert.deepEqual(phone.log.focused, ['btn-phone-more']);
   // a plain plan-to-plan switch moves no focus
   api.switchTab('plan');
   assert.equal(log.focused.length, 1);

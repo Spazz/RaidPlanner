@@ -470,20 +470,21 @@ check('changes.js is logic: after analysis.js, before render.js, without the UI 
   assert(app.logic.includes('const ChangeLog = {'));
 });
 
-check('the Changes button ends the action row as a hidden disclosure for the panel, with a badge', () => {
-  const toolbar = html.slice(html.indexOf('<div class="toolbar">'), html.indexOf('<!-- Phone context row'));
-  const button = toolbar.match(/<button[^>]*id="btn-changes"[^>]*>[\s\S]*?<\/button>/)[0];
-  assert(toolbar.replace(/\r\n/g, '\n').trimEnd().endsWith(button + '\n  </div>'), 'last item of the toolbar'); // CRLF checkouts too
+check('Changes is the first item of the More menu, a hidden disclosure for the panel with a badge; More carries the unseen count too', () => {
+  const menu = html.slice(html.indexOf('id="settings-menu"'), html.indexOf('<button type="button" class="menu-item" role="menuitem" id="btn-raid-settings"'));
+  const button = menu.match(/<button[^>]*id="btn-changes"[^>]*>[\s\S]*?<\/button>/)[0];
+  assert(menu.replace(/\r\n/g, '\n').trimEnd().endsWith(button), 'first item of the More menu'); // CRLF checkouts too
   assert.match(button, /aria-expanded="false"/);
   assert.match(button, /aria-controls="changes-log-panel"/);
   assert.match(button, / hidden>/);
   assert.match(button, /<span class="changes-count" id="changes-count" hidden><\/span>/);
-  assert.match(html, /<button type="button" id="btn-phone-more"[^>]*>More <span class="changes-count" id="phone-more-changes-count" hidden><\/span><\/button>/);
+  assert.match(html, /<button type="button" class="gs-btn gs-pb-phonemore" id="btn-phone-more"[^>]*>More <span class="changes-count" id="phone-more-changes-count" hidden><\/span><\/button>/);
+  assert.match(html, /More <span class="changes-count" id="more-changes-count" hidden><\/span>/);
 });
 
-check('the panel sits after the banners and before the Raid check strip, with its heading and Mark all seen', () => {
+check('the panel sits under the Raid check strip and before the board, with its heading and Mark all seen', () => {
   const panelAt = html.indexOf('id="changes-log-panel"');
-  assert(panelAt > html.indexOf('id="tab-conflict-banner"') && panelAt < html.indexOf('id="raid-check"'));
+  assert(panelAt > html.indexOf('id="raid-check"') && panelAt < html.indexOf('id="groups-container"'));
   const panel = html.slice(panelAt, html.indexOf('</section>', panelAt));
   assert.match(panel, /aria-labelledby="changes-log-heading"/);
   assert.match(panel, /id="changes-log-heading" tabindex="-1">Recent changes</);
@@ -624,7 +625,7 @@ check('an Optimize click records one optimize entry and one undo step, and offer
   assert.match(toast.m, /^Optimized: \d+ moved\./);
   assert.match(toast.m, /Windfury Totem \+\d+ melee/);
   assert.equal(toast.o.action.label, 'Undo');
-  assert.match(h.els['last-run'].innerHTML, /^&middot; Last Optimize: \d+ moved, Windfury Totem \+\d+ melee/);
+  assert.match(h.els['last-run'].textContent, /^Last Optimize: \d+ moved, Windfury Totem \+\d+ melee/);
   // The result line repeats the toast sentence, set after the Optimize commit (that commit clears the line).
   assert.equal(h.results.length, 1);
   assert.equal(h.results[0].t, toast.m);
@@ -832,8 +833,7 @@ check('CSS: a changed slot is an inset ring (focus keeps the outline), coloured 
   for (const kind of ['benched', 'seated', 'status', 'moved', 'added']) assert.match(css, new RegExp(`\\.changed-${kind}\\s*\\{ --changed-color:`), kind);
   for (const kind of ChangeLog.KINDS) assert.match(css, new RegExp(`\\.changes-log-kind-${kind}\\s*\\{`), kind);
   assert.match(css, /\.player-slot\.changed\.dragging \{ opacity: 0\.3; \}/, 'a highlighted card still dims while dragged');
-  const phone = css.slice(css.indexOf('#btn-phone-more .changes-count'));
-  assert.match(phone.slice(0, 600), /#btn-changes-seen, #btn-changes-close, #changes-log-panel \.changes-log-more \{ min-height: 44px; \}/, 'phone tap targets');
+  assert.match(css, /#btn-changes-seen, #btn-changes-close, #changes-log-panel \.changes-log-more \{ min-height: 44px; \}/, 'phone tap targets');
   assert.match(css, /\.changes-log-more \{[^}]*min-height: 24px;/, 'the Show all toggle is a 24px target everywhere');
   // Focus must still read on a changed card, including a gold Status ring under the gold outline.
   const focus = css.match(/\.player-slot\.changed:focus-visible \{[^}]*\}/);

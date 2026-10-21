@@ -5,14 +5,6 @@ const VERSION_BUTTON_TEXT = {
   tbc: { text: 'TBC', label: 'TBC Anniversary' },
   forever: { text: 'Forever', label: 'WoW Forever Beta' },
 };
-// The picked menu item is hidden by now: when nothing visible holds focus (and no dialog does), the button gets it back.
-function restoreVersionButtonFocus() {
-  if (document.querySelector('dialog[open]')) return;
-  const active = document.activeElement;
-  if (active && active !== document.body && !active.closest('#version-menu')) return;
-  const button = document.getElementById('btn-version-menu');
-  if (button) button.focus();
-}
 function syncVersionControls() {
   const profile = GameVersions[State.gameVersion];
   // Scoped to the real switcher tabs only — the landing page's informational
@@ -25,23 +17,21 @@ function syncVersionControls() {
     button.setAttribute('aria-pressed', String(button.dataset.version === State.gameVersion));
     button.onclick = () => switchGameVersion(button.dataset.version);
   });
-  // The planner header's version button and menu (the era band is hidden while the planner shows).
-  const versionButton = document.getElementById('btn-version-menu');
-  const buttonText = VERSION_BUTTON_TEXT[State.gameVersion];
-  if (versionButton && buttonText) {
-    versionButton.dataset.version = State.gameVersion;
-    versionButton.setAttribute('aria-label', 'Game version: ' + buttonText.label);
-    document.getElementById('version-btn-text').textContent = buttonText.text;
-  }
-  document.querySelectorAll('#version-menu [data-version]').forEach(item => {
-    item.setAttribute('aria-checked', String(item.dataset.version === State.gameVersion));
-    item.onclick = async () => {
-      await switchGameVersion(item.dataset.version);
-      restoreVersionButtonFocus();
-    };
+  // The Raid settings dialog's version segments (the era band is hidden while the planner shows).
+  document.querySelectorAll('#raid-version-control [data-version]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.version === State.gameVersion));
   });
   document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-player roster`;
-  document.getElementById('btn-optimize').disabled = !profile.modeled;
+  // An unmodeled version cannot be optimized: the button is disabled and the reason stands beside it.
+  const optimize = document.getElementById('btn-optimize');
+  const reason = document.getElementById('optimize-reason');
+  optimize.disabled = !profile.modeled;
+  if (reason) {
+    reason.hidden = profile.modeled;
+    reason.textContent = profile.modeled ? '' : 'Optimize needs rules for this version';
+  }
+  if (profile.modeled) optimize.removeAttribute('aria-describedby');
+  else optimize.setAttribute('aria-describedby', 'optimize-reason');
   renderRaidSizeControl();
 }
 // Switching version refits the plan to the new version's default raid, so with a plan
@@ -82,7 +72,7 @@ function renderRaidSizeControl() {
     // Rebuilding drops focus; give it back to the button for the current size.
     const hadFocus = group.contains(document.activeElement);
     group.dataset.sizes = key;
-    group.innerHTML = sizes.map(size => `<button type="button" data-raid-size="${size}" aria-pressed="false" title="${size}-man raid">${size}</button>`).join('');
+    group.innerHTML = sizes.map(size => `<button type="button" class="gs-fg-seg" data-raid-size="${size}" aria-pressed="false" title="${size}-man raid">${size}</button>`).join('');
     if (hadFocus && current) {
       const button = group.querySelector(`[data-raid-size="${current.size}"]`);
       if (button) button.focus();
@@ -819,7 +809,6 @@ function renderGroups() {
   renderBalanceWarnings();
 
   renderSummaryBar();
-  updateStatus();
   SignupTray.render();
   restorePlayerSlotFocus(focusedSlot);
   restoreBuffIconFocus();
@@ -900,6 +889,7 @@ function groupBuffIconHTML(b, gi, allowSwap) {
 // or a Swap In, or two warriors to group together), Needs a recruit (nobody in the roster can). The reference comp has no
 // live-plan fixes, so it gets one Missing group of plain rows.
 let lastCatalogCoverage = null;
+let lastGapCount = 0; // missing buffs and debuffs the last catalog render found (the head chip adds the role floors)
 function buildCoverageModel(coveredBuffIds, coveredDebuffIds) {
   // The reference comp is a static board: the live plan's Switch / Swap In fixes do not belong on it.
   const insights = State.activeTab === 'ideal' ? null : getMissingBuffInsights();
@@ -952,6 +942,7 @@ function gapGroupHTML(label, icons) {
 
 function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
   lastCatalogCoverage = [coveredBuffIds, coveredDebuffIds];
+  lastGapCount = 0;
   const gapsEl = document.getElementById('raid-check-gaps');
   const coveredBtn = document.getElementById('btn-coverage');
   const summaryEl = document.getElementById('coverage-summary');
@@ -966,6 +957,7 @@ function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
     return;
   }
   const { insights, missing, covered, fixNow, recruit } = buildCoverageModel(coveredBuffIds, coveredDebuffIds);
+  lastGapCount = missing.length;
   const rows = (items) => items.map(m => renderBuffRowList(m.id, m.dataset, m.abbr, m.iconUrl, m.covered.has(m.id), insights ? insights[m.id] : null, m.debuff)).join('');
   const group = (title, count, body) => `<h3 class="gs-fg-gh"><span class="gs-fg-ght">${title}</span><span class="gs-fg-ghn">${count}</span></h3>${body}`;
 
@@ -1269,16 +1261,18 @@ const ChangesPanel = {
     const unseen = ChangeLog.unseenCount();
     button.hidden = !entries.length;
     button.setAttribute('aria-label', unseen ? `Changes, ${unseen} unseen` : 'Changes');
-    for (const id of ['changes-count', 'phone-more-changes-count']) {
+    for (const id of ['changes-count', 'more-changes-count', 'phone-more-changes-count']) {
       const badge = this.el(id);
       if (!badge) continue;
       badge.hidden = !unseen;
       badge.textContent = unseen ? String(unseen) : '';
     }
-    const more = this.el('btn-phone-more');
-    if (more) {
+    for (const id of ['btn-settings-menu', 'btn-phone-more']) {
+      const more = this.el(id);
+      if (!more) continue;
       if (unseen) more.setAttribute('aria-label', `More, ${unseen} unseen change${unseen === 1 ? '' : 's'}`);
-      else more.removeAttribute('aria-label');
+      else if (id === 'btn-phone-more') more.removeAttribute('aria-label');
+      else more.setAttribute('aria-label', 'More');
     }
     for (const id of this.expanded) if (!entries.some(entry => entry.id === id)) this.expanded.delete(id);
     if (!entries.length) {
@@ -1367,15 +1361,57 @@ function renderSummaryBar() {
   announce(lastRaidSummary);
 }
 
-function updateStatus() {
-  const total = State.roster.length;
-  const raidInfo = Config.Raids[State.selectedRaid];
-  const max = raidInfo ? raidInfo.size : 25;
-  const benched = (State.bench || []).length;
-  const benchNote = benched > 0 ? ` · ${benched} benched` : '';
-  document.getElementById('status-text').textContent = total > 0
-    ? `${total}/${max} players loaded${benchNote}`
-    : State.preferredSlots.length ? `${State.preferredSlots.length} preferred slots awaiting matching sign-ups${benchNote}` : 'Ready — import a roster to begin';
+// ── PLAN HEAD (Planner board on Forge, T6) ───────────────────────
+// The head's ONE chip and its muted context line, drawn from real state. Gaps = the buffs and debuffs the raid is missing
+// (the Raid check strip's model) plus every role floor not met. An unmodeled version has no rules to count against.
+function planGapCount() {
+  const floors = Optimizer.floorsFor(Config.Raids[State.selectedRaid]?.size || 25);
+  const have = { tank: 0, healer: 0 };
+  for (const p of State.roster) if (p.role in have) have[p.role]++;
+  const unmet = (floors ? ['tank', 'healer'].filter(role => floors[role] && have[role] < floors[role]) : []).length;
+  return lastGapCount + unmet;
+}
+// "Live link off", or a short phrase for each state LiveSync.statusText reports (it owns the wording of the long sentence).
+function liveLinkWord() {
+  const text = LiveSync.statusText('');
+  if (!text) return 'off';
+  if (/^Live link not saved/.test(text)) return 'not saved';
+  if (/^Saving/.test(text)) return 'saving';
+  return 'on';
+}
+// Where the roster came from and how many people it holds, for the context line and the Raid settings dialog.
+function signupsSummary() {
+  const count = State.roster.length + (State.bench || []).length;
+  const source = State.sourceEventId ? 'Raid-Helper' : String(State.planId || '').startsWith('raid:') ? 'Guild raid' : '';
+  if (!count) return source;
+  const noun = source ? `${count} sign-up${count === 1 ? '' : 's'}` : `${count} player${count === 1 ? '' : 's'}`;
+  return source ? `${source}, ${noun}` : noun;
+}
+function renderPlanHead() {
+  const chip = document.getElementById('plan-chip');
+  const context = document.getElementById('plan-context');
+  if (!chip || !context) return;
+  const profile = GameVersions[State.gameVersion];
+  const raid = Config.Raids[State.selectedRaid];
+  const signups = signupsSummary();
+  const parts = [VERSION_BUTTON_TEXT[State.gameVersion]?.text || profile.name, raid ? raid.name : '', raid ? `${raid.size}-man` : '', signups, `Live link ${liveLinkWord()}`].filter(Boolean);
+  context.innerHTML = parts.map(part => `<span>${esc(part)}</span>`).join('<span aria-hidden="true">-</span>');
+  if (!hasLoadedWork()) {
+    chip.hidden = true;
+  } else if (!profile.modeled) {
+    chip.hidden = false;
+    chip.className = 'gs-hd-chip is-grey plan-only';
+    chip.textContent = 'Rules pending';
+  } else {
+    const gaps = planGapCount();
+    chip.hidden = false;
+    chip.className = `gs-hd-chip ${gaps ? 'is-short' : 'is-ready'} plan-only`;
+    chip.textContent = gaps ? `${gaps} gap${gaps === 1 ? '' : 's'}` : 'Ready';
+  }
+  const signupsEl = document.getElementById('raid-settings-signups');
+  if (signupsEl) signupsEl.textContent = signups || 'No sign-ups loaded';
+  const liveEl = document.getElementById('raid-settings-live');
+  if (liveEl) liveEl.textContent = LiveSync.statusText('Off');
 }
 
 // ── DRAG & DROP (event delegation — attached once) ──────────────
@@ -2204,16 +2240,11 @@ const Menu = {
   // Fixed-position popover anchored under the trigger, clamped so it never
   // overflows the viewport on the right or bottom edge.
   //
-  // The whole planner frame (.addon-frame) renders at `zoom: 1.5`, and CSS
-  // zoom scales an element's rendered box without changing what a length
-  // *inside* it means: getBoundingClientRect() returns real, post-zoom
-  // viewport pixels, but an inline `style.left/top` set on a zoomed
-  // descendant is a pre-zoom length that gets multiplied by zoom again at
-  // paint time. Mixing the two without correction plants the menu at
-  // (viewport position × 1.5) — off-screen for anything right of center.
-  // `scale` below is that zoom factor, measured empirically off the
-  // trigger itself (post-zoom rect ÷ pre-zoom offsetWidth) rather than
-  // hard-coded, so this still works if the frame's zoom ever changes.
+  // CSS zoom scales an element's rendered box without changing what a length *inside* it means: getBoundingClientRect()
+  // returns real, post-zoom viewport pixels, but an inline `style.left/top` set on a zoomed descendant is a pre-zoom
+  // length that gets multiplied by zoom again at paint time. `scale` below is that zoom factor, measured off the trigger
+  // itself (post-zoom rect / pre-zoom offsetWidth). The frame is no longer zoomed, so it is 1 today; the correction stays
+  // so a zoomed ancestor can never plant the menu off-screen.
   position(trigger, menu) {
     const scale = (trigger.offsetWidth && trigger.getBoundingClientRect().width / trigger.offsetWidth) || 1;
     const rect = trigger.getBoundingClientRect();

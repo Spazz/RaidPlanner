@@ -2479,9 +2479,8 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
    Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop groups, R3-details group head, R3-phone). One group = one .gs-hd-panel with a 44 px head
    (gold group name, muted role word, drum icon button, muted 5/5), 44 px rows (20 px spec icon, class-coloured name over muted spec, then exceptions only)
    and a Buffs foot. Hook classes of the old board (group-card, player-slot, buff-icon, preferred-slot, stack-*) stay on the same elements; this block restyles them.
-   Sizes are real pixels: above 600 px the planner frame is zoomed 1.5, so the board undoes it (zoom 2/3); the phone frame has no zoom. */
+   Sizes are real pixels (the planner frame does not zoom since lane 3a). */
 .gs-pb-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px; align-items: stretch; }
-@media (min-width: 601px) { .gs-pb-board { zoom: 0.6666667; } }
 .gs-pb-board.groups-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .gs-pb-board.groups-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 /* Five groups: three on top, two centred below (6-column grid). */
@@ -2587,10 +2586,9 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
    Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop strip, R3-details tooltips + Coverage list, R3-phone counts line).
    The strip is one .gs-hd-panel: role tiles (Tanks, Healers with the muted floor, Melee, Ranged), two labelled icon groups (Fix now, Needs a recruit;
    one neutral edge, the label splits them, never colour), and the "N covered" button that opens the dialog. Like the board, the strip, the Groups line
-   and the Manual changes panel undo the planner frame's zoom 1.5 above 600 px (zoom 2/3), so every size here is a real pixel. */
+   and the Manual changes panel use real pixels (the planner frame does not zoom since lane 3a). */
 .gs-pb-check { display: flex; align-items: center; gap: 24px; min-height: 76px; margin: 16px 16px 0; padding: 10px 16px; }
 .gs-pb-check[hidden], .gs-pb-manual[hidden] { display: none; }
-@media (min-width: 601px) { .gs-pb-check, .gs-pb-manual, .gs-pb-groupsline { zoom: 0.6666667; } }
 .gs-pb-tiles { display: flex; align-items: center; gap: 22px; flex: none; }
 .gs-pb-tiles:empty { display: none; }
 .gs-pb-tile { display: flex; flex-direction: column; gap: 1px; min-width: 70px; }
@@ -2683,6 +2681,111 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-pb-cov { width: 100vw; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; }
   .gs-pb-cov .insight-btn { min-height: 44px; }
   .gs-pb-cov .gs-btn { min-height: 44px; }
+}
+
+/* ── Planner board on Forge (T6), lane 3a: the head, the More and Share menus, Raid settings, the Raid notes panel, the phone bottom bar. ──
+   Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop and R3-phone head + bottom bar) and round 4 (R4-phone-more). The planner frame no
+   longer zooms (lane 3a retired it with the title bar and the lane 1-2 counter-zooms), so every size here is a real pixel.
+   Interim: the blocks that are not on Forge yet (notice banners, Changes panel, Campfire, Assignments, the sign-up tray, the Save modal) keep
+   their old 1.5 scale on their own element until lane 3b / 4 / 6 rebuild them; each lane deletes its selector from the rule below. */
+@media (min-width: 601px) {
+  #app .notice-slot, #app .sync-banner, #app .changes-log-panel, #app #campfire-panel, #app #assignments-panel, #app .bench-section, #app .save-modal { zoom: 1.5; }
+}
+.gs-pb-planhead { display: flex; flex-direction: column; gap: 6px; padding: 16px 16px 0; }
+.gs-pb-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: var(--text-secondary); font: 500 14px/1.3 var(--font-body); cursor: pointer; }
+.gs-pb-back:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.gs-pb-headrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.gs-pb-id { flex: 1 1 auto; min-width: 0; }
+.gs-pb-titleline { display: flex; align-items: center; gap: 4px 14px; min-height: 44px; }
+.gs-pb-h1 { min-width: 0; margin: 0; font: 700 28px/1.15 var(--font-body); color: var(--hd-white); }
+.gs-pb-h1:focus { outline: none; }
+.gs-pb-name { display: flex; align-items: center; gap: 8px; max-width: 100%; min-height: 36px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.gs-pb-name:hover { text-decoration: underline; text-underline-offset: 4px; }
+.gs-pb-name svg { flex: none; opacity: 0.6; }
+#roster-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-pb-titleline .gs-hd-chip { align-self: center; }
+.gs-pb-titleline .gs-hd-chip[hidden] { display: none; }
+.gs-pb-ctxrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin-top: 2px; }
+.gs-pb-context { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-muted); }
+.gs-pb-lastrun { font-size: 13px; color: var(--text-muted); }
+.gs-pb-lastrun:empty { display: none; }
+.gs-pb-actions { display: flex; align-items: center; flex: none; gap: 8px; }
+.gs-pb-icon { width: 36px; padding: 0; }
+.gs-pb-icon .btn-label { display: none; }
+.gs-pb-actions .gs-btn svg { flex: none; }
+.gs-pb-phonemore { display: none; }
+.gs-pb-reason { max-width: 240px; font-size: 13px; line-height: 1.3; text-align: right; color: var(--text-muted); }
+.gs-pb-reason[hidden] { display: none; }
+.menu-wrap { position: relative; display: flex; }
+#btn-optimize .btn-label { white-space: nowrap; }
+
+/* Share and More: the raised Forge menu. Menu (render.js) places it with fixed left/top; the items keep the ids, kbd and aria-keyshortcuts of the old menus. */
+.gs-pb-menu { position: fixed; z-index: 60; display: flex; flex-direction: column; box-sizing: border-box; width: auto; min-width: 240px; max-width: min(320px, calc(100vw - 16px)); padding: 6px; overflow-y: auto; overscroll-behavior: contain; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
+.gs-pb-menu[hidden] { display: none; }
+.menu-heading { padding: 8px 12px 4px; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.menu-sep { height: 1px; margin: 6px 0; background: var(--hd-hair); }
+:is(.gs-pb-menu, .mobile-sheet-group) .menu-item { display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 6px 12px; background: none; border: 0; border-radius: 4px; color: var(--text-primary); font: 600 14px/1.2 var(--font-body); text-align: left; text-transform: none; letter-spacing: 0; cursor: pointer; }
+:is(.gs-pb-menu, .mobile-sheet-group) .menu-item:not(:disabled):hover, :is(.gs-pb-menu, .mobile-sheet-group) .menu-item:focus-visible { background: rgba(255, 255, 255, 0.08); }
+:is(.gs-pb-menu, .mobile-sheet-group) .menu-item[hidden] { display: none; }
+:is(.gs-pb-menu, .mobile-sheet-group) .menu-item:has(> small) { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
+:is(.gs-pb-menu, .mobile-sheet-group) .menu-item small { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); }
+:is(.gs-pb-menu, .mobile-sheet-group) .menu-item small:empty { display: none; }
+.menu-item:disabled { opacity: .5; cursor: default; }
+.menu-item-danger { color: var(--danger-text); }
+.menu-kbd { margin-left: auto; padding: 1px 6px; border: 1px solid var(--border-medium); border-bottom-width: 2px; border-radius: 4px; font: 600 12px/1.3 var(--font-body); letter-spacing: 0; color: var(--text-secondary); }
+.raid-notes-badge { color: var(--hd-white); font-size: 12px; }
+
+/* The More sheet (phone): the same items as buttons, plus Redo as an icon button with its label. */
+.mobile-sheet-group .gs-btn { justify-content: flex-start; width: 100%; min-height: 44px; padding: 0 12px; text-align: left; }
+.mobile-sheet-group .gs-pb-icon .btn-label { display: inline; }
+.mobile-sheet-group .gs-pb-icon { width: 100%; }
+.mobile-sheet-header .gs-btn { min-height: 44px; }
+
+/* Raid notes: a panel under the strip while open; its summary is the head and closes it. */
+.gs-pb-notes { margin: 16px 16px 0; overflow: hidden; }
+.gs-pb-notes:not([open]) { display: none; }
+.gs-pb-notes > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; list-style: none; cursor: pointer; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.gs-pb-notes > summary::-webkit-details-marker { display: none; }
+.gs-pb-notes > summary::after { content: "Close"; margin-left: auto; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-secondary); }
+.gs-pb-notes .raid-notes-textarea { display: block; box-sizing: border-box; width: 100%; min-height: 96px; max-height: 260px; margin: 0; padding: 12px 16px; resize: vertical; background: var(--bg-input); border: 0; border-top: 1px solid var(--hd-hair); border-radius: 0; color: var(--text-primary); font: 400 14px/1.5 var(--font-body); }
+.gs-pb-notes .raid-notes-textarea:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+.gs-pb-notes .raid-notes-textarea::placeholder { color: var(--text-muted); }
+.gs-pb-notes .raid-notes-caption { margin: 0; padding: 8px 16px; border-top: 1px solid var(--hd-hair); font-size: 13px; line-height: 1.4; color: var(--text-muted); }
+
+/* Raid settings dialog: size and version segments, then two facts. */
+.gs-pb-rs { width: min(480px, calc(100vw - 32px)); }
+.gs-pb-rs .gs-pb-cov-body { flex: 0 1 auto; gap: 20px; }
+.gs-pb-rs-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.gs-pb-rs-facts { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.gs-pb-rs-facts > div { display: flex; flex-direction: column; gap: 2px; }
+.gs-pb-rs-facts dd { margin: 0; font-size: 14px; color: var(--text-secondary); }
+
+@media (width <= 900px) {
+  .gs-pb-headrow { flex-wrap: wrap; }
+}
+/* Phone: the head's action row is the fixed bottom bar. Undo 44, Optimize 48 and widest, then Share and More. Redo is in the More sheet. */
+@media (width <= 600px) {
+  .gs-pb-planhead { gap: 2px; padding: 8px 16px 0; }
+  .gs-pb-back { min-height: 44px; }
+  .gs-pb-headrow { display: block; }
+  .gs-pb-titleline { min-height: 0; }
+  .gs-pb-h1 { font-size: 24px; line-height: 1.2; }
+  .gs-pb-name { min-height: 44px; }
+  .gs-pb-ctxrow { margin-top: 0; }
+  .gs-pb-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; box-sizing: border-box; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--bg-frame); border-top: 1px solid var(--hd-panel-edge); box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.4); }
+  .gs-pb-actions > :is(#btn-undo, #btn-redo) { order: 1; flex: none; width: 44px; min-height: 44px; }
+  .gs-pb-actions > #btn-optimize { order: 2; flex: 2 1 0; min-width: 0; min-height: 48px; padding: 0 12px; font-size: 16px; }
+  .gs-pb-actions > .gs-pb-sharewrap { order: 3; flex: 1 1 0; min-width: 0; }
+  .gs-pb-actions > .gs-pb-phonemore { order: 4; display: inline-flex; flex: 1 1 0; min-width: 0; min-height: 44px; }
+  .gs-pb-actions > .gs-pb-morewrap, .gs-pb-actions > .gs-pb-reason { display: none; }
+  .gs-pb-sharewrap > .gs-btn { width: 100%; min-height: 44px; }
+  .gs-pb-phonemore .changes-count { margin-left: 2px; }
+  .gs-pb-notes { margin: 12px 16px 0; }
+  .gs-pb-notes .raid-notes-textarea { font-size: 16px; }
+  .gs-pb-rs { width: 100vw; max-width: none; max-height: 85dvh; height: fit-content; margin: auto 0 0; border: 0; border-top: 1px solid var(--hd-raised-edge); border-radius: 8px 8px 0 0; }
+  .gs-pb-rs .gs-fg-segs { align-self: stretch; }
+  .gs-pb-rs .gs-fg-seg { flex: 1 1 0; height: 44px; }
+  .gs-pb-rs .gs-btn { min-height: 44px; }
 }
 
 /* Watch list: Reviewed / Undo on an entry; a reviewed entry stays listed, muted, with who reviewed it and when it comes back */

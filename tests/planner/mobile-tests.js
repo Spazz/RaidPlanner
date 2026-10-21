@@ -3,10 +3,8 @@
  * Run: node tests/planner/mobile-tests.js
  *
  * What Node can check about the <=600px layout (the pixel measurements are checked in a browser):
- *   - the phone context summary is a real <button> with aria-expanded, collapsed by default, and
- *     its toggle flips aria-expanded / hidden; every control it hides is still in the page
- *   - line 1 of the context row is the plan name (the toggle); line 2 holds the seated count, the
- *     Raid size control as separate controls
+ *   - the phone has no context row; the head's action row is the fixed bottom bar and the More sheet
+ *     takes the More menu's items
  *   - the player editor's short view holds exactly the agreed controls and the More view holds the
  *     rest, with every original element ID preserved
  *   - phone-only chrome is hidden outside the media query, and no markup uses inline styles
@@ -37,89 +35,48 @@ function between(src, start, end) {
   return src.slice(a, b);
 }
 
-// ── Phone context summary ──────────────────────────────────────────
+// ── Phone head and bottom bar (Planner board on Forge, lane 3a) ─────────────────────────────
 
-check('phone summary is a real button with aria-expanded=false and aria-controls', () => {
-  const m = html.match(/<button\b[^>]*id="phone-summary-toggle"[^>]*>/);
-  assert.ok(m, 'button#phone-summary-toggle missing');
-  assert.match(m[0], /type="button"/);
-  assert.match(m[0], /aria-expanded="false"/);
-  const controls = m[0].match(/aria-controls="([^"]+)"/);
-  assert.ok(controls, 'aria-controls missing');
-  assert.match(html, new RegExp(`id="${controls[1]}"[^>]*\\bhidden\\b`), 'controlled body must exist and start hidden');
+const lane3a = (() => { const g = read('guild.css'); return g.slice(g.indexOf('Planner board on Forge (T6), lane 3a'), g.indexOf('/* Watch list: Reviewed')); })();
+const lane3aPhone = lane3a.slice(lane3a.lastIndexOf('@media (width <= 600px)'));
+
+check('the phone context row is gone from the page and the code: no summary toggle, no Edit body, no relocation slots for it', () => {
+  assert.doesNotMatch(html, /phone-context|phone-summary|phone-version-slot|raid-size-phone-slot|phone-plan-name-slot|btn-ideal-comp-link-phone|phone-bar-(undo|optimize|share)-slot/);
+  assert.doesNotMatch(appJs, /PHONE_CONTEXT_STORAGE_KEY|setPhoneContextOpen|phone-context|phone-summary/);
+  assert.doesNotMatch(read('js/modals.js'), /renderPhoneSummary|phone-summary/);
+  assert.doesNotMatch(css, /phone-context|phone-summary|#phone-bar-|\.title-bar|\.toolbar|\.status-bar/);
 });
 
-check('phone summary has the two text lines and an Edit control', () => {
-  for (const id of ['phone-summary-main', 'phone-summary-sub', 'phone-summary-edit-label', 'phone-summary-chevron']) {
-    assert.match(html, new RegExp(`id="${id}"`), id);
-  }
-  assert.match(html, /id="phone-summary-edit-label">Edit</);
+check('the head carries the back link, the plan name as the h1 button, one chip and the context line; the actions row is the bottom bar on a phone', () => {
+  const head = between(html, '<header class="gs-pb-planhead" id="plan-head">', '</header>');
+  assert.match(head, /<button type="button" class="gs-pb-back" id="btn-back-plans">[\s\S]*Your plans\s*<\/button>/);
+  assert.match(head, /<h1 class="gs-pb-h1 plan-only" tabindex="-1">\s*<button type="button" class="gs-pb-name" id="roster-name"/);
+  assert.equal((head.match(/class="gs-hd-chip/g) || []).length, 1, 'one chip');
+  assert.ok(head.includes('id="plan-context"') && head.includes('id="last-run"') && head.includes('id="autosave-status"'));
+  const actions = head.slice(head.indexOf('id="phone-action-bar"'));
+  const order = ['id="btn-undo"', 'id="btn-redo"', 'id="btn-share-menu"', 'id="btn-settings-menu"', 'id="btn-phone-more"', 'id="btn-optimize"'].map(id => { const i = actions.indexOf(id); assert.ok(i >= 0, id); return i; });
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'Undo, Redo, Share, More, Optimize in the desktop order');
+  // The phone bar reorders with CSS: Undo, Optimize, Share, More (Redo moves into the More sheet).
+  assert.match(lane3aPhone, /\.gs-pb-actions \{ position: fixed; left: 0; right: 0; bottom: 0;/);
+  assert.match(lane3aPhone, /#btn-optimize \{ order: 2;[^}]*min-height: 48px/);
+  assert.match(lane3aPhone, /\.gs-pb-phonemore \{ order: 4; display: inline-flex;[^}]*min-height: 44px/);
+  assert.match(lane3aPhone, /#btn-undo, #btn-redo\) \{ order: 1; flex: none; width: 44px; min-height: 44px; \}/);
+  assert.match(lane3a, /\.gs-pb-phonemore \{ display: none; \}/, 'the phone More button is hidden above 600 px');
 });
 
-check('every phone control is in the context row: line 2 slots, the Edit body, the notes slot', () => {
-  const panel = between(html, 'id="phone-context-panel"', '<!-- These raw export formats');
-  for (const id of ['phone-plan-name-slot', 'raid-size-phone-slot', 'btn-ideal-comp-link-phone', 'phone-context-notes-slot']) {
-    assert.ok(panel.includes(`id="${id}"`), `${id} missing from the context panel`);
-  }
-  const line2 = between(panel, 'class="phone-summary-line2"', 'id="phone-context-body"');
-  assert.ok(line2.includes('id="raid-size-phone-slot"') && line2.includes('id="phone-summary-sub"'), 'seated count and size control sit on line 2');
-  const body = between(panel, 'id="phone-context-body"', 'id="phone-context-notes-slot"');
-  assert.ok(body.includes('id="phone-plan-name-slot"'), 'the rename button moves into the Edit body');
-  assert.ok(!html.includes('phone-strategy-seg'), 'the optimizer strategy control is gone (Optimize always runs Max DPS)');
-  assert.ok(!html.includes('raid-select'), 'the raid dropdown is gone');
-  for (const id of ['raid-notes-panel', 'raid-notes-textarea', 'raid-check', 'btn-coverage', 'coverage-dialog', 'notice-slot']) {
-    assert.match(html, new RegExp(`id="${id}"`), id);
-  }
-  for (const pair of ['raid-notes-panel:phone-context-notes-slot', 'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot']) {
-    assert.ok(appJs.includes(`'${pair}'`), `${pair} relocation on phones`);
-  }
-});
-
-check('toggling the summary flips aria-expanded, hidden and the label, and remembers the choice', () => {
-  const src = between(appJs, 'const PHONE_CONTEXT_STORAGE_KEY', '(function initPhoneContextToggle');
-  const el = (extra = {}) => Object.assign({ attrs: {}, hidden: true, textContent: '', innerHTML: '',
-    setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; } }, extra);
-  const nodes = { 'phone-summary-toggle': el(), 'phone-context-body': el(), 'phone-summary-edit-label': el({ textContent: 'Edit' }), 'phone-summary-chevron': el() };
-  const stored = {};
-  const ctx = vm.createContext({
-    document: { getElementById: id => nodes[id] || null },
-    sessionStorage: {},
-    safeSetItem: (_, k, v) => { stored[k] = v; },
-  });
-  vm.runInContext(`${src}\nthis.setPhoneContextOpen = setPhoneContextOpen;`, ctx);
-  ctx.setPhoneContextOpen(true);
-  assert.equal(nodes['phone-summary-toggle'].attrs['aria-expanded'], 'true');
-  assert.equal(nodes['phone-context-body'].hidden, false);
-  assert.equal(nodes['phone-summary-edit-label'].textContent, 'Done');
-  assert.equal(stored.pp_phone_context_open, '1');
-  ctx.setPhoneContextOpen(false);
-  assert.equal(nodes['phone-summary-toggle'].attrs['aria-expanded'], 'false');
-  assert.equal(nodes['phone-context-body'].hidden, true);
-  assert.equal(nodes['phone-summary-edit-label'].textContent, 'Edit');
-  assert.equal(stored.pp_phone_context_open, '0');
-});
-
-const phoneCssAll = () => { const c = css.slice(css.lastIndexOf('/* ── Slim phone layout')); return c.slice(c.indexOf('@media (max-width: 600px)')); };
-
-// ── Phone plan name / seated count (the readiness link is gone: the Raid check strip is the phone's readiness) ──
-
-function renderPhone({ notes = '', seated = 25, size = 25 } = {}) {
-  const els = {};
-  const node = id => els[id] || (els[id] = { id, textContent: '', innerHTML: '', hidden: false });
-  const src = between(read('js/modals.js'), 'function renderPhoneSummary', 'function undoPlanChange');
-  const ctx = vm.createContext({
-    document: { getElementById: node },
-    State: { roster: Array(seated).fill({}), selectedRaid: 'x', optimizerMode: 'max_dps', rosterName: 'Random 25-man Roster', notes },
-    Config: { Raids: { x: { name: 'Karazhan', size } } },
-  });
-  vm.runInContext(src + '\nrenderPhoneSummary();', ctx);
-  return { els, ctx };
-}
-
-check('line 1 is the plan name; line 2 carries the seated count and notes marker', () => {
-  assert.equal(renderPhone().els['phone-summary-main'].textContent, 'Random 25-man Roster');
-  assert.equal(renderPhone().els['phone-summary-sub'].textContent, '25/25');
-  assert.equal(renderPhone({ notes: 'x', seated: 20, size: 10 }).els['phone-summary-sub'].textContent, '20/10 · notes');
+check('the More sheet gets the More menu items in the R4 order, plus Redo first; Undo, Optimize and Share never move', () => {
+  const slots = between(appJs, 'const slots = [', '].map(pair');
+  const ids = [...slots.matchAll(/'([a-z-]+):phone-sheet-[a-z]+-slot'/g)].map(m => m[1]);
+  assert.deepEqual(ids, ['btn-redo', 'btn-changes', 'btn-raid-settings', 'btn-ideal-comp-link', 'btn-raid-notes-toggle',
+    'btn-new-plan', 'btn-load', 'btn-save', 'btn-templates', 'btn-split-plan', 'btn-clear',
+    'btn-refresh', 'btn-attendance', 'btn-random',
+    'btn-export-backup', 'btn-import-backup', 'btn-shortcuts-help', 'btn-show-tips-again']);
+  assert.doesNotMatch(slots, /btn-undo|btn-optimize|btn-share/);
+  // every id the sheet takes exists once in the More menu (or the action row, for Redo)
+  const menu = between(html, 'id="settings-menu"', 'id="btn-phone-more"');
+  for (const id of ids.filter(id => id !== 'btn-redo')) assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, id);
+  assert.ok(menu.indexOf('id="btn-changes"') < menu.indexOf('id="btn-raid-settings"') && menu.indexOf('id="btn-raid-settings"') < menu.indexOf('id="btn-ideal-comp-link"') && menu.indexOf('id="btn-ideal-comp-link"') < menu.indexOf('id="btn-raid-notes-toggle"'));
+  for (const label of ['Plan', 'Sign-ups', 'Data &amp; help']) assert.ok(html.includes(`<div class="mobile-sheet-heading">${label}</div>`), label);
 });
 
 check('the phone readiness link, the readiness banner and the summary bar are gone from the page and the code', () => {
@@ -132,17 +89,18 @@ check('the phone readiness link, the readiness banner and the summary bar are go
 // ── Raid check strip + Coverage dialog (phones) ──
 
 const guildCss = read('guild.css');
-const stripCss = guildCss.slice(guildCss.indexOf('Planner board on Forge (T6), lane 2'), guildCss.indexOf('/* Watch list: Reviewed'));
+const stripCss = guildCss.slice(guildCss.indexOf('Planner board on Forge (T6), lane 2'), guildCss.indexOf('Planner board on Forge (T6), lane 3a'));
 const stripPhoneCss = stripCss.slice(stripCss.lastIndexOf('@media (width <= 600px)'));
 
-check('phone strip: counts line, 44px icon buttons, a full-width 44px covered button, no zoom', () => {
+check('phone strip: counts line, 44px icon buttons, a full-width 44px covered button; no counter-zoom any more', () => {
   assert.ok(stripCss.lastIndexOf('@media (width <= 600px)') > 0, 'the strip has a phone block');
   assert.match(stripPhoneCss, /\.gs-pb-tile \{ flex-direction: row;/, 'tiles read as one counts line');
   assert.match(stripPhoneCss, /\.gs-pb-gap \{ width: 44px; height: 44px; \}/);
   assert.match(stripPhoneCss, /\.gs-pb-covered \{ width: 100%;[^}]*min-height: 44px/);
   assert.match(stripPhoneCss, /\.gs-pb-floor \{ display: none; \}/);
-  // above 600 px the planner frame is zoomed 1.5, so the strip undoes it; the phone frame has no zoom
-  assert.match(stripCss, /@media \(min-width: 601px\) \{ \.gs-pb-check, \.gs-pb-manual, \.gs-pb-groupsline \{ zoom: 0\.6666667; \} \}/);
+  // the planner frame no longer zooms (lane 3a), so nothing counter-zooms: every size is a real pixel
+  assert.doesNotMatch(guildCss, /zoom: 0\.6666667/);
+  assert.doesNotMatch(css, /\.addon-frame \{[^}]*zoom: 1\.5/);
 });
 
 check('phone dialog: a full-height sheet with 44px targets', () => {
@@ -280,15 +238,15 @@ const phoneBlock = phoneCss.slice(phoneCss.indexOf('@media (max-width: 600px)'))
 
 check('phone-only chrome is hidden outside the media query', () => {
   const base = phoneCss.slice(0, phoneCss.indexOf('@media'));
-  for (const sel of ['.phone-summary-wrap', '.phone-summary', '.pe-sheet-handle', '.pe-sheet-header', '.pe-more-row']) {
+  for (const sel of ['.pe-sheet-handle', '.pe-sheet-header', '.pe-more-row']) {
     assert.ok(base.includes(sel), `${sel} must default to hidden`);
   }
   assert.match(base, /display:\s*none/);
 });
 
-check('phone block defines the sheet views, the zoom reset and the fixed row heights', () => {
-  for (const frag of ['.addon-frame { zoom: 1;', '.player-editor:not(.pe-more-open) .pe-more-only { display: none; }',
-    '.player-editor.pe-more-open .pe-short-only', 'height: 44px', 'height: 40px', 'height: calc(60px + env(safe-area-inset-bottom']) {
+check('phone block defines the sheet views, the bottom-bar padding and the fixed row heights', () => {
+  for (const frag of ['.addon-frame { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }', '.player-editor:not(.pe-more-open) .pe-more-only { display: none; }',
+    '.player-editor.pe-more-open .pe-short-only', 'height: 44px', 'height: 40px']) {
     assert.ok(phoneBlock.includes(frag), frag);
   }
 });
@@ -333,11 +291,11 @@ check('Coverage dialog text is 13-14px, the row icon 28px, and the fix buttons a
   assert.match(renderJs, /class="insight-btn gs-btn" data-insight-swap/);
 });
 
-check('version tabs, raid size buttons and the plan-name toggle get 44px hit areas', () => {
+check('version tabs get a 44px hit area; the plan name button, back link and bar buttons are 44px tall on a phone', () => {
   assert.match(rule('.game-version-tab::before'), /inset: -9px 0/);
-  assert.match(rule('#raid-size-phone-slot .raid-size-seg button::before'), /inset: -7px 0/);
-  assert.match(rule('.phone-summary::before'), /inset: -6px -12px 0/);
-  assert.ok(phoneBlock.includes('.phone-summary { position: relative; }'));
+  assert.match(lane3aPhone, /\.gs-pb-name \{ min-height: 44px; \}/);
+  assert.match(lane3aPhone, /\.gs-pb-back \{ min-height: 44px; \}/);
+  assert.match(lane3aPhone, /\.gs-pb-sharewrap > \.gs-btn \{ width: 100%; min-height: 44px; \}/);
 });
 
 check('the phone hit areas add up to 44px and do not overlap their neighbours', () => {
@@ -348,15 +306,6 @@ check('the phone hit areas add up to 44px and do not overlap their neighbours', 
   const tabInset = px(rule('.game-version-tab::before'), /inset: -(\d+)px 0/);
   assert.ok(tabHeight + 2 * tabInset >= 44, `tabs reach ${tabHeight + 2 * tabInset}px`);
   // The tabs sit alone in the shell's top bar on the landing view, so their hit area has no neighbour to overlap.
-  // Plan-name toggle (line 1, in the shell's top bar): its row plus the upward inset reach 44px, and nothing
-  // extends down into line 2.
-  const summary = phoneBlock.replace(/\r\n/g, '\n').match(/\.phone-summary \{\n[^}]*\}/)[0]; // the multi-line rule
-  const before = rule('.phone-summary::before').match(/inset: -(\d+)px -(\d+)px (-?\d+)/);
-  const rowHeight = px(summary, /min-height: (\d+)px/);
-  const up = Number(before[1]);
-  const down = Number(before[3]);
-  assert.ok(rowHeight + up + down >= 44, `plan-name toggle reaches ${rowHeight + up + down}px`);
-  assert.equal(down, 0, 'the toggle hit area does not reach into line 2');
 });
 
 check('the buff icon fallback label stays visible (12px floor) where the image is missing; an icon with an image hides it', () => {
@@ -400,13 +349,13 @@ check('the tray status tabs wrap on phones instead of scrolling', () => {
 
 check('the viewport covers the safe area; the bottom bar and frame pad for the inset', () => {
   assert.match(html, /<meta name="viewport" content="[^"]*viewport-fit=cover/);
-  assert.match(rule('#phone-action-bar'), /padding: 8px 8px calc\(8px \+ env\(safe-area-inset-bottom, 0px\)\)/);
+  assert.match(lane3aPhone, /\.gs-pb-actions \{[^}]*padding: 8px 12px calc\(8px \+ env\(safe-area-inset-bottom, 0px\)\)/);
   assert.match(rule('.addon-frame'), /calc\(68px \+ env\(safe-area-inset-bottom/);
 });
 
-check('the reference view status bar reads "Reference N-man comp"', () => {
-  assert.match(appJs, /textContent = `Reference \$\{raidInfo\.size\}-man comp`/);
-  assert.doesNotMatch(appJs, /Ideal \$\{raidInfo/);
+check('the reference view says so in its banner only: the status bar is gone', () => {
+  assert.doesNotMatch(appJs, /status-text|Ideal \$\{raidInfo/);
+  assert.match(appJs, /Reference comp, not your raid:/);
 });
 
 // ── Player editor: desktop drawer and group chips ──────────────────

@@ -50,11 +50,9 @@ check('The FAQ page names the real API URL and the Share menu entries', () => {
   assert(!faqHtml.includes('Copy MRT String') && !faqHtml.includes('use Export to download'));
 });
 
-check('status bar is a span filled from APP_VERSION', () => {
-  assert(html.includes('<span id="status-version"></span>'));
+check('the status bar is gone; APP_VERSION stays a semver for the changelog', () => {
+  assert(!html.includes('status-version') && !html.includes('class="status-bar"'));
   assert(!/v5\.0/.test(html));
-  assert(script.includes("document.getElementById('status-version')"));
-  assert(script.includes('`Raidsmith v${APP_VERSION}`'));
   assert(/^\d+\.\d+\.\d+$/.test(APP_VERSION));
 });
 
@@ -156,7 +154,7 @@ function makeCardEnv(current) {
       Config: { Raids: {} },
       switchGameVersion: v => calls.push(v),
     },
-    extraSource: app.slice('function renderVersionComparison', '// Status bar version') + '\nglobalThis.api = { renderVersionComparison, onVersionCardClick, esc };',
+    extraSource: app.slice('function renderVersionComparison', '// Asks, then removes one landing row') + '\nglobalThis.api = { renderVersionComparison, onVersionCardClick, esc };',
   }).api;
   return { table, calls, cardFor, ...api };
 }

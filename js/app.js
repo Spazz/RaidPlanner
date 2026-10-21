@@ -108,12 +108,6 @@ function onVersionCardClick(event) {
   if (table) table.addEventListener('click', onVersionCardClick);
 })();
 
-// Status bar version, set once from APP_VERSION (js/changelog.js).
-(function initStatusVersion() {
-  const el = document.getElementById('status-version');
-  if (el) el.textContent = `Raidsmith v${APP_VERSION}`;
-})();
-
 // Asks, then removes one landing row: a working plan (kind 'plan', id = its plan key) or a saved
 // copy (kind 'copy', id = its name). Resolves true only when something was removed. Declining keeps it.
 async function deleteSavedEntry(kind, id, label) {
@@ -307,22 +301,19 @@ const LandingSample = {
 })();
 
 // ── HEADER MENUS (nav slim-down) ─────────────────────────────────
-// Share, and one menu (gear) holding the Plan, Sign-ups and Data & help sections.
+// Share, and one More menu holding Changes, Raid settings, Reference comp, Raid notes and the Plan, Sign-ups and Data & help sections.
 (function initToolbarMenus() {
-  Menu.init(document.getElementById('btn-version-menu'), document.getElementById('version-menu'));
   Menu.init(document.getElementById('btn-share-menu'), document.getElementById('share-menu'));
   Menu.init(document.getElementById('btn-settings-menu'), document.getElementById('settings-menu'));
 })();
 
-// ── RAID NOTES TOGGLE (desktop action row) ───────────────────────
-// On desktop the notes panel's own summary is hidden and this button opens it;
-// on phones the panel sits in the context row and keeps its summary.
+// ── RAID NOTES TOGGLE (More menu) ─────────────────────────────────
+// The More menu item opens the notes panel under the Raid check strip; the panel's own summary closes it.
 function syncRaidNotesToggle() {
   const panel = document.getElementById('raid-notes-panel');
   const toggle = document.getElementById('btn-raid-notes-toggle');
   if (!panel || !toggle) return;
   toggle.setAttribute('aria-expanded', String(panel.open));
-  document.getElementById('raid-notes-chevron').innerHTML = panel.open ? '&#9662;' : '&#9656;';
 }
 (function initRaidNotesToggle() {
   const panel = document.getElementById('raid-notes-panel');
@@ -368,6 +359,47 @@ function closeCoverageDialog() {
   dialog.addEventListener('click', (e) => { if (e.target === dialog) closeCoverageDialog(); });
 })();
 
+// ── RAID SETTINGS DIALOG ──────────────────────────────────────────
+// More > Raid settings: the raid size and game version segments, the sign-ups source and the live link state. A choice applies at
+// once, as the toolbar and the Version menu did, and closes the dialog: the board changed behind it and the toast (which
+// cannot show above a modal) says what moved. The version switch asks first, so the dialog closes before the confirm opens
+// and comes back if the answer is no.
+function openRaidSettingsDialog() {
+  const dialog = document.getElementById('raid-settings-dialog');
+  const trigger = document.getElementById('btn-raid-settings');
+  if (!dialog || dialog.open || typeof dialog.showModal !== 'function') return;
+  renderPlanHead();
+  renderRaidSizeControl();
+  dialog.showModal();
+  trigger?.setAttribute('aria-expanded', 'true');
+  FocusTrap.open(dialog, document.getElementById(PHONE_QUERY.matches ? 'btn-phone-more' : 'btn-settings-menu'));
+}
+function closeRaidSettingsDialog() {
+  const dialog = document.getElementById('raid-settings-dialog');
+  if (dialog && dialog.open) dialog.close();
+}
+(function initRaidSettingsDialog() {
+  const dialog = document.getElementById('raid-settings-dialog');
+  const trigger = document.getElementById('btn-raid-settings');
+  if (!dialog || !trigger) return;
+  trigger.addEventListener('click', openRaidSettingsDialog);
+  document.getElementById('btn-close-raid-settings').addEventListener('click', closeRaidSettingsDialog);
+  dialog.addEventListener('close', () => {
+    trigger.setAttribute('aria-expanded', 'false');
+    FocusTrap.close(dialog);
+  });
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) closeRaidSettingsDialog(); });
+  // The size control's own handler (render.js) has already switched the size when this bubbles up.
+  document.getElementById('raid-size-control').addEventListener('click', (e) => { if (e.target.closest('[data-raid-size]')) closeRaidSettingsDialog(); });
+  document.getElementById('raid-version-control').addEventListener('click', async (e) => {
+    const button = e.target.closest('[data-version]');
+    if (!button || button.dataset.version === State.gameVersion) return;
+    closeRaidSettingsDialog();
+    const switched = await switchGameVersion(button.dataset.version);
+    if (!switched && State.view === 'app') openRaidSettingsDialog();
+  });
+})();
+
 // ── PHONE "MORE" SHEET ────────────────────────────────────────────
 (function initMoreSheet() {
   const sheet = document.getElementById('mobile-more-sheet');
@@ -395,20 +427,14 @@ function closeCoverageDialog() {
 })();
 
 // ── RESPONSIVE CHROME ─────────────────────────────────────────────
-// Phone width hides the desktop header and action row: Undo, Optimize and Share
-// go to a fixed bottom bar, the Raid size control to line 2 of the context row, the plan name to its Edit body, and the gear menu's
-// three sections to the More sheet. Rather than duplicating every action as a
-// second button — which drifts out of sync — the SAME element physically moves
-// between its desktop slot and its phone slot. A comment node left at each
-// element's original position lets it snap back to that exact spot when the
-// viewport widens again. Slots fill in list order.
+// On a phone the head's actions row is the fixed bottom bar (CSS): Undo, Optimize, Share and More stay where they are.
+// The More menu's items have one id each, so the SAME elements physically move into the More sheet and snap back to the
+// menu when the viewport widens (a comment node left at each element's original position remembers the spot). Redo sits
+// in the sheet's first group on a phone. Slots fill in list order.
 (function initResponsiveChrome() {
-  const slots = ['version-menu-wrap:phone-version-slot', 'btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
-    'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot',
-    'btn-redo:phone-sheet-quick-slot', 'btn-changes:phone-sheet-quick-slot',
+  const slots = ['btn-redo:phone-sheet-quick-slot', 'btn-changes:phone-sheet-quick-slot', 'btn-raid-settings:phone-sheet-quick-slot', 'btn-ideal-comp-link:phone-sheet-quick-slot', 'btn-raid-notes-toggle:phone-sheet-quick-slot',
     'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-split-plan:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
     'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
-    'raid-notes-panel:phone-context-notes-slot',
     'btn-export-backup:phone-sheet-data-slot', 'btn-import-backup:phone-sheet-data-slot', 'btn-shortcuts-help:phone-sheet-data-slot', 'btn-show-tips-again:phone-sheet-data-slot',
   ].map(pair => {
     const [elId, phoneSlotId] = pair.split(':');
@@ -428,13 +454,6 @@ function closeCoverageDialog() {
         slot.anchor.parentNode.insertBefore(slot.el, slot.anchor.nextSibling);
       }
     }
-    // Shorter label in the thumb-width phone bottom bar (plain "Share"); the
-    // fuller desktop text "Share and export…" comes back once
-    // btn-share-main is a Share-menu item again instead of a bottom-bar button.
-    const shareLabel = document.querySelector('#btn-share-main .btn-label');
-    // Written only when it changes: sync() also runs on every resize.
-    const label = isPhone ? 'Share' : 'Share and export…';
-    if (shareLabel && shareLabel.textContent !== label) shareLabel.textContent = label;
   }
   PHONE_QUERY.addEventListener('change', sync);
   // A page whose viewport is still settling while this runs (seen in an embedded
@@ -446,29 +465,6 @@ function closeCoverageDialog() {
   sync();
 })();
 
-// Phone context summary: line 1 is the plan name (a button that expands the Edit
-// body in place); line 2 holds the seated count, Raid size and missing link. Collapsed by default; the choice
-// is remembered for the session only.
-const PHONE_CONTEXT_STORAGE_KEY = 'pp_phone_context_open';
-function setPhoneContextOpen(open, persist = true) {
-  const toggle = document.getElementById('phone-summary-toggle');
-  const body = document.getElementById('phone-context-body');
-  if (!toggle || !body) return;
-  toggle.setAttribute('aria-expanded', String(open));
-  body.hidden = !open;
-  document.getElementById('phone-summary-edit-label').textContent = open ? 'Done' : 'Edit';
-  document.getElementById('phone-summary-chevron').innerHTML = open ? '&#9652;' : '&#9662;';
-  if (persist) safeSetItem(sessionStorage, PHONE_CONTEXT_STORAGE_KEY, open ? '1' : '0');
-}
-(function initPhoneContextToggle() {
-  const toggle = document.getElementById('phone-summary-toggle');
-  if (!toggle) return;
-  let open = false;
-  try { open = sessionStorage.getItem(PHONE_CONTEXT_STORAGE_KEY) === '1'; } catch (e) {}
-  setPhoneContextOpen(open, false);
-  toggle.addEventListener('click', () => setPhoneContextOpen(toggle.getAttribute('aria-expanded') !== 'true'));
-})();
-
 // ── ACTION BUTTONS ──────────────────────────────────────────────
 // "Last Optimize: 8 moved, Windfury +4 melee": the toast's wording in short form.
 function renderLastRun(summary) {
@@ -476,7 +472,7 @@ function renderLastRun(summary) {
   if (!el) return;
   if (!summary) { el.innerHTML = ''; return; }
   const parts = [`${summary.moved} moved`].concat(reachParts(summary.reach));
-  el.innerHTML = `&middot; Last Optimize: ${parts.join(', ')}`;
+  el.textContent = `Last Optimize: ${parts.join(', ')}`;
 }
 
 // Optimize wipes the leader's totem/aura picks, so the toast says so when it did.
@@ -581,7 +577,10 @@ document.getElementById('btn-random').addEventListener('click', async () => {
 
 document.getElementById('btn-save').addEventListener('click', showSaveModal);
 document.getElementById('btn-templates').addEventListener('click', showTemplatesModal);
-document.getElementById('btn-load').addEventListener('click', () => { showView('landing'); document.querySelector('.import-tab[data-pane="saved"]').click(); });
+// Open saved plan, and the head's "Your plans" back link: the landing's Your plans tab.
+function openSavedPlans() { showView('landing'); document.querySelector('.import-tab[data-pane="saved"]').click(); }
+document.getElementById('btn-load').addEventListener('click', openSavedPlans);
+document.getElementById('btn-back-plans').addEventListener('click', openSavedPlans);
 
 // ── SECOND TAB ──────────────────────────────────────────────────
 // Another tab saving the plan open here (the storage event only reaches other
@@ -1099,6 +1098,7 @@ const LiveSync = {
     status.textContent = this.statusText('Saved on this device');
     const line = document.getElementById('roster-status-line');
     if (line) line.textContent = status.textContent;
+    if (typeof renderPlanHead === 'function') renderPlanHead(); // the head's context line names the live link state
   },
 
   start() {
@@ -2158,7 +2158,7 @@ function switchTab(tab) {
 
   // Show/hide plan-mode-only sections, plus the header and action-row controls
   // marked .plan-only (Optimize, Undo/Redo, plan name, Share, menu, notes, missing).
-  const planOnly = ['phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'notice-slot', 'raid-notes-panel', 'changes-log-panel'].map(
+  const planOnly = ['manual-changes', 'bench-section', 'notice-slot', 'raid-notes-panel', 'changes-log-panel'].map(
     cls => document.querySelector('.' + cls) || document.getElementById(cls)
   ).filter(Boolean);
   for (const el of [...planOnly, ...document.querySelectorAll('.plan-only')]) {
@@ -2184,10 +2184,10 @@ function switchTab(tab) {
     const back = document.getElementById('btn-back-to-raid');
     if (back) back.focus();
   }
-  // Back from the reference comp: the link that opened it is visible again, so focus goes there
-  // (the phone link, then the phone summary toggle, when the desktop one is not shown).
+  // Back from the reference comp: the More menu item that opened it sits in a closed menu, so focus goes to the More button
+  // (the desktop one, then the phone one, whichever is shown).
   if (leavingReference) {
-    for (const id of ['btn-ideal-comp-link', 'btn-ideal-comp-link-phone', 'phone-summary-toggle']) {
+    for (const id of ['btn-settings-menu', 'btn-phone-more']) {
       const el = document.getElementById(id);
       if (!el) continue;
       el.focus();
@@ -2261,12 +2261,10 @@ function renderIdealComp() {
   const balanceEl = document.getElementById('balance-warnings');
   if (balanceEl) balanceEl.innerHTML = '';
 
-  document.getElementById('status-text').textContent = `Reference ${raidInfo.size}-man comp`;
 }
 
-// Reference comp is a quiet link in the action row (desktop) and the Edit body (phone).
+// Reference comp is a More menu item (a More sheet item on a phone).
 document.getElementById('btn-ideal-comp-link').addEventListener('click', () => switchTab('ideal'));
-document.getElementById('btn-ideal-comp-link-phone').addEventListener('click', () => switchTab('ideal'));
 document.getElementById('btn-back-to-raid').addEventListener('click', () => switchTab('plan'));
 
 // ── GLOBAL KEYBOARD SHORTCUTS (feature-backlog-2.md #8) ──────────

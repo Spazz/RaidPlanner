@@ -32,30 +32,21 @@ check('the era band, the brand link and the planner-home link are gone, with the
   assert.ok(!/\.game-header(?![\w-])|\.game-header-(?:inner|brand|links)/.test(css), 'era band CSS left in app.css');
 });
 
-check('the title bar holds an h1.sr-only that can take focus', () => {
-  const bar = html.slice(html.indexOf('<div class="title-bar">'));
-  assert.match(bar.slice(0, 200), /^<div class="title-bar">\s*<h1 class="sr-only" tabindex="-1">Raidsmith<\/h1>/);
+check('the plan view has no title bar: its h1 is the plan name button in the head, after the Your plans back link', () => {
+  assert.ok(!html.includes('class="title-bar"') && !/\.title-bar/.test(css), 'the title bar is gone');
+  const head = html.slice(html.indexOf('<header class="gs-pb-planhead"'), html.indexOf('</header>', html.indexOf('<header class="gs-pb-planhead"')));
+  const back = head.indexOf('id="btn-back-plans"'), h1 = head.indexOf('<h1 class="gs-pb-h1 plan-only" tabindex="-1">'), name = head.indexOf('id="roster-name"');
+  assert.ok(back >= 0 && back < h1 && h1 < name, 'order back link, h1, roster-name');
+  assert.ok(!/title-home/.test(html + css));
 });
 
-check('the phone block keeps the 44px tap area around the version button', () => {
-  const at = css.indexOf('@media (max-width: 600px)');
-  const block = css.slice(css.indexOf('/* Version tabs in the shell', at));
-  const v = block.match(/\.version-btn::before\s*\{([^}]*)\}/);
-  assert.ok(v, 'no .version-btn::before in the phone block');
-  assert.match(v[1], /inset:\s*-6px 0/, '32px button + 6px up and down = a 44px tall tap area');
-  assert.match(block, /\.version-btn\s*\{[^}]*min-height:\s*32px[^}]*position:\s*relative/);
-});
-
-check('the plan name is larger and gold, with the underline-only hover', () => {
-  const rule = css.match(/\.roster-name\s*\{([^}]*)\}/)[1];
-  assert.match(rule, /font-size:\s*15px/);
-  assert.match(rule, /font-weight:\s*700/);
-  assert.match(rule, /color:\s*var\(--btn-primary-bg\)/, 'the plan name uses the Optimize button gold');
-  assert.match(rule, /letter-spacing:\s*0\.08em/);
-  assert.match(css, /\.roster-name:hover\s*\{[^}]*var\(--btn-primary-bg\)[^}]*underline/);
-  assert.match(css, /\.roster-name svg\s*\{[^}]*opacity:\s*0\.7/);
-  assert.match(css, /#phone-plan-name-slot \.roster-name\s*\{[^}]*font-size:\s*15px/);
-  assert.match(css, /#roster-name-text\s*\{[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis/);
+check('the plan name is a 28px white h1 button with the underline-only hover and an ellipsis that lets it give way first', () => {
+  const g = read('guild.css');
+  assert.match(g, /\.gs-pb-h1 \{[^}]*font: 700 28px\/1\.15[^}]*color: var\(--hd-white\)/);
+  assert.match(g, /\.gs-pb-name:hover \{ text-decoration: underline;/);
+  assert.match(g, /\.gs-pb-name svg \{[^}]*opacity: 0\.6/);
+  assert.match(g, /#roster-name-text \{[^}]*min-width: 0;[^}]*text-overflow: ellipsis/);
+  assert.doesNotMatch(css, /\.roster-name\b|\.version-btn|\.share-btn|\.btn-icon\b/, 'the title-bar button rules are gone from app.css');
 });
 
 // ── 4.4.0: one planner header row, one landing brand row, Share menu headings ──
@@ -99,77 +90,50 @@ check('showView sets body[data-planner-view], fires planner:view, ends the full 
   assert.ok(!/era-band|eraBand/.test(body), 'showView no longer touches the era band');
 });
 
-check('the title bar runs h1.sr-only, then the plan name', () => {
-  const bar = html.slice(html.indexOf('<div class="title-bar">'));
-  const h1 = bar.indexOf('<h1 class="sr-only" tabindex="-1">'), name = bar.indexOf('id="roster-name"');
-  assert.ok(h1 >= 0 && h1 < name, 'order h1, roster-name');
-  assert.ok(!/title-home/.test(html + css));
-});
-
-check('the title bar is 32px tall', () => {
-  assert.match(css.match(/\.title-bar\s*\{([^}]*)\}/)[1], /height:\s*32px/);
-});
-
-check('the version button and menu sit before Share, with radio items in era order', () => {
-  const bar = html.slice(html.indexOf('<div class="title-right'));
-  assert.ok(bar.indexOf('id="version-menu-wrap"') < bar.indexOf('id="btn-share-menu"'));
-  const btn = bar.match(/<button [^>]*id="btn-version-menu"[^>]*>/)[0];
-  assert.match(btn, /title="Switch game version"/);
-  assert.match(btn, /aria-label="Game version: TBC Anniversary"/);
-  assert.match(bar, /<div class="menu" id="version-menu" role="menu" aria-label="Game version" hidden>/);
-  const items = [...bar.slice(bar.indexOf('id="version-menu"')).matchAll(/<button [^>]*role="menuitemradio"[^>]*data-version="(\w+)"[^>]*>([^<]*)/g)];
+check('the version segments live in Raid settings, in era order; the title-bar version button and menu are gone', () => {
+  assert.ok(!/btn-version-menu|id="version-menu|version-btn-text|version-menu-wrap/.test(html + appJs + renderJs));
+  const dialog = sliceBetween(html, '<dialog id="raid-settings-dialog"', '</dialog>');
+  const items = [...dialog.slice(dialog.indexOf('id="raid-version-control"')).matchAll(/<button [^>]*data-version="(\w+)"[^>]*aria-label="([^"]+)"[^>]*>([^<]*)/g)];
   assert.deepEqual(items.map(m => m[1]), ['classic', 'tbc', 'forever']);
-  assert.deepEqual(items.map(m => m[2]), ['WoW Classic', 'TBC Anniversary', 'WoW Forever']);
-  assert.match(bar, /WoW Forever<span class="game-beta">Beta<\/span>/);
+  assert.deepEqual(items.map(m => m[2]), ['WoW Classic', 'TBC Anniversary', 'WoW Forever Beta']);
+  assert.deepEqual(items.map(m => m[3]), ['Classic', 'TBC', 'Forever beta']);
+  assert.match(dialog, /id="raid-size-control" role="group" aria-labelledby="raid-size-label"/);
 });
 
-function runSync(version, confirmCalls, docExtra = {}) {
-  const code = sliceBetween(renderJs, 'const VERSION_BUTTON_TEXT', '// Switching version refits');
-  const attrs = {}, text = {};
-  const button = { dataset: {}, focused: 0, focus() { this.focused++; }, setAttribute: (k, v) => { attrs.button = Object.assign(attrs.button || {}, { [k]: v }); } };
-  const items = ['classic', 'tbc', 'forever'].map(v => ({ dataset: { version: v }, checked: null, setAttribute(k, val) { if (k === 'aria-checked') this.checked = val; } }));
-  const tabs = [];
-  const els = { 'btn-version-menu': button, 'version-btn-text': { set textContent(v) { text.btn = v; } }, 'btn-landing-random': {}, 'btn-optimize': {} };
+function runSync(version, { modeled = true } = {}) {
+  const code = sliceBetween(renderJs, 'function syncVersionControls', '// Switching version refits');
+  const optimize = { disabled: null, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; } };
+  const reason = { hidden: true, textContent: '' };
+  const segs = ['classic', 'tbc', 'forever'].map(v => ({ dataset: { version: v }, pressed: null, setAttribute(k, val) { if (k === 'aria-pressed') this.pressed = val; } }));
+  const tabs = ['classic', 'tbc', 'forever'].map(v => ({ dataset: { version: v }, pressed: null, setAttribute(k, val) { if (k === 'aria-pressed') this.pressed = val; } }));
+  const els = { 'btn-landing-random': {}, 'btn-optimize': optimize, 'optimize-reason': reason };
   const sandbox = {
     State: { gameVersion: version, selectedRaid: 'r' }, Config: { Raids: { r: { size: 25 } } },
-    GameVersions: { classic: { note: '' }, tbc: { note: '' }, forever: { note: '' } },
-    renderRaidSizeControl() {}, switchGameVersion: v => confirmCalls.push(v),
-    document: Object.assign({ body: {}, activeElement: null, querySelector: () => null, getElementById: id => els[id], querySelectorAll: sel => (sel === '#version-menu [data-version]' ? items : tabs) }, docExtra),
+    GameVersions: { classic: { modeled: true }, tbc: { modeled }, forever: { modeled: true } },
+    renderRaidSizeControl() {}, switchGameVersion() {},
+    document: { getElementById: id => els[id], querySelectorAll: sel => (sel === '#raid-version-control [data-version]' ? segs : tabs) },
   };
   vm.runInNewContext(code + '\nsyncVersionControls();', sandbox);
-  return { button, attrs, text, items };
+  return { optimize, reason, segs, tabs };
 }
-check('syncVersionControls sets the version button text, data-version, aria-label and the items aria-checked', () => {
-  const expected = { classic: ['Classic', 'WoW Classic'], tbc: ['TBC', 'TBC Anniversary'], forever: ['Forever', 'WoW Forever Beta'] };
-  for (const v of Object.keys(expected)) {
-    const r = runSync(v, []);
-    assert.equal(r.text.btn, expected[v][0]);
-    assert.equal(r.button.dataset.version, v);
-    assert.equal(r.attrs.button['aria-label'], 'Game version: ' + expected[v][1]);
-    assert.deepEqual(r.items.map(i => i.checked), ['classic', 'tbc', 'forever'].map(x => String(x === v)));
+check('syncVersionControls marks the era tabs and the Raid settings segments; an unmodeled version disables Optimize and says why beside it', () => {
+  for (const v of ['classic', 'tbc', 'forever']) {
+    const r = runSync(v);
+    assert.deepEqual(r.segs.map(s => s.pressed), ['classic', 'tbc', 'forever'].map(x => String(x === v)));
+    assert.deepEqual(r.tabs.map(s => s.pressed), ['classic', 'tbc', 'forever'].map(x => String(x === v)));
+    assert.equal(r.optimize.disabled, false);
+    assert.equal(r.reason.hidden, true);
   }
+  const off = runSync('tbc', { modeled: false });
+  assert.equal(off.optimize.disabled, true);
+  assert.equal(off.optimize.attrs['aria-describedby'], 'optimize-reason');
+  assert.equal(off.reason.hidden, false);
+  assert.match(off.reason.textContent, /needs rules for this version/);
 });
-check('picking a version item calls switchGameVersion with its version', () => {
-  const calls = [];
-  const r = runSync('tbc', calls);
-  r.items[0].onclick(); r.items[2].onclick();
-  assert.deepEqual(calls, ['classic', 'forever']);
-});
-check('after a version pick resolves, focus returns to the version button unless a dialog or a visible element has it', async () => {
-  const hiddenItem = { closest: sel => (sel === '#version-menu' ? {} : null) };
-  const visible = { closest: () => null };
-  const cases = [
-    [{ activeElement: hiddenItem }, 1, 'focus on the hidden menu item'],
-    [{ activeElement: null }, 1, 'no focus'],
-    [{ activeElement: visible }, 0, 'focus already on a visible element'],
-    [{ activeElement: hiddenItem, querySelector: sel => (sel === 'dialog[open]' ? {} : null) }, 0, 'a dialog is open'],
-  ];
-  for (const [doc, focused, why] of cases) {
-    const r = runSync('tbc', [], doc);
-    r.items[0].onclick();
-    await new Promise(res => setTimeout(res, 0));
-    assert.equal(r.button.focused, focused, why);
-  }
+check('picking a version in Raid settings closes the dialog first (never stacked), switches, and reopens it when the confirm is declined', () => {
+  const src = sliceBetween(appJs, 'function openRaidSettingsDialog', '// ── PHONE "MORE" SHEET');
+  assert.match(src, /raid-version-control'\)\.addEventListener\('click', async \(e\) => \{[\s\S]*closeRaidSettingsDialog\(\);\s*const switched = await switchGameVersion\(button\.dataset\.version\);\s*if \(!switched && State\.view === 'app'\) openRaidSettingsDialog\(\);/);
+  assert.match(src, /raid-size-control'\)\.addEventListener\('click', \(e\) => \{ if \(e\.target\.closest\('\[data-raid-size\]'\)\) closeRaidSettingsDialog\(\); \}\);/);
 });
 
 check('Menu keyboard navigation includes menuitemradio items', () => {
@@ -182,17 +146,18 @@ check('Menu keyboard navigation includes menuitemradio items', () => {
   assert.match(code, /closest\('\[role="menuitem"\], \[role="menuitemradio"\]'\)/);
 });
 
-check('the phone slot list moves the version wrap beside the plan-name toggle in the top bar', () => {
-  assert.match(appJs, /const slots = \['version-menu-wrap:phone-version-slot', 'btn-undo:phone-bar-undo-slot'/);
-  const bar = sliceBetween(html, 'id="shell-topbar-plan"', 'id="shell-topbar-account"');
-  const line1 = bar.indexOf('class="phone-summary-line1"'), b = bar.indexOf('id="phone-summary-toggle"'), c = bar.indexOf('id="phone-version-slot"');
-  assert.ok(line1 > 0 && line1 < b && b < c, 'line 1, toggle, version slot');
-  const wrap = html.slice(html.indexOf('id="phone-summary-wrap"'), html.indexOf('id="phone-context-body"'));
-  assert.ok(!wrap.includes('phone-summary-line1') && wrap.includes('class="phone-summary-line2"'), 'the wrap keeps line 2 only');
+check('the More menu lists Changes, Raid settings, Reference comp, Raid notes, then Plan, Sign-ups and Data & help', () => {
+  const menu = sliceBetween(html, '<div class="menu gs-menu-list gs-pb-menu" id="settings-menu"', 'id="btn-phone-more"');
+  const labels = [...menu.matchAll(/<div class="menu-heading[^"]*" id="menu-heading-\w+">([^<]+)</g)].map(m => m[1]);
+  assert.deepEqual(labels, ['Plan', 'Sign-ups', 'Data &amp; help']);
+  const ids = [...menu.matchAll(/ id="(btn-[\w-]+)"/g)].map(m => m[1]);
+  assert.deepEqual(ids, ['btn-changes', 'btn-raid-settings', 'btn-ideal-comp-link', 'btn-raid-notes-toggle',
+    'btn-new-plan', 'btn-load', 'btn-save', 'btn-templates', 'btn-split-plan', 'btn-clear',
+    'btn-refresh', 'btn-attendance', 'btn-random', 'btn-export-backup', 'btn-import-backup', 'btn-shortcuts-help', 'btn-show-tips-again']);
 });
 
 check('the Share menu has three headed groups, then Share and export last', () => {
-  const menu = sliceBetween(html, '<div class="menu" id="share-menu"', '<button type="button" class="menu-item" role="menuitem" id="btn-share-main"');
+  const menu = sliceBetween(html, '<div class="menu gs-menu-list gs-pb-menu" id="share-menu"', '<button type="button" class="menu-item" role="menuitem" id="btn-share-main"');
   const groups = [...menu.matchAll(/<div role="group" aria-labelledby="(menu-heading-\w+)">\s*<div class="menu-heading" id="\1">([^<]+)<\/div>([\s\S]*?)<\/div>\s*(?=<div class="menu-sep"><\/div>)/g)];
   assert.deepEqual(groups.map(g => [g[1], g[2]]), [['menu-heading-game', 'Into the game'], ['menu-heading-raid', 'Send to the raid'], ['menu-heading-other', 'Other']]);
   const ids = g => [...g[3].matchAll(/id="(btn-[\w-]+)"/g)].map(m => m[1]);
@@ -216,14 +181,12 @@ check('the landing has no brand row of its own: version tabs in the top bar, no 
   assert.match(landing, /^<main class="landing" id="landing-view">\s*<h1 class="sr-only" tabindex="-1">Raidsmith<\/h1>/);
 });
 
-check('top-bar rules: the planner slot hides on guild sections and static pages, tabs on the landing, the header row on the plan', () => {
+check('top-bar rules: the planner slot hides on guild sections and static pages and holds the version tabs on the landing only', () => {
   assert.match(css, /body\.shell-section-guild #shell-topbar-plan, body\.shell-section-page #shell-topbar-plan \{ display: none; \}/);
   assert.match(css, /#shell-topbar-plan \{[^}]*flex: 1 1 0;[^}]*min-width: 0/);
   assert.match(css, /body\[data-planner-view="landing"\] #shell-topbar-plan \.game-version-nav \{ display: flex/);
-  assert.match(css, /@media \(min-width: 601px\) \{\s*body\[data-planner-view="app"\] #shell-topbar-plan \.title-bar \{ display: flex; \}/);
-  assert.match(css, /@media \(max-width: 600px\) \{[^@]*body\[data-planner-view="app"\] #shell-topbar-plan \.phone-summary-line1 \{ display: flex/);
-  assert.match(css, /#shell-topbar-plan \.title-bar \{[^}]*zoom: 1\.5/, 'the header row keeps the planner scale');
-  assert.match(css, /#shell-topbar-plan #roster-name-text \{[^}]*text-overflow: ellipsis/, 'the plan name gives way first');
+  assert.match(css, /#shell-topbar-plan \.game-version-nav \{ display: none; \}/, 'the plan view leaves the slot empty: its head is inside the page');
+  assert.doesNotMatch(css, /#shell-topbar-plan \.(title-bar|phone-summary-line1|roster-name)/);
   assert.ok(!/#shell-topbar-plan \{[^}]*position:\s*sticky/.test(css), 'the top bar is not sticky');
 });
 

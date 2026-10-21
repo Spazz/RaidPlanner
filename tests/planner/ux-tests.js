@@ -471,7 +471,7 @@ return { ${exported.join(', ')} };
   });
 
   await check('renderSummaryBar announces through announce()', () => {
-    const fn = app.slice('function renderSummaryBar', 'function updateStatus');
+    const fn = app.slice('function renderSummaryBar', '// ── PLAN HEAD');
     assert(/lastRaidSummary = describeRaidSummary\(/.test(fn) && /announce\(lastRaidSummary\)/.test(fn));
   });
 

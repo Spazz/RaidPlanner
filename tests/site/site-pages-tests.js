@@ -160,7 +160,10 @@ check('index.html carries the shell skeleton: every id, in order, with the plann
   const root = indexHtml.slice(rootStart, rootEnd);
   for (const part of ['id="landing-view"', 'id="app"', '<dialog id="share-dialog"', '<dialog id="confirm-dialog"', 'id="planner-notice"']) assert(root.includes(part), part + ' inside #planner-root');
   const plan = indexHtml.slice(at('shell-topbar-plan'), at('shell-topbar-account'));
-  for (const part of ['class="game-version-nav"', 'class="title-bar"', 'id="roster-name"', 'id="btn-share-menu"', 'id="btn-settings-menu"', 'class="phone-summary-line1"', 'id="phone-summary-toggle"', 'id="phone-version-slot"']) assert(plan.includes(part), part + ' in the planner top bar');
+  assert(plan.includes('class="game-version-nav"'), 'the version tabs stay in the planner top bar for the landing');
+  for (const part of ['class="title-bar"', 'id="roster-name"', 'id="btn-share-menu"', 'id="btn-settings-menu"', 'phone-summary', 'phone-version-slot']) assert(!plan.includes(part), part + ' left the planner top bar: the plan head lives in main#app');
+  const appMain = indexHtml.slice(indexHtml.indexOf('<main class="addon-frame gs-forge" id="app"'));
+  for (const part of ['<header class="gs-pb-planhead" id="plan-head">', 'id="btn-back-plans"', 'id="roster-name"', 'id="plan-chip"', 'id="plan-context"', 'id="btn-undo"', 'id="btn-redo"', 'id="btn-share-menu"', 'id="btn-settings-menu"', 'id="btn-optimize"']) assert(appMain.includes(part), part + ' in the plan head');
   assert(!plan.includes('phone-home-slot') && !plan.includes('planner-home'));
   // The planner's other body-level pieces stay outside the shell.
   const afterShell = indexHtml.slice(indexHtml.indexOf('<div id="guild-dialogs">'));
@@ -169,8 +172,9 @@ check('index.html carries the shell skeleton: every id, in order, with the plann
   assert(/<div id="planner-notice"><\/div>/.test(indexHtml));
   assert(/<h2 tabindex="-1">Planner<\/h2>\s*<p>Import sign-ups or open a saved plan\. Plans save in this browser\.<\/p>/.test(indexHtml));
   assert(indexHtml.includes('New to Raidsmith? <a href="#how-it-works" data-action="how-it-works">How it works</a>'));
-  assert(indexHtml.includes('<h1 class="sr-only" tabindex="-1">Raidsmith</h1>'), 'the landing h1 and the title bar h1 can take focus');
-  assert.equal((indexHtml.match(/<h1 class="sr-only" tabindex="-1">/g) || []).length, 2);
+  assert(indexHtml.includes('<h1 class="sr-only" tabindex="-1">Raidsmith</h1>'), 'the landing h1 can take focus');
+  assert.equal((indexHtml.match(/<h1 class="sr-only" tabindex="-1">/g) || []).length, 1);
+  assert.equal((indexHtml.match(/<h1 class="gs-pb-h1 plan-only" tabindex="-1">/g) || []).length, 1, 'the plan name is the plan view h1 and can take focus');
 });
 
 check('index.html loads util.js first, site-pages.js after the planner scripts, then the guild tail; vercel.json only rewrites the plan links', () => {

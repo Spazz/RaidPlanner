@@ -40,7 +40,8 @@ ${app.slice('const ResultLine = {', 'function persistWorkingPlan')}
 ${app.slice('function renderManualChanges', '// ── CONFIRM DIALOG')}
 var lastAnnouncement = '', lastRaidSummary = ''; function announce(m) { __announced.push(m); }
 ${app.slice('function describeRaidSummary', '// One polite, atomic sr-only region')}
-${app.slice('function renderSummaryBar', 'function updateStatus')}
+${app.slice('function renderSummaryBar', '// ── PLAN HEAD')}
+function renderPlanHead() {}
 `;
   const announced = [];
   const ctx = app.sandbox(NAMES, { globals: { document, __announced: announced, commit() {}, ...globals }, extraSource });
@@ -321,7 +322,7 @@ const dialogHtml = () => { const a = htmlText.indexOf('<dialog id="coverage-dial
 
 check('index.html: the Raid check strip sits above the Groups line and the board; the right rail, summary bar, banner chips and phone sheet are gone', () => {
   assert.match(htmlText, /<section class="gs-hd-panel gs-pb-check" id="raid-check" aria-label="Raid check" hidden>/);
-  const order = ['id="changes-log-panel"', 'id="raid-check"', 'id="manual-changes"', 'id="campfire-panel"', 'id="groups-line"', 'id="groups-container"'];
+  const order = ['id="raid-check"', 'id="manual-changes"', 'id="raid-notes-panel"', 'id="changes-log-panel"', 'id="campfire-panel"', 'id="groups-line"', 'id="groups-container"'];
   let at = -1;
   for (const part of order) { const i = htmlText.indexOf(part); assert(i > at, part + ' comes in order'); at = i; }
   assert.match(htmlText, /<section class="gs-hd-panel gs-pb-manual" id="manual-changes" aria-label="Manual changes" hidden>/);
@@ -357,7 +358,7 @@ check('the tooltip portal stays a body-level element, and #autosave-status stays
 });
 
 check('the notice slot keeps the save-failed chip and the result line with their ids, for the notice queue', () => {
-  const slot = htmlText.slice(htmlText.indexOf('id="notice-slot"'), htmlText.indexOf('id="autosave-status"'));
+  const slot = htmlText.slice(htmlText.indexOf('id="notice-slot"'), htmlText.indexOf('id="raid-context-banner"'));
   for (const part of ['id="save-failed" hidden', 'id="save-failed-chip"', 'id="result-line" hidden', 'id="result-line-text"', 'id="btn-result-dismiss" aria-label="Dismiss"']) assert(slot.includes(part), part);
   assert.doesNotMatch(htmlText, /plan-feedback/);
   const script = app.script.replace(/\r\n/g, '\n');
@@ -430,7 +431,7 @@ check('imports, Optimize and the sync set the line after their commit; persistWo
   const optimize = script.slice(script.indexOf("getElementById('btn-optimize').addEventListener"), script.indexOf("getElementById('btn-clear').addEventListener"));
   assert(optimize.indexOf('ResultLine.show(message)') > optimize.indexOf('commit();'), 'Optimize sets the line after its commit');
   assert(script.includes('if (entry && ChangeLog.countsText(entry)) ResultLine.show(`Sign-up sync: ${ChangeLog.countsText(entry)}`)'), 'the sync shows its Changes summary');
-  const persist = app.slice('function persistWorkingPlan', 'function renderPhoneSummary').replace(/\r\n/g, '\n');
+  const persist = app.slice('function persistWorkingPlan', 'function undoPlanChange').replace(/\r\n/g, '\n');
   assert.match(persist, /if \(result\.changed\) \{[^}]*ResultLine\.hide\(\);/);
 });
 

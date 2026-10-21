@@ -21,7 +21,7 @@ const path = require('node:path');
 const app = require('../load-app');
 
 const LIVE_SOURCE = app.slice('const SHARE_API', "document.getElementById('btn-share')");
-const SAVE_SOURCE = app.slice('// Toolbar mirror of the header autosave-status line', "// The phone's context row");
+const SAVE_SOURCE = app.slice('// Mirror of the autosave-status line', 'function undoPlanChange');
 const CLIPBOARD_SOURCE = app.slice('// ── CLIPBOARD', '// ── VERSION AUTO-DETECT');
 const TAB_SOURCE = app.slice('const TabWatch = {', "document.getElementById('btn-tab-load')");
 
@@ -36,7 +36,7 @@ function closePlayerEditor() { __env.closed.push('editor'); }
 function closeBuffPicker() { __env.closed.push('picker'); }
 function renderLastRun() {}
 var ChangesPanel = { setOpen(open) { __env.panelOpen = open; } };
-function renderPhoneSummary() {}
+function renderPlanHead() {}
 var confirm = () => true;
 `;
 

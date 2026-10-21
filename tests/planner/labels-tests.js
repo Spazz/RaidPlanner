@@ -81,8 +81,9 @@ check('help lists G (Copy for MRT) right after L', () => {
   assert.equal(keys.indexOf('G'), keys.indexOf('L') + 1);
 });
 
-check('the phone relabel stays "Share" and the desktop label is the canonical one', () => {
-  assert(/isPhone \? 'Share' : 'Share and export\u2026'/.test(script));
+check('the Share item keeps its canonical label on every width: the phone bottom bar carries the Share menu button, not a relabelled item', () => {
+  assert(!/isPhone \? 'Share'/.test(script));
+  assert(html.includes('<span class="btn-label">Share and export&hellip;</span>'));
 });
 
 check('MRT and live link copy toasts and statuses say what happens', () => {

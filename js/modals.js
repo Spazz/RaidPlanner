@@ -281,7 +281,7 @@ function maybeSuggestVersionSwitch(templateId) {
   dismissBtn.onclick = hideVersionSuggestBanner;
 }
 
-// Toolbar mirror of the header autosave-status line (nav redesign).
+// Mirror of the autosave-status line into the head's sr-only status line (a failed save also shows as the save-failed chip).
 function mirrorSaveStatus() {
   const status = document.getElementById('autosave-status');
   const statusLine = document.getElementById('roster-status-line');
@@ -351,21 +351,7 @@ function persistWorkingPlan() {
   document.getElementById('btn-undo').disabled = !PlanSession.undo.length;
   document.getElementById('btn-redo').disabled = !PlanSession.redo.length;
   mirrorSaveStatus();
-  renderPhoneSummary();
   if (typeof SplitFlow !== 'undefined') SplitFlow.syncMenu();
-}
-
-// The phone's context row: line 1 the plan name, line 2 "seated/size" (plus
-// "· notes" when the plan has some) beside the Raid size control.
-function renderPhoneSummary() {
-  const main = document.getElementById('phone-summary-main');
-  const sub = document.getElementById('phone-summary-sub');
-  if (!main || !sub) return;
-  const raid = Config.Raids[State.selectedRaid];
-  main.textContent = State.rosterName || 'Untitled plan';
-  const hasNotes = !!(State.notes && State.notes.trim());
-  const capacity = raid ? raid.size : 25;
-  sub.textContent = `${State.roster.length}/${capacity}${hasNotes ? ' · notes' : ''}`;
 }
 
 function undoPlanChange() {
@@ -398,6 +384,7 @@ document.getElementById('btn-result-dismiss')?.addEventListener('click', () => {
 function renderReadiness() {
   const strip = document.getElementById('raid-check');
   if (!strip) return;
+  renderPlanHead(); // the head's chip counts the same gaps
   strip.hidden = !hasLoadedWork();
   if (strip.hidden) return;
   const tiles = document.getElementById('raid-check-tiles');
@@ -424,7 +411,6 @@ function syncRaidNotesUI() {
     const badge = document.getElementById(id);
     if (badge) badge.hidden = !hasNotes;
   }
-  renderPhoneSummary();
 }
 
 (function initRaidNotes() {
@@ -432,8 +418,10 @@ function syncRaidNotesUI() {
   if (!el) return;
   el.addEventListener('input', () => {
     State.notes = el.value.slice(0, NOTES_MAX_LENGTH);
-    const badge = document.getElementById('raid-notes-badge');
-    if (badge) badge.hidden = !(State.notes && State.notes.trim());
+    for (const id of ['raid-notes-badge', 'raid-notes-toggle-badge']) {
+      const badge = document.getElementById(id);
+      if (badge) badge.hidden = !(State.notes && State.notes.trim());
+    }
     persistWorkingPlan();
   });
 })();

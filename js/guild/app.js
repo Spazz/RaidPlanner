@@ -433,14 +433,14 @@
   }
 
   // The planner's focus target on a section switch: the compact home's h2, else the sr-only h1 (landing) or the
-  // title-bar h1 (plan view). A target that is not displayed (the title bar's h1 on a phone) cannot take focus, so
+  // plan-name h1 (plan view). A target that is not displayed (the plan name is hidden in the Reference comp view) cannot take focus, so
   // the next one is tried, and the planner root last.
   function focusPlannerTarget() {
     const shell = plannerShell();
     const view = shell && shell.view ? shell.view() : 'landing';
     const selectors = [];
     if (view === 'app') {
-      selectors.push('#shell-topbar-plan h1');
+      selectors.push('#app h1.gs-pb-h1');
     } else {
       const cl = document.body.classList;
       if (!cl.contains('is-signed-out') && !cl.contains('landing-full')) selectors.push('#planner-root h2[tabindex="-1"]');
