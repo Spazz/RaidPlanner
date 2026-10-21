@@ -302,8 +302,8 @@ function mirrorSaveStatus() {
 function showSaveOutcome(outcome) {
   const status = document.getElementById('autosave-status');
   if (outcome.ok) {
-    status.textContent = LiveSync.statusText('Saved on this device');
     delete status.dataset.failed;
+    applySaveLine(status); // the raid's state while a raid plan saves to the database, else the live link's, else "Saved on this device"
     // Saving made room by removing the oldest saved plans: say which and why.
     if (outcome.evicted.length) {
       const why = outcome.reason === 'quota' ? 'Browser storage was full' : `Plan limit reached (${PlanStore.max} kept)`;
@@ -376,16 +376,17 @@ function persistWorkingPlan() {
   const result = PlanSession.observe();
   TabWatch.dropIfElsewhere();
   LiveSync.onRender();
+  if (typeof PlanDb !== 'undefined') PlanDb.onRender();
   const status = document.getElementById('autosave-status');
   if (result) {
     // Any change to the plan retires the "updated by someone else" Undo, which would drop it.
-    if (result.changed) { RemoteUpdate.retireUndo(); TabWatch.hide(); ResultLine.hide(); }
-    if (result.changed || status.dataset.failed) {
+    if (result.changed) { RemoteUpdate.retireUndo(); TabWatch.hide(); ResultLine.hide(); if (typeof RaidContext !== 'undefined') RaidContext.noteLocalEdit(); }
+    if (result.changed || (status.dataset.failed && !status.dataset.raid)) {
       try { PlanStore.saveSoon(localStorage, result.current, showSaveOutcome); }
       catch { showSaveOutcome({ ok: false }); }
     }
     // A failed save keeps saying so until a later write lands.
-    if (!status.dataset.failed) status.textContent = LiveSync.statusText('Saved on this device');
+    if (!status.dataset.failed || status.dataset.raid) applySaveLine(status);
   }
   document.getElementById('btn-undo').disabled = !PlanSession.undo.length;
   document.getElementById('btn-redo').disabled = !PlanSession.redo.length;

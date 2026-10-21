@@ -114,7 +114,7 @@ function planDocUrl(gid, rid) {
 }
 
 // The saver of the open plan. A factory so tests can inject fetch, the clock and timers; `PlanDb` below is the app's instance.
-// start() takes {gid, rid, rev, planKey, dirty, onConflict, onPermanent, onSaved, onStatus}; RaidContext calls onRender() after every
+// start() takes {gid, rid, rev, planKey, dirty, source, onConflict, onPermanent, onSaved, onStatus}; RaidContext calls onRender() after every
 // plan change. Edits are compared as captured JSON (PlanStore.capture), sent after a 1.5 s pause, at least 3 s apart, one request
 // at a time; an edit made while a request is out gets its own request when it returns.
 function createPlanDb(deps = {}) {
@@ -137,6 +137,8 @@ function createPlanDb(deps = {}) {
   const notify = () => { if (s && s.onStatus) { try { s.onStatus(); } catch {} } };
   const captureJson = () => { try { return JSON.stringify(env.capture()); } catch { return null; } };
   const needsSave = () => !!s && s.current !== null && s.current !== s.savedJson;
+  // `source` (where a first write's plan came from: local, live, legacy, signups) rides along only on the write that creates the document.
+  const requestBody = json => `{"baseRev":${s.rev},"schemaVersion":${env.schemaVersion()},${s.source && s.rev === 0 ? `"source":${JSON.stringify(s.source)},` : ''}"plan":${json}}`;
   const retryDelay = failures => Math.min(limits.retryMaxMs, limits.retryFirstMs * 2 ** Math.max(0, failures - 1));
 
   // One timer: the next request goes out no sooner than `delayMs`, the minimum gap since the last request started and any 429 backoff.
@@ -195,7 +197,7 @@ function createPlanDb(deps = {}) {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: `{"baseRev":${s.rev},"schemaVersion":${env.schemaVersion()},"plan":${json}}`,
+        body: requestBody(json),
         keepalive,
         signal: env.signal(limits.timeoutMs),
       });
@@ -220,6 +222,7 @@ function createPlanDb(deps = {}) {
 
   function onSaved(body) {
     if (Number.isInteger(body.rev)) s.rev = body.rev;
+    s.source = null;
     s.savedJson = s.sentJson;
     s.inFlight = false;
     s.failures = 0; s.failed = false; s.backoffUntil = 0;
@@ -274,7 +277,7 @@ function createPlanDb(deps = {}) {
     s.current = json;
     links(storage => PlanDbLinks.markDirty(storage, s.planKey));
     if (env.now() < s.backoffUntil) return;
-    if (planBodyBytes(`{"baseRev":${s.rev},"schemaVersion":${env.schemaVersion()},"plan":${json}}`) >= limits.keepaliveMaxBytes) return;
+    if (planBodyBytes(requestBody(json)) >= limits.keepaliveMaxBytes) return;
     clearTimer();
     send({ keepalive: true });
   }
@@ -295,12 +298,12 @@ function createPlanDb(deps = {}) {
   const api = {
     // Opens the saver on a plan that is on screen. `dirty: true` = the screen holds edits the server lacks (decide() said 'push-local'):
     // they go out at once. Otherwise what is on screen is the baseline.
-    start({ gid, rid, rev, planKey, dirty = false, onConflict, onPermanent, onSaved, onStatus } = {}) {
+    start({ gid, rid, rev, planKey, dirty = false, source = null, onConflict, onPermanent, onSaved, onStatus } = {}) {
       api.stop();
       if (!gid || !rid || !Number.isInteger(rev) || rev < 0 || !planKey) throw new Error('PlanDb.start needs gid, rid, rev and planKey');
       const json = captureJson();
       s = {
-        gid, rid, rev, planKey, onConflict, onPermanent, onSaved, onStatus, token: Symbol('plan-db'),
+        gid, rid, rev, planKey, source, onConflict, onPermanent, onSaved, onStatus, token: Symbol('plan-db'),
         current: json, savedJson: dirty ? null : json, sentJson: null, inFlight: false, timer: null, timerAt: 0, lastStart: 0,
         failures: 0, failed: false, backoffUntil: 0, permanent: null, savedAt: null, unlisten: null,
       };

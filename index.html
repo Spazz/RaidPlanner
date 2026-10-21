@@ -331,11 +331,18 @@
         <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-shared-copy">Make my own copy</button>
       </div>
     </div>
-    <!-- Opened from a raid of the guild tracker (Plan in Planner): names the raid, saves the plan back to it, returns to its page. -->
+    <!-- The raid this plan belongs to is gone or no longer editable by this account: the plan stays on this device as the user's own. -->
+    <div class="sync-banner gs-pb-notice" id="raid-lost-banner" hidden aria-live="polite">
+      <span id="raid-lost-text"></span>
+      <div class="sync-banner-actions">
+        <button type="button" class="gs-btn gs-btn-sm" id="btn-raid-copy">Keep as my own copy</button>
+        <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-raid-remove" hidden>Remove</button>
+      </div>
+    </div>
+    <!-- Opened from a raid of the guild tracker (Plan in Planner): names the raid, says the plan is saved to it, returns to its page. -->
     <div class="sync-banner gs-pb-notice raid-context-banner" id="raid-context-banner" hidden>
       <span class="raid-context-main"><strong id="raid-context-text"></strong><span class="raid-context-status" id="raid-context-status" role="status"></span></span>
       <div class="sync-banner-actions">
-        <button type="button" class="gs-btn gs-btn-sm" id="btn-raid-save">Save to raid</button>
         <button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" id="btn-raid-back">Back to raid</button>
       </div>
     </div>

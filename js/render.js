@@ -38,11 +38,15 @@ function syncVersionControls() {
 // loaded it asks first, and afterwards says how many players the smaller raid benched.
 async function switchGameVersion(version) {
   if (!Object.prototype.hasOwnProperty.call(GameVersions, version) || version === State.gameVersion) return false;
-  if (hasLoadedWork() && !await Modal.confirm({
+  // A raid plan saved to the guild's database stays with the raid: switching leaves it.
+  const inRaid = typeof RaidContext !== 'undefined' && RaidContext.inDatabase();
+  const carried = `This becomes a new plan in ${GameVersions[version].name}: your players carry over to its default raid, totem and aura picks reset, and anyone who doesn't fit moves to the bench.`;
+  if ((inRaid || hasLoadedWork()) && !await Modal.confirm({
     title: `Switch to ${GameVersions[version].name}?`,
-    message: `This becomes a new plan in ${GameVersions[version].name}: your players carry over to its default raid, totem and aura picks reset, and anyone who doesn't fit moves to the bench. Your current plan stays in Your plans.`,
+    message: `${carried} ${inRaid ? 'This leaves the raid plan; the raid keeps it.' : 'Your current plan stays in Your plans.'}`,
     confirmLabel: `Switch to ${GameVersions[version].name}`,
   })) return false;
+  if (inRaid) await RaidContext.detach(); // what is waiting goes to the raid before the plan is rebuilt
   State.planId = null;
   ChangeLog.clear();
   State.gameVersion = version;
@@ -1375,6 +1379,14 @@ function liveLinkWord() {
   if (/^Saving/.test(text)) return 'saving';
   return 'on';
 }
+// The context line's save phrase: where the raid's copy stands while a raid plan saves to the database, else the live link.
+function planSaveWord() {
+  if (typeof PlanDb !== 'undefined' && PlanDb.active()) {
+    const key = PlanDb.statusKey();
+    return key === 'saved' ? 'Saved to the raid' : key === 'saving' ? 'Saving to the raid' : 'Not saved to the raid';
+  }
+  return `Live link ${liveLinkWord()}`;
+}
 // Where the roster came from and how many people it holds, for the context line and the Raid settings dialog.
 function signupsSummary() {
   const count = State.roster.length + (State.bench || []).length;
@@ -1390,7 +1402,7 @@ function renderPlanHead() {
   const profile = GameVersions[State.gameVersion];
   const raid = Config.Raids[State.selectedRaid];
   const signups = signupsSummary();
-  const parts = [VERSION_BUTTON_TEXT[State.gameVersion]?.text || profile.name, raid ? raid.name : '', raid ? `${raid.size}-man` : '', signups, `Live link ${liveLinkWord()}`].filter(Boolean);
+  const parts = [VERSION_BUTTON_TEXT[State.gameVersion]?.text || profile.name, raid ? raid.name : '', raid ? `${raid.size}-man` : '', signups, planSaveWord()].filter(Boolean);
   context.innerHTML = parts.map(part => `<span>${esc(part)}</span>`).join('<span aria-hidden="true">-</span>');
   if (!hasLoadedWork()) {
     chip.hidden = true;
@@ -1407,7 +1419,7 @@ function renderPlanHead() {
   const signupsEl = document.getElementById('raid-settings-signups');
   if (signupsEl) signupsEl.textContent = signups || 'No sign-ups loaded';
   const liveEl = document.getElementById('raid-settings-live');
-  if (liveEl) liveEl.textContent = LiveSync.statusText('Off');
+  if (liveEl) liveEl.textContent = typeof PlanDb !== 'undefined' ? PlanDb.statusText(LiveSync.statusText('Off')) : LiveSync.statusText('Off');
 }
 
 // ── DRAG & DROP (event delegation — attached once) ──────────────

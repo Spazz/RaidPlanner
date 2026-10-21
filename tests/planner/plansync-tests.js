@@ -219,6 +219,24 @@ async function check(name, fn) {
     assert.equal(put.keepalive, false);
   });
 
+  await check('the first write of the raid plan (revision 0) names where the plan came from; later writes do not', async () => {
+    const w = makeWorld(); w.server.rev = 0; w.server.plan = null; const db = makeDb(w);
+    db.begin({ rev: 0, dirty: true, source: 'legacy' });
+    await w.advance(100);
+    assert.equal(w.puts().length, 1);
+    assert.equal(w.puts()[0].body.baseRev, 0);
+    assert.equal(w.puts()[0].body.source, 'legacy');
+    edit(w, db, 1);
+    await w.advance(5000);
+    assert.equal(w.puts().length, 2);
+    assert.equal(w.puts()[1].body.baseRev, 1);
+    assert(!('source' in w.puts()[1].body), 'the source rides only on the write that creates the document');
+    const plain = makeWorld(); const dbPlain = makeDb(plain); dbPlain.begin({ rev: 5 });
+    edit(plain, dbPlain, 1);
+    await plain.advance(1500);
+    assert(!('source' in plain.puts()[0].body), 'no source unless asked');
+  });
+
   await check('every edit restarts the debounce', async () => {
     const w = makeWorld(); const db = makeDb(w); db.begin();
     edit(w, db, 1); await w.advance(1000);

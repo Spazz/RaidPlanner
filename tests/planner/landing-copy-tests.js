@@ -72,8 +72,10 @@ check('every version has a short toastNote; the long note stays', () => {
 });
 
 check('version-switch confirm explains the new plan', () => {
-  const msg = "This becomes a new plan in ${GameVersions[version].name}: your players carry over to its default raid, totem and aura picks reset, and anyone who doesn't fit moves to the bench. Your current plan stays in Your plans.";
+  const msg = "This becomes a new plan in ${GameVersions[version].name}: your players carry over to its default raid, totem and aura picks reset, and anyone who doesn't fit moves to the bench.";
   assert(script.includes(msg));
+  assert(script.includes("'Your current plan stays in Your plans.'"));
+  assert(script.includes("'This leaves the raid plan; the raid keeps it.'"), 'inside a raid plan the confirm says the raid keeps it');
 });
 
 check('menu tip has the v2 id and text', () => {

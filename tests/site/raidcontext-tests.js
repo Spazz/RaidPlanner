@@ -2,11 +2,13 @@
  * Raidsmith - Guild raid context in the planner ("Plan in Planner") tests
  * Run: node tests/site/raidcontext-tests.js
  *
- * Runs RaidContext (js/app.js, next to the live-link client) in a vm sandbox with the real logic half, the real
- * Raid-Helper re-sync (RaidHelperSync, js/modals.js) and the real guild router and plan reader (js/guild/), against a
- * fake guild API, a fake /api/share, fake timers and a fake document. Covers: the raid's sign-ups building a roster the
- * way a Raid-Helper import does, reopening a raid and folding new sign-ups into the saved plan, opening the plan saved on
- * the raid (a live link) and merging into it, Save to raid, Back to raid, and Refresh reading the guild instead of the event.
+ * Runs RaidContext (js/app.js, next to the live-link client) in a vm sandbox with the real logic half (including the plan
+ * saver and poll of js/plansync.js), the real Raid-Helper re-sync (RaidHelperSync, js/modals.js) and the real guild router and plan
+ * reader (js/guild/), against a fake guild API with a fake plan-doc server (revisions, 409), a fake /api/share, fake timers and a
+ * fake document. Covers: the raid's sign-ups building a roster the way a Raid-Helper import does, the raid's plan opening from the
+ * database (and each migration source when it holds none), autosave, the 409 on opening, the poll merge with the editor's name and
+ * Undo as a new revision, permanent failures (Keep as my own copy), leaving flushing a waiting save, Back to raid, and Refresh
+ * reading the guild instead of the event.
  */
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
@@ -27,7 +29,11 @@ function commit() {
   var result = PlanSession.observe();
   if (result && result.changed) PlanStore.save(localStorage, result.current);
   LiveSync.onRender();
+  if (typeof PlanDb !== 'undefined') PlanDb.onRender();
 }
+function closePlayerEditor() {}
+function closeBuffPicker() {}
+function renderLastRun() {}
 function hasLoadedWork() { return State.roster.length > 0; }
 function rememberImport() { return ''; }
 function showView(view) { State.view = view; __env.views.push(view); }
@@ -37,13 +43,15 @@ var Modal = { confirm: async () => true };
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'RaidContext', 'RaidLink', 'RaidHelperSync', 'currentShareCode',
-  'PlanSession', 'ChangeLog', 'currentLiveLink', 'initGroups', 'RosterEdit', 'LocalPicks', 'Fairness'];
+  'PlanSession', 'ChangeLog', 'currentLiveLink', 'initGroups', 'RosterEdit', 'LocalPicks', 'Fairness', 'PlanDb', 'PlanPoll', 'PlanDbLinks',
+  'RemoteUpdate', 'saveStatusLine', 'applySaveLine'];
 
 function memoryStorage() {
   const data = {};
   return { getItem: k => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v); }, removeItem: k => { delete data[k]; } };
 }
 const response = (status, body = {}) => ({ ok: status >= 200 && status < 300, status, headers: { get: () => null }, json: async () => body });
+const DOC_PATH = '/api/guild/g1/raids/r1/plan-doc';
 
 // The guild's own router and plan reader, loaded the way the page loads them.
 function loadGuildParts() {
@@ -56,15 +64,54 @@ function loadGuildParts() {
 const guildParts = loadGuildParts();
 const plain = v => JSON.parse(JSON.stringify(v));
 
+// The Worker's plan-doc routes in miniature: one document per raid with a revision, GET ?since, PUT baseRev with 409 plan_conflict.
+// Several browsers (envs) can share one server.
+function makeServer() {
+  const s = { rev: 0, plan: null, updatedAt: null, updatedBy: null, legacy: null, live: null, puts: [], clock: 1000 };
+  s.get = since => {
+    if (s.rev > 0) {
+      if (since === s.rev) return { rev: s.rev, changed: false };
+      return { rev: s.rev, changed: true, plan: plain(s.plan), schemaVersion: 1, updatedAt: s.updatedAt, updatedBy: s.updatedBy ? { name: s.updatedBy } : null };
+    }
+    return since === 0 ? { rev: 0, changed: false } : { rev: 0, changed: true, plan: null, legacy: s.legacy, live: s.live };
+  };
+  // A PUT as the Worker answers it: {status, body}.
+  s.put = (body, who) => {
+    if (!body || !Number.isInteger(body.baseRev) || !body.plan) return { status: 400, body: { error: 'plan_invalid' } };
+    if (body.plan.planId !== 'raid:r1') return { status: 400, body: { error: 'plan_invalid', message: 'wrong plan' } };
+    if (s.rev > 0 && JSON.stringify(body.plan) === JSON.stringify(s.plan)) return { status: 200, body: { rev: s.rev, unchanged: true, updatedAt: s.updatedAt } };
+    if (body.baseRev !== s.rev) return { status: 409, body: { error: 'plan_conflict', ...s.get(null), rev: s.rev } };
+    s.puts.push({ baseRev: body.baseRev, source: body.source || null, who, schemaVersion: body.schemaVersion });
+    s.rev++; s.plan = plain(body.plan); s.updatedBy = who; s.updatedAt = ++s.clock;
+    return { status: 200, body: { rev: s.rev, unchanged: false, updatedAt: s.updatedAt } };
+  };
+  // Another browser saved this plan.
+  s.save = (plan, who) => s.put({ baseRev: s.rev, plan, schemaVersion: 1 }, who);
+  return s;
+}
+
 function fakeElement() {
   const classes = new Set();
   return { hidden: false, textContent: '', disabled: false, dataset: {}, classList: { toggle: (n, on) => (on ? classes.add(n) : classes.delete(n)), contains: n => classes.has(n) }, addEventListener() {} };
 }
 
-function makeEnv() {
-  const env = { toasts: [], views: [], renders: 0, rosterFetches: 0, calls: [], guildCalls: [], timers: [], storage: memoryStorage(), now: 1_000_000, nextTimer: 1, els: {} };
+// Elements the page only has while something is open: the document says there is none.
+const ABSENT = new Set(['active-player-editor', 'active-buff-picker', 'raid-notes-textarea']);
+
+function makeEnv(server = makeServer(), userName = 'Me') {
+  const env = { toasts: [], views: [], renders: 0, rosterFetches: 0, calls: [], guildCalls: [], timers: [], storage: memoryStorage(), now: 1_000_000, nextTimer: 1, els: {}, server, userName, offline: false, docFail: null, putStatus: 0 };
   env.share = () => response(200, { updatedAt: 1 }); // /api/share
   env.guild = () => new Error('no guild route');      // (method, path, body) -> reply object | Error
+  // The plan-doc routes by fetch (PlanDb saves, PlanPoll polls): the server above, an offline switch, a forced answer for a PUT.
+  env.guildFetch = call => {
+    if (env.offline) throw new TypeError('offline');
+    const u = new URL(call.url, 'https://pp.test');
+    if (u.pathname !== DOC_PATH) return response(404, {});
+    if (call.method === 'GET') return response(200, env.server.get(u.searchParams.has('since') ? Number(u.searchParams.get('since')) : null));
+    if (env.putStatus) return response(env.putStatus, { error: 'x', message: 'refused' });
+    const reply = env.server.put(call.body, env.userName);
+    return response(reply.status, reply.body);
+  };
   const location = { pathname: '/', origin: 'https://pp.test', search: '', hash: '' };
   env.location = location;
   const guildApi = {
@@ -77,7 +124,8 @@ function makeEnv() {
     return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(plain(reply));
   }
   const FakeDate = new Proxy(Date, { get: (target, prop) => (prop === 'now' ? () => env.now : target[prop]) });
-  env.document = { hidden: false, getElementById: id => (env.els[id] = env.els[id] || fakeElement()), querySelector: () => null, addEventListener() {} };
+  env.document = { hidden: false, activeElement: null, getElementById: id => (ABSENT.has(id) ? null : (env.els[id] = env.els[id] || fakeElement())), querySelector: () => null, addEventListener() {} };
+  for (const id of ['remote-update-banner', 'raid-lost-banner', 'btn-remote-undo', 'btn-raid-remove']) env.els[id] = Object.assign(fakeElement(), { hidden: true });
   const globals = {
     btoa, atob, escape, unescape, AbortSignal, AbortController, Date: FakeDate,
     __env: env, localStorage: env.storage, document: env.document,
@@ -86,7 +134,7 @@ function makeEnv() {
     fetch: async (url, init = {}) => {
       const call = { url, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null };
       env.calls.push(call);
-      return env.share(call);
+      return String(url).startsWith('/api/guild/') ? env.guildFetch(call) : env.share(call);
     },
     setTimeout: (fn, ms) => { const id = env.nextTimer++; env.timers.push({ id, at: env.now + ms, fn }); return id; },
     clearTimeout: id => { env.timers = env.timers.filter(t => t.id !== id); },
@@ -148,18 +196,41 @@ const HASH = '#/planner?raid=g1.r1';
 const PLANNER_PATH = '/api/guild/g1/raids/r1/planner';
 const PLAN_PATH = '/api/guild/g1/raids/r1/plan';
 
-// The guild answers the planner seed (a function, so a test can change it) and accepts a plan.
+// The guild answers the planner seed (a function, so a test can change it), the raid's database plan (the env's server) and a legacy plan paste.
 function guildRoute(env, seedFn) {
   env.guild = (method, p) => {
     if (method === 'GET' && p === PLANNER_PATH) return seedFn();
+    if (method === 'GET' && p === DOC_PATH) return env.docFail || env.server.get(null);
     if (method === 'PUT' && p === PLAN_PATH) return { raid: {}, sources: {} };
     return new Error('unexpected ' + method + ' ' + p);
   };
 }
+// Opens the raid. Leaving a raid flushes its waiting save on the fake clock, so the clock runs while the open is pending.
+async function openRaid(env, hash = HASH) {
+  const opening = env.api.RaidContext.route(hash);
+  let done = false;
+  Promise.resolve(opening).finally(() => { done = true; });
+  for (let i = 0; i < 400 && !done; i++) await env.advance(100);
+  return opening;
+}
+// A browser (env) opened on the raid with its own sign-ups.
+async function openedEnv(server, userName, seedFn = () => SEED()) {
+  const env = makeEnv(server, userName);
+  guildRoute(env, seedFn);
+  await openRaid(env);
+  return env;
+}
 
 const allPlayers = State => [...State.groups.flat(), ...State.bench, ...State.unplaced];
 const byName = (State, name) => allPlayers(State).find(p => p.name === name);
-const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
+const spaces = s => String(s).replace(/[  ]/g, ' ');
+// The seat of a player moved by hand: out of its group onto the bench.
+function benchByHand(env, name) {
+  const { State } = env.api;
+  State.groups.forEach(g => { const i = g.findIndex(p => p.name === name); if (i >= 0) { const [p] = g.splice(i, 1); p.groupNumber = 0; State.bench.push(p); } });
+  State.roster = State.groups.flat();
+  env.ctx.commit();
+}
 
 (async () => {
   await check('RaidLink: plan id, Raid-Helper shape of the seed, banner text and plan label', () => {
@@ -184,8 +255,8 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     const env = makeEnv();
     guildRoute(env, () => SEED());
     const { State, RaidContext } = env.api;
-    await RaidContext.route(HASH);
-    assert.deepEqual(env.guildCalls.map(c => c.path), [PLANNER_PATH]);
+    await openRaid(env);
+    assert.deepEqual(env.guildCalls.map(c => c.path).sort(), [DOC_PATH, PLANNER_PATH].sort(), 'the sign-ups and the raid plan are asked together');
     assert.deepEqual([State.planId, State.sourceEventId, State.gameVersion, State.rosterName], ['raid:r1', EVENT_ID, 'tbc', 'Sat BT 2026-10-24']);
     assert.equal(State.eventStartTime, Date.UTC(2026, 9, 25, 0, 0));
     assert.deepEqual(plain(State.groups.flat().map(p => p.name).sort()), ['Aldric', 'Brindle', 'Cassia', 'Fenwick', 'Galdor']);
@@ -200,7 +271,9 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     // The same address again is the same open raid.
     const again = RaidContext.route(HASH);
     await again;
-    assert.equal(env.guildCalls.length, 1);
+    assert.equal(env.guildCalls.length, 2);
+    assert(env.api.PlanDb.active(), 'the saver runs for the open raid plan');
+    assert.equal(env.server.rev, 0, 'opening writes nothing');
   });
 
   await check('open: a plan already on screen is saved on this device first and stays in Your plans; the raid\'s plan does not replace it silently', async () => {
@@ -211,7 +284,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     env.ctx.commit();
     const mine = State.planId;
     assert(mine && mine !== 'raid:r1');
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert.equal(State.planId, 'raid:r1');
     assert(!allPlayers(State).some(p => p.name === 'Zorro'), 'the raid plan starts clean');
     const kept = PlanStore.read(env.storage).find(p => p.data.planId === mine);
@@ -223,7 +296,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     let seed = SEED();
     guildRoute(env, () => seed);
     const { State, RaidContext } = env.api;
-    await RaidContext.route(HASH);
+    await openRaid(env);
     State.notes = 'MT swaps: Aldric then Fenwick';
     byName(State, 'Fenwick').name = 'Fenwick'; // untouched seat
     const seatOf = name => byName(State, name).groupNumber;
@@ -236,7 +309,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
       ...SIGNUPS().filter(s => s.name !== 'Galdor').map(s => (s.name === 'Brindle' ? { ...s, className: 'Tentative', kind: 'tentative' } : s)),
       signup(8, 'Harlan', 'Hunter', 'Marksmanship'),
     ] });
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert.equal(State.planId, 'raid:r1');
     assert(!byName(State, 'Galdor'), 'a withdrawn sign-up leaves the plan');
     assert.deepEqual([byName(State, 'Harlan').groupNumber, byName(State, 'Harlan').class], [0, 'HUNTER'], 'a new sign-up waits on the bench');
@@ -244,7 +317,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     assert.equal(byName(State, 'Brindle').groupNumber, 0, 'a seated player now tentative is unseated');
     assert.equal(seatOf('Fenwick'), fenwickSeat, 'untouched seats stay put');
     assert.equal(State.notes, 'MT swaps: Aldric then Fenwick');
-    assert.match(env.els['raid-context-status'].textContent, /^Opened your plan for this raid/);
+    assert.match(env.els['raid-context-status'].textContent, /^Opened the raid's plan/);
     assert(env.toasts.some(t => /Synced with the raid: .*1 new sign-up.*1 withdrew/.test(t)), env.toasts.join(' | '));
   });
 
@@ -259,7 +332,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     let seed = SEED();
     guildRoute(env, () => seed);
     const { State, Import, PlanStore, RaidContext, RaidHelperSync } = env.api;
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert(!allPlayers(State).some(p => p.handAdded), 'sign-up players carry no hand-added flag');
     const pug = addPug(env.api, 'Pugsley');
     assert.equal(pug.handAdded, true);
@@ -282,7 +355,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     // Reopen: Galdor withdrew, Fenwick turned Absence; the pug stays.
     RaidContext.leave();
     seed = SEED({ signups: SIGNUPS().filter(s => s.name !== 'Galdor').map(s => (s.name === 'Fenwick' ? { ...s, className: 'Absence', specName: null, kind: 'absence' } : s)) });
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert(byName(State, 'Pugsley'), 'a hand-added player survives reopening');
     assert(!byName(State, 'Galdor'), 'a withdrawn sign-up is removed');
     assert.equal(State.groups.flat().includes(byName(State, 'Fenwick')), false, 'an Absence is no longer seated');
@@ -301,146 +374,489 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     assert(!byName(State, 'Pugsley'), 'once signed up, withdrawing removes them');
   });
 
-  await check('open with a plan saved on the raid (live link): it is fetched, loaded, bound to the raid\'s link, and the current sign-ups are merged into it', async () => {
-    // Another browser planned the raid and saved it: its code is on the live link.
+  // ── the raid's plan lives in the database ──────────────────────────
+  const putsOf = env => env.calls.filter(c => c.method === 'PUT' && String(c.url).endsWith('/plan-doc'));
+  const bindingOf = env => env.api.PlanDbLinks.get(env.storage, 'tbc|raid:r1');
+
+  await check('open: the plan comes from the database (the other officer\'s plan wins), binds its revision, names who saved it, and the new sign-ups fold in as a real change that saves', async () => {
+    const server = makeServer();
+    const kim = await openedEnv(server, 'Kim');
+    kim.api.State.notes = 'Saved by Kim';
+    benchByHand(kim, 'Fenwick');
+    await kim.advance(5000);
+    assert.equal(server.rev, 1);
+    const env = makeEnv(server, 'Me');
+    guildRoute(env, () => SEED({ signups: [...SIGNUPS(), signup(8, 'Harlan', 'Hunter', 'Marksmanship')] }));
+    await openRaid(env);
+    const { State, PlanDb, PlanPoll } = env.api;
+    assert.equal(State.notes, 'Saved by Kim');
+    assert(State.bench.some(p => p.name === 'Fenwick'), 'Kim\'s bench choice is what opened');
+    assert.deepEqual([byName(State, 'Harlan').groupNumber, State.sourceEventId], [0, EVENT_ID]);
+    assert.equal(env.els['raid-context-status'].textContent, 'Opened the raid\'s plan, last saved by Kim.');
+    assert(PlanDb.active() && PlanPoll.active());
+    assert.equal(env.guildCalls.filter(c => c.path === DOC_PATH).length, 1, 'the plan is asked for once, next to the sign-ups');
+    await env.advance(5000);
+    assert.equal(server.rev, 2, 'the sign-up fold-in changed the plan: one new revision');
+    assert.deepEqual([server.puts[1].baseRev, server.puts[1].who, server.puts[1].source], [1, 'Me', null]);
+    assert(server.plan.bench.some(p => p.name === 'Harlan'));
+    assert.deepEqual([bindingOf(env).rev, bindingOf(env).dirty], [2, false]);
+    assert.match(env.els['raid-context-status'].textContent, /^Saved to the raid at /);
+    assert.equal(env.els['autosave-status'].textContent, 'Saved to the raid');
+  });
+
+  await check('open: folding in sign-ups that change nothing writes nothing (no PUT, no revision), however long the page stays open', async () => {
+    const server = makeServer();
+    const kim = await openedEnv(server, 'Kim');
+    benchByHand(kim, 'Fenwick');
+    await kim.advance(5000);
+    const env = makeEnv(server, 'Me');
+    guildRoute(env, () => SEED());
+    await openRaid(env);
+    await env.advance(60000);
+    assert.equal(putsOf(env).length, 0);
+    assert.equal(server.rev, 1);
+    assert(!env.api.PlanDb.busy());
+  });
+
+  await check('open: a raid with only sign-ups writes nothing until the first real edit, which creates the plan (source signups)', async () => {
+    const server = makeServer();
+    const env = await openedEnv(server, 'Me');
+    await env.advance(60000);
+    assert.equal(server.rev, 0, 'opening alone never marks the raid planned');
+    assert.equal(putsOf(env).length, 0);
+    benchByHand(env, 'Fenwick');
+    await env.advance(5000);
+    assert.deepEqual(server.puts.map(p => [p.baseRev, p.source, p.who, p.schemaVersion]), [[0, 'signups', 'Me', 1]]);
+    const second = env.api.State;
+    second.notes = 'again';
+    env.ctx.commit();
+    await env.advance(5000);
+    assert.deepEqual([server.puts[1].baseRev, server.puts[1].source], [1, null], 'the source rides only on the first write');
+  });
+
+  await check('migrate: this browser\'s plan of the raid goes to the raid at once (source local); while the database is out of reach the plan stays on this device and says so', async () => {
+    const server = makeServer();
+    const env = makeEnv(server, 'Me');
+    guildRoute(env, () => SEED());
+    env.docFail = Object.assign(new Error('down'), { status: 500 });
+    await openRaid(env);
+    const { State, PlanDb, RaidContext } = env.api;
+    assert.match(env.els['raid-context-status'].textContent, /could not be reached.*not saved to the raid/);
+    assert(!PlanDb.active(), 'no saver without the database');
+    State.notes = 'Planned while the database was down';
+    env.ctx.commit();
+    await env.advance(20000);
+    assert.deepEqual([server.rev, putsOf(env).length], [0, 0]);
+    RaidContext.leave();
+    env.docFail = null;
+    await openRaid(env);
+    assert(PlanDb.active());
+    await env.advance(5000);
+    assert.deepEqual(server.puts.map(p => [p.baseRev, p.source]), [[0, 'local']]);
+    assert.equal(server.plan.notes, 'Planned while the database was down');
+    assert.equal(server.plan.planId, 'raid:r1');
+  });
+
+  await check('migrate: this browser\'s plan of the raid\'s Raid-Helper event is re-keyed to the raid (source local); the event\'s own copy stays', async () => {
+    const env = makeEnv();
+    guildRoute(env, () => SEED());
+    const { Import, State, PlanStore } = env.api;
+    assert(Import.loadRoster({ gameVersion: 'tbc', raid: 'bt', name: 'My event plan', players: [
+      { name: 'Aldric', class: 'WARRIOR', spec: 'Protection', role: 'tank', groupNumber: 2 },
+      { name: 'Brindle', class: 'MAGE', spec: 'Fire', role: 'caster_dps', groupNumber: 2 }] }));
+    State.planId = 'event:' + EVENT_ID;
+    State.sourceEventId = EVENT_ID;
+    env.ctx.commit();
+    await openRaid(env);
+    assert.deepEqual([State.planId, State.rosterName], ['raid:r1', 'My event plan']);
+    assert.equal(byName(State, 'Aldric').groupNumber, 2, 'the seat the event plan gave stays');
+    assert.match(env.els['raid-context-status'].textContent, /^Opened your plan for this raid's Raid-Helper event/);
+    assert(PlanStore.read(env.storage).some(p => p.data.planId === 'event:' + EVENT_ID), 'the event plan is still on this device');
+    await env.advance(5000);
+    assert.deepEqual(env.server.puts.map(p => [p.baseRev, p.source]), [[0, 'local']]);
+    assert.equal(env.server.plan.planId, 'raid:r1');
+  });
+
+  await check('migrate: the plan on the raid\'s live link becomes the raid\'s plan (source live); the raid plan is not bound to the link', async () => {
     const first = makeEnv();
     guildRoute(first, () => SEED());
-    await first.api.RaidContext.route(HASH);
-    first.api.State.notes = 'Saved on the raid'; // work that only the saved plan has
-    const savedCode = first.api.currentShareCode();
+    first.docFail = Object.assign(new Error('down'), { status: 500 });
+    await openRaid(first);
+    first.api.State.notes = 'Saved on the live link';
+    const code = first.api.currentShareCode();
     const env = makeEnv();
-    const seed = SEED({ livePlan: 'aB3dE5g', signups: [...SIGNUPS(), signup(8, 'Harlan', 'Hunter', 'Marksmanship')] });
-    guildRoute(env, () => seed);
-    env.share = call => (call.method === 'GET' && call.url.includes('id=aB3dE5g') ? response(200, { code: savedCode, updatedAt: 500 }) : response(500, {}));
-    const { State, LiveLinks, RaidContext } = env.api;
-    await RaidContext.route(HASH);
-    await settle();
+    guildRoute(env, () => SEED({ signups: [...SIGNUPS(), signup(8, 'Harlan', 'Hunter', 'Marksmanship')] }));
+    env.server.live = 'aB3dE5g';
+    env.share = call => (call.method === 'GET' && call.url.includes('id=aB3dE5g') ? response(200, { code, updatedAt: 500 }) : response(500, {}));
+    await openRaid(env);
+    const { State, LiveLinks } = env.api;
+    assert.equal(State.notes, 'Saved on the live link');
     assert.equal(State.planId, 'raid:r1');
-    assert.equal(State.notes, 'Saved on the raid', 'the saved plan is what opened');
-    assert.deepEqual([byName(State, 'Harlan').groupNumber, State.sourceEventId], [0, EVENT_ID]);
-    const entry = LiveLinks.get(env.storage, LiveLinks.planKey(State));
-    assert.deepEqual([entry.id, entry.updatedAt], ['aB3dE5g', 500], 'the plan is bound to the raid\'s link');
-    assert.equal(env.calls.filter(c => c.method !== 'GET').length, 0, 'opening writes nothing to the link before the merge is saved');
+    assert.deepEqual([byName(State, 'Harlan').groupNumber, State.sourceEventId], [0, EVENT_ID], 'the current sign-ups are merged into it');
+    assert.equal(LiveLinks.get(env.storage, LiveLinks.planKey(State)), null);
     assert.match(env.els['raid-context-status'].textContent, /^Opened the plan saved on the raid\./);
-    // The merge reaches the live link like any edit.
-    env.share = call => response(200, { updatedAt: 600 });
-    await env.advance(2500);
-    const put = env.calls.filter(c => c.method === 'PUT');
-    assert.equal(put.length, 1);
-    assert.equal(put[0].body.id, 'aB3dE5g');
-  });
-
-  await check('open: a saved raid plan that is gone (expired link) falls back to this device\'s copy, or to the sign-ups, and says so', async () => {
-    const env = makeEnv();
-    guildRoute(env, () => SEED({ livePlan: 'aB3dE5g' }));
-    env.share = () => response(404, {});
-    await env.api.RaidContext.route(HASH);
-    assert.equal(env.api.State.planId, 'raid:r1');
-    assert.equal(env.api.State.groups.flat().length, 5);
-    assert.match(env.els['raid-context-status'].textContent, /has expired/);
-    // The server unreachable is told differently.
+    await env.advance(5000);
+    assert.deepEqual(env.server.puts.map(p => [p.baseRev, p.source]), [[0, 'live']]);
+    assert.equal(env.calls.filter(c => c.method !== 'GET' && !String(c.url).startsWith('/api/guild/')).length, 0, 'nothing is written to the live link');
+    // The link cannot be reached: nothing may be written over what it holds.
     const down = makeEnv();
-    guildRoute(down, () => SEED({ livePlan: 'aB3dE5g' }));
+    guildRoute(down, () => SEED());
+    down.server.live = 'aB3dE5g';
     down.share = () => { throw new TypeError('offline'); };
-    await down.api.RaidContext.route(HASH);
-    assert.equal(down.api.State.groups.flat().length, 5);
+    await openRaid(down);
+    assert(!down.api.PlanDb.active());
     assert.match(down.els['raid-context-status'].textContent, /could not be reached/);
+    await down.advance(30000);
+    assert.equal(down.server.rev, 0);
+    // A link that expired is no source: the next one is tried.
+    const gone = makeEnv();
+    guildRoute(gone, () => SEED());
+    gone.server.live = 'aB3dE5g';
+    gone.share = () => response(404, {});
+    await openRaid(gone);
+    assert.match(gone.els['raid-context-status'].textContent, /^Started from the raid's 7 sign-ups/);
   });
 
-  await check('Save to raid: makes the live link when the plan has none, then sends names and groups (bench 0, absences left out), the label and the link id; a second save reuses the link', async () => {
+  await check('migrate: the names the raid page holds go back into their groups (source legacy); a name that is not a sign-up is left out and counted', async () => {
     const env = makeEnv();
     guildRoute(env, () => SEED());
-    env.share = call => (call.method === 'POST' ? response(201, { id: 'nEw1234', updatedAt: 9 }) : response(200, { updatedAt: 10 }));
-    const { State, RaidContext, LiveLinks } = env.api;
-    await RaidContext.route(HASH);
-    await RaidContext.save();
-    const posts = env.calls.filter(c => c.method === 'POST');
-    assert.equal(posts.length, 1);
-    assert.equal(posts[0].body.code, env.api.currentShareCode());
-    const put = env.guildCalls.find(c => c.method === 'PUT');
-    assert(put, env.els['raid-context-status'].textContent);
-    assert.equal(put.path, PLAN_PATH);
-    assert.equal(put.body.label, 'Sat BT 2026-10-24');
-    assert.equal(put.body.live, 'nEw1234');
-    const sent = Object.fromEntries(put.body.players.map(p => [p.name, p.group]));
-    assert.deepEqual(Object.keys(sent).sort(), ['Aldric', 'Brindle', 'Cassia', 'Eliora', 'Fenwick', 'Galdor']);
-    assert.equal(sent.Eliora, 0, 'the bench is group 0');
-    for (const name of ['Aldric', 'Brindle', 'Cassia', 'Fenwick', 'Galdor']) assert.equal(sent[name], byName(State, name).groupNumber, name);
-    assert(!('Dunmar' in sent), 'an absence is not placed');
-    assert.equal(LiveLinks.get(env.storage, LiveLinks.planKey(State)).id, 'nEw1234');
+    env.server.legacy = { label: 'Sat BT 2026-10-24', players: [{ name: 'Aldric', group: 2 }, { name: 'Brindle', group: 1 }, { name: 'Galdor', group: 0 }, { name: 'Nobody', group: 3 }] };
+    await openRaid(env);
+    const { State } = env.api;
+    assert.equal(byName(State, 'Aldric').groupNumber, 2);
+    assert(State.groups[1].some(p => p.name === 'Aldric'));
+    assert.equal(byName(State, 'Brindle').groupNumber, 1);
+    assert(State.bench.some(p => p.name === 'Galdor'));
+    assert.match(env.els['raid-context-status'].textContent, /^Opened the plan saved on the raid: 3 names back in their groups\. 1 name is not among the sign-ups and was left out\./);
+    await env.advance(5000);
+    assert.deepEqual(env.server.puts.map(p => [p.baseRev, p.source]), [[0, 'legacy']]);
+    assert(env.server.plan.groups[1].some(p => p.name === 'Aldric'));
+  });
+
+  await check('migrate: the raid page replaced the plan since this browser saved it (the document is gone): the page\'s names win and this device\'s copy is kept under another name', async () => {
+    const server = makeServer();
+    const env = await openedEnv(server, 'Me');
+    env.api.State.notes = 'My old plan';
+    benchByHand(env, 'Fenwick');
+    await env.advance(5000);
+    assert.equal(bindingOf(env).rev, 1);
+    env.api.RaidContext.leave();
+    Object.assign(server, { rev: 0, plan: null, legacy: { label: 'x', players: [{ name: 'Aldric', group: 3 }] } });
+    await openRaid(env);
+    const { State, PlanStore } = env.api;
+    assert.equal(State.notes, '', 'the earlier plan is not what opened');
+    assert.equal(byName(State, 'Aldric').groupNumber, 3);
+    assert(PlanStore.read(env.storage).some(p => /\(earlier copy\)$/.test(p.data.rosterName) && p.data.notes === 'My old plan'), 'this device\'s copy is in Your plans');
+    assert(env.toasts.some(t => /earlier copy/.test(t)));
+    await env.advance(5000);
+    assert.deepEqual(server.puts.slice(-1).map(p => [p.baseRev, p.source]), [[0, 'legacy']]);
+  });
+
+  await check('open together: two officers open an empty raid at once; the 409 loser adopts the winner\'s plan silently (no notice, no Undo) and keeps polling from its revision', async () => {
+    const server = makeServer();
+    server.legacy = { label: 'x', players: [{ name: 'Aldric', group: 2 }] };
+    const ann = makeEnv(server, 'Ann');
+    const bob = makeEnv(server, 'Bob');
+    guildRoute(ann, () => SEED());
+    guildRoute(bob, () => SEED({ signups: [...SIGNUPS(), signup(8, 'Harlan', 'Hunter', 'Marksmanship')] }));
+    await Promise.all([ann.api.RaidContext.route(HASH), bob.api.RaidContext.route(HASH)]);
+    assert.equal(server.rev, 0, 'both opened at revision 0');
+    await ann.advance(10);
+    assert.equal(server.rev, 1);
+    await bob.advance(10);
+    assert.deepEqual(server.puts.map(p => p.who), ['Ann'], 'Bob\'s write was refused');
+    assert.equal(bob.els['remote-update-banner'].hidden, true, 'no "Updated by" notice while opening');
+    assert.equal(bob.els['btn-remote-undo'].hidden, true);
+    assert.equal(bob.api.PlanDb.rev(), 1);
+    assert.equal(bob.api.PlanPoll.rev(), 1);
+    assert.deepEqual([bindingOf(bob).rev, bindingOf(bob).dirty], [1, false]);
+    assert(!byName(bob.api.State, 'Harlan'), 'the winner\'s plan is what Bob shows');
+    await bob.advance(20000);
+    assert.equal(server.rev, 1, 'nothing more is written');
+  });
+
+  await check('open: what this browser does with its copy follows PlanDbLinks.decide: clean and older = the database; unsent and equal = pushed; unsent and older = the database with Undo; unbound and different = kept as an earlier copy', async () => {
+    const server = makeServer();
+    const me = await openedEnv(server, 'Me');
+    benchByHand(me, 'Fenwick');
+    await me.advance(5000);
+    me.api.RaidContext.leave();
+    // 1. clean binding, the raid moved on: the database wins, no notice.
+    const kim = await openedEnv(server, 'Kim');
+    benchByHand(kim, 'Galdor');
+    await kim.advance(5000);
+    assert.equal(server.rev, 2);
+    await openRaid(me);
+    assert(me.api.State.bench.some(p => p.name === 'Galdor'));
+    assert.equal(me.els['remote-update-banner'].hidden, true);
+    // 2. unsent edits while offline, the raid unchanged: they are pushed at once.
+    me.offline = true;
+    me.api.State.notes = 'unsent';
+    me.ctx.commit();
+    await me.advance(1000);
+    me.api.RaidContext.leave();
+    await me.advance(15000);
+    assert.equal(bindingOf(me).dirty, true, 'the edit is still marked unsent');
+    me.offline = false;
+    await openRaid(me);
+    await me.advance(5000);
+    assert.equal(server.plan.notes, 'unsent');
+    assert.deepEqual([server.puts.slice(-1)[0].who, server.puts.slice(-1)[0].baseRev], ['Me', 2]);
+    assert.equal(me.els['remote-update-banner'].hidden, true);
+    // 3. unsent edits and the raid moved on: the database wins and the local edits are one Undo away.
+    me.offline = true;
+    me.api.State.notes = 'unsent again';
+    me.ctx.commit();
+    await me.advance(1000);
+    me.api.RaidContext.leave();
+    await me.advance(15000);
+    me.offline = false;
+    await kim.advance(5000); // Kim's board takes over the pushed revision before she edits
+    kim.api.State.notes = 'Kim wrote this';
+    kim.ctx.commit();
+    await kim.advance(30000);
+    await openRaid(me);
+    assert.equal(me.api.State.notes, 'Kim wrote this');
+    assert.equal(me.els['remote-update-banner'].hidden, false);
+    assert.match(me.els['remote-update-text'].textContent, /by Kim.$/);
+    me.api.RemoteUpdate.undo();
+    assert.equal(me.api.State.notes, 'unsent again');
+    await me.advance(5000);
+    assert.equal(server.plan.notes, 'unsent again', 'Undo is saved as a new revision');
+    // 4. no binding, a different copy of the raid plan on this device: kept as an earlier copy, the database wins.
+    const fresh = makeEnv(server, 'Me2');
+    guildRoute(fresh, () => SEED());
+    fresh.docFail = Object.assign(new Error('down'), { status: 500 });
+    await openRaid(fresh);
+    fresh.api.State.notes = 'mine alone';
+    fresh.ctx.commit();
+    fresh.api.RaidContext.leave();
+    fresh.docFail = null;
+    await openRaid(fresh);
+    assert.equal(fresh.api.State.notes, 'unsent again');
+    assert(fresh.api.PlanStore.read(fresh.storage).some(p => /\(earlier copy\)$/.test(p.data.rosterName) && p.data.notes === 'mine alone'));
+  });
+
+  await check('an edit made to the raid plan after leaving the raid (the plain Planner) marks its binding unsent, so the next open does not replace it silently', async () => {
+    const server = makeServer();
+    const me = await openedEnv(server, 'Me');
+    benchByHand(me, 'Fenwick');
+    await me.advance(5000);
+    me.api.RaidContext.leave();
+    await me.advance(5000);
+    assert.equal(bindingOf(me).dirty, false);
+    me.api.RaidContext.noteLocalEdit();
+    assert.equal(bindingOf(me).dirty, true);
+    me.api.State.planId = 'plan:elsewhere';
+    assert.doesNotThrow(() => me.api.RaidContext.noteLocalEdit());
+  });
+
+  await check('fallback: no right to edit (403) or a plan this page cannot read keeps the plan on this device; edits made there mark the raid binding unsent', async () => {
+    const server = makeServer();
+    const me = await openedEnv(server, 'Me');
+    benchByHand(me, 'Fenwick');
+    await me.advance(5000);
+    me.api.RaidContext.leave();
+    me.docFail = Object.assign(new Error('You do not have permission to do that.'), { status: 403 });
+    await openRaid(me);
+    assert.match(me.els['raid-context-status'].textContent, /You cannot edit this raid, so changes stay on this device\./);
+    assert(!me.api.PlanDb.active());
+    assert.equal(bindingOf(me).dirty, false);
+    me.api.State.notes = 'edited while cut off';
+    me.ctx.commit();
+    assert.equal(bindingOf(me).dirty, true, 'the next open pushes it instead of replacing it');
+    me.api.RaidContext.leave();
+    server.plan = Object.assign(plain(server.plan), { groups: 'not a plan' });
+    me.docFail = null;
+    await openRaid(me);
+    assert.match(me.els['raid-context-status'].textContent, /newer Planner/);
+    assert(!me.api.PlanDb.active());
+    assert.equal(me.api.State.notes, 'edited while cut off');
+  });
+
+  await check('save: a failing save says so in the save line and the banner (the next-step bar flags it), retries, and reports "Saved to the raid" again', async () => {
+    const server = makeServer();
+    const env = await openedEnv(server, 'Me');
+    benchByHand(env, 'Fenwick');
+    await env.advance(5000);
+    const status = env.els['autosave-status'];
+    assert.equal(status.textContent, 'Saved to the raid');
+    assert.equal(status.dataset.failed, undefined);
+    env.offline = true;
+    benchByHand(env, 'Galdor');
+    await env.advance(6000);
+    assert.equal(status.textContent, 'Not saved to the raid yet, retrying. Your changes are safe on this device.');
+    assert.equal(status.dataset.failed, 'true');
+    assert.equal(status.dataset.raid, 'true');
+    assert.equal(env.els['raid-context-status'].classList.contains('error'), true);
+    env.offline = false;
+    await env.advance(40000);
+    assert.equal(server.rev, 2);
+    assert.equal(status.textContent, 'Saved to the raid');
+    assert.equal(status.dataset.failed, undefined);
     assert.match(env.els['raid-context-status'].textContent, /^Saved to the raid at /);
     assert.equal(env.els['raid-context-status'].classList.contains('error'), false);
-    assert.equal(env.els['btn-raid-save'].disabled, false);
-    // An edit, then a second save: the same link, updated before the raid is told.
-    byName(State, 'Fenwick').groupNumber = 0;
-    State.groups.forEach(g => { const i = g.findIndex(p => p.name === 'Fenwick'); if (i >= 0) { State.bench.push(...g.splice(i, 1)); } });
-    State.roster = State.groups.flat();
-    env.ctx.commit();
-    await RaidContext.save();
-    assert.equal(env.calls.filter(c => c.method === 'POST').length, 1, 'no second link');
-    const puts = env.calls.filter(c => c.method === 'PUT');
-    assert.equal(puts.length, 1);
-    assert.equal(puts[0].body.id, 'nEw1234');
-    assert.equal(puts[0].body.code, env.api.currentShareCode());
-    const second = env.guildCalls.filter(c => c.method === 'PUT')[1];
-    assert.equal(second.body.live, 'nEw1234');
-    assert.equal(second.body.players.find(p => p.name === 'Fenwick').group, 0);
   });
 
-  await check('Save to raid: failures show in the banner (no alert): live links down, the guild refusing, a name the guild cannot take, nothing to save', async () => {
-    const env = makeEnv();
-    guildRoute(env, () => SEED());
-    env.share = call => (call.method === 'POST' ? response(500, {}) : response(200, { updatedAt: 1 }));
-    const { State, RaidContext } = env.api;
-    await RaidContext.route(HASH);
-    await RaidContext.save();
-    assert.match(env.els['raid-context-status'].textContent, /Live links are down/);
-    assert.equal(env.els['raid-context-status'].classList.contains('error'), true);
-    assert(!env.guildCalls.some(c => c.method === 'PUT'), 'nothing is sent to the raid');
-    assert.equal(env.els['btn-raid-save'].disabled, false, 'the button is back');
-    // The live link works; the guild says no.
-    env.share = call => (call.method === 'POST' ? response(201, { id: 'nEw1234', updatedAt: 9 }) : response(200, { updatedAt: 10 }));
-    const forbidden = Object.assign(new Error('You do not have permission to do that.'), { status: 403, code: 'forbidden' });
-    env.guild = (method, p) => (method === 'GET' ? SEED() : forbidden);
-    await RaidContext.save();
-    assert.equal(env.els['raid-context-status'].textContent, 'You do not have permission to do that.');
-    assert.equal(env.els['raid-context-status'].classList.contains('error'), true);
-    // A name that is not a character name is left out and counted; one the guild still refuses is named.
-    byName(State, 'Aldric').name = 'Aldr1c';
+  await check('permanent failure: losing the right to edit offers "Keep as my own copy" (a plan of its own, no longer bound to the raid); the raid being gone also offers Remove, which drops the device copy', async () => {
+    const server = makeServer();
+    const env = await openedEnv(server, 'Me');
+    benchByHand(env, 'Fenwick');
+    await env.advance(5000);
+    const { State, PlanStore, PlanDb, PlanPoll, RaidContext } = env.api;
+    env.putStatus = 403;
+    State.notes = 'last words';
     env.ctx.commit();
-    env.guild = (method, p) => (method === 'GET' ? SEED() : { raid: {} });
-    await RaidContext.save();
-    assert.match(env.els['raid-context-status'].textContent, /^Saved to the raid at .* 1 name was left out/);
-    const sentNames = env.guildCalls.filter(c => c.method === 'PUT').pop().body.players.map(p => p.name);
-    assert(!sentNames.includes('Aldr1c'));
-    const refused = Object.assign(new Error('A character name is 2 to 12 letters.'), { status: 400, code: 'plan_invalid', index: 0 });
-    env.guild = (method) => (method === 'GET' ? SEED() : refused);
-    await RaidContext.save();
-    assert.match(env.els['raid-context-status'].textContent, /^[A-Za-z]+: A character name is 2 to 12 letters\.$/);
-    // Another plan on screen: nothing to save to this raid.
-    State.planId = 'plan:other';
-    await RaidContext.save();
-    assert.match(env.els['raid-context-status'].textContent, /no longer the raid plan/);
+    await env.advance(5000);
+    assert.equal(env.els['raid-lost-banner'].hidden, false);
+    assert.match(env.els['raid-lost-text'].textContent, /can no longer edit this raid/);
+    assert.equal(env.els['btn-raid-remove'].hidden, true);
+    assert.equal(env.els['autosave-status'].dataset.failed, 'true');
+    assert.match(env.els['autosave-status'].textContent, /you can no longer edit it/);
+    RaidContext.keepCopy();
+    assert.match(State.planId, /^plan:/);
+    assert(State.rosterName.endsWith('(my copy)'));
+    assert.equal(State.notes, 'last words');
+    assert.equal(RaidContext.current, null);
+    assert(!PlanDb.active() && !PlanPoll.active());
+    assert.equal(bindingOf(env), null);
+    assert.equal(env.els['raid-lost-banner'].hidden, true);
+    assert(PlanStore.read(env.storage).some(p => p.data.planId === State.planId && p.data.notes === 'last words'));
+    // The raid is gone (404): Remove drops the device copy.
+    const other = await openedEnv(makeServer(), 'Me');
+    benchByHand(other, 'Fenwick');
+    other.putStatus = 404;
+    other.api.State.notes = 'orphan';
+    other.ctx.commit();
+    await other.advance(5000);
+    assert.equal(other.els['raid-lost-banner'].hidden, false);
+    assert.match(other.els['raid-lost-text'].textContent, /^This raid no longer exists/);
+    assert.equal(other.els['btn-raid-remove'].hidden, false);
+    other.api.RaidContext.removeCopy();
+    assert.equal(other.api.State.planId, null);
+    assert(!other.api.PlanStore.read(other.storage).some(p => p.data.planId === 'raid:r1'));
+    assert.equal(other.location.hash, '#/planner');
+    assert(other.views.includes('landing'));
+    assert.equal(bindingOf(other), null);
+  });
+
+  await check('poll: another officer\'s plan appears within one poll with "Updated by <name>" and a Changes entry; no save of ours follows; Undo puts our version back as a new revision', async () => {
+    const server = makeServer();
+    const me = await openedEnv(server, 'Me');
+    benchByHand(me, 'Fenwick');
+    await me.advance(5000);
+    const kim = await openedEnv(server, 'Kim');
+    benchByHand(kim, 'Galdor');
+    await kim.advance(5000);
+    assert.equal(server.rev, 2);
+    const mineBefore = JSON.stringify(me.api.PlanStore.capture());
+    await me.advance(5000);
+    const { State, ChangeLog, RemoteUpdate } = me.api;
+    assert(State.bench.some(p => p.name === 'Galdor'), 'Kim\'s move reached this board');
+    assert.equal(me.els['remote-update-banner'].hidden, false);
+    assert.match(me.els['remote-update-text'].textContent, /^Updated by Kim: .*benched/);
+    assert.equal(ChangeLog.entries[0].kind, 'remote');
+    assert.deepEqual([me.api.PlanDb.rev(), me.api.PlanPoll.rev(), bindingOf(me).rev], [2, 2, 2]);
+    assert.equal(server.puts.length, 2, 'taking over a plan is no save');
+    await me.advance(20000);
+    assert.equal(server.puts.length, 2);
+    // Undo: our version, saved on top of Kim's revision.
+    assert(RemoteUpdate.undo());
+    assert.deepEqual(plain(me.api.PlanStore.capture()), JSON.parse(mineBefore));
+    assert(me.toasts.includes('Restored your version of the roster'), me.toasts.join(' | '));
+    await me.advance(5000);
+    assert.deepEqual([server.rev, server.puts[2].baseRev, server.puts[2].who], [3, 2, 'Me']);
+    assert(!server.plan.bench.some(p => p.name === 'Galdor'));
+    await kim.advance(5000);
+    assert(!kim.api.State.bench.some(p => p.name === 'Galdor'), 'Kim\'s board follows');
+    assert.match(kim.els['remote-update-text'].textContent, /^Updated by Me/);
+  });
+
+  await check('merge: a save that finds a newer revision (409) while the user edited puts the newest plan on screen with "Updated by" and Undo; Undo saves the user\'s version again', async () => {
+    const server = makeServer();
+    const me = await openedEnv(server, 'Me');
+    benchByHand(me, 'Fenwick');
+    await me.advance(5000);
+    const kim = await openedEnv(server, 'Kim');
+    benchByHand(kim, 'Galdor');
+    await kim.advance(5000);
+    benchByHand(me, 'Brindle'); // not saved yet when Kim's revision exists
+    await me.advance(1700);
+    assert.equal(me.els['remote-update-banner'].hidden, false, 'the 409 loser is told');
+    assert.match(me.els['remote-update-text'].textContent, /^Updated by Kim/);
+    assert(!me.api.State.bench.some(p => p.name === 'Brindle'), 'Kim\'s plan replaced the unsaved edit');
+    assert(me.api.State.bench.some(p => p.name === 'Galdor'));
+    assert.equal(server.puts.length, 2);
+    me.api.RemoteUpdate.undo();
+    await me.advance(5000);
+    assert.equal(server.rev, 3);
+    assert(server.plan.bench.some(p => p.name === 'Brindle') && !server.plan.bench.some(p => p.name === 'Galdor'), 'the user\'s version is the new revision');
+  });
+
+  await check('leave: Back to raid, any other address and a version switch flush a waiting save, then stop saving and polling', async () => {
+    const server = makeServer();
+    const env = await openedEnv(server, 'Me');
+    const { PlanDb, PlanPoll, RaidContext } = env.api;
+    benchByHand(env, 'Fenwick');
+    assert.equal(server.rev, 0, 'the save is still waiting');
+    RaidContext.back();
+    assert(!PlanPoll.active(), 'the poll stops at once');
+    await env.advance(5000);
+    assert.equal(server.rev, 1, 'the waiting save went out');
+    assert(!PlanDb.active() && RaidContext.dbOwner === null);
+    // A version switch from inside the raid plan: detach resolves once the raid holds what was on screen.
+    await openRaid(env);
+    assert(RaidContext.inDatabase());
+    benchByHand(env, 'Galdor');
+    const detaching = RaidContext.detach();
+    for (let i = 0; i < 100; i++) await env.advance(100);
+    await detaching;
+    assert.equal(server.rev, 2);
+    assert(!RaidContext.inDatabase() && !PlanDb.active());
+    // Another address.
+    await openRaid(env);
+    benchByHand(env, 'Cassia');
+    RaidContext.route('#/g/g1/roster');
+    await env.advance(5000);
+    assert.equal(server.rev, 3);
+    assert(!PlanDb.active());
+  });
+
+  await check('standalone: with no raid open nothing talks to the guild (no /api/guild request, no saver, no poll), and the Save to raid button and methods are gone', async () => {
+    const env = makeEnv();
+    const { Import, State, PlanDb, PlanPoll, RaidContext } = env.api;
+    assert(Import.loadRoster({ gameVersion: 'tbc', raid: 'kara', name: 'Mine', players: [{ name: 'Zorro', class: 'ROGUE', spec: 'Combat', role: 'melee_dps', groupNumber: 1 }] }));
+    env.ctx.commit();
+    State.notes = 'standalone';
+    env.ctx.commit();
+    await env.advance(120000);
+    assert.equal(env.calls.filter(c => String(c.url).startsWith('/api/guild')).length, 0);
+    assert.equal(env.guildCalls.length, 0);
+    assert(!PlanDb.active() && !PlanPoll.active());
+    assert.equal(env.api.saveStatusLine().text, 'Saved on this device');
+    assert.equal(typeof RaidContext.save, 'undefined');
+    assert.equal(typeof RaidContext.liveId, 'undefined');
+    assert(!app.html.includes('btn-raid-save') && !app.html.includes('Save to raid'));
   });
 
   await check('Back to raid goes to the raid page and drops the banner; the plan stays open; a commit on another plan also ends the context', async () => {
     const env = makeEnv();
     guildRoute(env, () => SEED());
     const { State, RaidContext } = env.api;
-    await RaidContext.route(HASH);
+    await openRaid(env);
     RaidContext.back();
     assert.equal(env.location.hash, '#/g/g1/raids/r/r1');
     assert.equal(RaidContext.current, null);
     assert.equal(env.els['raid-context-banner'].hidden, true);
     assert.equal(State.planId, 'raid:r1', 'the plan stays open as a plan of this browser');
     // Any other address leaves the raid too.
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert(RaidContext.current);
     RaidContext.route('#/g/g1/roster');
     assert.equal(RaidContext.current, null);
     RaidContext.route('');
     // Another plan taking over the screen ends it.
-    await RaidContext.route(HASH);
+    await openRaid(env);
     State.planId = 'plan:elsewhere';
     env.ctx.commit();
     assert.equal(RaidContext.current, null);
@@ -453,7 +869,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     env.ctx.commit();
     const before = State.planId;
     env.guild = () => Object.assign(new Error('You do not have permission to do that.'), { status: 403 });
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert.deepEqual(env.toasts, ['You do not have permission to do that.']);
     assert.equal(RaidContext.current, null);
     assert.equal(State.planId, before);
@@ -468,7 +884,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     let seed = SEED();
     guildRoute(env, () => seed);
     const { State, RaidContext, RaidHelperSync } = env.api;
-    await RaidContext.route(HASH);
+    await openRaid(env);
     seed = SEED({ signups: [...SIGNUPS(), signup(8, 'Harlan', 'Hunter', 'Marksmanship')] });
     env.toasts.length = 0;
     await RaidHelperSync.refresh();
@@ -493,7 +909,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     const env = makeEnv();
     guildRoute(env, () => SEED({ raid: Object.assign(SEED().raid, { eventId: null, gameVersion: 'classic', zone: 'Molten Core', title: null }), signups: [] }));
     const { State, RaidContext } = env.api;
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert.deepEqual([State.planId, State.sourceEventId, State.gameVersion, State.roster.length], ['raid:r1', null, 'classic', 0]);
     assert.equal(State.selectedRaid, 'mc');
     assert.match(env.els['raid-context-status'].textContent, /^The raid has no sign-ups yet/);
@@ -511,7 +927,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
   const openSeed = async seed => {
     const env = makeEnv();
     guildRoute(env, () => seed);
-    await env.api.RaidContext.route(HASH);
+    await openRaid(env);
     return env;
   };
 
@@ -557,19 +973,19 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     let seed = sizedSeed({ zone: null, size: 25 }, crowd(8));
     guildRoute(env, () => seed);
     const { State, RaidContext } = env.api;
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert.equal(State.selectedRaid, 'bt');
     State.selectedRaid = 'ssc';
     env.ctx.commit();
     RaidContext.leave();
     seed = sizedSeed({ zone: 'Black Temple', size: 10 }, crowd(8));
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert.equal(State.selectedRaid, 'ssc', 'on screen: kept');
     // Saved on this device, another plan on screen: still the saved plan's template.
     RaidContext.leave();
     env.api.Import.loadRoster({ gameVersion: 'tbc', raid: 'kara', name: 'Other', players: [{ name: 'Zorro', class: 'ROGUE', spec: 'Combat', role: 'melee_dps', groupNumber: 1 }] });
     env.ctx.commit();
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert.equal(State.selectedRaid, 'ssc', 'saved: kept');
   });
 
@@ -587,7 +1003,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     let seed = SEED({ signups: rows() });
     guildRoute(env, () => seed);
     const { State, RaidContext, RaidHelperSync, Import, PlanSession, PlanStore } = env.api;
-    await RaidContext.route(HASH);
+    await openRaid(env);
     const marker = name => { const p = byName(State, name); return p && p.marker ? plain(p.marker) : null; };
     assert.deepEqual(marker('Aldric'), { kind: 'late', text: 'Late: 21:00' });
     assert.deepEqual(marker('Cassia'), { kind: 'standby', text: 'Standby' });
@@ -611,7 +1027,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     assert(allPlayers(State).every(p => !p.marker), 'a plan read from a share code has no markers');
     // Reopening the raid brings them back from the seed.
     RaidContext.leave();
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert.equal(marker('Cassia').kind, 'standby', 'the next open applies them again');
     assert.equal(marker('Eliora').kind, 'also');
 
@@ -633,7 +1049,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     const env = makeEnv();
     guildRoute(env, () => SEED({ signups: [{ ...signup(1, 'Aldric', 'Warrior', 'Protection'), marker: { kind: 'standby', text: 'Standby' } }, signup(2, 'Brindle', 'Mage', 'Fire'), signup(3, 'Cassia', 'Priest', 'Holy')] }));
     const { State, RaidContext, PlanSession, PlanStore, LocalPicks, Import } = env.api;
-    await RaidContext.route(HASH);
+    await openRaid(env);
     env.ctx.commit();
     const group = byName(State, 'Brindle').groupNumber;
     State.notes = 'a step to undo';
@@ -669,7 +1085,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     assert.equal(spaces(env.els['raid-context-text'].textContent), 'Planning Sat, Oct 24 - Sat BT');
     // The re-sync of a reopened date-only raid does not set one either.
     env.api.RaidContext.leave();
-    await env.api.RaidContext.route(HASH);
+    await openRaid(env);
     assert.equal(env.api.State.eventStartTime, null);
     const known = await openSeed(SEED());
     assert.equal(known.api.State.eventStartTime, Date.UTC(2026, 9, 25, 0, 0));
@@ -686,7 +1102,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     guildRoute(env, () => seed);
     const { State, RaidContext, Fairness, PlanStore } = env.api;
     assert(!Fairness.active());
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert(Fairness.active() && Fairness.window === 4);
     assert.deepEqual(plain(['Aldric', 'Brindle', 'Cassia', 'Fenwick'].map(name => Fairness.benches({ name }))), [2, 0, 4, 0]);
     // Refresh in the planner reads the guild again: the history it carries replaces the old one.
@@ -704,7 +1120,7 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     RaidContext.leave();
     assert(!Fairness.active() && Fairness.byName.size === 0, 'the history ends with the raid context');
     // Another plan opened over the raid ends the context and the history with it.
-    await RaidContext.route(HASH);
+    await openRaid(env);
     assert(Fairness.active());
     const other = PlanStore.capture();
     other.planId = 'plan:other';

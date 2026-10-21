@@ -19,7 +19,7 @@ const ChangeLog = {
   KINDS: ['benched', 'seated', 'status', 'moved', 'added', 'dropped'],
   // The word the panel and the card tag show for each kind.
   WORDS: { benched:'Benched', seated:'Seated', status:'Status', moved:'Moved', added:'New', dropped:'Dropped' },
-  LABELS: { sync:'Sign-up sync', size:'Raid size change', live:'Live link update', optimize:'Optimize' },
+  LABELS: { sync:'Sign-up sync', size:'Raid size change', live:'Live link update', remote:'Raid plan update', optimize:'Optimize' },
 
   entries: [], // newest first: {id, kind, label, time, items, seen}
   planId: null, // the plan the entries belong to
