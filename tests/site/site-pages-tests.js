@@ -184,7 +184,8 @@ check('index.html loads util.js first, site-pages.js after the planner scripts, 
   assert.deepEqual(app.scripts.slice(guildAt), [GUILD_LOADER, '/js/guild/manifest.js', ...GUILD_MANIFEST], 'the page ends with the guild loader and what it runs');
   assert.deepEqual(guildScriptsOf(app.html), GUILD_MANIFEST);
   assert.equal(app.scripts[guildAt - 1], '/js/site-pages.js');
-  assert.equal(guildAt, 18, 'the 18 planner scripts, in the same order as before');
+  assert.equal(guildAt, 19, 'the 19 planner scripts (18 plus js/plansync.js after livesync.js), in page order');
+  assert.equal(app.scripts[app.scripts.indexOf('/js/livesync.js') + 1], '/js/plansync.js');
   assert.deepEqual(app.stylesheets, ['/app.css', '/guild.css']);
   assert(app.scripts.indexOf('/js/util.js') < app.scripts.indexOf('/js/changelog.js'));
   const config = JSON.parse(read('vercel.json'));

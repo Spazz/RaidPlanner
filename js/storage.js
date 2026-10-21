@@ -167,7 +167,10 @@ const PlanStore = {
     const list = [entry, ...entries.filter(e => !(planKey && e && e.data && LiveLinks.planKey(e.data) === planKey))];
     let bound = [];
     try { bound = Object.keys(LiveLinks.read(storage)); } catch {}
-    const protectedKeys = new Set([planKey, ...bound]);
+    // A guild raid plan holding edits the server has not acknowledged (PlanDbLinks, plansync.js) is the only copy of them.
+    let unsent = [];
+    try { if (typeof PlanDbLinks !== 'undefined') unsent = PlanDbLinks.dirtyKeys(storage); } catch {}
+    const protectedKeys = new Set([planKey, ...bound, ...unsent]);
     const evicted = [];
     let reason = null;
     const stamp = e => (e && Number.isFinite(e.updatedAt) ? e.updatedAt : 0);
@@ -547,7 +550,7 @@ const DataBackup = {
   // Kept in one place so a future new pp_* key only needs adding here (and,
   // if it has its own shape, to _checkKey/_merge below) to be covered.
   keys: ['pp_rosters', 'pp_import_history', 'pp_working_plans', 'pp_roster_templates',
-         'pp_sidebar_expanded', 'pp_whats_new_dismissed_v1', 'pp_spotlight_seen_v1', 'pp_live_links'],
+         'pp_sidebar_expanded', 'pp_whats_new_dismissed_v1', 'pp_spotlight_seen_v1', 'pp_live_links', 'pp_plan_db'],
   labels: {
     pp_rosters: 'saved rosters',
     pp_import_history: 'import history entries',
@@ -557,6 +560,7 @@ const DataBackup = {
     pp_whats_new_dismissed_v1: '"What\'s new" dismissal',
     pp_spotlight_seen_v1: 'feature tips dismissed',
     pp_live_links: 'live links',
+    pp_plan_db: 'guild raid plan links',
   },
 
   // Keys with no value in this browser are omitted entirely (not written as
@@ -637,6 +641,14 @@ const DataBackup = {
       const planKeys = Object.keys(parsed);
       const wellFormed = e => e && typeof e === 'object' && LiveLinks.ID.test(e.id) && typeof e.lastCode === 'string';
       if (!planKeys.every(k => wellFormed(parsed[k]))) return { valid: false, error: 'one or more plan links are malformed.' };
+      return { valid: true, count: planKeys.length };
+    }
+    if (key === 'pp_plan_db') {
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { valid: false, error: 'expected an object of plan bindings.' };
+      const planKeys = Object.keys(parsed);
+      const wellFormed = e => e && typeof e === 'object' && typeof e.gid === 'string' && !!e.gid && typeof e.rid === 'string' && !!e.rid &&
+        Number.isInteger(e.rev) && e.rev >= 0 && typeof e.dirty === 'boolean';
+      if (!planKeys.every(k => wellFormed(parsed[k]))) return { valid: false, error: 'one or more plan bindings are malformed.' };
       return { valid: true, count: planKeys.length };
     }
     return { valid: false, error: 'unrecognized key.' };
@@ -781,6 +793,20 @@ const DataBackup = {
         else updated++;
       }
       return { value: JSON.stringify(kept), added, updated, unchanged };
+    }
+    if (key === 'pp_plan_db') {
+      // A binding already in this browser stays (it knows the revision this browser last saw); only missing ones come in.
+      let cur = {}, inc = {};
+      try { cur = currentRaw ? JSON.parse(currentRaw) : {}; } catch {}
+      try { inc = JSON.parse(backupRaw); } catch {}
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) cur = {};
+      if (!inc || typeof inc !== 'object' || Array.isArray(inc)) inc = {};
+      let added = 0, unchanged = 0;
+      for (const planKey of Object.keys(inc)) {
+        if (planKey in cur) unchanged++;
+        else { cur[planKey] = inc[planKey]; added++; }
+      }
+      return { value: JSON.stringify(cur), added, updated: 0, unchanged };
     }
     return { value: backupRaw, added: 0, updated: 0, unchanged: 0 };
   },

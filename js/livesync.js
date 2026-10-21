@@ -124,6 +124,16 @@ const LocalPicks = {
   },
 };
 
+// The player editor, buff picker or notes field is in use: a remote update now would rebuild the plan under it. One check
+// for both pulls (LiveSync here, PlanPoll in plansync.js).
+const UserEditing = {
+  active(doc = document) {
+    const notes = doc.getElementById('raid-notes-textarea');
+    return !!(doc.getElementById('active-player-editor') || doc.getElementById('active-buff-picker') ||
+      (notes && doc.activeElement === notes));
+  },
+};
+
 // AbortSignal.timeout where it exists, otherwise an AbortController timer, so
 // a hung request cannot wedge sync on older browsers. undefined = no timeout.
 function timeoutSignal(ms) {

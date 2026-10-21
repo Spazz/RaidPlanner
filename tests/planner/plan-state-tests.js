@@ -515,6 +515,13 @@ async function check(name, fn) {
       { kind: 'moved', name: 'A' }, { kind: 'moved', name: 'B' }, { kind: 'moved', name: 'C' }, { kind: 'benched', name: 'D' }]);
     RemoteUpdate.show({ some: 'snapshot' }, entry);
     assert.equal(env.el('remote-update-text').textContent, 'Updated by someone else: 1 benched, 3 moved.');
+    RemoteUpdate.show({ some: 'snapshot' }, entry, 'Kim');
+    assert.equal(env.el('remote-update-text').textContent, 'Updated by Kim: 1 benched, 3 moved.', 'the editor is named');
+    RemoteUpdate.show({ some: 'snapshot' }, null, 'Kim');
+    assert.equal(env.el('remote-update-text').textContent, 'Roster updated by Kim.');
+    assert.equal(RemoteUpdate.summaryText(entry, '   '), 'Updated by someone else: 1 benched, 3 moved.', 'a blank name is no name');
+    assert.equal(RemoteUpdate.summaryText(entry, undefined), 'Updated by someone else: 1 benched, 3 moved.');
+    RemoteUpdate.show({ some: 'snapshot' }, entry);
     RemoteUpdate.seeChanges();
     assert.equal(env.panelOpen, true);
     assert.equal(env.el('remote-update-banner').hidden, false, 'See changes leaves the banner up');

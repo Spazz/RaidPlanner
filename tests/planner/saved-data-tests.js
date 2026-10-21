@@ -31,7 +31,7 @@ const SOURCE = [
   app.slice('const SplitFlow = {', "document.getElementById('btn-split-offer')"),
 ].join('\n');
 const ctx = app.sandbox(
-  ['State', 'Config', 'PlanStore', 'LiveLinks', 'BackupStamp', 'DataBackup', 'RaidSplit', 'SplitFlow',
+  ['State', 'Config', 'PlanStore', 'LiveLinks', 'PlanDbLinks', 'BackupStamp', 'DataBackup', 'RaidSplit', 'SplitFlow',
     'getSavedRosters', 'saveRosterToStorage', 'bindLiveLink', 'syncAddressBar', 'confirmReplaceSavedCopy', 'deleteSavedEntry', 'hasLoadedWork', 'ChangeLog', 'Backups'],
   {
     globals: {
@@ -46,7 +46,7 @@ const ctx = app.sandbox(
     extraSource: SOURCE,
   }
 );
-const { State, Config, PlanStore, LiveLinks, BackupStamp, DataBackup, RaidSplit, SplitFlow, getSavedRosters, saveRosterToStorage, bindLiveLink, syncAddressBar,
+const { State, Config, PlanStore, LiveLinks, PlanDbLinks, BackupStamp, DataBackup, RaidSplit, SplitFlow, getSavedRosters, saveRosterToStorage, bindLiveLink, syncAddressBar,
   confirmReplaceSavedCopy, deleteSavedEntry, hasLoadedWork, ChangeLog, Backups } = ctx.api;
 
 let passed = 0, failed = 0;
@@ -293,6 +293,92 @@ const noComments = (text) => text.split('\n').filter(l => !/^\s*\/\//.test(l)).j
     assert(/class="backup-badge"[^>]*>S<\/span>/.test(script));
     // internals and data-file items are unchanged
     assert(html.includes('id="backup-banner"') && html.includes('>Export data backup<') && html.includes('Import data backup&hellip;'));
+  });
+
+  // ── guild raid plans in the database (pp_plan_db) ──
+  await check('PlanStore.save never evicts a plan whose edits the server has not acknowledged (dirty pp_plan_db), but a clean binding is evictable', async () => {
+    reset();
+    PlanStore.max = 3;
+    try {
+      PlanStore.save(fakeStorage, planData('raid:r1', 'unsent'));
+      PlanStore.save(fakeStorage, planData('raid:r2', 'clean'));
+      PlanStore.save(fakeStorage, planData('plan:c', 'c'));
+      PlanDbLinks.bind(fakeStorage, 'tbc|raid:r1', { gid: 'g1', rid: 'r1', rev: 4 });
+      PlanDbLinks.markDirty(fakeStorage, 'tbc|raid:r1');
+      PlanDbLinks.bind(fakeStorage, 'tbc|raid:r2', { gid: 'g1', rid: 'r2', rev: 2 });
+      const res = PlanStore.save(fakeStorage, planData('plan:d', 'd'));
+      assert.equal(res.evicted.length, 1);
+      assert.deepEqual([...plansLeft()].sort(), ['c', 'clean', 'd', 'unsent'].filter(n => n !== res.evicted[0]).sort());
+      assert(plansLeft().includes('unsent'), 'the unsent plan stays');
+    } finally { PlanStore.max = 50; }
+  });
+
+  await check('with every other plan dirty the cap runs over instead of dropping unsent edits', async () => {
+    reset();
+    PlanStore.max = 2;
+    try {
+      for (const id of ['a', 'b', 'c']) {
+        PlanStore.save(fakeStorage, planData('raid:' + id, id));
+        PlanDbLinks.bind(fakeStorage, 'tbc|raid:' + id, { gid: 'g1', rid: id, rev: 1 });
+        PlanDbLinks.markDirty(fakeStorage, 'tbc|raid:' + id);
+      }
+      PlanStore.save(fakeStorage, planData('plan:d', 'd'));
+      assert.deepEqual([...plansLeft()].sort(), ['a', 'b', 'c', 'd']);
+    } finally { PlanStore.max = 50; }
+  });
+
+  await check('a corrupt pp_plan_db protects nothing and breaks nothing', async () => {
+    reset();
+    fakeStorage.setItem('pp_plan_db', '{broken');
+    assert.doesNotThrow(() => PlanStore.save(fakeStorage, planData('plan:a', 'a')));
+    assert.deepEqual([...plansLeft()], ['a']);
+  });
+
+  const planDbEntries = (extra = {}) => JSON.stringify({ 'tbc|raid:r1': { gid: 'g1', rid: 'r1', rev: 3, dirty: true }, ...extra });
+
+  await check('DataBackup: pp_plan_db is in the key list and a restore into an empty browser reproduces the bindings', async () => {
+    reset();
+    assert(DataBackup.keys.includes('pp_plan_db'));
+    fakeStorage.setItem('pp_plan_db', planDbEntries());
+    const backup = DataBackup.build(fakeStorage);
+    assert.equal(backup.data.pp_plan_db, planDbEntries());
+    const verdict = DataBackup.validate(backup);
+    assert.equal(verdict.valid, true, verdict.errors.join('; '));
+    assert.equal(verdict.summary.pp_plan_db.count, 1);
+    fakeStorage.data.clear();
+    assert.equal(DataBackup.apply(fakeStorage, backup, 'merge').success, true);
+    assert.deepEqual(JSON.parse(fakeStorage.getItem('pp_plan_db')), JSON.parse(planDbEntries()));
+    assert.equal(PlanDbLinks.get(fakeStorage, 'tbc|raid:r1').rev, 3);
+  });
+
+  await check('DataBackup: a browser with no bindings omits the key, and an older backup never wipes them', async () => {
+    reset();
+    assert(!Object.prototype.hasOwnProperty.call(DataBackup.build(fakeStorage).data, 'pp_plan_db'));
+    fakeStorage.setItem('pp_plan_db', planDbEntries());
+    assert.equal(DataBackup.apply(fakeStorage, { schema: DataBackup.schema, version: 1, data: { pp_sidebar_expanded: '1' } }, 'merge').success, true);
+    assert.equal(PlanDbLinks.get(fakeStorage, 'tbc|raid:r1').rev, 3);
+  });
+
+  await check('DataBackup: validate rejects bad JSON, wrong shape and malformed pp_plan_db entries', async () => {
+    const bad = raw => DataBackup.validate({ schema: DataBackup.schema, version: 1, data: { pp_plan_db: raw } }).valid;
+    assert.equal(bad('{nope'), false);
+    assert.equal(bad('[1]'), false, 'array instead of object');
+    assert.equal(bad(JSON.stringify({ k: 'x' })), false, 'entry must be an object');
+    assert.equal(bad(JSON.stringify({ k: { gid: 'g', rid: 'r', rev: -1, dirty: false } })), false, 'rev is a non-negative integer');
+    assert.equal(bad(JSON.stringify({ k: { gid: 'g', rid: 'r', rev: 1, dirty: 'yes' } })), false, 'dirty is a boolean');
+    assert.equal(bad(JSON.stringify({ k: { gid: '', rid: 'r', rev: 1, dirty: false } })), false, 'gid is required');
+    assert.equal(bad(planDbEntries()), true);
+    assert.equal(bad('{}'), true, 'no bindings is a valid empty set');
+  });
+
+  await check('DataBackup merge: a binding this browser already has stays (it knows its revision), missing ones come in', async () => {
+    reset();
+    fakeStorage.setItem('pp_plan_db', JSON.stringify({ 'tbc|raid:r1': { gid: 'g1', rid: 'r1', rev: 9, dirty: false } }));
+    const backup = { schema: DataBackup.schema, version: 1, data: { pp_plan_db: planDbEntries({ 'tbc|raid:r2': { gid: 'g1', rid: 'r2', rev: 1, dirty: false } }) } };
+    assert.equal(DataBackup.apply(fakeStorage, backup, 'merge').success, true);
+    assert.equal(PlanDbLinks.get(fakeStorage, 'tbc|raid:r1').rev, 9, 'kept');
+    assert.equal(PlanDbLinks.get(fakeStorage, 'tbc|raid:r1').dirty, false);
+    assert.equal(PlanDbLinks.get(fakeStorage, 'tbc|raid:r2').rev, 1, 'added');
   });
 
   console.log(`\nSaved data tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

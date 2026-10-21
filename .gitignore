@@ -17,6 +17,7 @@
 !js/import.js
 !js/storage.js
 !js/livesync.js
+!js/plansync.js
 !js/optimizer.js
 !js/analysis.js
 !js/changes.js

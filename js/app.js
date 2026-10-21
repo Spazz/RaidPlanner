@@ -836,18 +836,20 @@ const RemoteUpdate = {
   before: null,
   entryId: null, // the Changes entry the update recorded, dropped again by Undo
   // "Updated by someone else: 3 moved, 1 benched." from the update's Changes entry.
-  summaryText(entry) {
-    if (!entry || !entry.items || !entry.items.length) return 'Roster updated by someone else.';
-    const counts = ChangeLog.countsText(entry);
+  // With the editor's name (a guild raid plan: "Updated by Kim: 3 moved, 1 benched.") the name replaces "someone else".
+  summaryText(entry, editorName) {
+    const who = typeof editorName === 'string' && editorName.trim() ? editorName.trim() : '';
+    const counts = entry && entry.items && entry.items.length ? ChangeLog.countsText(entry) : '';
+    if (who) return counts ? `Updated by ${who}: ${counts}.` : `Roster updated by ${who}.`;
     return counts ? `Updated by someone else: ${counts}.` : 'Roster updated by someone else.';
   },
-  show(before, entry) {
+  show(before, entry, editorName) {
     this.before = before;
     this.entryId = entry ? entry.id : null;
     const banner = document.getElementById('remote-update-banner');
     const text = document.getElementById('remote-update-text');
     const undo = document.getElementById('btn-remote-undo');
-    if (text) text.textContent = this.summaryText(entry);
+    if (text) text.textContent = this.summaryText(entry, editorName);
     if (undo) undo.hidden = false;
     if (banner) banner.hidden = false;
   },
@@ -1070,9 +1072,7 @@ const LiveSync = {
   // The player editor, buff picker or notes field is in use: an update now would
   // rebuild the plan under it.
   editing() {
-    const notes = document.getElementById('raid-notes-textarea');
-    return !!(document.getElementById('active-player-editor') || document.getElementById('active-buff-picker') ||
-      (notes && document.activeElement === notes));
+    return UserEditing.active(document);
   },
 
   // Waits for the user to let go, then pulls again (which re-checks everything).

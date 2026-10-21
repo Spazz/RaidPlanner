@@ -33,7 +33,7 @@ var Modal = { confirm: async () => (__env.confirmAnswer !== undefined ? __env.co
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'timeoutSignal', 'fetchLiveLink',
-  'LivePoll', 'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar', 'PlanSession', 'applyShareCode', 'SharedPlanBanner', 'DataBackup'];
+  'LivePoll', 'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar', 'PlanSession', 'applyShareCode', 'SharedPlanBanner', 'DataBackup', 'UserEditing'];
 
 function memoryStorage() {
   const data = {};
@@ -971,6 +971,25 @@ async function check(name, fn) {
     away.ctx.commit();
     assert.equal(away.els['roster-name'].focused, 0, 'no focus grab when the plan changed under the banner');
     assert(/btn-shared-gotit'\)\.addEventListener\('click', \(\) => SharedPlanBanner\.hide\(\{ focus: true \}\)\)/.test(app.script), 'the Got it button asks for focus');
+  });
+
+  await check('LiveSync.editing() goes through the shared UserEditing check: player editor, buff picker or a focused notes field', async () => {
+    const env = makeEnv();
+    const present = new Map();
+    env.document.getElementById = id => present.get(id) || null;
+    env.document.activeElement = null;
+    const { LiveSync, UserEditing } = env.api;
+    assert.equal(LiveSync.editing(), false);
+    assert.equal(UserEditing.active(env.document), false);
+    present.set('active-player-editor', {});
+    assert.equal(LiveSync.editing(), true, 'player editor open');
+    present.clear(); present.set('active-buff-picker', {});
+    assert.equal(LiveSync.editing(), true, 'buff picker open');
+    present.clear(); present.set('raid-notes-textarea', {});
+    assert.equal(LiveSync.editing(), false, 'notes present but not focused');
+    env.document.activeElement = present.get('raid-notes-textarea');
+    assert.equal(LiveSync.editing(), true, 'notes focused');
+    assert.equal(UserEditing.active(env.document), LiveSync.editing(), 'one answer for both pulls');
   });
 
   console.log(`\nLiveSync tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);
