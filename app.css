@@ -390,9 +390,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
    ("Backup: Name") and the benched backup's own card ("-> Name"). */
 .backup-badge { flex-shrink:0; font-size: 9px; letter-spacing: .04em; color: var(--accent-gold-bright); border: 1px solid var(--accent-gold-dim); border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
 .backup-badge-bench { color: var(--text-secondary); border-color: var(--border-medium); }
-.preferred-actions { border-top: 1px solid var(--border-subtle); padding: 8px 0; }
-.preferred-actions p { font-size: 13px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 8px; }
-.preferred-actions .pe-btn { margin: 0 4px 4px 0; }
 .drag-handle {
   display: flex; flex-direction: column; gap: 2px;
   opacity: 0; transition: opacity 0.15s ease;
@@ -549,114 +546,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .unplaced-dialog-error { min-height: 16px; font-size: 12px; color: var(--danger); }
 
 
-/* ── Player editor: a drawer on the right edge (phones: the bottom sheet in the slim phone block) ── */
-.player-editor-overlay { position: fixed; inset: 0; z-index: 99; background: transparent; }
-.player-editor {
-  position: fixed; top: 0; right: 0; bottom: 0;
-  display: flex; flex-direction: column;
-  width: 380px; max-width: 100vw; box-sizing: border-box;
-  background: var(--bg-panel); border-left: 1px solid var(--border-strong);
-  z-index: 200; box-shadow: -8px 0 24px rgba(0,0,0,0.5);
-  font-family: var(--font-body); font-size: 13px; color: var(--text-primary);
-}
-.pe-phone-only { display: none; }
-.pe-drawer-head { display: flex; align-items: flex-start; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--border-medium); }
-.pe-drawer-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.pe-drawer-kicker { font-family: var(--font-cond); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
-.pe-drawer-name { font-size: 18px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pe-drawer-sub { font-size: 13px; color: var(--text-muted); }
-.pe-drawer-close { flex-shrink: 0; width: 36px; height: 36px; background: none; border: 1px solid var(--border-medium); color: var(--text-secondary); font-size: 22px; line-height: 1; cursor: pointer; }
-.pe-drawer-close:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
-.pe-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; }
-.pe-section-title, .player-why-here h4 {
-  font-family: var(--font-cond); font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--accent-gold); margin: 14px 0 8px;
-}
-.player-editor-title {
-  font-family: var(--font-cond);
-  font-size: 12px; color: var(--text-muted); padding: 0 0 6px;
-  border-bottom: 1px solid var(--border-subtle); margin-bottom: 8px;
-  text-transform: uppercase; letter-spacing: 0.1em;
-}
-/* Move: one chip per group. A group with room moves the player at once; a full one lists who to swap with. */
-.pe-move-section { padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
-.pe-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
-.pe-chip {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 4px; align-content: center;
-  min-height: 44px; padding: 4px 6px; box-sizing: border-box; line-height: 1.2;
-  background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-medium); font-family: inherit; cursor: pointer;
-}
-.pe-chip b { font-size: 14px; font-weight: 600; }
-.pe-chip-count { font-size: 14px; font-weight: 600; }
-.pe-chip small { flex-basis: 100%; text-align: center; font-size: 12px; color: var(--text-muted); }
-.pe-chip:hover:not(:disabled):not(.pe-chip-pick) { background: var(--bg-card-hover); }
-.pe-chip:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
-.pe-chip-room small { color: var(--success); }
-.pe-chip-current { border-color: var(--accent-gold-dim); background: color-mix(in srgb, var(--accent-gold) 8%, transparent); cursor: default; }
-.pe-chip-current small { color: var(--accent-gold); }
-.pe-chip-pick, .pe-chip-pick small { background: var(--accent-gold); border-color: var(--accent-gold); color: var(--text-on-accent); }
-.pe-move-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.4; color: var(--text-muted); }
-.pe-swap { display: flex; flex-direction: column; margin-top: 10px; border: 1px solid var(--border-medium); }
-.pe-swap-prompt { margin: 0; padding: 6px 10px; font-size: 13px; color: var(--text-secondary); background: var(--bg-deepest); border-bottom: 1px solid var(--border-medium); }
-.pe-swap-row {
-  display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px;
-  background: var(--bg-card); color: var(--text-primary); border: 0; border-top: 1px solid var(--border-subtle);
-  font-family: inherit; font-size: 14px; text-align: left; cursor: pointer;
-}
-.pe-swap-prompt + .pe-swap-row { border-top: 0; }
-.pe-swap-row:hover { background: var(--bg-card-hover); }
-.pe-swap-row small { font-size: 12px; color: var(--text-muted); }
-.pe-swap-row em { margin-left: auto; font-style: normal; font-family: var(--font-cond); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-gold); }
-.pe-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.pe-field-name { grid-column: 1 / -1; }
-.player-editor-field {
-  display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 0;
-  font-size: 13px; color: var(--text-muted);
-}
-.player-editor-field input,
-.player-editor-field select {
-  min-width: 0; height: 38px; box-sizing: border-box;
-  background: var(--bg-input); color: var(--text-primary);
-  border: 1px solid var(--border-medium);
-  padding: 0 10px; font-size: 14px; font-family: inherit;
-}
-.player-editor-field input:focus,
-.player-editor-field select:focus { outline: none; border-color: var(--accent-gold); }
-.player-editor-role {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 13px; color: var(--text-secondary); margin: 8px 0 10px;
-}
-.player-editor-error {
-  display: none; font-size: 12px; color: var(--danger-bright);
-  margin: 0; padding: 6px 16px; line-height: 1.3;
-}
-.player-editor-review-notice {
-  font-size: 13px; color: var(--warning); line-height: 1.4;
-  background: color-mix(in srgb, var(--warning) 8%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-  border-radius: 3px; padding: 6px 8px; margin: 2px 0 8px;
-}
-.player-editor-actions {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 8px; padding: 12px 16px;
-  border-top: 1px solid var(--border-strong); background: var(--bg-panel);
-}
-.pe-actions-right { display: flex; gap: 8px; }
-.pe-btn {
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.08em;
-  background: transparent; color: var(--text-secondary);
-  border: 1px solid var(--border-strong);
-  padding: 0 12px; min-height: 32px; font-size: 13px; font-weight: 600; cursor: pointer;
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
-}
-.player-editor-actions .pe-btn { min-height: 40px; padding: 0 16px; font-size: 14px; letter-spacing: 0.1em; }
-.pe-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
-.pe-btn-primary { background: linear-gradient(180deg, var(--molten-hover), var(--molten)); color: var(--text-on-molten); border-color: var(--molten); }
-.pe-btn-primary:hover { background: linear-gradient(180deg, #ffa856, var(--molten-hover)); color: var(--text-on-molten); }
-.pe-btn-danger { color: var(--danger-bright); border-color: color-mix(in srgb, var(--danger-bright) 30%, transparent); }
-.pe-btn-danger:hover { background: color-mix(in srgb, var(--danger-bright) 12%, transparent); color: var(--danger-hover); }
-/* The card being edited: an outline, not a box-shadow, so it does not fight .changed. */
-.player-slot.editing, .bench-slot.editing { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
-
 /* Constraint / lock badges on a seated player-slot (backlog #1, #3) */
 .constraint-badge, .lock-badge { flex-shrink:0; font-size:10px; cursor:default; }
 /* Needs-review badge (backlog #2, 2026-09-26) — a class-only Raid-Helper
@@ -665,18 +554,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
    .plain-import-flag, which this mirrors visually). */
 .player-slot.needs-review { background: color-mix(in srgb, var(--warning) 8%, transparent); }
 .review-badge { flex-shrink:0; color: var(--warning); font-size: 9px; text-transform: uppercase; letter-spacing: .03em; cursor: help; white-space: nowrap; border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); border-radius: 3px; padding: 1px 4px; }
-.player-constraints { margin-bottom: 12px; }
-.player-constraints-list { display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
-.constraint-row {
-  display:flex; align-items:center; justify-content:space-between; gap:6px;
-  font-size:13px; color:var(--text-secondary);
-  border:1px solid var(--border-subtle); padding:3px 6px;
-}
-.constraint-row .pe-btn { padding:0 8px; min-height:24px; font-size:14px; }
-.player-why-here { margin-bottom: 12px; }
-.player-why-here ul { margin:0; padding-left:16px; }
-.player-why-here li { font-size:13px; color:var(--text-secondary); margin-bottom:4px; line-height:1.4; }
-.why-here-empty { font-size:13px; color:var(--text-muted); margin:0; }
 /* Flat fallback colors for buff chips (shown when the Wowhead icon is unavailable) */
 .buff-wf  { background: #1f5a9e; color: #cce0ff; }
 .buff-goa { background: #3a8ab0; color: #e0f5ff; }
@@ -964,16 +841,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .share-caption { margin:0; font-size:13px; line-height:1.4; color:var(--text-muted); }
 .share-actions details { margin-top:12px; }
 .share-actions details button { display:block; margin-top:8px; width:100%; }
-.player-move { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:4px 8px; margin-bottom:12px; }
-.player-move > label, .player-move > select:last-child { grid-column:1 / -1; }
-.player-move label { font-size:13px; color:var(--text-muted); }
-.player-move select { width:100%; height:38px; box-sizing:border-box; padding:0 8px; font-size:14px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border-medium); }
-.player-move.pe-backup-row { display:flex; flex-direction:row; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary); }
-.pe-backup-row > span { flex:1; min-width:0; }
-.pe-backup-row b { color:var(--text-primary); }
-@media(max-width:600px) {
-  .player-editor { max-height:calc(100dvh - 20px); overflow-y:auto; }
-}
 .chip {
   display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px;
   border: 1px solid var(--border-strong); color: var(--text-secondary);
@@ -1119,8 +986,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .role-icon-empty { opacity:.3; }
 .modal-note { font-size:11px; color:var(--text-muted); }
 .modal-empty-note { font-size:11px; color:var(--text-muted); text-align:center; padding:16px; }
-.pe-inline-label { display:flex; align-items:center; gap:6px; }
-.player-move label.pe-inline-label { font-size:14px; color:var(--text-primary); }
 .assign-conflict { background:color-mix(in srgb, var(--danger) 8%, transparent); }
 .assign-warning { color:var(--danger); font-size:12px; margin-top:10px; }
 .assign-empty { color:var(--text-muted); font-size:12px; padding:10px 0; }
@@ -1180,7 +1045,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
    Phone-only chrome is hidden by default and switched on in the media block below, so
    desktop is untouched. The planner frame drops its 1.5x zoom here: sizes in this block
    are real CSS pixels. */
-.pe-sheet-handle, .pe-sheet-header, .pe-more-row { display:none; }
 @media (max-width: 600px) {
   .addon-frame { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
   /* The toast sits at the top, under the 40px header and above the player editor sheet (z-index 200). */
@@ -1214,82 +1078,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .changes-log-panel { margin: 8px 12px; padding: 10px 12px; }
   #btn-changes-seen, #btn-changes-close, #changes-log-panel .changes-log-more { min-height: 44px; }
   #changes-log-panel .changes-log-more { padding: 0 8px; }
-
-  /* Player editor: bottom sheet. Short view = header, Name, Class + Spec, backup row,
-     More row, actions. .pe-more-open swaps to the "More options" sections. */
-  .player-editor-overlay { background: rgba(0, 0, 0, 0.45); }
-  .player-editor {
-    position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0;
-    transform: none; width: auto !important; max-height: 85dvh; box-sizing: border-box;
-    background: var(--bg-frame); border: 0; border-top: 1px solid var(--border-strong); box-shadow: none;
-    padding: 8px 14px calc(14px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px;
-  }
-  .player-editor > *, .pe-body > * { margin: 0; flex-shrink: 0; }
-  /* The body wrapper only scrolls the drawer: on the sheet its children are the sheet's own rows. */
-  .pe-body { display: contents; }
-  .pe-phone-only { display: block; }
-  .player-editor-actions { background: transparent; }
-  .pe-move-section { display: flex; flex-direction: column; gap: 6px; padding: 0; border-bottom: 0; }
-  .pe-move-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; color: var(--text-faint); }
-  .pe-move-note { font-family: var(--font-body); text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text-muted); }
-  .pe-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-  .pe-chip { flex: 1 1 38px; flex-direction: column; flex-wrap: nowrap; row-gap: 0; height: 44px; min-height: 44px; padding: 0 2px; }
-  .pe-chip-sep, .pe-chip small { display: none; }
-  .pe-chip-count { font-size: 12px; font-weight: 400; color: var(--text-muted); }
-  .pe-chip-room .pe-chip-count { color: var(--success); }
-  .pe-chip-current .pe-chip-count { color: var(--accent-gold); }
-  .pe-chip-pick .pe-chip-count { color: var(--text-on-accent); }
-  .pe-swap-row { height: 44px; padding: 0 12px; font-size: 15px; }
-  .pe-sheet-handle { display: block; width: 36px; height: 4px; background: var(--border-strong); align-self: center; }
-  .pe-desktop-only { display: none; }
-  .player-editor-title { padding: 0 0 6px; font-size: 12px; }
-  .pe-sheet-header { display: flex; align-items: center; gap: 10px; }
-  .pe-sheet-swatch { width: 28px; height: 28px; background: currentColor; flex-shrink: 0; }
-  .pe-sheet-heading { flex: 1; min-width: 0; }
-  .pe-sheet-name { font-size: 16px; font-weight: 600; line-height: 1.25; }
-  .pe-sheet-sub { font-size: 12px; color: var(--text-muted); }
-  .pe-sheet-back { width: 32px; height: 32px; border: 1px solid var(--border-medium); background: transparent; color: var(--text-primary); font-size: 18px; line-height: 1; cursor: pointer; }
-  .pe-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
-  .pe-field-name { grid-column: 1 / -1; }
-  .player-editor-field { flex-direction: column; align-items: stretch; gap: 3px; margin: 0; }
-  .player-editor-field > span { width: auto; font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; color: var(--text-faint); }
-  .player-editor-field input, .player-editor-field select { height: 40px; box-sizing: border-box; padding: 0 10px; font-size: 15px; background: var(--bg-input); }
-  .player-move { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px 6px; }
-  .player-move > label, .player-move > select:last-child { grid-column: 1 / -1; }
-  .player-move select { height: 38px; box-sizing: border-box; padding: 0 8px; font-size: 14px; }
-  .player-move label { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; color: var(--text-faint); }
-  .player-move label.pe-inline-label { font-family: var(--font-body); text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--text-primary); min-height: 32px; }
-  .player-move .pe-btn { height: 38px; font-size: 12px; padding: 0 12px; }
-  .player-move.pe-backup-row { display: flex; flex-direction: row; align-items: center; gap: 8px; border: 1px solid var(--border-subtle); padding: 6px 10px; font-size: 13px; color: var(--text-secondary); }
-  .pe-backup-row > span { flex: 1; min-width: 0; }
-  .pe-backup-row b { color: var(--text-primary); }
-  .player-move.pe-backup-row .pe-btn { height: 32px; }
-  .pe-more-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 40px; padding: 0 2px; width: 100%;
-    background: transparent; border: 0; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);
-    color: var(--accent-gold); font: inherit; font-size: 14px; cursor: pointer; text-align: left;
-  }
-  .pe-more-hint { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .player-editor-error { margin: 0; padding: 0; font-size: 12px; }
-  .player-constraints { margin: 0; display: flex; flex-direction: column; gap: 10px; }
-  .constraint-row { font-size: 13px; padding: 4px 8px; }
-  .constraint-row .pe-btn { height: 28px; }
-  .player-why-here { margin: 0; border-top: 1px solid var(--border-subtle); padding-top: 8px; }
-  .player-why-here h4 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.1em; color: var(--text-muted); }
-  .player-why-here li, .why-here-empty { font-size: 13px; color: var(--text-secondary); }
-  .pe-more-group { display: flex; flex-direction: column; gap: 10px; }
-  .preferred-actions { padding: 8px 0; }
-  .preferred-actions p { font-size: 13px; }
-  .preferred-actions .pe-btn { height: 40px; }
-  .player-editor-actions { display: flex; gap: 8px; margin: 0; padding: 0; border-top: 0; }
-  .pe-actions-right { display: contents; }
-  .player-editor-actions .pe-btn { height: 44px; padding: 0 16px; font-size: 13px; letter-spacing: 0.08em; flex: 1 1 0; }
-  .player-editor-actions #pe-remove { flex: 0 0 auto; }
-  .player-editor-actions > span:empty { display: none; }
-  /* Short view hides the More sections; the More view hides the short ones (and Bench/Delete). */
-  .player-editor:not(.pe-more-open) .pe-more-only { display: none; }
-  .player-editor.pe-more-open .pe-short-only, .player-editor.pe-more-open .pe-fields,
-  .player-editor.pe-more-open #pe-remove { display: none; }
 
   /* Landing: the import card comes before the hero text (M0-8). Visual order only; the DOM is unchanged. */
   .hero .import-card { order: 1; }

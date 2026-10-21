@@ -2569,20 +2569,20 @@ function renderConstraintEditor(player, curName) {
   const rows = Constraints.forPlayer(curName).map((c, i) => {
     const otherName = Constraints.otherName(c, curName);
     const label = c.type === 'together' ? 'With' : 'Apart from';
-    return `<div class="constraint-row"><span>${label} ${esc(otherName.split('-')[0])}</span><button type="button" class="pe-btn pe-btn-danger" data-remove-constraint="${esc(otherName)}" title="Remove this constraint">&times;</button></div>`;
+    return `<div class="constraint-row"><span>${label} ${esc(otherName.split('-')[0])}</span><button type="button" class="gs-btn gs-btn-ghost" data-remove-constraint="${esc(otherName)}" title="Remove this constraint" aria-label="Remove this constraint: ${label} ${esc(otherName.split('-')[0])}">&times;</button></div>`;
   }).join('');
   return `<div class="player-constraints">
-    <h4 class="pe-section-title pe-desktop-only">Keep together / apart</h4>
+    <h4 class="pe-section-title gs-fg-lbl pe-desktop-only">Keep together / apart</h4>
     ${rows ? `<div class="player-constraints-list">${rows}</div>` : ''}
     ${others.length ? `<div class="player-move">
       <label for="pe-keep-with">Keep with&hellip;</label>
-      <select id="pe-keep-with">${options}</select>
-      <button type="button" class="pe-btn" id="pe-add-together">Add</button>
+      <select class="pe-input" id="pe-keep-with">${options}</select>
+      <button type="button" class="gs-btn" id="pe-add-together">Add</button>
     </div>
     <div class="player-move">
       <label for="pe-keep-apart">Keep away from&hellip;</label>
-      <select id="pe-keep-apart">${options}</select>
-      <button type="button" class="pe-btn" id="pe-add-apart">Add</button>
+      <select class="pe-input" id="pe-keep-apart">${options}</select>
+      <button type="button" class="gs-btn" id="pe-add-apart">Add</button>
     </div>` : ''}
   </div>`;
 }
@@ -2606,15 +2606,21 @@ function renderDrummerEditor(player, curName) {
   </div>
   <div class="player-move" id="pe-drummer-drum-row"${tag ? '' : ' hidden'}>
     <label for="pe-drummer-drum">Drum (optional)</label>
-    <select id="pe-drummer-drum">${drumOptions}</select>
+    <select class="pe-input" id="pe-drummer-drum">${drumOptions}</select>
   </div>`;
 }
 
 // ── "Why here?" explanation (backlog #4) ─────────────────────────
 function renderWhyHere(player, groupIdx) {
   const reasons = explainPlacement(player, State.groups[groupIdx] || [], groupIdx, State.groups, State.optimizerMode);
-  if (!reasons.length) return '<div class="player-why-here"><h4>Why here?</h4><p class="why-here-empty">No particular buff or convention explains this placement.</p></div>';
-  return `<div class="player-why-here"><h4>Why here?</h4><ul>${reasons.map(r => `<li>${esc(r.text)}</li>`).join('')}</ul></div>`;
+  if (!reasons.length) return '<div class="player-why-here gs-hd-panel"><h4 class="gs-fg-lbl">Why here?</h4><p class="why-here-empty">No particular buff or convention explains this placement.</p></div>';
+  return `<div class="player-why-here gs-hd-panel"><h4 class="gs-fg-lbl">Why here?</h4><ul>${reasons.map(r => `<li>${esc(r.text)}</li>`).join('')}</ul></div>`;
+}
+
+// The editor header's spec art (the class crest where a spec has none), for the chosen class and spec.
+function peIconHTML(p) {
+  if (!p) return '';
+  return getSpecIcon({ class: p.class, spec: p.spec, role: RosterEdit.RoleForSpec(p.class, p.spec) || p.role });
 }
 
 // opts: { uid } to edit an existing player, or { groupIdx } to add a new one.
@@ -2651,7 +2657,7 @@ function showPlayerEditor(anchorEl, opts) {
     : 'Move this player to the bench';
 
   const editor = document.createElement('div');
-  editor.className = 'player-editor';
+  editor.className = 'player-editor gs-forge';
   editor.id = 'active-player-editor';
   editor.setAttribute('role', 'dialog');
   editor.setAttribute('aria-modal', 'true');
@@ -2659,72 +2665,73 @@ function showPlayerEditor(anchorEl, opts) {
   editor.innerHTML = `
     <div class="pe-sheet-handle" aria-hidden="true"></div>
     ${!isAdd ? `<div class="pe-sheet-header pe-short-only">
-      <span class="pe-sheet-swatch ${classColorClass(curClass, 'primary')}" id="pe-sheet-swatch" aria-hidden="true"></span>
+      <span class="pe-sheet-swatch pe-icon ${classColorClass(curClass, 'primary')}" id="pe-sheet-swatch" aria-hidden="true">${peIconHTML(player)}</span>
       <div class="pe-sheet-heading"><div class="pe-sheet-name ${classColorClass(curClass, 'primary')}" id="pe-sheet-name">${esc(curName.split('-')[0])}</div><div class="pe-sheet-sub" id="pe-sheet-sub"></div></div>
     </div>
     <div class="pe-sheet-header pe-more-only">
-      <button type="button" class="pe-sheet-back" id="pe-more-back" aria-label="Back to the short menu">&lsaquo;</button>
+      <button type="button" class="pe-sheet-back gs-btn gs-btn-ghost" id="pe-more-back" aria-label="Back to the short menu">&lsaquo;</button>
       <div class="pe-sheet-heading"><div class="pe-sheet-name ${classColorClass(curClass, 'primary')}">${esc(curName.split('-')[0])}</div><div class="pe-sheet-sub">More options</div></div>
     </div>` : ''}
     ${isAdd ? `<div class="player-editor-title pe-phone-only">${esc(title)}</div>` : ''}
     <div class="pe-drawer-head pe-desktop-only">
+      ${!isAdd ? `<span class="pe-drawer-icon pe-icon" aria-hidden="true">${peIconHTML(player)}</span>` : ''}
       <div class="pe-drawer-heading">
         <span class="pe-drawer-kicker">${esc(title)}</span>
         ${!isAdd ? `<span class="pe-drawer-name ${classColorClass(curClass, 'primary')}">${esc(curName.split('-')[0])}</span><span class="pe-drawer-sub"></span>` : ''}
       </div>
-      <button type="button" class="pe-drawer-close" aria-label="Close">&times;</button>
+      <button type="button" class="pe-drawer-close gs-btn gs-btn-ghost" aria-label="Close editor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div class="pe-body">
     ${!isAdd ? `<div class="pe-move-section pe-short-only">
-      <h4 class="pe-section-title pe-desktop-only">Move</h4>
+      <h4 class="pe-section-title gs-fg-lbl pe-desktop-only">Move</h4>
       <div class="pe-move-label pe-phone-only"><span>Move to</span><span class="pe-move-note">${benched ? 'on the bench' : 'now in Group ' + (found.groupIdx + 1)}</span></div>
       <div class="pe-chips" role="group" aria-label="Move ${esc(curName.split('-')[0])} to a group">${moveChipsHTML(opts.uid)}</div>
       <div class="pe-move-detail" aria-live="polite"><p class="pe-move-hint pe-desktop-only">${MOVE_HINT}</p></div>
     </div>` : ''}
-    <h4 class="pe-section-title pe-desktop-only">Player</h4>
+    <h4 class="pe-section-title gs-fg-lbl pe-desktop-only">Player</h4>
     ${!isAdd && player && player.needsReview ? `<div class="player-editor-review-notice">${esc(player.reviewReason || 'Needs review — spec was defaulted')}. Pick the real class/spec below to clear this.</div>` : ''}
     <div class="pe-fields">
     <label class="player-editor-field pe-field-name">
       <span>Name</span>
-      <input type="text" id="pe-name" value="${esc(curName)}" maxlength="32" autocomplete="off" spellcheck="false">
+      <input type="text" class="pe-input" id="pe-name" value="${esc(curName)}" maxlength="32" autocomplete="off" spellcheck="false">
     </label>
     <label class="player-editor-field pe-field-class">
       <span>Class</span>
-      <select id="pe-class">${classOptions}</select>
+      <select class="pe-input" id="pe-class">${classOptions}</select>
     </label>
     <label class="player-editor-field pe-field-spec">
       <span>Spec</span>
-      <select id="pe-spec">${specOptions}</select>
+      <select class="pe-input" id="pe-spec">${specOptions}</select>
     </label>
     </div>
     <div class="player-editor-role pe-desktop-only" id="pe-role"></div>
-    ${isAdd ? `<div class="preferred-actions"><p>Choose a class and spec to request a player. No name needed; confirmed matching imports fill this spot.</p><button type="button" class="pe-btn pe-btn-primary" id="pe-prefer">${preference ? 'Update preference' : 'Set preferred slot'}</button>${preference ? '<button type="button" class="pe-btn pe-btn-danger" id="pe-remove-preference">Remove preference</button>' : ''}</div>` : ''}
+    ${isAdd ? `<div class="preferred-actions"><p>Choose a class and spec to request a player. No name needed; confirmed matching imports fill this spot.</p><button type="button" class="gs-btn pe-strong" id="pe-prefer">${preference ? 'Update preference' : 'Set preferred slot'}</button>${preference ? '<button type="button" class="gs-btn gs-btn-danger-outline" id="pe-remove-preference">Remove preference</button>' : ''}</div>` : ''}
     ${!isAdd && benched ? `<div class="player-move pe-more-only">
       <label for="pe-backup-for">Standby for</label>
-      <select id="pe-backup-for">
+      <select class="pe-input" id="pe-backup-for">
         <option value="">Not on Standby</option>
         ${State.roster.map(sp => `<option value="${esc(sp.name)}"${Backups.backupNameFor(sp.name) === curName ? ' selected' : ''}>${esc((sp.name || '').split('-')[0])} (${esc(sp.spec)} ${esc(RosterEdit.ClassLabel(sp.class))})</option>`).join('')}
       </select>
-      <button type="button" class="pe-btn" id="pe-backup-save">Save Standby</button>
+      <button type="button" class="gs-btn" id="pe-backup-save">Save Standby</button>
     </div>` : ''}
     ${!isAdd && !benched && Backups.backupNameFor(curName) ? `<div class="player-move pe-backup-row">
       <span class="pe-short-only">Standby: <b>${esc(Backups.backupNameFor(curName).split('-')[0])}</b></span>
-      <button type="button" class="pe-btn pe-short-only" id="pe-backup-swap">Swap in Standby</button>
-      <button type="button" class="pe-btn pe-btn-danger pe-more-only" id="pe-backup-clear">Remove Standby</button>
+      <button type="button" class="gs-btn pe-short-only" id="pe-backup-swap">Swap in Standby</button>
+      <button type="button" class="gs-btn gs-btn-danger-outline pe-more-only" id="pe-backup-clear">Remove Standby</button>
     </div>` : ''}
     ${!isAdd && !benched && player.locked ? `<div class="player-move pe-more-only">
       <span>Locked by comp template</span>
-      <button type="button" class="pe-btn" id="pe-unlock">Unlock</button>
+      <button type="button" class="gs-btn" id="pe-unlock">Unlock</button>
     </div>` : ''}
-    ${!isAdd ? `<button type="button" class="pe-more-row pe-short-only" id="pe-more-toggle" aria-expanded="false"><span>More options</span><span class="pe-more-hint">Drummer, keep with/apart, Why here? &rsaquo;</span></button>` : ''}
-    ${!isAdd ? `<div class="pe-more-group pe-more-only">${renderDrummerEditor(player, curName)}${renderConstraintEditor(player, curName)}${!benched && GameVersions[State.gameVersion].modeled ? renderWhyHere(player, found.groupIdx) : ''}</div>` : ''}
+    ${!isAdd ? `<button type="button" class="pe-more-row pe-short-only" id="pe-more-toggle" aria-expanded="false" aria-controls="pe-more-group"><span>More options</span><span class="pe-more-hint">Drummer, keep with/apart, Why here? &rsaquo;</span><svg class="pe-more-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>` : ''}
+    ${!isAdd ? `<div class="pe-more-group pe-more-only" id="pe-more-group">${renderDrummerEditor(player, curName)}${renderConstraintEditor(player, curName)}${!benched && GameVersions[State.gameVersion].modeled ? renderWhyHere(player, found.groupIdx) : ''}</div>` : ''}
     </div>
     <div class="player-editor-error" id="pe-error"></div>
     <div class="player-editor-actions">
-      ${removeLabel ? `<button type="button" class="pe-btn pe-btn-danger" id="pe-remove" title="${esc(removeTitle)}">${esc(removeLabel)}</button>` : '<span></span>'}
+      ${removeLabel ? `<button type="button" class="gs-btn${benched ? ' gs-btn-danger-outline' : ''}" id="pe-remove" title="${esc(removeTitle)}">${esc(removeLabel)}</button>` : '<span></span>'}
       <div class="pe-actions-right">
-        <button type="button" class="pe-btn" id="pe-cancel">Cancel</button>
-        <button type="button" class="pe-btn pe-btn-primary" id="pe-save">${isAdd ? 'Add named player' : 'Save'}</button>
+        <button type="button" class="gs-btn gs-btn-ghost" id="pe-cancel">Cancel</button>
+        <button type="button" class="gs-btn pe-strong" id="pe-save">${isAdd ? 'Add named player' : 'Save'}</button>
       </div>
     </div>`;
 
@@ -2734,7 +2741,7 @@ function showPlayerEditor(anchorEl, opts) {
   document.body.appendChild(overlay);
   document.body.appendChild(editor);
 
-  // Desktop drawer: fixed to the right edge under the title bar; the edited card gets a gold outline.
+  // Desktop drawer: fixed to the right edge; the edited card gets a neutral outline.
   anchorEl.classList.add('editing');
   placeEditorDrawer(editor);
   trackEditorDrawer(editor);
@@ -2768,6 +2775,7 @@ function showPlayerEditor(anchorEl, opts) {
     if (sheetSub) {
       sheetSub.textContent = `${specSel.value} ${RosterEdit.ClassLabel(classSel.value)} · ${benched ? 'Bench' : 'Group ' + (found.groupIdx + 1)}`;
       if (drawerSub) drawerSub.textContent = sheetSub.textContent;
+      for (const el of editor.querySelectorAll('.pe-icon')) el.innerHTML = peIconHTML({ class: classSel.value, spec: specSel.value });
       for (const el of editor.querySelectorAll('.pe-sheet-swatch, .pe-sheet-name, .pe-drawer-name')) {
         el.className = el.className.replace(/cc-[a-z-]+/, classColorClass(classSel.value, 'primary'));
       }
@@ -2910,18 +2918,18 @@ function showPlayerEditor(anchorEl, opts) {
   // elements, switched by one class (the CSS hides the other view's sections).
   const moreToggle = editor.querySelector('#pe-more-toggle');
   const moreBack = editor.querySelector('#pe-more-back');
+  // Phone: the More options view replaces the short one (focus follows). Drawer: the section opens in place and the toggle keeps focus.
   function setMoreOpen(open) {
     editor.classList.toggle('pe-more-open', open);
     if (moreToggle) moreToggle.setAttribute('aria-expanded', String(open));
-    (open ? moreBack : moreToggle).focus();
+    (open && isPhone ? moreBack : moreToggle).focus();
   }
-  if (moreToggle) moreToggle.addEventListener('click', () => setMoreOpen(true));
+  if (moreToggle) moreToggle.addEventListener('click', () => setMoreOpen(isPhone ? true : !editor.classList.contains('pe-more-open')));
   if (moreBack) moreBack.addEventListener('click', () => setMoreOpen(false));
 
   FocusTrap.open(editor, anchorEl);
   if (isAdd) classSel.focus();
-  else if (window.matchMedia('(max-width: 600px)').matches) nameInput.focus(); // the sheet opens on the name
-  else (editor.querySelector('[data-move-group]:not([disabled])') || nameInput).focus();
+  else nameInput.focus(); // the drawer and the sheet both open on the name
 }
 
 // Escape closes the editor, matching the modals elsewhere in the app.

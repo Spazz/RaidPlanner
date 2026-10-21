@@ -2870,6 +2870,137 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-pb-foot-phone { display: inline; }
 }
 
+/* ── Planner board on Forge (T6), lane 5: the player editor. Frames: A-editor (drawer, 440 px) and A-phone-editor (bottom sheet). ──
+   A raised surface (--hd-raised*): no gold, no orange, no molten (Optimize is the page's only primary). Save is the strongest of the
+   editor's buttons by weight and edge, not by colour. Real pixels (the editor is outside the zoomed frame). Prefix pe- (hook classes kept). */
+.player-editor-overlay { position: fixed; inset: 0; z-index: 99; background: transparent; }
+.player-editor {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  width: 440px; max-width: 100vw; box-sizing: border-box; overflow: hidden;
+  background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-right: 0; border-radius: 8px 0 0 8px; box-shadow: var(--hd-raised-shadow);
+  z-index: 200; font: 400 14px/1.4 var(--font-body); color: var(--text-primary);
+}
+.player-editor :is(button, input, select):focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.player-editor [hidden] { display: none !important; }
+.pe-phone-only, .pe-sheet-handle, .pe-sheet-header { display: none; }
+.pe-drawer-head { display: flex; align-items: center; gap: 12px; padding: 20px 20px 12px; }
+.pe-icon { display: block; flex: none; width: 28px; height: 28px; }
+.pe-icon .role-icon { width: 28px; height: 28px; border-radius: 3px; background: none; box-shadow: none; }
+.pe-icon .role-icon img, .pe-icon .spec-icon::after { border-radius: 3px; }
+.pe-drawer-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pe-drawer-kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.pe-drawer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 24px/1.15 var(--font-cond); }
+.pe-drawer-sub { font-size: 13px; color: var(--text-muted); }
+.player-editor .pe-drawer-close { flex: none; width: 36px; min-height: 36px; padding: 0; color: var(--text-secondary); }
+.pe-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 4px 20px 16px; }
+.pe-body > * { margin: 0; flex: none; }
+.pe-section-title { margin: 0; }
+.pe-move-section { display: flex; flex-direction: column; gap: 8px; }
+.pe-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
+.pe-chip {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; align-content: center; column-gap: 4px;
+  box-sizing: border-box; min-height: 48px; padding: 4px 6px; line-height: 1.2;
+  background: transparent; color: var(--text-primary); border: 1px solid var(--border-medium); border-radius: 4px; font: inherit; cursor: pointer;
+}
+.pe-chip b, .pe-chip-count { font-size: 14px; font-weight: 600; }
+.pe-chip small { flex-basis: 100%; text-align: center; font-size: 12px; color: var(--text-muted); }
+.pe-chip:hover:not(:disabled):not(.pe-chip-pick) { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); }
+.pe-chip-current { background: var(--seg-on-bg); border-color: var(--border-field); cursor: default; }
+.pe-chip-current small { color: var(--text-secondary); }
+.pe-chip-pick, .pe-chip-pick:hover { background: var(--seg-on-bg); border-color: var(--hd-white); color: var(--hd-white); }
+.pe-chip-pick small { color: var(--hd-white); }
+.pe-move-hint { margin: 0; font-size: 12px; line-height: 1.4; color: var(--text-muted); }
+.pe-move-detail:empty { display: none; }
+.pe-swap { display: flex; flex-direction: column; margin-top: 8px; border: 1px solid var(--border-medium); border-radius: 6px; overflow: hidden; }
+.pe-swap-prompt { margin: 0; padding: 8px 12px; font-size: 13px; color: var(--text-secondary); background: rgba(255, 255, 255, 0.04); border-bottom: 1px solid var(--hd-hair); }
+.pe-swap-row { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; background: transparent; color: var(--text-primary); border: 0; border-top: 1px solid var(--hd-hair); font: inherit; text-align: left; cursor: pointer; }
+.pe-swap-prompt + .pe-swap-row { border-top: 0; }
+.pe-swap-row:hover { background: rgba(255, 255, 255, 0.06); }
+.pe-swap-row small { font-size: 12px; color: var(--text-muted); }
+.pe-swap-row em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.pe-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
+.pe-field-name { grid-column: 1 / -1; }
+.player-editor-field { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 0; }
+.player-editor-field > span, .player-move > label:not(.pe-inline-label) { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.pe-input { width: 100%; min-width: 0; height: 40px; box-sizing: border-box; padding: 0 12px; background: var(--bg-input); border: 1px solid var(--border-field); border-radius: 4px; color: var(--text-primary); font: 400 14px/1 var(--font-body); color-scheme: dark; }
+.pe-input:focus { border-color: var(--hd-white); }
+.player-editor-role { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+.player-editor-review-notice { padding: 8px 12px; border: 1px solid var(--border-medium); border-left: 3px solid var(--border-field); border-radius: 4px; font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
+.player-move { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; }
+.player-move > label, .player-move > select:last-child { grid-column: 1 / -1; }
+.player-move.pe-backup-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+.pe-backup-row > span { flex: 1; min-width: 0; }
+.pe-backup-row b { color: var(--text-primary); }
+.pe-inline-label { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; color: var(--text-primary); }
+.pe-inline-label input { width: 20px; height: 20px; margin: 0; accent-color: var(--hd-white); color-scheme: dark; }
+.pe-more-row { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; min-height: 36px; padding: 0; background: none; border: 0; border-radius: 4px; color: var(--text-secondary); font: 600 14px/1.3 var(--font-body); text-align: left; cursor: pointer; }
+.pe-more-row:hover { color: var(--text-primary); }
+.pe-more-hint { display: none; }
+.pe-more-chev { flex: none; transition: transform 0.12s; }
+.pe-more-row[aria-expanded="true"] .pe-more-chev { transform: rotate(180deg); }
+.pe-more-group { display: flex; flex-direction: column; gap: 16px; }
+.player-editor:not(.pe-more-open) .pe-more-group { display: none; }
+.player-constraints { display: flex; flex-direction: column; gap: 12px; }
+.player-constraints-list { display: flex; flex-direction: column; gap: 6px; }
+.constraint-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 0 12px; border: 1px solid var(--border-medium); border-radius: 4px; font-size: 14px; color: var(--text-secondary); }
+.constraint-row .gs-btn { flex: none; width: 44px; min-height: 44px; padding: 0; font-size: 18px; }
+.player-why-here { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.player-why-here h4 { margin: 0; }
+.player-why-here ul { margin: 0; padding-left: 18px; }
+.player-why-here li { margin: 0 0 4px; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
+.why-here-empty { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
+.preferred-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.preferred-actions p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
+.player-editor-error { display: none; margin: 0; padding: 8px 20px 0; font-size: 13px; line-height: 1.3; color: var(--danger-text); }
+.player-editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 20px 20px; border-top: 1px solid var(--hd-hair); }
+.pe-actions-right { display: flex; gap: 8px; }
+.player-editor .gs-btn.pe-strong { background: rgba(255, 255, 255, 0.16); border-color: var(--border-field); font-weight: 700; color: var(--hd-white); }
+.player-editor .gs-btn.pe-strong:hover { background: rgba(255, 255, 255, 0.22); border-color: var(--hd-white); }
+/* The card being edited: an outline, not a box-shadow, so it does not fight .changed. Neutral, like the focus ring. */
+.player-slot.editing, .bench-slot.editing { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+@media (width <= 600px) {
+  .player-editor-overlay { background: rgba(0, 0, 0, 0.45); }
+  .player-editor {
+    position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0; width: auto !important; max-height: 85dvh; overflow-y: auto;
+    gap: 12px; padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px)); border: 0; border-top: 1px solid var(--hd-raised-edge); border-radius: 12px 12px 0 0;
+  }
+  .player-editor > *, .pe-body > * { margin: 0; flex-shrink: 0; }
+  .pe-body { display: contents; }
+  .pe-phone-only, .pe-sheet-handle { display: block; }
+  .pe-desktop-only { display: none; }
+  .pe-sheet-handle { width: 36px; height: 4px; align-self: center; border-radius: 2px; background: var(--border-field); }
+  .pe-sheet-header { display: flex; align-items: center; gap: 12px; }
+  .pe-sheet-heading { flex: 1; min-width: 0; }
+  .pe-sheet-name { font: 700 20px/1.2 var(--font-cond); }
+  .pe-sheet-sub { font-size: 13px; color: var(--text-muted); }
+  .player-editor .pe-sheet-back { flex: none; width: 44px; min-height: 44px; padding: 0; font-size: 22px; }
+  .player-editor-title { padding: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+  .pe-move-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+  .pe-move-note { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 12px; }
+  .pe-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pe-chip { flex: 1 1 44px; flex-direction: column; flex-wrap: nowrap; row-gap: 0; height: 44px; min-height: 44px; padding: 0 2px; }
+  .pe-chip-sep, .pe-chip small { display: none; }
+  .pe-chip-count { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+  .pe-chip-pick .pe-chip-count { color: var(--hd-white); }
+  .pe-swap-row { min-height: 44px; font-size: 15px; }
+  .pe-fields { gap: 12px 8px; }
+  .pe-input { height: 44px; font-size: 16px; }
+  .player-move .gs-btn, .pe-more-row { min-height: 44px; }
+  .pe-more-row { justify-content: space-between; padding: 0 2px; border-top: 1px solid var(--hd-hair); border-bottom: 1px solid var(--hd-hair); border-radius: 0; color: var(--text-primary); }
+  .pe-more-hint { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; color: var(--text-muted); text-align: right; }
+  .pe-more-chev { display: none; }
+  .player-move.pe-backup-row { border: 1px solid var(--hd-hair); border-radius: 6px; padding: 6px 10px; }
+  .player-editor-error { padding: 0; }
+  .player-editor-actions { gap: 8px; padding: 0; border-top: 0; }
+  .pe-actions-right { display: contents; }
+  .player-editor-actions .gs-btn { min-height: 44px; flex: 1 1 0; }
+  .player-editor-actions #pe-remove { flex: 0 0 auto; }
+  .player-editor-actions > span:empty { display: none; }
+  .player-editor:not(.pe-more-open) .pe-more-only { display: none; }
+  .player-editor.pe-more-open .pe-short-only, .player-editor.pe-more-open .pe-fields, .player-editor.pe-more-open #pe-remove { display: none; }
+}
+
 /* Watch list: Reviewed / Undo on an entry; a reviewed entry stays listed, muted, with who reviewed it and when it comes back */
 .gs-watch-act { grid-column: 1 / -1; justify-self: start; }
 .gs-watch-reviewed { grid-column: 1 / -1; margin: 0; }

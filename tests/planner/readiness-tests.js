@@ -464,7 +464,7 @@ check('phone toast: top, under the 40px header and safe area, 13px, above the pl
   assert.match(rule[1], /font-size: 13px/);
   assert.match(rule[1], /left: 12px; right: 12px/);
   const z = Number(rule[1].match(/z-index: (\d+)/)[1]);
-  const sheet = Number(cssText.match(/\.player-editor \{[^}]*z-index: (\d+)/)[1]);
+  const sheet = Number(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'guild.css'), 'utf8').match(/\.player-editor \{[^}]*z-index: (\d+)/)[1]);
   assert(z > sheet, `toast z-index ${z} is above the sheet ${sheet}`);
   assert.match(cssText, /\.toast \{\n {2}position: fixed; bottom: 24px; right: 24px;/, 'desktop keeps the bottom-right toast');
 });

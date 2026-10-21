@@ -202,14 +202,14 @@ check('editor More view holds the rest, with the original IDs preserved', () => 
     assert.ok(views.more.has(id), `${id} should be under More`);
   }
   // Moving is a row of group chips (no ids) in the short view, in the desktop template too; the select and button are gone.
-  const chips = between(tpl, '<div class="pe-move-section pe-short-only">', '<h4 class="pe-section-title pe-desktop-only">Player</h4>');
+  const chips = between(tpl, '<div class="pe-move-section pe-short-only">', '<h4 class="pe-section-title gs-fg-lbl pe-desktop-only">Player</h4>');
   assert.match(chips, /class="pe-chips"[^>]*>\$\{moveChipsHTML\(opts\.uid\)\}/);
   assert.doesNotMatch(chips, /pe-more-only/);
   assert.doesNotMatch(tpl, /pe-destination|id="pe-move"/);
   assert.ok(views.always.has('pe-error'), 'the error line stays visible in both views');
   // Unlock lives in a more-only row; drummer, constraints and Why here? are rendered inside the More group.
   assert.match(tpl, /<div class="player-move pe-more-only">\s*<span>Locked by comp template<\/span>\s*<button[^>]*id="pe-unlock"/);
-  const group = between(tpl, '<div class="pe-more-group pe-more-only">', '<div class="player-editor-actions">');
+  const group = between(tpl, '<div class="pe-more-group pe-more-only" id="pe-more-group">', '<div class="player-editor-actions">');
   for (const call of ['renderDrummerEditor(', 'renderConstraintEditor(', 'renderWhyHere(']) assert.ok(group.includes(call), call);
   // Handlers keep resolving by the same IDs.
   for (const id of ['pe-save', 'pe-cancel', 'pe-remove', 'pe-backup-swap', 'pe-backup-clear', 'pe-unlock', 'pe-name', 'pe-class', 'pe-spec']) {
@@ -226,8 +226,10 @@ check('the needs-review notice is not part of either hidden group', () => {
 
 check('the sheet switches views with one class and moves focus into the sheet', () => {
   assert.match(renderJs, /editor\.classList\.toggle\('pe-more-open', open\)/);
-  assert.match(renderJs, /\(open \? moreBack : moreToggle\)\.focus\(\)/);
-  assert.match(renderJs, /else if \(window\.matchMedia\('\(max-width: 600px\)'\)\.matches\) nameInput\.focus\(\)/);
+  assert.match(renderJs, /\(open && isPhone \? moreBack : moreToggle\)\.focus\(\)/);
+  assert.match(renderJs, /else nameInput\.focus\(\); \/\/ the drawer and the sheet both open on the name/);
+  assert.match(renderJs, /aria-controls="pe-more-group"/);
+  assert.match(renderJs, /moreToggle\.addEventListener\('click', \(\) => setMoreOpen\(isPhone \? true : !editor\.classList\.contains\('pe-more-open'\)\)\)/);
   assert.match(renderJs, /aria-label="Back to the short menu"/);
 });
 
@@ -236,18 +238,20 @@ check('the sheet switches views with one class and moves focus into the sheet', 
 const phoneCss = css.slice(css.lastIndexOf('/* ── Slim phone layout'));
 const phoneBlock = phoneCss.slice(phoneCss.indexOf('@media (max-width: 600px)'));
 
+// The player editor on Forge (lane 5): its rules live in guild.css, between the lane 5 heading and the Watch list rules.
+const editorCss = (() => { const g = read('guild.css').replace(/\r\n/g, '\n'); return g.slice(g.indexOf('Planner board on Forge (T6), lane 5'), g.indexOf('/* Watch list: Reviewed')); })();
+const editorBase = editorCss.slice(0, editorCss.indexOf('@media'));
+const editorPhone = editorCss.slice(editorCss.indexOf('@media (width <= 600px)'));
+
 check('phone-only chrome is hidden outside the media query', () => {
-  const base = phoneCss.slice(0, phoneCss.indexOf('@media'));
-  for (const sel of ['.pe-sheet-handle', '.pe-sheet-header', '.pe-more-row']) {
-    assert.ok(base.includes(sel), `${sel} must default to hidden`);
-  }
-  assert.match(base, /display:\s*none/);
+  assert.match(editorBase, /\.pe-phone-only, \.pe-sheet-handle, \.pe-sheet-header \{ display: none; \}/);
+  assert.doesNotMatch(editorBase, /\.pe-more-row[^{]*\{ display: none/, 'the drawer shows the More options toggle');
 });
 
 check('phone block defines the sheet views, the bottom-bar padding and the fixed row heights', () => {
-  for (const frag of ['.addon-frame { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }', '.player-editor:not(.pe-more-open) .pe-more-only { display: none; }',
-    '.player-editor.pe-more-open .pe-short-only', 'height: 44px', 'height: 40px']) {
-    assert.ok(phoneBlock.includes(frag), frag);
+  assert.ok(phoneBlock.includes('.addon-frame { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }'));
+  for (const frag of ['.player-editor:not(.pe-more-open) .pe-more-only { display: none; }', '.player-editor.pe-more-open .pe-short-only', 'min-height: 44px', '.pe-input { height: 44px; font-size: 16px; }']) {
+    assert.ok(editorPhone.includes(frag), frag);
   }
 });
 
@@ -335,7 +339,7 @@ check('opening the reference comp on a phone moves focus to Back to my raid', ()
 
 check('the pool is a 300px panel left of the board from 1100px, a panel above it below, and a pane behind the switch on phones', () => {
   const g = read('guild.css');
-  const lane4 = g.slice(g.indexOf('Planner board on Forge (T6), lane 4'), g.indexOf('/* Watch list: Reviewed'));
+  const lane4 = g.slice(g.indexOf('Planner board on Forge (T6), lane 4'), g.indexOf('Planner board on Forge (T6), lane 5'));
   assert.match(lane4, /@media \(min-width: 1100px\) \{\s*\.gs-pb-pool \{[^}]*width: 300px/);
   assert.match(lane4, /@media \(width < 1100px\) \{\s*#app \.app-body \{ flex-direction: column/);
   const phone = lane4.slice(lane4.lastIndexOf('@media (width <= 600px)'));
@@ -347,7 +351,7 @@ check('the pool is a 300px panel left of the board from 1100px, a panel above it
 
 check('pool gold: only the count badge (the group heads are gs-fg-ght); no orange, no hex colour', () => {
   const g = read('guild.css');
-  const lane4 = g.slice(g.indexOf('Planner board on Forge (T6), lane 4'), g.indexOf('/* Watch list: Reviewed'));
+  const lane4 = g.slice(g.indexOf('Planner board on Forge (T6), lane 4'), g.indexOf('Planner board on Forge (T6), lane 5'));
   const gold = lane4.split('\n').filter(l => /accent-gold/.test(l));
   assert.equal(gold.length, 1);
   assert.match(gold[0], /^\.gs-pb-poolcount /);
@@ -447,11 +451,12 @@ check('the edited card gets the "editing" class on open and loses it on close', 
   assert.match(open, /anchorEl\.classList\.add\('editing'\)/);
   const closeFn = between(renderJs, 'function closePlayerEditor', '// ── Editor drawer');
   assert.match(closeFn, /querySelectorAll\('\.editing'\)\.forEach\(el => el\.classList\.remove\('editing'\)\)/);
-  assert.match(css, /\.player-slot\.editing, \.bench-slot\.editing \{ outline: 2px solid var\(--accent-gold\)/);
+  assert.match(editorBase, /\.player-slot\.editing, \.bench-slot\.editing \{ outline: 2px solid var\(--text-primary\)/, 'a neutral outline, not gold');
+  assert.doesNotMatch(css, /\.editing/, 'the old gold rule is gone from app.css');
 });
 
-check('desktop focus lands on the first chip that can be pressed; add mode keeps #pe-class', () => {
-  assert.match(renderJs, /else \(editor\.querySelector\('\[data-move-group\]:not\(\[disabled\]\)'\) \|\| nameInput\)\.focus\(\);/);
+check('the drawer and the sheet open on Name; add mode keeps #pe-class', () => {
+  assert.match(renderJs, /else nameInput\.focus\(\);/);
   assert.match(renderJs, /if \(isAdd\) classSel\.focus\(\);/);
   assert.doesNotMatch(renderJs, /#pe-destination/);
 });
@@ -496,23 +501,21 @@ check('the first-run tip is skipped, still unseen, when there is no room left of
   assert.equal(seen.length, 0, 'and the tip is not marked seen');
 });
 
-check('drawer CSS: 380px, fixed to the right edge, outside the phone block; no text under 12px', () => {
-  const norm = css.replace(/\r\n/g, '\n');
-  const base = norm.slice(0, norm.lastIndexOf('/* ── Slim phone layout'));
-  const rule = base.match(/\n\.player-editor \{([^}]*)\}/);
+check('drawer CSS: 440px on the raised surface, fixed to the right edge, outside the phone block; no text under 12px, no gold, no orange', () => {
+  const rule = editorBase.match(/\n\.player-editor \{([^}]*)\}/);
   assert.ok(rule, 'a .player-editor rule outside the phone block');
   assert.match(rule[1], /position: fixed; top: 0; right: 0; bottom: 0;/);
-  assert.match(rule[1], /width: 380px/);
+  assert.match(rule[1], /width: 440px/);
   assert.match(rule[1], /z-index: 200/);
-  const drawerRules = base.slice(base.indexOf('/* ── Player editor: a drawer'), base.indexOf('/* Constraint / lock badges'));
-  const small = [...drawerRules.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)].filter(m => Number(m[1]) < 12);
-  assert.deepEqual(small.map(m => m[0]), [], 'font sizes in the drawer rules');
-  assert.match(phoneBlock, /\.player-editor \{[^}]*position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0;/, 'the phone block still makes it a bottom sheet');
-  assert.match(phoneBlock, /\.pe-chip \{[^}]*height: 44px; min-height: 44px/, 'phone chips are 44px tall');
-  assert.match(phoneBlock, /\.pe-swap-row \{ height: 44px/, 'phone swap rows are 44px tall');
-  assert.match(phoneBlock, /\.pe-chip-room \.pe-chip-count \{ color: var\(--success\)/, 'a room chip is highlighted on phones');
-  assert.match(phoneBlock, /\.pe-chip-current \.pe-chip-count \{ color: var\(--accent-gold\)/);
-  assert.match(css, /\.pe-section-title, \.player-why-here h4 \{\s*font-family: var\(--font-cond\); font-size: 12px/, 'section headings are 12px');
+  assert.match(rule[1], /background: var\(--hd-raised\)/);
+  const small = [...editorCss.matchAll(/font(?:-size)?:\s*(?:[^;]*?\s)?(\d+(?:\.\d+)?)px/g)].filter(m => Number(m[1]) < 12);
+  assert.deepEqual(small.map(m => m[0]), [], 'font sizes in the editor rules');
+  assert.doesNotMatch(editorCss.slice(editorCss.indexOf('.player-editor-overlay')).replace(/\/\*[\s\S]*?\*\//g, ''), /accent-gold|molten/, 'no gold and no orange in the editor');
+  assert.match(editorPhone, /\.player-editor \{[^}]*position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0;/, 'the phone block makes it a bottom sheet');
+  assert.match(editorPhone, /\.pe-chip \{[^}]*height: 44px; min-height: 44px/, 'phone chips are 44px tall');
+  assert.match(editorPhone, /\.pe-swap-row \{ min-height: 44px/, 'phone swap rows are 44px tall');
+  assert.match(editorBase, /\.pe-section-title \{ margin: 0; \}/);
+  assert.match(renderJs, /gs-fg-lbl pe-desktop-only">Move</, 'section headings are Forge labels (12px)');
   assert.match(renderJs, /if \(!c\.disabled\) c\.setAttribute\('aria-pressed'/, 'the current chip gets no aria-pressed');
   assert.match(css, /\.spotlight-callout\.arrow-right::before/);
 });
