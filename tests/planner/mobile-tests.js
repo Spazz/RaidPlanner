@@ -267,7 +267,7 @@ const rule = (sel, src = phoneBlock) => {
 
 check('phone notices stack their actions full width at 44px; notice text is 15px / 1.4 (lane 3b next-step bar)', () => {
   const g = read('guild.css');
-  const lane3b = g.slice(g.indexOf('Planner board on Forge (T6), lane 3b'), g.indexOf('/* Watch list: Reviewed'));
+  const lane3b = g.slice(g.indexOf('Planner board on Forge (T6), lane 3b'), g.indexOf('Planner board on Forge (T6), lane 4'));
   const phone = lane3b.slice(lane3b.lastIndexOf('@media (width <= 600px)'));
   assert.match(phone, new RegExp('gs-pb-notices .sync-banner-actions [{][^}]*flex-direction: column[^}]*width: 100%'));
   assert.match(phone, new RegExp('gs-pb-notice-more [{][^}]*width: 100%; min-height: 44px'));
@@ -333,18 +333,29 @@ check('opening the reference comp on a phone moves focus to Back to my raid', ()
   assert.match(src, /if \(tab === 'ideal' && window\.matchMedia\('\(max-width: 600px\)'\)\.matches\) \{\s*const back = document\.getElementById\('btn-back-to-raid'\);\s*if \(back\) back\.focus\(\);/);
 });
 
-check('the bench is one column at phone width and no 560px two-column rule remains', () => {
-  assert.match(rule('.bench-list'), /grid-template-columns: minmax\(0, 1fr\)/);
-  assert.doesNotMatch(css, /max-width:\s*560px\)\s*\{\s*\.bench-list/);
-  // The only two-column bench rule left is the 900px one; the phone rule above overrides it.
-  const twoCol = css.replace(/\r\n/g, '\n').split('\n').filter(l => /\.bench-list \{ grid-template-columns: repeat\(2/.test(l));
-  assert.equal(twoCol.length, 1);
+check('the pool is a 300px panel left of the board from 1100px, a panel above it below, and a pane behind the switch on phones', () => {
+  const g = read('guild.css');
+  const lane4 = g.slice(g.indexOf('Planner board on Forge (T6), lane 4'), g.indexOf('/* Watch list: Reviewed'));
+  assert.match(lane4, /@media \(min-width: 1100px\) \{\s*\.gs-pb-pool \{[^}]*width: 300px/);
+  assert.match(lane4, /@media \(width < 1100px\) \{\s*#app \.app-body \{ flex-direction: column/);
+  const phone = lane4.slice(lane4.lastIndexOf('@media (width <= 600px)'));
+  assert.match(phone, /\.gs-pb-switch \.gs-fg-seg \{[^}]*height: 44px/);
+  assert.match(phone, /\.app-body\[data-pane="pool"\] \.main-column, #app \.app-body:not\(\[data-pane="pool"\]\) \.gs-pb-pool \{ display: none; \}/);
+  assert.match(phone, /\.gs-pb-pool \.gs-fg-pill \{[^}]*min-height: 44px/);
+  assert.doesNotMatch(css, /\.bench-list|\.tray-tab|\.bench-section/, 'the old tray rules are gone from app.css');
 });
 
-check('the tray status tabs wrap on phones instead of scrolling', () => {
-  const r = rule('.tray-tabs');
-  assert.match(r, /flex-wrap: wrap/);
-  assert.match(r, /overflow-x: visible/);
+check('pool gold: only the count badge (the group heads are gs-fg-ght); no orange, no hex colour', () => {
+  const g = read('guild.css');
+  const lane4 = g.slice(g.indexOf('Planner board on Forge (T6), lane 4'), g.indexOf('/* Watch list: Reviewed'));
+  const gold = lane4.split('\n').filter(l => /accent-gold/.test(l));
+  assert.equal(gold.length, 1);
+  assert.match(gold[0], /^\.gs-pb-poolcount /);
+  assert.doesNotMatch(lane4, /--molten|#[0-9a-fA-F]{3,8}\b/);
+});
+
+check('the pool pills wrap instead of scrolling sideways', () => {
+  assert.match(read('guild.css'), /\.gs-pb-pool \.gs-fg-pills \{ flex-wrap: wrap;/);
 });
 
 check('the viewport covers the safe area; the bottom bar and frame pad for the inset', () => {

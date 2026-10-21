@@ -2507,37 +2507,37 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-pb-drum img { display: block; width: 24px; height: 24px; border-radius: 3px; object-fit: cover; }
 
 /* Rows: 44 px, no coloured edge, no role dot. */
-.gs-pb-board .player-list { padding: 0; }
-.gs-pb-board .player-slot { box-sizing: border-box; min-height: 44px; padding: 0 16px; gap: 10px; border-left: 0; }
-.gs-pb-board .player-slot + .player-slot { border-top: 1px solid var(--hd-hair); }
-.gs-pb-board .player-slot:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); border-left-color: transparent; }
-.gs-pb-board .player-slot.drag-target { background: color-mix(in srgb, var(--text-primary) 8%, transparent); border-left-color: transparent; box-shadow: inset 0 0 0 2px var(--text-primary); }
-.gs-pb-board .player-slot:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
-.gs-pb-board .player-slot.editing { outline-color: var(--text-primary); }
-.gs-pb-board .player-slot.needs-review { background: none; }
-.gs-pb-board .role-icon { width: 20px; height: 20px; border-radius: 3px; background: none; box-shadow: none; }
-.gs-pb-board .role-icon img { border-radius: 3px; }
-.gs-pb-board .spec-icon img, .gs-pb-board .player-slot:hover .spec-icon img { filter: none; }
-.gs-pb-board .spec-icon::after { content: none; }
-.gs-pb-board .role-icon-empty { opacity: 0.5; font-size: 14px; color: var(--text-muted); }
-.gs-pb-board .player-info { gap: 1px; }
-.gs-pb-board .player-name { font-size: 15px; font-weight: 600; line-height: 1.2; text-shadow: none; }
-.gs-pb-board .player-spec { font-size: 12px; line-height: 1.2; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gs-pb-board .empty-slot { cursor: pointer; }
-.gs-pb-board .empty-slot .player-name { color: var(--text-muted); font-weight: 500; }
-.gs-pb-board .lock-badge, .gs-pb-board .constraint-badge { font-size: 14px; line-height: 1; }
+:is(.gs-pb-board, .gs-pb-pool) .player-list { padding: 0; }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot { box-sizing: border-box; min-height: 44px; padding: 0 16px; gap: 10px; border-left: 0; }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot + .player-slot { border-top: 1px solid var(--hd-hair); }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); border-left-color: transparent; }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.drag-target { background: color-mix(in srgb, var(--text-primary) 8%, transparent); border-left-color: transparent; box-shadow: inset 0 0 0 2px var(--text-primary); }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.editing { outline-color: var(--text-primary); }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.needs-review { background: none; }
+:is(.gs-pb-board, .gs-pb-pool) .role-icon { width: 20px; height: 20px; border-radius: 3px; background: none; box-shadow: none; }
+:is(.gs-pb-board, .gs-pb-pool) .role-icon img { border-radius: 3px; }
+:is(.gs-pb-board, .gs-pb-pool) .spec-icon img, .gs-pb-board .player-slot:hover .spec-icon img { filter: none; }
+:is(.gs-pb-board, .gs-pb-pool) .spec-icon::after { content: none; }
+:is(.gs-pb-board, .gs-pb-pool) .role-icon-empty { opacity: 0.5; font-size: 14px; color: var(--text-muted); }
+:is(.gs-pb-board, .gs-pb-pool) .player-info { gap: 1px; }
+:is(.gs-pb-board, .gs-pb-pool) .player-name { font-size: 15px; font-weight: 600; line-height: 1.2; text-shadow: none; }
+:is(.gs-pb-board, .gs-pb-pool) .player-spec { font-size: 12px; line-height: 1.2; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(.gs-pb-board, .gs-pb-pool) .empty-slot { cursor: pointer; }
+:is(.gs-pb-board, .gs-pb-pool) .empty-slot .player-name { color: var(--text-muted); font-weight: 500; }
+:is(.gs-pb-board, .gs-pb-pool) .lock-badge, .gs-pb-board .constraint-badge { font-size: 14px; line-height: 1; }
 
 /* Exceptions are chips: the same 24 px, 12 px caps recipe as .gs-hd-chip, tinted with the status roles. */
-.gs-pb-board :is(.status-tag, .marker-tag, .changed-tag, .review-badge, .backup-badge) { display: inline-flex; align-items: center; flex: none; box-sizing: border-box; height: 24px; padding: 0 8px; border: 1px solid var(--status-neutral-edge); border-radius: 4px; background: var(--status-neutral-bg); color: var(--status-neutral-ink); font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
-.gs-pb-board .marker-tag { flex: 0 1 auto; min-width: 0; max-width: 11em; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 22px; }
-.gs-pb-board .status-late, .gs-pb-board .marker-also { border-color: var(--status-info-edge); background: var(--status-info-bg); color: var(--status-info-ink); }
-.gs-pb-board .status-absent, .gs-pb-board .marker-away, .gs-pb-board .review-badge { border-color: var(--status-danger-edge); background: var(--status-danger-bg); color: var(--status-danger-ink); }
-.gs-pb-board .marker-late, .gs-pb-board .marker-leaving { border-color: var(--status-warning-edge); background: var(--status-warning-bg); color: var(--status-warning-ink); }
-.gs-pb-board .changed-tag { border-color: currentColor; background: none; color: var(--changed-color, var(--status-neutral-ink)); }
-.gs-pb-board .changed-status .changed-tag { color: var(--status-info-ink); }
-.gs-pb-board .player-slot.changed-status { box-shadow: inset 0 0 0 2px var(--status-info-ink); }
-.gs-pb-board .player-slot.changed-status:focus-visible { box-shadow: inset 0 0 0 4px var(--status-info-ink); }
-.gs-pb-board .gs-hd-chip { align-self: center; }
+:is(.gs-pb-board, .gs-pb-pool) :is(.status-tag, .marker-tag, .changed-tag, .review-badge, .backup-badge) { display: inline-flex; align-items: center; flex: none; box-sizing: border-box; height: 24px; padding: 0 8px; border: 1px solid var(--status-neutral-edge); border-radius: 4px; background: var(--status-neutral-bg); color: var(--status-neutral-ink); font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+:is(.gs-pb-board, .gs-pb-pool) .marker-tag { flex: 0 1 auto; min-width: 0; max-width: 11em; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 22px; }
+:is(.gs-pb-board, .gs-pb-pool) .status-late, .gs-pb-board .marker-also { border-color: var(--status-info-edge); background: var(--status-info-bg); color: var(--status-info-ink); }
+:is(.gs-pb-board, .gs-pb-pool) .status-absent, .gs-pb-board .marker-away, .gs-pb-board .review-badge { border-color: var(--status-danger-edge); background: var(--status-danger-bg); color: var(--status-danger-ink); }
+:is(.gs-pb-board, .gs-pb-pool) .marker-late, .gs-pb-board .marker-leaving { border-color: var(--status-warning-edge); background: var(--status-warning-bg); color: var(--status-warning-ink); }
+:is(.gs-pb-board, .gs-pb-pool) .changed-tag { border-color: currentColor; background: none; color: var(--changed-color, var(--status-neutral-ink)); }
+:is(.gs-pb-board, .gs-pb-pool) .changed-status .changed-tag { color: var(--status-info-ink); }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed-status { box-shadow: inset 0 0 0 2px var(--status-info-ink); }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed-status:focus-visible { box-shadow: inset 0 0 0 4px var(--status-info-ink); }
+:is(.gs-pb-board, .gs-pb-pool) .gs-hd-chip { align-self: center; }
 
 /* Open slots (requested / suggested) and the runner-up stack. */
 .gs-pb-board .preferred-slot { cursor: pointer; }
@@ -2686,10 +2686,10 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 /* ── Planner board on Forge (T6), lane 3a: the head, the More and Share menus, Raid settings, the Raid notes panel, the phone bottom bar. ──
    Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop and R3-phone head + bottom bar) and round 4 (R4-phone-more). The planner frame no
    longer zooms (lane 3a retired it with the title bar and the lane 1-2 counter-zooms), so every size here is a real pixel.
-   Interim: the blocks that are not on Forge yet (notice banners, Changes panel, Campfire, Assignments, the sign-up tray, the Save modal) keep
-   their old 1.5 scale on their own element until lane 3b / 4 / 6 rebuild them; each lane deletes its selector from the rule below. */
+   Interim: the blocks that are not on Forge yet (notice banners, Changes panel, Campfire, Assignments, the Save modal) keep
+   their old 1.5 scale on their own element until lane 6 rebuild them; each lane deletes its selector from the rule below. */
 @media (min-width: 601px) {
-  #app .changes-log-panel, #app #campfire-panel, #app #assignments-panel, #app .bench-section, #app .save-modal { zoom: 1.5; }
+  #app .changes-log-panel, #app #campfire-panel, #app #assignments-panel, #app .save-modal { zoom: 1.5; }
 }
 .gs-pb-planhead { display: flex; flex-direction: column; gap: 6px; padding: 16px 16px 0; }
 .gs-pb-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: var(--text-secondary); font: 500 14px/1.3 var(--font-body); cursor: pointer; }
@@ -2821,6 +2821,53 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-pb-notices .gs-pb-notice-more { flex: 0 0 auto; margin: 0; }
   .gs-pb-notices .result-line { flex-wrap: nowrap; padding: 8px 0 8px 12px; }
   .gs-pb-notices .result-line-dismiss { min-width: 44px; min-height: 44px; }
+}
+
+/* ── Planner board on Forge (T6), lane 4: the left pool "Not in a group". ──
+   Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop pool, R3-phone switch) and round 4 (R4-phone-pool). One .gs-hd-panel, 300 px, left of the Groups
+   line and the board from 1100 px; a panel above the groups below that; a Groups | Not in a group switch (one pane at a time) on phones.
+   Rows reuse the board row recipe (the :is() selectors above); gold is only the group heads and the count badge. */
+#app .app-body { align-items: flex-start; }
+#app .main-column { flex: 1; min-width: 0; }
+.gs-pb-switch { display: none; }
+.gs-pb-pool { display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; overflow: clip; }
+.gs-pb-pool.drag-over { border-color: var(--text-primary); }
+.gs-pb-pooltitle { flex: none; padding: 14px 16px 0; }
+.gs-pb-pooltitle::before { display: none; }
+.gs-pb-pooltitle::after { order: 1; }
+.gs-pb-poolcount { order: 2; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 24px; height: 22px; padding: 0 7px; border: 1px solid color-mix(in srgb, var(--accent-gold) 50%, transparent); border-radius: 4px; color: var(--accent-gold); font: 700 13px/1 var(--font-body); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.gs-pb-poolctl { display: flex; flex-direction: column; gap: 10px; flex: none; padding: 12px 16px; }
+.gs-pb-search { height: 36px; border-radius: 4px; }
+.gs-pb-pool .gs-fg-pills { flex-wrap: wrap; gap: 6px; }
+.gs-pb-pool .gs-fg-pill { gap: 6px; min-height: 32px; padding: 0 10px; font-size: 13px; }
+.gs-pb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-primary); flex: none; }
+.gs-pb-poolbody { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.gs-pb-pgroup { border-top: 1px solid var(--hd-hair); }
+.gs-pb-pgh { padding: 10px 16px 4px; }
+.gs-pb-pool .bench-slot, .gs-pb-pool .unplaced-slot { opacity: 1; border-style: solid; }
+.gs-pb-pool .unplaced-icon { font-size: 14px; color: var(--text-muted); }
+.gs-pb-pool .bench-reason { font-size: 12px; line-height: 1.25; color: var(--text-muted); overflow-wrap: anywhere; }
+.gs-pb-poolempty { margin: 0; padding: 12px 16px; font-size: 14px; line-height: 1.4; color: var(--text-muted); }
+.gs-pb-poolfoot { flex: none; margin: 0; padding: 10px 16px; border-top: 1px solid var(--hd-hair); font-size: 13px; line-height: 1.4; color: var(--text-muted); }
+.gs-pb-foot-phone { display: none; }
+@media (min-width: 1100px) {
+  .gs-pb-pool { flex: none; width: 300px; margin: 16px 0 16px 16px; position: sticky; top: 16px; max-height: calc(100dvh - 32px); }
+}
+@media (width < 1100px) {
+  #app .app-body { flex-direction: column; align-items: stretch; }
+  .gs-pb-pool { margin: 16px 16px 0; }
+  .gs-pb-poolbody { max-height: 360px; }
+}
+@media (width <= 600px) {
+  .gs-pb-switch { display: flex; align-self: stretch; margin: 12px 16px 0; }
+  .gs-pb-switch .gs-fg-seg { flex: 1; height: 44px; font-size: 15px; }
+  #app .app-body[data-pane="pool"] .main-column, #app .app-body:not([data-pane="pool"]) .gs-pb-pool { display: none; }
+  .gs-pb-pool { margin: 12px 16px 0; }
+  .gs-pb-poolbody { max-height: none; overflow: visible; }
+  .gs-pb-pool .gs-fg-pill { min-height: 44px; padding: 0 14px; font-size: 14px; }
+  .gs-pb-search { height: 44px; }
+  .gs-pb-foot-wide { display: none; }
+  .gs-pb-foot-phone { display: inline; }
 }
 
 /* Watch list: Reviewed / Undo on an entry; a reviewed entry stays listed, muted, with who reviewed it and when it comes back */

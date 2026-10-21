@@ -371,19 +371,20 @@ check('bench and unplaced cards are highlighted too, and the tray dots a hidden 
   t.State.gameVersion = 'tbc'; t.State.activeTab = 'plan'; t.State.planId = t.ChangeLog.planId = 'plan:ui';
   t.State.groups = [[]]; t.State.bench = [benched]; t.State.unplaced = [away];
   t.ChangeLog.record('sync', [{ kind: 'benched', uid: benched.uid, name: 'Benchy' }]);
-  t.SignupTray.activeTab = 'absent'; t.SignupTray.chosen = true;
+  t.SignupTray.filter = 'absent';
   t.SignupTray.render();
-  const tabOf = id => section.innerHTML.match(new RegExp(`<button[^>]*data-tray-tab="${id}"[^>]*>[\\s\\S]*?</button>`))[0];
-  assert.match(tabOf('tentative'), /tray-tab-dot/, 'the hidden Tentative tab holds a changed player');
-  assert.match(tabOf('tentative'), /<span class="sr-only">, has changes<\/span>/);
-  assert.doesNotMatch(tabOf('absent'), /tray-tab-dot/, 'the selected tab gets no dot');
-  assert.doesNotMatch(tabOf('all'), /tray-tab-dot/, 'All never gets one');
-  t.SignupTray.activeTab = 'tentative';
+  const pillOf = id => section.innerHTML.match(new RegExp('<button[^>]*data-pool-filter="' + id + '"[^>]*>[\\s\\S]*?</button>'))[0];
+  assert.match(pillOf('tentative'), /gs-pb-dot/, 'the hidden Tentative pill holds a changed player');
+  assert.match(pillOf('tentative'), /<span class="sr-only">, has changes<\/span>/);
+  assert.match(pillOf('bench'), /gs-pb-dot/, 'Tentative is a subset of Bench, so Bench holds the change too');
+  assert.doesNotMatch(pillOf('absent'), /gs-pb-dot/, 'the selected pill gets no dot');
+  assert.doesNotMatch(pillOf('all'), /gs-pb-dot/, 'All never gets one');
+  t.SignupTray.filter = 'tentative';
   t.SignupTray.render();
-  assert.doesNotMatch(section.innerHTML, /tray-tab-dot/, 'nothing hidden, no dot');
-  t.SignupTray.activeTab = 'all';
+  assert.doesNotMatch(pillOf('tentative'), /gs-pb-dot/, 'the selected pill gets no dot');
+  t.SignupTray.filter = 'all';
   t.SignupTray.render();
-  assert.doesNotMatch(section.innerHTML, /tray-tab-dot/, 'All lists everyone, so no tab needs a dot');
+  assert.doesNotMatch(section.innerHTML, /gs-pb-dot/, 'All lists everyone, so no pill needs a dot');
 });
 
 // ── the panel ───────────────────────────────────────────────────────

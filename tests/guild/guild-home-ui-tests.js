@@ -239,7 +239,7 @@ function withState(fn) {
     const out = html(ATTN());
     assert.equal(count(desk(out), /gs-btn-molten/g), 1);
     assert.equal(count(phone(out), /gs-btn-molten/g), 1);
-    const css = read('guild.css');
+    const css = read('guild.css').replace(/\/\* ── Planner board on Forge \(T6\), lane 4[\s\S]*?(?=\/\* Watch list: Reviewed)/, ''); // the Planner pool's gold count badge is its own lane
     const block = css.slice(css.indexOf('Officer Home, round 4')).replace(/^\.gs-hd-daydate [^\n]*\n/m, ''); // day dates are gold by the 2026-10-19 group-head decision
     assert(!/accent-gold|#e0b53d/i.test(block.slice(0, block.indexOf('Watch list: Reviewed'))), 'orange only on the primary and no gold: the badge and logo are the shell\'s');
     assert(/\.gs-btn-molten[^{]*\{[^}]*var\(--molten\)/.test(block));

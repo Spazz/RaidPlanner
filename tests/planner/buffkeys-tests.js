@@ -138,7 +138,7 @@ check('the tray keeps its .player-spec sizes; on the board the spec line is 12px
   assert(/\n\.player-spec \{ font-size: 10\.5px;/.test(css));
   const phone = css.slice(css.lastIndexOf('/* ── Slim phone layout'));
   assert(/\.player-spec \{ font-size: 11px; \}/.test(phone));
-  assert(/\.gs-pb-board \.player-spec \{ font-size: 12px;/.test(css), 'board spec line: 12px floor');
+  assert(/:is\(\.gs-pb-board, \.gs-pb-pool\) \.player-spec \{ font-size: 12px;/.test(css), 'board spec line: 12px floor');
   assert(/\.gs-pb-board \.preferred-slot \.player-name[^{]*\{ color: var\(--preferred-color/.test(css), 'Open slot name in its class colour');
   assert(!/\.preferred-slot \{ border: 1px dashed/.test(css), 'no dashed coloured edge any more');
 });

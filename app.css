@@ -306,7 +306,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 
 /* ── Condensed label helper ── */
 .cond, .btn,
-.bench-header h3,
 .roster-label {
   font-family: var(--font-cond);
   text-transform: uppercase;
@@ -386,7 +385,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 .player-spec { font-size: 10.5px; color: var(--text-muted); line-height: 1.2; }
 /* The optimizer's reason a confirmed raider sits on the bench ("Benched: sat out 0 of last 4"), under the spec; only with a guild raid's sit-out history loaded. */
-.bench-reason { font-size: 10px; color: var(--accent-gold); line-height: 1.25; overflow-wrap: anywhere; }
 .player-slot:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
 /* Planned bench backup indicator — shown on both the seated player's card
    ("Backup: Name") and the benched backup's own card ("-> Name"). */
@@ -468,60 +466,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 .buff-picker-reset:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
 
-/* ── Bench panel ── */
-.bench-section {
-  display: none;
-  margin: 0 var(--sp-3) var(--sp-3); padding: 8px 12px;
-  background: transparent; border: 1px dashed var(--border-strong);
-  transition: border-color 0.15s, background 0.15s;
-}
-.bench-section.drag-over {
-  border-color: var(--accent-gold);
-  background: color-mix(in srgb, var(--accent-gold) 5%, transparent);
-}
-.bench-header {
-  display: flex; align-items: baseline; gap: var(--sp-2);
-  margin-bottom: 6px;
-}
-.bench-header h3 { font-size: 12px; color: var(--text-muted); margin: 0; font-weight: 600; }
-.bench-count {
-  display: inline-block; min-width: 16px; padding: 0 5px;
-  background: var(--bg-deepest); border: 1px solid var(--border-medium);
-  font-size: 12px; color: var(--text-muted);
-  text-align: center;
-}
-.bench-hint { font-size: 12px; color: var(--text-faint); font-style: italic; }
-.bench-header.tray-slim { flex-wrap: wrap; margin-bottom: 0; }
-.bench-list {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr)); gap: 6px;
-}
-.bench-slot { opacity: 0.85; border: 1px solid var(--border-subtle); }
-.bench-slot:hover { opacity: 1; }
-
-/* ── Sign-up tray: the bench panel's status tabs ── */
-.bench-header.tray-header { align-items: center; flex-wrap: wrap; row-gap: 6px; }
-.tray-tabs {
-  position: relative; /* offsetParent for the tabs, so select() can scroll one into view */
-  display: flex; gap: 4px; flex: 1 1 auto; min-width: 0;
-  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
-}
-.tray-tabs::-webkit-scrollbar { display: none; }
-.tray-tab {
-  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
-  padding: 3px 8px; background: transparent; cursor: pointer;
-  border: 1px solid var(--border-subtle); color: var(--text-muted);
-  font: 600 11px var(--font-body); white-space: nowrap;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-.tray-tab:hover { color: var(--text-primary); border-color: var(--border-strong); }
-.tray-tab[aria-selected="true"] {
-  color: var(--accent-gold); border-color: var(--accent-gold-dim);
-  background: color-mix(in srgb, var(--accent-gold) 6%, transparent);
-}
-.tray-tab[aria-selected="true"] .bench-count { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
-.tray-tab:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 1px; }
-.tray-tab.is-empty:not([aria-selected="true"]) { opacity: 0.55; }
-.tray-empty { grid-column: 1 / -1; padding: 6px 0; font-size: 11px; font-style: italic; color: var(--text-faint); }
 .status-tag {
   flex-shrink: 0; padding: 1px 4px; border: 1px solid currentColor; border-radius: 3px;
   font-size: 9px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: default;
@@ -542,7 +486,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .marker-late    { color: #d9a95b; }
 .marker-leaving { color: #d9a95b; }
 .marker-standby { color: var(--accent-gold-dim); }
-.unplaced-slot { border-style: dashed; opacity: 0.7; }
 
 /* ── Changed players (ChangeLog highlights) ──
    An inset ring, not an outline: :focus-visible already draws the outline. */
@@ -561,7 +504,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   color: var(--changed-color, var(--accent-gold));
   font-size: 9px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: default;
 }
-.tray-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-gold); flex-shrink: 0; }
 
 /* ── Recent changes panel (below the banners) ── */
 .changes-log-panel {
@@ -606,9 +548,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .unplaced-dialog-fields select:focus { outline: none; border-color: var(--accent-gold); }
 .unplaced-dialog-error { min-height: 16px; font-size: 12px; color: var(--danger); }
 
-@media (max-width: 900px) {
-  .bench-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 
 /* ── Player editor: a drawer on the right edge (phones: the bottom sheet in the slim phone block) ── */
 .player-editor-overlay { position: fixed; inset: 0; z-index: 99; background: transparent; }
@@ -1358,12 +1297,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 
   /* Landing: 44px tap areas for the restore link and the saved-plan Delete buttons. */
   #btn-landing-restore, .landing .row-actions .link-btn.del { display: inline-flex; align-items: center; min-height: 44px; }
-
-  /* Bench: one column (the 900px rule would otherwise give two). */
-  .bench-list { grid-template-columns: minmax(0, 1fr); }
-
-  /* Tray status tabs wrap instead of scrolling sideways. */
-  .tray-tabs { flex-wrap: wrap; overflow-x: visible; }
 }
 
 /* The static site pages (faq.html, whats-new.html): the landing layout inside the shell's main column. */

@@ -1937,22 +1937,23 @@ function closeBuffPicker() {
 // ── BENCH PANEL ─────────────────────────────────────────────────
 // Players who are in the roster but not slotted into a party. The Optimizer
 // never sees them; they sit here until dragged back in or deleted.
-// ── SIGN-UP TRAY ────────────────────────────────────────────────
-// Replaces the single bench panel with one bench-sized panel whose tabs file
-// everyone off the raid by their Raid-Helper status, so adding statuses adds
-// tabs, not page height. Bench/Tentative/Late come from State.bench (real
-// players, draggable as before); Absent and classless sign-ups come from
-// State.unplaced and are seated through UnplacedDialog.
+// ── LEFT POOL "Not in a group" ──────────────────────────────────
+// The people who are on the Raid-Helper list but not seated: Bench, Tentative and
+// Late come from State.bench (real players, draggable as before); Absent ("Can't
+// come") and classless sign-ups come from State.unplaced and are seated through
+// UnplacedDialog. Pills filter the list, the search narrows it, and the rows sit
+// under a Bench head and a Can't come head. Tentative and Late are subsets of Bench.
 const SignupTray = {
-  TABS: [
-    { id:'bench',     label:'Bench',     hint:'Drag onto a seat, or tap to pick a group or swap' },
-    { id:'tentative', label:'Tentative', hint:'Marked Tentative on Raid-Helper' },
-    { id:'late',      label:'Late',      hint:'Marked Late on Raid-Helper. Add them to a group when they arrive' },
-    { id:'absent',    label:'Absent',    hint:"Marked Absent. You'll confirm before seating them" },
-    { id:'all',       label:'All',       hint:'Everyone not seated, tagged by status' },
+  FILTERS: [
+    { id:'all',       label:'All',        hint:'Everyone not in a group' },
+    { id:'bench',     label:'Bench',      hint:'On the Raid-Helper bench, or signed up beyond the raid size' },
+    { id:'tentative', label:'Tentative',  hint:'Marked Tentative on Raid-Helper' },
+    { id:'late',      label:'Late',       hint:'Marked Late on Raid-Helper. Add them to a group when they arrive' },
+    { id:'absent',    label:"Can't come", hint:"Marked Absent. You'll confirm before seating them" },
   ],
-  activeTab: 'bench',
-  chosen: false, // until the leader picks a tab, open the first one with people in it
+  filter: 'all',
+  query: '',
+  PANE_KEY: 'rs_pool_pane',
 
   entries() {
     return [
@@ -1963,19 +1964,39 @@ const SignupTray = {
 
   tabOf(entry) { return SignupStatus.tabFor(entry.p.signupStatus); },
 
-  select(tab) {
-    if (!this.TABS.some(t => t.id === tab)) return;
-    this.activeTab = tab;
-    this.chosen = true;
+  // Tentative and Late people are on the Bench; only Absent ones can't come.
+  groupOf(entry) { return this.tabOf(entry) === 'absent' ? 'absent' : 'bench'; },
+
+  inFilter(entry, id) {
+    if (id === 'all') return true;
+    if (id === 'bench') return this.groupOf(entry) === 'bench';
+    return this.tabOf(entry) === id;
+  },
+
+  matchesQuery(entry) {
+    const q = this.query.trim().toLowerCase();
+    if (!q) return true;
+    const p = entry.p;
+    return [p.name, p.class, p.spec].filter(Boolean).join(' ').toLowerCase().includes(q);
+  },
+
+  setFilter(id) {
+    if (!this.FILTERS.some(f => f.id === id)) return;
+    this.filter = id;
     this.render();
-    const btn = document.querySelector(`[data-tray-tab="${tab}"]`);
-    if (!btn) return;
-    btn.focus({ preventScroll: true });
-    // On a phone the tab row scrolls sideways; bring the chosen tab fully in.
-    const row = btn.parentElement;
-    if (btn.offsetLeft < row.scrollLeft || btn.offsetLeft + btn.offsetWidth > row.scrollLeft + row.clientWidth) {
-      row.scrollLeft = btn.offsetLeft - (row.clientWidth - btn.offsetWidth) / 2;
-    }
+    const btn = document.querySelector(`[data-pool-filter="${id}"]`);
+    if (btn) btn.focus({ preventScroll: true });
+  },
+
+  // Phone: one pane at a time, remembered for the session.
+  pane() {
+    try { return sessionStorage.getItem(this.PANE_KEY) === 'pool' ? 'pool' : 'groups'; } catch { return 'groups'; }
+  },
+  setPane(pane) {
+    try { sessionStorage.setItem(this.PANE_KEY, pane); } catch { /* the choice just is not remembered */ }
+    this.render();
+    const btn = document.querySelector(`[data-pool-pane="${pane}"]`);
+    if (btn) btn.focus({ preventScroll: true });
   },
 
   // The optimizer's reason for a player on the bench ('' unless a guild raid's sit-out history is loaded and the player is a confirmed raider left out).
@@ -1984,13 +2005,12 @@ const SignupTray = {
     try { return Optimizer.benchReasons().get(p.uid) || ''; } catch { return ''; }
   },
 
-  slotHTML(entry, tab) {
+  // One row, like a board row. Exceptions only: a status chip (Signed up / Tentative / Late) under the Bench head, the standby
+  // arrow, the guild's note, a review badge, the sit-out reason. The Can't come head already says why.
+  slotHTML(entry) {
     const p = entry.p;
     const displayName = (p.name || 'Unknown').split('-')[0];
-    // The Bench tab tags only "Signed up" (overflow raiders vs Raid-Helper
-    // Bench); the All tab tags everyone; a status tab is its own label.
-    const tag = tab === 'all' ? getStatusTag(p.signupStatus)
-      : (tab === 'bench' && p.signupStatus === 'confirmed' ? getStatusTag('confirmed') : '');
+    const tag = this.groupOf(entry) === 'bench' && p.signupStatus !== 'bench' ? getStatusTag(p.signupStatus) : '';
     if (entry.unplaced) {
       const color = classColorClass(p.class, 'muted');
       const icon = p.class ? getSpecIcon(p) : '<span class="role-icon unplaced-icon">?</span>';
@@ -2004,7 +2024,6 @@ const SignupTray = {
         ${changedTag(p)}
         ${tag}
         ${getMarkerTag(p)}
-        ${getDragHandle()}
       </div>`;
     }
     const color = classColorClass(p.class);
@@ -2028,52 +2047,77 @@ const SignupTray = {
       ${getMarkerTag(p)}
       ${reviewBadge}
       ${backupBadge}
-      ${getDragHandle()}
     </div>`;
+  },
+
+  // The rows under their group heads, for the active pill and the search.
+  listHTML(entries) {
+    const shown = entries.filter(e => this.inFilter(e, this.filter) && this.matchesQuery(e));
+    if (!shown.length) {
+      const f = this.FILTERS.find(x => x.id === this.filter);
+      const msg = this.query.trim() ? 'No one matches that search.' : `No one is marked ${esc(f.label)}.`;
+      return `<p class="gs-pb-poolempty">${msg}</p>`;
+    }
+    return [{ id:'bench', label:'Bench' }, { id:'absent', label:"Can't come" }].map(g => {
+      const rows = shown.filter(e => this.groupOf(e) === g.id);
+      if (!rows.length) return '';
+      return `<div class="gs-pb-pgroup"><h3 class="gs-fg-gh gs-pb-pgh"><span class="gs-fg-ght">${g.label}</span><span class="gs-fg-ghn">${rows.length}</span></h3>${rows.map(e => this.slotHTML(e)).join('')}</div>`;
+    }).join('');
+  },
+
+  // Search keeps focus in the box, so it redraws only the rows.
+  renderList() {
+    const list = document.getElementById('bench-list');
+    if (list) list.innerHTML = this.listHTML(this.entries());
   },
 
   render() {
     const section = document.getElementById('bench-section');
     if (!section) return;
+    const onPlan = State.activeTab === 'plan';
+    section.style.display = onPlan ? '' : 'none';
     const entries = this.entries();
-    if (entries.length === 0) {
-      // A slim header keeps the tray discoverable while nobody is in it.
-      section.style.display = State.activeTab === 'plan' ? 'block' : 'none';
-      section.innerHTML = `<div class="bench-header tray-slim"><h3>Sign-ups</h3><span class="bench-count">0</span><span class="bench-hint">Late sign-ups and players you bench appear here.</span></div>`;
-      return;
-    }
-    section.style.display = State.activeTab === 'plan' ? 'block' : 'none';
+    const pane = this.pane();
+    const board = document.querySelector('.app-body');
+    if (board && board.dataset) board.dataset.pane = pane;
 
-    const counts = { all: entries.length };
-    const changedTabs = new Set(); // tabs holding someone with an unseen change
-    for (const e of entries) {
-      const t = this.tabOf(e);
-      counts[t] = (counts[t] || 0) + 1;
-      if (ChangeLog.highlightFor(e.p)) changedTabs.add(t);
-    }
-    if (!this.chosen && !counts[this.activeTab]) {
-      this.activeTab = (this.TABS.find(t => t.id !== 'all' && counts[t.id]) || { id:'all' }).id;
-    }
-    const tab = this.TABS.find(t => t.id === this.activeTab) || this.TABS[0];
-    const shown = tab.id === 'all' ? entries : entries.filter(e => this.tabOf(e) === tab.id);
+    const searchHadFocus = document.activeElement && document.activeElement.id === 'pool-search';
+    const caret = searchHadFocus ? document.activeElement.selectionStart : 0;
 
-    const tabsHTML = this.TABS.map(t => {
-      const n = counts[t.id] || 0;
-      const selected = t.id === tab.id;
-      // A dot on a tab the leader is not looking at, when a changed player is in it (All shows everyone, so never).
-      const dot = tab.id !== 'all' && !selected && changedTabs.has(t.id) ? '<span class="tray-tab-dot" aria-hidden="true"></span><span class="sr-only">, has changes</span>' : '';
-      return `<button type="button" role="tab" class="tray-tab${n ? '' : ' is-empty'}" id="tray-tab-${t.id}" data-tray-tab="${t.id}" aria-selected="${selected}" aria-controls="bench-list" tabindex="${selected ? 0 : -1}">${t.label} <span class="bench-count">${n}</span>${dot}</button>`;
+    const counts = Object.fromEntries(this.FILTERS.map(f => [f.id, entries.filter(e => this.inFilter(e, f.id)).length]));
+    const changed = new Set(); // pills holding someone with an unseen change
+    for (const f of this.FILTERS) if (entries.some(e => this.inFilter(e, f.id) && ChangeLog.highlightFor(e.p))) changed.add(f.id);
+
+    const switchEl = document.getElementById('pool-switch');
+    if (switchEl) {
+      switchEl.style.display = onPlan ? '' : 'none';
+      switchEl.innerHTML = `<button type="button" class="gs-fg-seg" data-pool-pane="groups" aria-pressed="${pane === 'groups'}">Groups</button><button type="button" class="gs-fg-seg" data-pool-pane="pool" aria-pressed="${pane === 'pool'}">Not in a group <span class="gs-fg-segn">${entries.length}</span></button>`;
+    }
+
+    const pills = this.FILTERS.map(f => {
+      const selected = f.id === this.filter;
+      // A dot on a pill the leader is not looking at, when a changed player is in it (All shows everyone, so never).
+      const dot = f.id !== 'all' && this.filter !== 'all' && !selected && changed.has(f.id) ? '<span class="gs-pb-dot" aria-hidden="true"></span><span class="sr-only">, has changes</span>' : '';
+      return `<button type="button" class="gs-fg-pill" data-pool-filter="${f.id}" title="${esc(f.hint)}" aria-pressed="${selected}">${f.label} <span class="gs-fg-segn">${counts[f.id]}</span>${dot}</button>`;
     }).join('');
-    const slotsHTML = shown.length
-      ? shown.map(e => this.slotHTML(e, tab.id)).join('')
-      : `<div class="tray-empty">No one is marked ${esc(tab.label)}.</div>`;
 
-    section.innerHTML = `<div class="bench-header tray-header">
-        <h3>Sign-ups</h3>
-        <div class="tray-tabs" role="tablist" aria-label="Sign-ups not in a group, by status">${tabsHTML}</div>
-      </div>
-      <div class="bench-hint tray-hint">${esc(tab.hint)}</div>
-      <div class="bench-list" id="bench-list" role="tabpanel" aria-labelledby="tray-tab-${tab.id}">${slotsHTML}</div>`;
+    const controls = entries.length ? `<div class="gs-pb-poolctl">
+        <label class="sr-only" for="pool-search">Search people not in a group</label>
+        <input type="search" class="gs-input gs-pb-search" id="pool-search" placeholder="Search names" autocomplete="off" value="${esc(this.query)}">
+        <div class="gs-fg-pills" role="group" aria-label="Filter by status">${pills}</div>
+      </div>` : '';
+    const body = entries.length ? this.listHTML(entries)
+      : '<p class="gs-pb-poolempty">No one is waiting.</p>';
+
+    section.innerHTML = `<h2 class="gs-hd-sl gs-pb-pooltitle" id="pool-title"><span>Not in a group</span><span class="gs-pb-poolcount">${entries.length}</span></h2>
+      ${controls}
+      <div class="gs-pb-poolbody bench-list" id="bench-list">${body}</div>
+      <p class="gs-pb-poolfoot"><span class="gs-pb-foot-wide">Drag a name onto a group, or open it to choose one.</span><span class="gs-pb-foot-phone">Open a name to choose a group.</span></p>`;
+
+    if (searchHadFocus) {
+      const input = document.getElementById('pool-search');
+      if (input) { input.focus({ preventScroll: true }); try { input.setSelectionRange(caret, caret); } catch { /* not a text field */ } }
+    }
   },
 };
 
@@ -2938,8 +2982,8 @@ function activateSlotOnKey(e) {
   });
 
   document.getElementById('bench-section').addEventListener('click', e => {
-    const tab = e.target.closest('[data-tray-tab]');
-    if (tab) { SignupTray.select(tab.dataset.trayTab); return; }
+    const pill = e.target.closest('[data-pool-filter]');
+    if (pill) { SignupTray.setFilter(pill.dataset.poolFilter); return; }
     const slot = e.target.closest('.bench-slot');
     if (!slot) return;
     if (slot.dataset.unplacedUid) { UnplacedDialog.open(slot.dataset.unplacedUid, null); return; }
@@ -2947,17 +2991,19 @@ function activateSlotOnKey(e) {
     if (uid) showPlayerEditor(slot, { uid });
   });
 
-  // Arrow keys move between tray tabs (WAI-ARIA tabs pattern).
-  document.getElementById('bench-section').addEventListener('keydown', e => {
-    activateSlotOnKey(e);
-    const tab = e.target.closest('[data-tray-tab]');
-    if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-    e.preventDefault();
-    const ids = SignupTray.TABS.map(t => t.id);
-    const i = ids.indexOf(tab.dataset.trayTab);
-    const next = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1
-      : (i + (e.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length;
-    SignupTray.select(ids[next]);
+  document.getElementById('bench-section').addEventListener('keydown', activateSlotOnKey);
+
+  // The search narrows the rows in place (the box keeps focus).
+  document.getElementById('bench-section').addEventListener('input', e => {
+    if (e.target.id !== 'pool-search') return;
+    SignupTray.query = e.target.value;
+    SignupTray.renderList();
+  });
+
+  // Phone: the Groups | Not in a group switch.
+  document.getElementById('pool-switch').addEventListener('click', e => {
+    const btn = e.target.closest('[data-pool-pane]');
+    if (btn) SignupTray.setPane(btn.dataset.poolPane);
   });
 
   document.getElementById('btn-unplaced-cancel').addEventListener('click', () => UnplacedDialog.close());

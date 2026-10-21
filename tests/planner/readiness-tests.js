@@ -328,7 +328,7 @@ check('index.html: the Raid check strip sits above the Groups line and the board
   let at = -1;
   for (const part of order) { const i = htmlText.indexOf(part); assert(i > at, part + ' comes in order'); at = i; }
   assert.match(htmlText, /<section class="gs-hd-panel gs-pb-manual" id="manual-changes" aria-label="Manual changes" hidden>/);
-  assert.doesNotMatch(htmlText, /<aside|buff-sidebar|id="sidebar-|id="summary-bar"|id="coverage-sheet"|id="readiness-banner"|id="readiness-text"|btn-readiness-|class="readiness-banner"/);
+  assert.doesNotMatch(htmlText, /<aside(?! class="gs-hd-panel gs-pb-pool")|buff-sidebar|id="sidebar-|id="summary-bar"|id="coverage-sheet"|id="readiness-banner"|id="readiness-text"|btn-readiness-|class="readiness-banner"/);
   assert.match(htmlText, /<h2 class="gs-hd-sl"><span>Groups<\/span><span class="gs-pb-seated" id="seated-count"><\/span><\/h2>/);
   const strip = htmlText.slice(htmlText.indexOf('id="raid-check"'), htmlText.indexOf('</section>', htmlText.indexOf('id="raid-check"')));
   assert.match(strip, /id="raid-check-tiles"[\s\S]*id="raid-check-gaps"[\s\S]*<button type="button" class="gs-btn gs-pb-covered" id="btn-coverage" aria-haspopup="dialog" hidden><\/button>/);
@@ -440,7 +440,7 @@ check('imports, Optimize and the sync set the line after their commit; persistWo
 // ── CSS ──
 const cssText = app.css.replace(/\r\n/g, '\n');
 const phoneCss = (() => { const c = cssText.slice(cssText.lastIndexOf('/* ── Slim phone layout')); return c.slice(c.indexOf('@media (max-width: 600px)')); })();
-const laneCss = (() => { const a = cssText.indexOf('Planner board on Forge (T6), lane 2'); const b = cssText.indexOf('/* Watch list: Reviewed'); assert(a > 0 && b > a); return cssText.slice(a, b); })();
+const laneCss = (() => { const a = cssText.indexOf('Planner board on Forge (T6), lane 2'); const b = cssText.indexOf('Planner board on Forge (T6), lane 4'); assert(a > 0 && b > a); return cssText.slice(a, b); })();
 
 check('strip styles: tokens only, 36px icon buttons, one neutral edge between the groups, no orange or gold', () => {
   assert.doesNotMatch(laneCss, /#[0-9a-fA-F]{3,8}\b/, 'no hex colour in the lane 2 block');
