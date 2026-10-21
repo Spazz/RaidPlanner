@@ -4,7 +4,7 @@
 // The attendance recompute reads it with the other sources and is otherwise unchanged. Spec: tasks/reference/guild-phase6-signups-spec.md.
 import { HttpError, jsonResponse } from '../http.js';
 import { raidAwayEffects, readNotices, teamCharactersStatement, teamNoticesStatement } from '../away-store.js';
-import { recomputeRaid } from '../attendance-store.js';
+import { linkSignupsStatement, markPersonRaidsStale, recomputeRaid } from '../attendance-store.js';
 import { displayCharacter } from '../attendance-view.js';
 import { isId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
@@ -386,3 +386,60 @@ async function setLocked(ctx, locked) {
 
 export const lockSignups = (ctx) => setLocked(ctx, true);
 export const unlockSignups = (ctx) => setLocked(ctx, false);
+
+// ---------------------------------------------------------------------------
+// Link a Raid-Helper sign-up to a person
+
+// POST .../signups/link { signupId, personId }: an officer (roster.edit on the raid's team) says whose sign-up a Raid-Helper row is. The person takes the row's
+// Discord ID when they have none (so every later sign-up of it finds them, as the Raid-Helper ingest does), and every unlinked row of the guild with that ID follows.
+// A row without a Discord ID links only itself.
+export async function linkSignup(ctx) {
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
+  const { body, db } = ctx;
+  const guild = guildContext.guild;
+  const raid = await loadRaid(ctx, guildContext);
+  if (!allows(guildContext.can, 'roster.edit', raid.team_id)) throw forbidden();
+  if (!Number.isInteger(body.signupId) || body.signupId < 0) throw bad('Send the sign-up to link.', 'signupId');
+  if (!isId('p', body.personId)) throw bad('Pick the person this sign-up belongs to.', 'personId');
+  const [rowResult, personResult] = await db.batch([
+    db.prepare("SELECT discord_user_id, nickname, player_id FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper' AND signup_id = ?").bind(raid.id, body.signupId),
+    db.prepare('SELECT id, discord_user_id FROM players WHERE id = ? AND guild_id = ?').bind(body.personId, guild.id),
+  ]);
+  const row = rowResult.results[0];
+  if (!row) throw new HttpError(404, 'not_found', 'That sign-up was not found.');
+  const person = personResult.results[0];
+  if (!person) throw bad('Pick a person on the roster.', 'personId');
+  if (row.player_id) throw new HttpError(409, 'already_linked', 'That sign-up is already linked to a person.', { field: 'signupId' });
+  const discordId = row.discord_user_id || null;
+  if (discordId && person.discord_user_id && person.discord_user_id !== discordId) {
+    throw new HttpError(409, 'discord_mismatch', 'That person is already linked to a different Discord account.', { field: 'personId' });
+  }
+  if (discordId && !person.discord_user_id) {
+    const owner = await db.prepare('SELECT id FROM players WHERE guild_id = ? AND discord_user_id = ? AND id != ?').bind(guild.id, discordId, person.id).first();
+    if (owner) throw new HttpError(409, 'already_linked', 'Another person already has this Discord account.', { field: 'personId' });
+  }
+  const now = ctx.now();
+  const statements = [];
+  if (discordId && !person.discord_user_id) {
+    statements.push(db.prepare(
+      'UPDATE players SET discord_user_id = ?, version = version + 1, updated_at = ? WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL',
+    ).bind(discordId, now, person.id, guild.id));
+  }
+  statements.push(
+    linkSignupsStatement(db, guild.id, person.id, discordId, raid.id, body.signupId),
+    markPersonRaidsStale(db, guild.id, person.id),
+    db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ?").bind(raid.id, guild.id),
+  );
+  const auditIndex = statements.length;
+  statements.push(raidAudit(ctx, guildContext, 'signup.link', raid.id, null, { personId: person.id, nickname: row.nickname, linkedDiscord: !!discordId }));
+  let results;
+  try {
+    results = await db.batch(statements);
+  } catch (error) {
+    if (/players_guild_discord|UNIQUE/i.test(String(error && error.message))) throw new HttpError(409, 'already_linked', 'Another person already has this Discord account.', { field: 'personId' });
+    throw error;
+  }
+  const relinked = results[auditIndex - 3].meta.changes;
+  await recomputeIfEvidence(ctx, guild, raid);
+  return jsonResponse({ ...(await buildView(ctx, guildContext, await loadRaid(ctx, guildContext))), relinked });
+}

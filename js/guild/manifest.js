@@ -64,6 +64,7 @@
     '/js/guild/pages-raid-loot.js',
     '/js/guild/pages-raid-board.js',
     '/js/guild/pages-raid-signups.js',
+    '/js/guild/pages-raid-signup-link.js',
     '/js/guild/pages-raid-extras.js',
     '/js/guild/pages-raid-facts.js',
     '/js/guild/pages-raid-you.js',

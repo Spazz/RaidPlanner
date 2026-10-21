@@ -140,6 +140,7 @@
     withdraw: function (gid, rid) { return G.api.del(raidPath(gid, rid, '/signup'), {}); },
     savePerson: function (gid, rid, pid, body) { return G.api.put(raidPath(gid, rid, '/signups/' + encodeURIComponent(pid)), body); },
     removePerson: function (gid, rid, pid) { return G.api.del(raidPath(gid, rid, '/signups/' + encodeURIComponent(pid)), {}); },
+    link: function (gid, rid, body) { return G.api.post(raidPath(gid, rid, '/signups/link'), body); },
     lock: function (gid, rid, locked) { return G.api.post(raidPath(gid, rid, locked ? '/signups/lock' : '/signups/unlock'), {}); },
     schedule: function (gid, tid) { return G.api.get(schedulePath(gid, tid)); },
     saveSchedule: function (gid, tid, body) { return G.api.put(schedulePath(gid, tid), body); },

@@ -241,13 +241,18 @@
     return !row.joinedAfter || !!row.signup || !!(row.pulls && row.pulls.present > 0) || !!row.decision;
   }
 
+  // The Unmatched sign-ups panel (pages-raid-signup-link.js): Raid-Helper sign-ups nobody on the roster owns, for an officer who may link them.
+  function unmatchedSignupsHtml(data, opts) {
+    return G.pages.raidSignupLink ? G.pages.raidSignupLink.panelHtml({ data: data, state: opts.signups }) : '';
+  }
+
   // The Attendance panel (id raid-people) and the Unmatched characters panel under it: pages-raid-attendance.js. The log source, the hand-entered line and the plan /
   // line-up rows are facts in the side panel; "Open review queue" lives in the next-step bar while a review is due.
   function attendanceHtml(gd, data, opts) {
     const att = G.pages.raidAttendance;
     const b = bossCounts(data);
     const summary = b.pulls ? [G.pages.raids.bossesText(b), plural(b.pulls, 'pull', 'pulls')].filter(function (x) { return x && x !== '-'; }).join(', ') : '';
-    return att.panelHtml({ guildData: gd, data: data, filter: opts.filter, signups: opts.signups, summary: summary }) + att.unmatchedHtml(data);
+    return att.panelHtml({ guildData: gd, data: data, filter: opts.filter, signups: opts.signups, summary: summary }) + att.unmatchedHtml(data) + unmatchedSignupsHtml(data, opts);
   }
 
   // The stale banner stays a page notice (above the columns); its button recalculates this raid.
@@ -275,7 +280,7 @@
   function mainBefore(gd, data, opts, model) {
     const roster = rosterViewOf(opts.roster);
     const lineup = rosterCardHtml(gd, data, opts.roster, opts.signups);
-    return flowsHtml(data, opts, model) + bareSection('s-signups', signupsPanelHtml(gd, data, opts.signups)) +
+    return flowsHtml(data, opts, model) + bareSection('s-signups', signupsPanelHtml(gd, data, opts.signups)) + unmatchedSignupsHtml(data, opts) +
       bareSection('s-lineup', roster && roster.published ? lineup : (opts.roster && opts.roster.status === 'error' ? lineup : '')) +
       bareSection('s-board', prioListHtml(gd, data, opts));
   }
@@ -568,6 +573,7 @@
   // Called by the app after each render: the New raid page asks for the manual dialog to open on the new raid.
   function afterRender() {
     const x = a().raid;
+    if (x && G.pages.raidSignupLink && typeof window !== 'undefined') G.pages.raidSignupLink.focusIfAsked(G.router.parse(window.location.hash));
     if (!x || !x.auto) return;
     const c = cur();
     if (!c || typeof document === 'undefined' || !document.getElementById('guild-dialogs')) return;

@@ -124,6 +124,7 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
       isMe: !!opts.myPlayerId && row.player_id === opts.myPlayerId,
       nickname: opts.seeNicknames && row.source === 'raid_helper' ? row.nickname : null,
       ...(guest ? { guest: true, signupId: row.signup_id } : {}),
+      ...(row.source === 'raid_helper' && !row.player_id && opts.seeNicknames ? { signupId: row.signup_id } : {}), // an officer can link it to a person
       ...(nameClassId ? { nameClassId } : {}), // colour for a name whose sign-up has no class (a Can't come has none)
       ...(row.source === 'raidsmith' && row.standing === 1 ? { standing: true } : {}), // made by a standing sign-up and not edited since (the key is only there then)
     });

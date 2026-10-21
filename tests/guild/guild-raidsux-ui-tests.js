@@ -592,6 +592,45 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     for (const gone of ['gs-tally', 'gs-pullbar', 'gs-opill', 'gs-pulls']) assert(!new RegExp('\\.' + gone + '[\\s{,.-]').test(css), gone + ' rule is gone');
   });
 
+  await check('unmatched sign-ups: a panel for an officer with roster.edit on past and upcoming raids; rows, buttons, aria-labels, chip only when not Signed up; hidden otherwise', () => {
+    const entry = (over) => Object.assign({ key: 'x:raid_helper:13', personId: null, source: 'raid_helper', kind: 'tentative', name: 'swift', classId: 'SHAMAN', className: 'Shaman', spec: 'Restoration', matched: false, nickname: 'swift', signupId: 13 }, over || {});
+    const state = (entries, can) => ({ status: 'ok', data: { entries, can: Object.assign({ edit: true, seeList: true, seeNicknames: true }, can || {}), raid: {}, me: null, roster: [] } });
+    const entries = [entry(), entry({ key: 'x:raid_helper:14', signupId: 14, kind: 'signed', name: 'Aardvark', classId: 'MAGE', className: 'Mage', spec: 'Fire' }),
+      entry({ key: 'x:raid_helper:15', signupId: 15, kind: 'absence', name: 'Gone' }), entry({ key: 'p:p_a', personId: 'p_a', signupId: undefined, name: 'Alliesha' })];
+    const out = raidPage(detail(), { signups: state(entries) });
+    const k = out.indexOf('id="sul-h"');
+    assert(k > out.indexOf('id="raid-people"') && out.includes('>Unmatched sign-ups</h2>') && out.includes('id="s-signups-unmatched"'));
+    const panel = out.slice(k, out.indexOf('</section>', k));
+    assert(panel.indexOf('Aardvark') < panel.indexOf('swift'), 'A-Z by nickname');
+    assert(panel.includes('Shaman - Restoration') && panel.includes('Mage - Fire'));
+    assert(!panel.includes('Gone') && !panel.includes('Alliesha'), 'only the kinds of the Home to-do, only unlinked ones');
+    assert.equal(count(panel, />Tentative</g), 1, 'a chip for Tentative only; Signed up has none');
+    assert.equal(count(panel, /data-action="sul-link"/g), 2);
+    assert.equal(count(panel, /data-action="sul-person"/g), 2);
+    assert(panel.includes('aria-label="Link swift to a person"') && panel.includes('aria-label="Add swift as a new person"'));
+    assert(panel.includes('Link to person...') && panel.includes('Add as new person...') && panel.includes('data-sid="13"'));
+    // An upcoming raid shows it too.
+    const up = detail({ raid: { id: 'u1', team: 't1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, title: null, zone: 'Black Temple', size: 25, state: 'awaiting_log', openFlags: 0, stale: false, version: 1 }, people: [], pulls: [], signups: [] });
+    assert(raidPage(up, { signups: state(entries) }).includes('>Unmatched sign-ups</h2>'));
+    // Hidden without roster.edit (no nicknames, no ids), when there is nothing to link, and while the view is not loaded.
+    assert(!raidPage(detail(), { signups: state(entries.map((e) => Object.assign({}, e, { signupId: undefined })), { seeNicknames: false }) }).includes('Unmatched sign-ups'));
+    assert(!raidPage(detail(), { signups: state(entries, { seeNicknames: false }) }).includes('Unmatched sign-ups'));
+    assert(!raidPage(detail(), { signups: state([entry({ personId: 'p_a' }), entry({ kind: 'absence' })]) }).includes('Unmatched sign-ups'));
+    assert(!raidPage(detail(), { signups: { status: 'loading' } }).includes('Unmatched sign-ups'));
+    assert(!raidPage(detail(), {}).includes('Unmatched sign-ups'));
+    // Hostile nicknames are escaped; the Home to-do's route carries the focus.
+    assertEscaped(raidPage(detail(), { signups: state([entry({ name: HOSTILE + QUOTES, nickname: HOSTILE, className: HOSTILE, spec: HOSTILE })]) }), 'unmatched sign-ups');
+    assert.equal(G.router.format({ name: 'raid', gid: 'g1', rid: 'r4', focus: 'signups-unmatched' }), '#/g/g1/raids/r/r4?focus=signups-unmatched');
+    assert.deepEqual(plain(G.router.parse('#/g/g1/raids/r/r4?focus=signups-unmatched')), { name: 'raid', gid: 'g1', rid: 'r4', focus: 'signups-unmatched' });
+    assert.deepEqual(plain(G.router.parse('#/g/g1/raids/r/r4?focus=other')), { name: 'raid', gid: 'g1', rid: 'r4' });
+    // The dialogs: the Add person dialog opens filled from the sign-up and says which sign-up it links.
+    const dlg = G.pages.roster.addPersonDialogHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', team: null, today: '2026-10-21', linkable: [], prefill: { name: 'swift', nickname: 'swift', classId: 'SHAMAN', spec: 'Restoration', raidId: 'r4', signupId: 13 } });
+    assert(dlg.includes('value="swift"') && dlg.includes('data-rid="r4" data-sid="13"') && dlg.includes('name="teamId"'));
+    assert(!G.pages.roster.addPersonDialogHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', team: null, today: '2026-10-21', linkable: [] }).includes('data-sid'));
+    const link = G.pages.raidSignupLink.linkDialogHtml(entry(), [{ id: 'p_a', status: 'raider', main: { name: 'Alliesha', class: 'PALADIN' } }]);
+    assert(link.includes('data-submit="sul-link-form"') && link.includes('name="personId"') && link.includes('Link swift to a person') && link.includes('gs-dialog-form gs-forge'));
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })();

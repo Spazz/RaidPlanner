@@ -31,7 +31,7 @@ export const ACTION_GROUP = Object.freeze({
   'attendance.decide': 'attendance', 'attendance.undo': 'attendance', 'attendance.link': 'attendance', 'attendance.guest': 'attendance',
   'policy.update': 'attendance', 'wcl.settings': 'attendance',
   'loot.import': 'loot', 'loot.update': 'loot', 'loot.delete': 'loot', 'loot.policy': 'loot', 'loot.list': 'loot', 'loot.add': 'loot',
-  'signup.set': 'signups', 'signup.remove': 'signups', 'signup.lock': 'signups',
+  'signup.set': 'signups', 'signup.remove': 'signups', 'signup.link': 'signups', 'signup.lock': 'signups',
   'bnet.link': 'bnet', 'bnet.unlink': 'bnet', 'bnet.settings': 'bnet',
   'claim.create': 'bnet', 'claim.withdraw': 'bnet', 'claim.approve': 'bnet', 'claim.reject': 'bnet',
   'guild.create': 'settings', 'guild.update': 'settings', 'guild.claim': 'settings', 'guild.delete': 'settings', 'guild.export': 'settings', 'team.create': 'settings', 'team.rename': 'settings',
@@ -376,6 +376,7 @@ export function describeRow(row, names = {}) {
     }
 
     case 'signup.set': return `Signed ${person(after.personId)} up as ${KIND_LABEL[after.kind] || after.kind} on ${raidOn(ent)}`;
+    case 'signup.link': return `Linked the Raid-Helper sign-up "${after.nickname || 'unknown'}" to ${person(after.personId)} on ${raidOn(ent)}`;
     case 'signup.remove': return `Removed the sign-up of ${person(before.personId)} from ${raidOn(ent)}`;
     case 'away.set': return `${before.kind === undefined ? 'Added' : 'Changed'} a notice for ${person(after.personId)} (${AWAY_LABEL[after.kind] || after.kind})`;
     case 'away.remove': return `Removed a notice of ${person(before.personId)} (${AWAY_LABEL[before.kind] || before.kind})`;

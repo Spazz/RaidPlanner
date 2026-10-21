@@ -10,7 +10,7 @@ import {
 } from '../roster-data.js';
 import { LIMITS } from '../limits.js';
 import { findRealm } from '../realms.js';
-import { markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
+import { linkSignupsStatement, markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
 import {
   canSeeAvatars, guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
 } from '../roster-view.js';
@@ -257,6 +257,24 @@ export async function getPerson(ctx) {
 // ---------------------------------------------------------------------------
 // People
 
+async function readFromSignup(db, guildContext, value, link) {
+  if (value === undefined || value === null) return null;
+  const guildId = guildContext.guild.id;
+  if (typeof value !== 'object' || !isId('r', value.raidId) || !Number.isInteger(value.signupId)) throw bad('Pick a sign-up to link.', 'fromSignup');
+  const row = await db.prepare(
+    `SELECT s.discord_user_id, r.team_id FROM raid_signups s JOIN raids r ON r.id = s.raid_id AND r.guild_id = s.guild_id
+      WHERE s.guild_id = ? AND s.raid_id = ? AND s.source = 'raid_helper' AND s.signup_id = ? AND s.player_id IS NULL`,
+  ).bind(guildId, value.raidId, value.signupId).first();
+  if (!row) throw new HttpError(409, 'already_linked', 'That sign-up is already linked to a person.', { field: 'fromSignup' });
+  requireEdit(guildContext, row.team_id);
+  const discordId = row.discord_user_id || null;
+  if (discordId && !link) {
+    const owner = await db.prepare('SELECT id FROM players WHERE guild_id = ? AND discord_user_id = ?').bind(guildId, discordId).first();
+    if (owner) throw new HttpError(409, 'already_linked', 'Another person already has this Discord account.', { field: 'fromSignup' });
+  }
+  return { raidId: value.raidId, signupId: value.signupId, discordId: link && link.discord_id !== discordId ? null : discordId };
+}
+
 export async function createPerson(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
@@ -281,6 +299,8 @@ export async function createPerson(ctx) {
     }
   }
   const link = body.linkUserId === undefined || body.linkUserId === null ? null : await resolveLinkUser(db, guildContext, body.linkUserId);
+  // A person made from a Raid-Helper sign-up nobody is linked to ({ raidId, signupId }) takes that sign-up's Discord ID, and the sign-ups with it follow.
+  const fromSignup = await readFromSignup(db, guildContext, body.fromSignup, link);
   const realm = realmColumns(guild);
   const owner = await findNameOwner(db, guild.id, nameKey(name), realm.key);
   if (owner) throw nameTaken(name, owner);
@@ -293,7 +313,7 @@ export async function createPerson(ctx) {
       db.prepare(
         `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, version, notes_version, created_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
-      ).bind(playerId, guild.id, status, joinedOn, trialStart, trialEnd, link ? link.discord_id : null, ctx.session.user.id, now, now),
+      ).bind(playerId, guild.id, status, joinedOn, trialStart, trialEnd, link ? link.discord_id : (fromSignup ? fromSignup.discordId : null), ctx.session.user.id, now, now),
       insertCharacter(db, guild.id, {
         id: characterId, playerId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: classId, mainSpec, offSpec, isMain: true,
       }, now),
@@ -302,6 +322,7 @@ export async function createPerson(ctx) {
       }),
       // Raids whose logs name this character show "Recalculate".
       markRaidsStale(db, guild.id, [nameKey(name)], null, [team.id]),
+      ...(fromSignup ? [linkSignupsStatement(db, guild.id, playerId, fromSignup.discordId, fromSignup.raidId, fromSignup.signupId), markPersonRaidsStale(db, guild.id, playerId)] : []),
     ]);
   } catch (error) {
     if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realm);

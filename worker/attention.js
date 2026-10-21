@@ -290,7 +290,7 @@ function collect(input) {
   }
   for (const row of input.signupUnmatched) {
     if (!here('roster.edit', row.team_id)) continue;
-    add('signup_unmatched', { ...base('signup_unmatched', row.team_id), ...raidFields(row), count: row.n, id: `signup_unmatched:${row.raid_id}`, link: { name: 'raid', rid: row.raid_id } }, [dateNumber(row.raid_on)], String(row.n));
+    add('signup_unmatched', { ...base('signup_unmatched', row.team_id), ...raidFields(row), count: row.n, id: `signup_unmatched:${row.raid_id}`, link: { name: 'raid', rid: row.raid_id, focus: 'signups-unmatched' } }, [dateNumber(row.raid_on)], String(row.n));
   }
   if (input.claims > 0 && input.granted('roster.edit')) {
     add('claims', { ...base('claims', null), count: input.claims, id: 'claims', link: { name: 'review' } }, [0]);

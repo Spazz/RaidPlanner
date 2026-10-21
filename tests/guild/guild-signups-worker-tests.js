@@ -1144,6 +1144,74 @@ check('mergeSignups: a Raid-Helper Absence (no class) that shows a roster name c
   assert.equal('nameClassId' in th, false, 'a sign-up with a class needs no fallback');
 });
 
+check('link a Raid-Helper sign-up: the person takes the Discord ID, every unlinked row with it follows, 409 on a clash, 403 without roster.edit, audited', async () => {
+  const s = await signupWorld();
+  await withEvent(s);
+  const STRANGER = '299999999999999999';
+  const other = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-02-09', startTime: '21:00' });
+  assert.equal(other.status, 201, JSON.stringify(other.json));
+  const otherId = other.json.raid.id;
+  const insertRow = (raid, id, discord, nick, kind, pos, player = null) => exec(s.w,
+    `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, class_name, spec_name, position, guild_id, player_id) VALUES ('${raid}', 'raid_helper', ${id}, ${discord ? `'${discord}'` : 'NULL'}, '${nick}', '${kind}', NULL, NULL, ${pos}, '${s.guildId}', ${player ? `'${player}'` : 'NULL'})`);
+  insertRow(otherId, 7, STRANGER, 'Stranger', 'tentative', 1);
+  const view = await s.call('bob', 'GET', s.path('/signups'));
+  const entry = view.json.entries.find((e) => e.name === 'Stranger');
+  assert.equal(entry.signupId, 13, 'an officer sees which sign-up it is');
+  assert.equal((await s.call('erin', 'GET', s.path('/signups'))).json.entries.some((e) => 'signupId' in e && !e.guest), false, 'a member never gets it');
+  const link = (who, body, rid = s.raidId) => s.call(who, 'POST', `/raids/${rid}/signups/link`, body);
+  // Permission and input.
+  assert.equal((await link('erin', { signupId: 13, personId: s.p.nodisc })).status, 403);
+  assert.equal((await link('bob', { signupId: 'x', personId: s.p.nodisc })).json.field, 'signupId');
+  assert.equal((await link('bob', { signupId: 13, personId: 'p_AAAAAAAAAAAAAAAAAAAAAA' })).json.field, 'personId');
+  assert.equal((await link('bob', { signupId: 99, personId: s.p.nodisc })).status, 404);
+  // A person with a different Discord ID, and a Discord ID somebody else has.
+  const mismatch = await link('bob', { signupId: 13, personId: s.p.gorrim });
+  assert.deepEqual([mismatch.status, mismatch.json.field], [409, 'personId']);
+  exec(s.w, `UPDATE raid_signups SET discord_user_id = '${PEOPLE.erin.id}' WHERE raid_id = '${s.raidId}' AND signup_id = 13`);
+  const taken = await link('bob', { signupId: 13, personId: s.p.nodisc });
+  assert.deepEqual([taken.status, taken.json.field], [409, 'personId']);
+  exec(s.w, `UPDATE raid_signups SET discord_user_id = '${STRANGER}' WHERE raid_id = '${s.raidId}' AND signup_id = 13`);
+  assert.equal(await s.w.count('audit_log', "action = 'signup.link'"), 0, 'a refused link writes nothing');
+  // The link.
+  const ok = await link('bob', { signupId: 13, personId: s.p.nodisc });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.equal(ok.json.relinked, 2);
+  assert.equal(ok.json.entries.some((e) => e.signupId === 13), false, 'it is no longer unmatched');
+  assert.equal((await s.w.rows('SELECT discord_user_id FROM players WHERE id = ?', s.p.nodisc))[0].discord_user_id, STRANGER);
+  assert.deepEqual(await s.w.rows('SELECT raid_id, player_id FROM raid_signups WHERE discord_user_id = ? ORDER BY raid_id', STRANGER),
+    [s.raidId, otherId].sort().map((raid_id) => ({ raid_id, player_id: s.p.nodisc })));
+  const audit = await s.w.rows("SELECT entity_id, after FROM audit_log WHERE action = 'signup.link'");
+  assert.deepEqual([audit.length, audit[0].entity_id, JSON.parse(audit[0].after)], [1, s.raidId, { personId: s.p.nodisc, nickname: 'Stranger', linkedDiscord: true }]);
+  // Linked now: again is a 409; a second sign-up with the same ID links to the person who has it.
+  assert.equal((await link('bob', { signupId: 13, personId: s.p.nodisc })).json.error, 'already_linked');
+  insertRow(s.raidId, 21, STRANGER, 'Stranger', 'late', 9);
+  assert.equal((await link('bob', { signupId: 21, personId: s.p.nodisc })).json.relinked, 1);
+  // A sign-up without a Discord ID links itself only and gives the person none.
+  insertRow(s.raidId, 22, null, 'Ghost', 'bench', 10);
+  insertRow(s.raidId, 23, null, 'Ghost2', 'bench', 11);
+  const ghost = await link('bob', { signupId: 22, personId: s.p.eliora });
+  assert.equal(ghost.status, 200, JSON.stringify(ghost.json));
+  assert.deepEqual(await s.w.rows('SELECT signup_id, player_id FROM raid_signups WHERE signup_id IN (22, 23) ORDER BY signup_id'), [{ signup_id: 22, player_id: s.p.eliora }, { signup_id: 23, player_id: null }]);
+  assert.equal((await s.w.rows('SELECT discord_user_id FROM players WHERE id = ?', s.p.eliora))[0].discord_user_id, PEOPLE.erin.id, 'their own Discord ID is untouched');
+  // The Home to-do follows the data.
+  const att = await s.call('bob', 'GET', '/attention');
+  assert.equal(att.status, 200);
+  const todoOf = async () => ((await s.call('bob', 'GET', '/attention')).json.items || []).filter((i) => i.kind === 'signup_unmatched' && i.raidId === s.raidId);
+  assert.deepEqual((await todoOf()).map((i) => [i.count, i.link.focus]), [[1, 'signups-unmatched']], 'Ghost2 is still unlinked on this raid');
+  assert.equal((await link('bob', { signupId: 23, personId: s.p.gorrim })).status, 200);
+  assert.deepEqual(await todoOf(), [], 'nothing unlinked is left: the to-do is gone');
+  // Add as new person: carries the Discord ID and links every row.
+  insertRow(s.raidId, 30, '399999999999999999', 'Newbie', 'signed', 12);
+  insertRow(otherId, 31, '399999999999999999', 'Newbie', 'signed', 12);
+  const made = await s.call('bob', 'POST', '/roster', { teamId: s.A, name: 'Newbiename', class: 'MAGE', mainSpec: 'Fire', status: 'raider', fromSignup: { raidId: s.raidId, signupId: 30 } });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const np = made.json.person.id;
+  assert.equal((await s.w.rows('SELECT discord_user_id FROM players WHERE id = ?', np))[0].discord_user_id, '399999999999999999');
+  assert.deepEqual(await s.w.rows('SELECT DISTINCT player_id FROM raid_signups WHERE signup_id IN (30, 31)'), [{ player_id: np }]);
+  const again = await s.call('bob', 'POST', '/roster', { teamId: s.A, name: 'Newbietwo', class: 'MAGE', mainSpec: 'Fire', status: 'raider', fromSignup: { raidId: s.raidId, signupId: 30 } });
+  assert.deepEqual([again.status, again.json.field], [409, 'fromSignup']);
+});
+
 async function main() {
   const filter = process.argv[2] || '';
   let failed = 0;

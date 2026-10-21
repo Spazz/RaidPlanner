@@ -368,21 +368,26 @@
     return plural(days, 'day', 'days') + ' from today (' + teamName + '\'s trial length). Officers get a flag 7 days before.';
   }
 
-  // opts: { guildData, teamId, team (the roster read's team), today, linkable: [person] }
+  // opts: { guildData, teamId, team (the roster read's team), today, linkable: [person], prefill? }
+  // prefill: the dialog opens from a Raid-Helper sign-up nobody is linked to ({ name, classId, spec, raidId, signupId }): the fields start with what the sign-up says
+  // and the new person is linked to it (and to every sign-up with the same Discord ID) on the Worker.
   function addPersonDialogHtml(opts) {
     const gd = opts.guildData;
+    const pre = opts.prefill || null;
+    const preClass = pre && pre.classId ? pre.classId : '';
+    const preSpec = pre && pre.spec && G.ui.specsFor(G.ui.rosterOptions(gd), preClass).indexOf(pre.spec) >= 0 ? pre.spec : '';
     const ro = G.ui.rosterOptions(gd);
     const teamRow = (gd.teams || []).filter(function (t) { return t.id === opts.teamId; })[0] || opts.team || {};
     const days = trialDaysOf(gd, opts.teamId, opts.team);
     const trialEnd = G.ui.addDays(opts.today, days);
     const statuses = ['raider', 'trial', 'reserve'];
-    return '<form class="gs-dialog-form gs-forge gs-dialog-add" data-submit="add-person-form" data-gid="' + esc(gd.guild.id) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-add" data-submit="add-person-form" data-gid="' + esc(gd.guild.id) + '"' + (pre ? ' data-rid="' + esc(pre.raidId) + '" data-sid="' + esc(pre.signupId) + '"' : '') + ' novalidate>' +
       '<div class="gs-dialog-head"><h2 class="gs-dialog-title" id="dlg-title">Add person</h2>' +
-      '<p class="gs-fg-mut" id="dlg-help">Start with their Main character. Alts go on their record.</p></div>' +
-      '<div class="gs-field"><label class="gs-label" for="dlg-name">Character name</label><input class="gs-input" type="text" id="dlg-name" name="name" data-field="name" maxlength="40" autocomplete="off" required>' +
+      '<p class="gs-fg-mut" id="dlg-help">' + (pre ? esc('From the Raid-Helper sign-up "' + pre.nickname + '". They are linked to it.') : 'Start with their Main character. Alts go on their record.') + '</p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="dlg-name">Character name</label><input class="gs-input" type="text" id="dlg-name" name="name" data-field="name" maxlength="40" autocomplete="off" value="' + esc(pre ? pre.name : '') + '" required>' +
       '<p class="gs-field-error" id="dlg-err-name" role="alert" hidden></p></div>' +
-      '<div class="gs-rs-pair">' + selectHtml('dlg-class', 'class', 'Class', G.ui.classOptionsHtml(ro, '', 'Choose a class'), ' data-change="roster-class-change"') +
-      selectHtml('dlg-mainspec', 'mainSpec', 'Main spec', G.ui.specOptionsHtml(ro, '', '', 'Not set'), ' data-change="roster-spec-change"') + '</div>' +
+      '<div class="gs-rs-pair">' + selectHtml('dlg-class', 'class', 'Class', G.ui.classOptionsHtml(ro, preClass, 'Choose a class'), ' data-change="roster-class-change"') +
+      selectHtml('dlg-mainspec', 'mainSpec', 'Main spec', G.ui.specOptionsHtml(ro, preClass, preSpec, 'Not set'), ' data-change="roster-spec-change"') + '</div>' +
       '<p class="gs-fg-mut gs-rs-role" id="dlg-role" aria-live="polite" hidden></p>' +
       '<fieldset class="gs-fieldset gs-rs-status"><legend class="gs-label">Status</legend><div class="gs-fg-segs gs-rs-statusseg">' + statuses.map(function (s) {
         return '<input type="radio" class="gs-fg-radio" id="dlg-status-' + s + '" name="status" value="' + s + '"' + (s === 'trial' ? ' checked' : '') + ' data-change="roster-status-change"><label class="gs-fg-seg" for="dlg-status-' + s + '">' + esc(G.ui.statusLabel(s)) + '</label>';
@@ -391,11 +396,12 @@
       '<p class="gs-fg-mut" id="dlg-trialend-help">' + esc(trialHelp(days, teamRow.name || '')) + '</p><p class="gs-field-error" id="dlg-err-trialEnd" role="alert" hidden></p></div>' +
       '<div class="gs-rs-more"><button type="button" class="gs-btn gs-btn-ghost gs-rs-morebtn" data-action="roster-more-details" data-key="roster-more-details" aria-expanded="false" aria-controls="dlg-more"><span>More details</span>' + G.icons.icon('chevronDown', 14) + '</button>' +
       '<div class="gs-rs-morebox" id="dlg-more" hidden>' +
-      '<div class="gs-rs-pair">' + selectHtml('dlg-offspec', 'offSpec', 'Off spec', G.ui.specOptionsHtml(ro, '', '', 'None')) +
+      '<div class="gs-rs-pair">' + selectHtml('dlg-offspec', 'offSpec', 'Off spec', G.ui.specOptionsHtml(ro, preClass, '', 'None')) +
       '<div class="gs-field"><label class="gs-label" for="dlg-joined">Joined</label><input class="gs-input" type="date" id="dlg-joined" name="joinedOn" data-field="joinedOn" value="' + esc(opts.today) + '"><p class="gs-field-error" id="dlg-err-joinedOn" role="alert" hidden></p></div></div>' +
       '<div class="gs-rs-pair">' + teamFieldHtml(gd, opts.teamId, 'dlg') +
       selectHtml('dlg-link', 'linkUserId', 'Account', linkOptionsHtml(opts.linkable, ''), ' aria-describedby="dlg-link-help"') + '</div>' +
       '<p class="gs-fg-mut" id="dlg-link-help">Lists people who have signed in to Raidsmith and are not on the roster yet.</p></div></div>' +
+      (pre && !teamFieldHtml(gd, opts.teamId, 'dlg') ? '<input type="hidden" name="teamId" value="' + esc(opts.teamId) + '">' : '') +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Add person</button></div></form>';
   }
@@ -602,8 +608,11 @@
       trialEnd: status === 'trial' ? dateOrNull(form.elements.trialEnd.value) : null,
       linkUserId: form.elements.linkUserId.value || null,
     });
+    const sid = form.getAttribute('data-sid');
+    if (sid) body.fromSignup = { raidId: form.getAttribute('data-rid'), signupId: Number(sid) };
     G.ui.runDialog(form, G.api.post('/api/guild/' + encodeURIComponent(gid) + '/roster', body), function (res) {
       G.app.applyFlags(gid, res);
+      if (sid && G.pages.raidSignupLink) { G.pages.raidSignupLink.afterLinked('Added ' + body.name + ' and linked the sign-up.'); return; }
       if (s.linkable) delete s.linkable[gid];
       if (res && res.person && res.person.id) {
         G.app.setPerson(gid, res);

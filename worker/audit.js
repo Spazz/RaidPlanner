@@ -58,6 +58,7 @@ export const AUDIT_ACTIONS = [
   'claim.reject',
   'signup.set',
   'signup.remove',
+  'signup.link',
   'signup.lock',
   'schedule.update',
   'schedule.fill',

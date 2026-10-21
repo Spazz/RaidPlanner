@@ -347,6 +347,7 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('loot.add', 'loot', 'lo_1', null, { raidId: 'r_1', itemId: 32235, tag: 'MS', manual: true }), 'Added Girdle of Mighty Resolve by hand to the raid on Tue Oct 21 (Alpha)'],
     [row('loot.policy', 'policy', 'lp_1', {}, { scope: 'guild', changed: ['balance'] }), 'Changed the loot policy of the whole guild: balance'],
     [row('signup.set', 'raid', 'r_1', null, { personId: 'p_kael', kind: 'late' }), 'Signed Kaelith up as Late on Tue Oct 21 (Alpha)'],
+    [row('signup.link', 'raid', 'r_1', null, { personId: 'p_kael', nickname: 'swift' }), 'Linked the Raid-Helper sign-up "swift" to Kaelith on Tue Oct 21 (Alpha)'],
     [row('signup.remove', 'raid', 'r_1', { personId: 'p_kael' }), 'Removed the sign-up of Kaelith from Tue Oct 21 (Alpha)'],
     [row('signup.lock', 'raid', 'r_1', { locked: false }, { locked: true }), 'Closed sign-ups for the raid on Tue Oct 21 (Alpha)'],
     [row('signup.lock', 'raid', 'r_1', { locked: true }, { locked: false }), 'Reopened sign-ups for the raid on Tue Oct 21 (Alpha)'],
@@ -1708,7 +1709,7 @@ check('attention: every kind of open work for the Guild Master - fields, links, 
   });
   assert.deepEqual(item(id('loot_unmatched', s.r.loot)).count, 1, 'one name, however many awards');
   assert.deepEqual(item(id('loot_unmatched', s.r.loot)).link, { name: 'review' });
-  assert.deepEqual([item(id('signup_unmatched', s.r.soon)).count, item(id('signup_unmatched', s.r.soon)).link], [2, { name: 'raid', rid: s.r.soon }], 'two unmatched sign-ups; the absence and the roster people do not count');
+  assert.deepEqual([item(id('signup_unmatched', s.r.soon)).count, item(id('signup_unmatched', s.r.soon)).link], [2, { name: 'raid', rid: s.r.soon, focus: 'signups-unmatched' }], 'two unmatched sign-ups; the absence and the roster people do not count');
   assert.deepEqual(item('claims'), { kind: 'claims', severity: 'action', teamId: null, teamName: null, count: 1, id: 'claims', link: { name: 'review' } });
   assert.deepEqual(
     [item(id('trial', s.p.Tanis)).days, item(id('trial', s.p.Tanis)).ended, item(id('trial', s.p.Tanis)).name, item(id('trial', s.p.Tanis)).teamName, item(id('trial', s.p.Tanis)).trialEnd],

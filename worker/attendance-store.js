@@ -101,6 +101,15 @@ export function markPersonRaidsStale(db, guildId, playerId) {
   return db.prepare(MARK_PERSON_STALE_SQL).bind(guildId, playerId);
 }
 
+// Raid-Helper sign-ups nobody is linked to take this person: every row of the guild with the Discord ID, or (a sign-up without one) just that one row.
+export function linkSignupsStatement(db, guildId, playerId, discordId, raidId, signupId) {
+  return db.prepare(
+    `UPDATE raid_signups SET player_id = ?1
+      WHERE guild_id = ?2 AND source = 'raid_helper' AND player_id IS NULL
+        AND (CASE WHEN ?3 IS NOT NULL THEN discord_user_id = ?3 ELSE (raid_id = ?4 AND signup_id = ?5) END)`,
+  ).bind(playerId, guildId, discordId, raidId, signupId);
+}
+
 // Input writes put this in their own batch: the raid's results are out of date and no in-flight recompute may write over that.
 export function bumpRaidStatement(db, guildId, raidId) {
   return db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ?").bind(raidId, guildId);

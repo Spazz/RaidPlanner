@@ -26,6 +26,7 @@
   const TAB_ALIASES = { accounts: 'people' };
   const ROSTER_TABS = ['intent', 'recruiting', 'applications', 'launch'];
   const LOOT_VIEWS = ['raids', 'items'];
+  const RAID_FOCUS = 'signups-unmatched'; // #/g/:gid/raids/r/:rid?focus=signups-unmatched opens the raid page scrolled to its Unmatched sign-ups panel
   const ITEM_ID = /^[1-9][0-9]{0,9}$/;
   const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet', 'csv'];
   // Why a sign-in came back without signing in (/auth/callback and /auth/bnet/callback redirect to #/signin?error=..).
@@ -110,7 +111,7 @@
     if (parts[2] === 'away' && parts.length === 3) return { name: 'away', gid: gid };
     if (parts[2] === 'raids') {
       if (parts.length === 4 && parts[3] === 'new') return { name: 'raidnew', gid: gid };
-      if (parts.length === 5 && parts[3] === 'r' && ID.test(parts[4])) return { name: 'raid', gid: gid, rid: parts[4] };
+      if (parts.length === 5 && parts[3] === 'r' && ID.test(parts[4])) return query.focus === RAID_FOCUS ? { name: 'raid', gid: gid, rid: parts[4], focus: RAID_FOCUS } : { name: 'raid', gid: gid, rid: parts[4] };
     }
     if (parts[2] === 'attendance') {
       if (parts.length === 4 && parts[3] === 'review') return { name: 'review', gid: gid };
@@ -161,7 +162,7 @@
       case 'import': return '#/g/' + encodeURIComponent(r.gid) + '/roster/import/' + (IMPORT_SOURCES.indexOf(r.source) >= 0 ? r.source : 'raid-helper');
       case 'away': return '#/g/' + encodeURIComponent(r.gid) + '/away';
       case 'raidnew': return '#/g/' + encodeURIComponent(r.gid) + '/raids/new';
-      case 'raid': return '#/g/' + encodeURIComponent(r.gid) + '/raids/r/' + encodeURIComponent(r.rid);
+      case 'raid': return '#/g/' + encodeURIComponent(r.gid) + '/raids/r/' + encodeURIComponent(r.rid) + (r.focus === RAID_FOCUS ? '?focus=' + RAID_FOCUS : '');
       case 'review': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/review';
       case 'backfill': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/backfill';
       case 'personatt': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/p/' + encodeURIComponent(r.pid);
