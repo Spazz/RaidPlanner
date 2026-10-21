@@ -301,9 +301,9 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
     assert(ratio(faint, '#131416') >= 4.5, 'page background');
   });
 
-  await check('the board "Buffs" label is at least 12px, the rail sub-label at least 10px', () => {
+  await check('the board Buffs label, the strip floor note and the dialog sub-labels are at least 12px', () => {
     assert(/class="gs-fg-lbl gs-pb-buffs-label">Buffs</.test(app.script), 'the foot label is a Forge label (.gs-fg-lbl, 12px)');
-    for (const [sel, min] of [['.gs-fg-lbl', 12], ['.buff-sidebar-sub', 10]]) {
+    for (const [sel, min] of [['.gs-fg-lbl', 12], ['.gs-pb-floor', 12], ['.gs-pb-cov .tag-deb', 12]]) {
       const rule = css.match(new RegExp(`${sel.replace('.', '\\.')}\\s*\\{([^}]*)\\}`));
       assert(rule, sel);
       const size = rule[1].match(/font-size:\s*(\d+(?:\.\d+)?)px/);
@@ -419,7 +419,7 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
 
   await check('the result line is not a live region (the toast announces) and its dismiss moves focus', () => {
     assert.doesNotMatch(html.match(/<div class="result-line" id="result-line"[^>]*>/)[0], /aria-live/);
-    assert.match(app.script, /btn-result-dismiss'\)\?\.addEventListener\('click', \(\) => \{\s*ResultLine\.hide\(\);\s*document\.getElementById\('readiness-text'\)\?\.focus\(\);/);
+    assert.match(app.script, /btn-result-dismiss'\)\?\.addEventListener\('click', \(\) => \{\s*ResultLine\.hide\(\);\s*document\.getElementById\('btn-coverage'\)\?\.focus\(\);/);
   });
 
   await check('the Standby chip is an image with its Standby name', () => {

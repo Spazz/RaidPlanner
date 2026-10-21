@@ -272,13 +272,12 @@
     <button type="button" class="btn btn-secondary changes-toggle plan-only" id="btn-changes" aria-expanded="false" aria-controls="changes-log-panel" hidden>Changes <span class="changes-count" id="changes-count" hidden></span></button>
   </div>
 
-  <!-- Phone context row: line 1 plan name (+ Edit), line 2 seated count · Raid size · readiness link. -->
+  <!-- Phone context row: line 1 plan name (+ Edit), line 2 seated count · Raid size. -->
   <div class="phone-context-panel" id="phone-context-panel">
     <div class="phone-summary-wrap" id="phone-summary-wrap">
       <div class="phone-summary-line2">
         <span class="phone-summary-sub" id="phone-summary-sub"></span>
         <div id="raid-size-phone-slot"></div>
-        <div class="phone-missing-slot"><button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="readiness-banner" title="Show coverage details" hidden></button></div>
       </div>
     </div>
     <div class="phone-context-body" id="phone-context-body" hidden>
@@ -323,15 +322,6 @@
     </div>
   </div>
 
-  <div class="coverage-sheet" id="coverage-sheet" role="dialog" aria-modal="false" aria-labelledby="coverage-sheet-heading">
-    <div class="coverage-sheet-header">
-      <h3 id="coverage-sheet-heading" tabindex="-1">Coverage</h3>
-      <button type="button" class="btn btn-secondary" id="btn-close-coverage-sheet" aria-label="Close Coverage">Close</button>
-    </div>
-    <div class="coverage-sheet-slot" id="coverage-sheet-slot"></div>
-    <button type="button" class="coverage-sheet-more" id="btn-coverage-expand" aria-expanded="false">Show all &#9652;</button>
-  </div>
-
   <div id="phone-action-bar">
     <div id="phone-bar-undo-slot"></div>
     <div id="phone-bar-optimize-slot"></div>
@@ -344,11 +334,9 @@
     <textarea class="raid-notes-textarea" id="raid-notes-textarea" maxlength="2000" placeholder="MT swaps, add assignments, kill order..."></textarea>
     <p class="raid-notes-caption">Notes go into the raid chat text, print sheet, links you share and JSON, not the MRT string or compact chat.</p>
   </details>
-  <div class="readiness-banner" id="readiness-banner">
-    <div class="rb-row"><button type="button" class="rb-chips" id="readiness-text" title="Show coverage details"></button><button type="button" class="rb-toggle" id="btn-readiness-minimize" aria-label="Minimize readiness" aria-expanded="true" aria-controls="readiness-banner">&#9650;</button></div>
+  <div class="notice-slot" id="notice-slot">
     <div class="rb-failed" id="save-failed" hidden><span class="chip danger" id="save-failed-chip"></span></div>
     <div class="result-line" id="result-line" hidden><span id="result-line-text"></span><button type="button" class="result-line-dismiss" id="btn-result-dismiss" aria-label="Dismiss">&times;</button></div>
-    <button type="button" class="rb-bar" id="btn-readiness-expand" aria-label="Expand readiness" aria-expanded="false" aria-controls="readiness-banner"><span class="rb-chips compact" id="readiness-chips-min"></span><span class="rb-arrow" aria-hidden="true">&#9660;</span></button>
   </div>
   <span class="sr-only" id="autosave-status" role="status"></span>
   <!-- Opened from a raid of the guild tracker (Plan in Planner): names the raid, saves the plan back to it, returns to its page. -->
@@ -421,7 +409,12 @@
     <div class="changes-log-list" id="changes-log-list"></div>
   </section>
 
-  <div class="summary-bar" id="summary-bar"></div>
+  <section class="gs-hd-panel gs-pb-check" id="raid-check" aria-label="Raid check" hidden>
+    <div class="gs-pb-tiles" id="raid-check-tiles"></div>
+    <div class="gs-pb-gaps" id="raid-check-gaps"></div>
+    <button type="button" class="gs-btn gs-pb-covered" id="btn-coverage" aria-haspopup="dialog" hidden></button>
+  </section>
+  <section class="gs-hd-panel gs-pb-manual" id="manual-changes" aria-label="Manual changes" hidden></section>
 
   <section id="campfire-panel" hidden aria-label="Campfire planning"></section>
   <section id="assignments-panel" class="assignments-panel" hidden aria-label="Assignments"></section>
@@ -431,30 +424,14 @@
         <span id="reference-banner-text"></span>
         <div class="sync-banner-actions"><button type="button" class="btn btn-primary" id="btn-back-to-raid">Back to my raid</button></div>
       </div>
+      <div class="gs-pb-groupsline" id="groups-line">
+        <h2 class="gs-hd-sl"><span>Groups</span><span class="gs-pb-seated" id="seated-count"></span></h2>
+      </div>
       <div class="groups-container" id="groups-container" role="list" aria-label="Raid parties"></div>
 
       <div class="bench-section" id="bench-section"></div>
 
-      <div class="manual-changes-section" id="manual-changes"></div>
     </div>
-
-    <aside class="buff-sidebar collapsed" id="buff-sidebar">
-      <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-expanded="false" aria-controls="sidebar-body">
-        <span class="sidebar-toggle-label">Coverage</span>
-        <span class="sidebar-chevron" aria-hidden="true">&#9662;</span>
-      </button>
-      <div class="sidebar-summary" id="sidebar-summary"></div>
-      <div class="balance-warnings" id="balance-warnings"></div>
-      <div class="sidebar-body" id="sidebar-body">
-        <div class="buff-row-groups" id="buff-catalog-gaps"></div>
-        <div class="buff-row-groups" id="buff-catalog-covered"></div>
-        <div class="buff-sidebar-section">
-          <h4 class="buff-sidebar-title">Utility <span class="buff-sidebar-count" id="buff-count-utility"></span></h4>
-          <div class="buff-row-list" id="buff-catalog-utility"></div>
-        </div>
-        <div class="swap-legend" id="swap-legend"><i aria-hidden="true"></i><span>Icons with a small arrow can be swapped: click one to choose another buff.</span></div>
-      </div>
-    </aside>
   </div>
 
   <div class="status-bar">
@@ -473,6 +450,25 @@
     </div>
   </div>
 </main>
+
+<dialog id="coverage-dialog" class="gs-forge gs-pb-cov" aria-labelledby="coverage-heading">
+  <div class="gs-pb-cov-head">
+    <h2 class="gs-pb-cov-title" id="coverage-heading" tabindex="-1">Coverage</h2>
+    <span class="gs-pb-cov-sum" id="coverage-summary"></span>
+    <button type="button" class="gs-btn" id="btn-close-coverage">Close</button>
+  </div>
+  <div class="gs-pb-cov-body" id="coverage-body">
+    <div class="gs-pb-cov-sec" id="buff-catalog-gaps"></div>
+    <div class="gs-pb-cov-sec" id="buff-catalog-covered"></div>
+    <div class="gs-pb-cov-sec" id="coverage-utility">
+      <h3 class="gs-fg-gh"><span class="gs-fg-ght">Utility</span><span class="gs-fg-ghn" id="buff-count-utility"></span></h3>
+      <div class="buff-row-list" id="buff-catalog-utility"></div>
+    </div>
+    <div class="gs-pb-cov-sec" id="balance-warnings"></div>
+    <div class="gs-pb-cov-sec" id="coverage-manual" hidden></div>
+    <div class="swap-legend" id="swap-legend"><i aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="m6 9 6 6 6-6"/></svg></i><span>Icons with a small arrow can be swapped: click one to choose another buff.</span></div>
+  </div>
+</dialog>
 
 <dialog id="share-dialog" class="history-dialog" aria-labelledby="share-heading">
   <div class="history-dialog-header"><h3 id="share-heading">Share your plan</h3><button type="button" class="btn btn-secondary" id="close-share">Close</button></div>

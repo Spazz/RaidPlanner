@@ -439,9 +439,8 @@ return { ${exported.join(', ')} };
 
   // ── U9: one sr-only status region ─────────────────────────────────
   const summarySrc = app.slice('// The sentence the screen-reader region announces', 'function renderSummaryBar');
-  await check('the summary bar is not a live region and one sr-only status region exists', () => {
-    const bar = app.html.match(/<div class="summary-bar"[^>]*>/)[0];
-    assert(!/aria-live/.test(bar), bar);
+  await check('the Raid check strip and the Groups line are not live regions and one sr-only status region exists', () => {
+    for (const tag of [app.html.match(/<section[^>]*id="raid-check"[^>]*>/)[0], app.html.match(/<div[^>]*id="groups-line"[^>]*>/)[0], app.html.match(/<span[^>]*id="seated-count"[^>]*>/)[0]]) assert(!/aria-live/.test(tag), tag);
     const regions = app.html.match(/<div[^>]*id="sr-status"[^>]*>/g) || [];
     assert.equal(regions.length, 1);
     assert(/class="sr-only"/.test(regions[0]) && /role="status"/.test(regions[0]) && /aria-live="polite"/.test(regions[0]) && /aria-atomic="true"/.test(regions[0]));
@@ -519,7 +518,7 @@ return { ${exported.join(', ')} };
       closePlayerEditor: () => log.push('player-editor'), closeBuffPicker: () => log.push('buff-picker'),
       removeSpotlightCallout: () => log.push('spotlight-callout'), spotlightTimer: 7,
       Menu: { closeAll: () => log.push('menu-closeAll') }, document: doc,
-      closeCoverageSheet: restore => log.push('coverage-sheet:' + restore), closeSaveOverlay: () => log.push('save-overlay'),
+      closeCoverageDialog: () => log.push('coverage-dialog'), closeSaveOverlay: () => log.push('save-overlay'),
       Modal: { settle: v => log.push('confirm-settle:' + v), flushDeferred: () => log.push('flush-confirms') }, State: state,
       scheduleSpotlightQueue: () => log.push('schedule-spotlight'), showView: v => { state.view = v; log.push('showView:' + v); },
       window: { scrollTo: () => log.push('scrollTo'), addEventListener: (name, fn) => loadHandlers.push([name, fn]) },
@@ -535,7 +534,7 @@ return { ${exported.join(', ')} };
     assert.equal(shell.isActive(), true);
     shell.setActive(false);
     assert.equal(shell.isActive(), false);
-    for (const part of ['player-editor', 'buff-picker', 'spotlight-callout', 'menu-closeAll', 'menu-hidden:true', 'expanded:aria-expanded=false', 'coverage-sheet:false',
+    for (const part of ['player-editor', 'buff-picker', 'spotlight-callout', 'menu-closeAll', 'menu-hidden:true', 'expanded:aria-expanded=false', 'coverage-dialog',
       'close-more-sheet', 'save-overlay', 'dialog-close', 'confirm-settle:false']) {
       assert(log.includes(part), part + ' closed');
     }

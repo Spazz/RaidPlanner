@@ -6,7 +6,7 @@
  *   - the phone context summary is a real <button> with aria-expanded, collapsed by default, and
  *     its toggle flips aria-expanded / hidden; every control it hides is still in the page
  *   - line 1 of the context row is the plan name (the toggle); line 2 holds the seated count, the
- *     Raid size control and the missing-buffs link as separate controls; the desktop chips stay untouched
+ *     Raid size control as separate controls
  *   - the player editor's short view holds exactly the agreed controls and the More view holds the
  *     rest, with every original element ID preserved
  *   - phone-only chrome is hidden outside the media query, and no markup uses inline styles
@@ -58,16 +58,16 @@ check('phone summary has the two text lines and an Edit control', () => {
 
 check('every phone control is in the context row: line 2 slots, the Edit body, the notes slot', () => {
   const panel = between(html, 'id="phone-context-panel"', '<!-- These raw export formats');
-  for (const id of ['phone-plan-name-slot', 'raid-size-phone-slot', 'btn-summary-missing', 'btn-ideal-comp-link-phone', 'phone-context-notes-slot']) {
+  for (const id of ['phone-plan-name-slot', 'raid-size-phone-slot', 'btn-ideal-comp-link-phone', 'phone-context-notes-slot']) {
     assert.ok(panel.includes(`id="${id}"`), `${id} missing from the context panel`);
   }
   const line2 = between(panel, 'class="phone-summary-line2"', 'id="phone-context-body"');
-  assert.ok(line2.includes('id="raid-size-phone-slot"') && line2.includes('id="btn-summary-missing"'), 'size control and readiness link sit on line 2');
+  assert.ok(line2.includes('id="raid-size-phone-slot"') && line2.includes('id="phone-summary-sub"'), 'seated count and size control sit on line 2');
   const body = between(panel, 'id="phone-context-body"', 'id="phone-context-notes-slot"');
   assert.ok(body.includes('id="phone-plan-name-slot"'), 'the rename button moves into the Edit body');
   assert.ok(!html.includes('phone-strategy-seg'), 'the optimizer strategy control is gone (Optimize always runs Max DPS)');
   assert.ok(!html.includes('raid-select'), 'the raid dropdown is gone');
-  for (const id of ['raid-notes-panel', 'raid-notes-textarea', 'readiness-text', 'summary-bar', 'readiness-banner']) {
+  for (const id of ['raid-notes-panel', 'raid-notes-textarea', 'raid-check', 'btn-coverage', 'coverage-dialog', 'notice-slot']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
   for (const pair of ['raid-notes-panel:phone-context-notes-slot', 'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot']) {
@@ -101,258 +101,106 @@ check('toggling the summary flips aria-expanded, hidden and the label, and remem
 
 const phoneCssAll = () => { const c = css.slice(css.lastIndexOf('/* ── Slim phone layout')); return c.slice(c.indexOf('@media (max-width: 600px)')); };
 
-// ── Phone readiness link (replaces the old 34px summary line) ──
+// ── Phone plan name / seated count (the readiness link is gone: the Raid check strip is the phone's readiness) ──
 
-// `readiness` is a missing-party-buff count, a full {missingCoverage, tanksShort,
-// healersShort, mixedFactions} object, or null (nothing loaded / not modeled).
-function renderPhone(readiness, { notes = '', seated = 25, size = 25 } = {}) {
+function renderPhone({ notes = '', seated = 25, size = 25 } = {}) {
   const els = {};
-  const node = id => els[id] || (els[id] = { id, textContent: '', innerHTML: '', hidden: false, attrs: {}, listeners: {},
-    classList: { toggle(c, on) { this.on = on; } }, setAttribute(k, v) { this.attrs[k] = v; },
-    addEventListener(t, fn) { this.listeners[t] = fn; } });
-  const opened = [];
-  const value = typeof readiness === 'number'
-    ? { missingCoverage: readiness, tanksShort: 0, healersShort: 0, mixedFactions: false } : readiness;
-  const src = between(renderJs, 'let lastReadiness', 'function renderSummaryBar') +
-    between(read('js/modals.js'), 'function renderPhoneSummary', 'function undoPlanChange');
+  const node = id => els[id] || (els[id] = { id, textContent: '', innerHTML: '', hidden: false });
+  const src = between(read('js/modals.js'), 'function renderPhoneSummary', 'function undoPlanChange');
   const ctx = vm.createContext({
     document: { getElementById: node },
     State: { roster: Array(seated).fill({}), selectedRaid: 'x', optimizerMode: 'max_dps', rosterName: 'Random 25-man Roster', notes },
     Config: { Raids: { x: { name: 'Karazhan', size } } },
-    openCoverageSheet(trigger) { opened.push(trigger.id); },
-    opened,
-    ReadinessBanner: { calls: [], set(minimized) { this.calls.push(minimized); } },
   });
-  vm.runInContext(src + `\nlastReadiness = ${JSON.stringify(value)};\nrenderPhoneSummary(); renderPhoneMissing();`, ctx);
+  vm.runInContext(src + '\nrenderPhoneSummary();', ctx);
   return { els, ctx };
 }
 
-check('the 34px phone summary line (counts, role letters) is gone from the summary bar', () => {
-  const bar = between(renderJs, 'function renderSummaryBar', 'function updateStatus');
-  assert.doesNotMatch(bar, /summary-phone|role-t|btn-summary-missing/);
-  assert.match(bar, /class="summary-chip bench"/, 'desktop chips are still rendered');
-  assert.match(phoneCssAll(), /\.summary-bar \{ display: none; \}/);
-  assert.doesNotMatch(css, /height: 34px; padding: 0 12px/);
-});
-
-check('readiness link is a real phone-only button outside the Edit toggle, with the count in warning colour', () => {
-  const line2 = between(html, 'class="phone-summary-line2"', 'id="phone-context-body"');
-  assert.match(line2, /<button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="readiness-banner" title="Show coverage details" hidden><\/button>/);
-  assert.doesNotMatch(between(html, '<div class="toolbar">', '<div class="phone-context-panel"'), /btn-summary-missing/, 'desktop shows the banner itself, not the link');
-  const toggle = html.match(/<button[^>]*id="phone-summary-toggle"[\s\S]*?<\/button>/)[0];
-  const inner = toggle.slice(toggle.indexOf('>') + 1);
-  assert.doesNotMatch(inner, /btn-summary-missing|raid-size|<button|<select|<input/, 'nothing interactive is nested inside the toggle button');
-  const { els } = renderPhone(7);
-  assert.equal(els['btn-summary-missing'].hidden, false);
-  assert.equal(els['btn-summary-missing'].innerHTML, '<b>7</b> missing &#9656;');
-  assert.match(css, /\.summary-missing b \{[^}]*var\(--warning\)/);
-  assert.match(phoneCssAll(), /\.phone-missing-slot \.summary-missing \{[^}]*font-size: 12px/);
-});
-
-check('the link counts the party buffs the banner counts, from renderReadiness', () => {
-  const readiness = between(read('js/modals.js'), 'function renderReadiness', '// ── RAID NOTES');
-  assert.match(readiness, /coverageChip\(gaps\)/);
-  assert.match(readiness, /const gaps = liveCoverageGaps\(\);\s*const missing = gaps\.buffs \+ gaps\.debuffs;/);
-  assert.match(readiness, /lastReadiness = \{ missingCoverage: missing,/);
-  assert.doesNotMatch(renderJs, /lastMissingCoverageCount/, 'the buffs + debuffs total no longer feeds the link');
-});
-
-check('the link names the most serious warning: tanks, healers, factions, then missing buffs', () => {
-  const label = r => renderPhone({ missingCoverage: 0, tanksShort: 0, healersShort: 0, mixedFactions: false, ...r }).els['btn-summary-missing'];
-  assert.equal(label({ healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;');
-  assert.equal(label({ tanksShort: 2, healersShort: 1 }).innerHTML, '<b>&#9888; 2 tanks short</b> &#9656;');
-  assert.equal(label({ mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
-  assert.equal(label({ missingCoverage: 3, healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;', 'a shortage outranks missing buffs; (the banner lists the rest)');
-  assert.equal(label({ missingCoverage: 3, mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
-  assert.equal(label({ missingCoverage: 3 }).innerHTML, '<b>3</b> missing &#9656;', 'buffs only when the roster itself is fine');
-  assert.equal(label({}).hidden, true);
-});
-
-check('the link counts party buffs plus raid debuffs, and shows for debuffs alone', () => {
-  const link = n => renderPhone({ missingCoverage: n, tanksShort: 0, healersShort: 0, mixedFactions: false }).els['btn-summary-missing'];
-  assert.equal(link(6).hidden, false);
-  assert.equal(link(13).innerHTML, '<b>13</b> missing &#9656;');
-  const readiness = between(read('js/modals.js'), 'function renderReadiness', '// ── RAID NOTES');
-  assert.match(readiness, /const missing = gaps\.buffs \+ gaps\.debuffs;/);
-});
-
-check('the phone link is a flex box that keeps the space between its number and its words', () => {
-  const rule = phoneCssAll().match(/\.phone-missing-slot \.summary-missing \{[^}]*\}/)[0];
-  assert.match(rule, /display: flex/);
-  assert.match(rule, /\bgap: [\d.]+(em|px)/, 'flex drops the whitespace after </b>, so a gap restores it');
-});
-
-check('the readiness banner is shown on desktop and on phones (phones only start it minimized)', () => {
-  assert.doesNotMatch(css, /\.plan-feedback|feedback-open/, 'the old strip rules are gone');
-  assert.doesNotMatch(phoneCssAll(), /\.readiness-banner \{ display: none/);
-  assert.doesNotMatch(renderJs, /setPhoneFeedbackOpen|phoneFeedbackOpen/, 'the strip open/close state is gone');
-});
-
 check('line 1 is the plan name; line 2 carries the seated count and notes marker', () => {
-  assert.equal(renderPhone(7).els['phone-summary-main'].textContent, 'Random 25-man Roster');
-  assert.equal(renderPhone(7).els['phone-summary-sub'].textContent, '25/25');
-  assert.equal(renderPhone(7, { notes: 'x', seated: 20, size: 10 }).els['phone-summary-sub'].textContent, '20/10 · notes');
+  assert.equal(renderPhone().els['phone-summary-main'].textContent, 'Random 25-man Roster');
+  assert.equal(renderPhone().els['phone-summary-sub'].textContent, '25/25');
+  assert.equal(renderPhone({ notes: 'x', seated: 20, size: 10 }).els['phone-summary-sub'].textContent, '20/10 · notes');
 });
 
-check('readiness link is hidden when nothing is wrong and when coverage is not modeled', () => {
-  assert.equal(renderPhone(0).els['btn-summary-missing'].hidden, true);
-  assert.equal(renderPhone(null).els['btn-summary-missing'].hidden, true);
-  assert.equal(renderPhone(1).els['btn-summary-missing'].innerHTML, '<b>1</b> missing &#9656;');
+check('the phone readiness link, the readiness banner and the summary bar are gone from the page and the code', () => {
+  assert.doesNotMatch(html, /btn-summary-missing|phone-missing-slot|id="readiness-banner"|id="readiness-text"|id="summary-bar"|id="coverage-sheet"/);
+  assert.doesNotMatch(renderJs, /phoneReadinessLabel|renderPhoneMissing|lastReadiness/);
+  assert.doesNotMatch(css, /\.summary-missing|\.phone-missing-slot|\.summary-bar|\.readiness-banner|\.coverage-sheet|body\.coverage-/);
+  assert.doesNotMatch(appJs, /openCoverageSheet|closeCoverageSheet|setSidebarExpanded/);
 });
 
-check('clicking the missing link expands the banner (and keeps it expanded) and opens the Coverage sheet', () => {
-  const { els, ctx } = renderPhone(7);
-  const click = els['btn-summary-missing'].listeners.click;
-  assert.ok(click, 'direct click handler on the button');
-  click();
-  assert.deepEqual(ctx.ReadinessBanner.calls, [false], 'the banner is told to expand (not to toggle)');
-  assert.deepEqual(ctx.opened, ['btn-summary-missing'], 'the link opens the Coverage sheet, passing itself as the trigger');
-  click();
-  assert.deepEqual(ctx.ReadinessBanner.calls, [false, false], 'a second click does not minimize it');
+// ── Raid check strip + Coverage dialog (phones) ──
+
+const guildCss = read('guild.css');
+const stripCss = guildCss.slice(guildCss.indexOf('Planner board on Forge (T6), lane 2'), guildCss.indexOf('/* Watch list: Reviewed'));
+const stripPhoneCss = stripCss.slice(stripCss.lastIndexOf('@media (width <= 600px)'));
+
+check('phone strip: counts line, 44px icon buttons, a full-width 44px covered button, no zoom', () => {
+  assert.ok(stripCss.lastIndexOf('@media (width <= 600px)') > 0, 'the strip has a phone block');
+  assert.match(stripPhoneCss, /\.gs-pb-tile \{ flex-direction: row;/, 'tiles read as one counts line');
+  assert.match(stripPhoneCss, /\.gs-pb-gap \{ width: 44px; height: 44px; \}/);
+  assert.match(stripPhoneCss, /\.gs-pb-covered \{ width: 100%;[^}]*min-height: 44px/);
+  assert.match(stripPhoneCss, /\.gs-pb-floor \{ display: none; \}/);
+  // above 600 px the planner frame is zoomed 1.5, so the strip undoes it; the phone frame has no zoom
+  assert.match(stripCss, /@media \(min-width: 601px\) \{ \.gs-pb-check, \.gs-pb-manual, \.gs-pb-groupsline \{ zoom: 0\.6666667; \} \}/);
 });
 
-// ── Coverage sheet (phones) ──
+check('phone dialog: a full-height sheet with 44px targets', () => {
+  assert.match(stripPhoneCss, /\.gs-pb-cov \{ width: 100vw; height: 100dvh;/);
+  assert.match(stripPhoneCss, /\.gs-pb-cov \.gs-btn \{ min-height: 44px; \}/);
+  assert.match(stripPhoneCss, /\.gs-pb-cov \.insight-btn \{ min-height: 44px; \}/);
+  assert.match(stripPhoneCss, /change-remove \{ width: 44px; height: 44px; \}/);
+});
 
-// The sheet functions of js/app.js in a vm with a fake DOM; phone = whether the (max-width: 600px) query matches.
-function coverageSheetHarness({ phone = true } = {}) {
-  const els = {};
-  const node = id => {
-    if (els[id]) return els[id];
-    const el = { id, attrs: {}, listeners: {}, focused: 0, innerHTML: '', classes: new Set(),
-      setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; },
-      addEventListener(t, fn) { this.listeners[t] = fn; }, focus() { this.focused++; } };
-    el.classList = { add: c => el.classes.add(c), remove: c => el.classes.delete(c), contains: c => el.classes.has(c),
-      toggle: (c, on) => (on ? el.classes.add(c) : el.classes.delete(c)) };
-    return (els[id] = el);
-  };
-  const query = { matches: phone, listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; } };
-  const bodyClasses = new Set();
-  const docListeners = {};
-  let overlay = null; // what the document.querySelector for "another overlay" finds
-  const document = { getElementById: node, querySelector: () => overlay,
-    addEventListener(t, fn, capture) { docListeners[t] = fn; },
-    body: { classList: { add: (...c) => c.forEach(x => bodyClasses.add(x)), remove: (...c) => c.forEach(x => bodyClasses.delete(x)),
-      toggle: (c, on) => (on ? bodyClasses.add(c) : bodyClasses.delete(c)), contains: c => bodyClasses.has(c) } } };
-  const ctx = vm.createContext({ document, window: { matchMedia: () => query } });
-  const src = between(appJs, 'const PHONE_QUERY', '// ── PHONE "MORE" SHEET');
-  vm.runInContext(src + '\nthis.openCoverageSheet = openCoverageSheet; this.closeCoverageSheet = closeCoverageSheet;', ctx);
-  return { els: new Proxy(els, { get: (t, k) => node(k) }), ctx, query, bodyClasses, docListeners, setOverlay: o => { overlay = o; } };
+// The dialog functions of js/app.js in a vm with a fake dialog: showModal/close flip `open`, close fires the 'close' listeners.
+function coverageDialogHarness() {
+  const log = [];
+  const nodes = {};
+  const node = id => nodes[id] || (nodes[id] = { id, attrs: {}, listeners: {}, hidden: false,
+    setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(t, fn) { this.listeners[t] = fn; } });
+  const dialog = node('coverage-dialog');
+  Object.assign(dialog, { open: false, showModal() { this.open = true; log.push('showModal'); },
+    close() { this.open = false; log.push('close'); this.listeners.close && this.listeners.close(); } });
+  const ctx = vm.createContext({
+    document: { getElementById: node },
+    FocusTrap: { open: (el, trigger) => log.push('trap-open:' + el.id + ':' + trigger.id), close: el => log.push('trap-close:' + el.id) },
+  });
+  const src = between(appJs, '// ── COVERAGE DIALOG', '// ── PHONE "MORE" SHEET');
+  vm.runInContext(src + '\nthis.openCoverageDialog = openCoverageDialog; this.closeCoverageDialog = closeCoverageDialog;', ctx);
+  return { ctx, nodes, log, dialog };
 }
 
-check('the Coverage sheet is real markup, and the rail moves into it through the phone slot list', () => {
-  const sheet = between(html, 'id="coverage-sheet"', 'id="phone-action-bar"');
-  assert.match(html, /<div class="coverage-sheet" id="coverage-sheet" role="dialog" aria-modal="false" aria-labelledby="coverage-sheet-heading">/);
-  assert.match(sheet, /<h3 id="coverage-sheet-heading" tabindex="-1">Coverage<\/h3>/);
-  assert.match(sheet, /id="btn-close-coverage-sheet" aria-label="Close Coverage"/);
-  assert.match(sheet, /id="coverage-sheet-slot"/);
-  assert.match(sheet, /id="btn-coverage-expand" aria-expanded="false">Show all/);
-  assert.ok(html.indexOf('id="coverage-sheet"') > html.indexOf('id="mobile-more-sheet"'), 'right after the More sheet');
-  assert.ok(appJs.includes("'buff-sidebar:coverage-sheet-slot'"), 'the existing slot list moves the rail');
-  assert.match(css, /\n\.coverage-sheet \{ display: none; \}/, 'hidden outside the phone block');
-  assert.match(phoneCssAll(), /body\.coverage-open \{ --coverage-sheet-h: 50dvh; \}/);
-  assert.match(phoneCssAll(), /\.coverage-sheet\.visible \{[^}]*height: var\(--coverage-sheet-h\)/);
-  assert.match(phoneCssAll(), /\.coverage-sheet \.buff-sidebar\.collapsed \.sidebar-body \{ display: flex; \}/, 'the body shows whatever .collapsed says');
-  assert.match(phoneCssAll(), /\.coverage-sheet \.sidebar-toggle \{ display: none; \}/);
-  assert.match(phoneCssAll(), /\.coverage-sheet-more \{[^}]*min-height: 44px/);
+check('the covered button opens the modal dialog behind a focus trap; Close, Escape and the backdrop end it and release the trap', () => {
+  const { ctx, nodes, log, dialog } = coverageDialogHarness();
+  nodes['btn-coverage'].listeners.click();
+  assert.deepEqual(log, ['showModal', 'trap-open:coverage-dialog:btn-coverage']);
+  assert.equal(nodes['btn-coverage'].attrs['aria-expanded'], 'true');
+  nodes['btn-coverage'].listeners.click();
+  assert.equal(log.length, 2, 'opening an open dialog does nothing');
+  nodes['btn-close-coverage'].listeners.click();
+  assert.deepEqual(log.slice(2), ['close', 'trap-close:coverage-dialog'], 'the close event releases the trap (which hands focus back to the button)');
+  assert.equal(nodes['btn-coverage'].attrs['aria-expanded'], 'false');
+  // Escape: the browser closes the dialog itself and fires close
+  ctx.openCoverageDialog(); log.length = 0;
+  dialog.open = false; dialog.listeners.close();
+  assert.deepEqual(log, ['trap-close:coverage-dialog']);
+  // a click on the backdrop is a click whose target is the dialog element
+  ctx.openCoverageDialog(); log.length = 0;
+  dialog.listeners.click({ target: {} });
+  assert.equal(dialog.open, true, 'a click inside does not close it');
+  dialog.listeners.click({ target: dialog });
+  assert.equal(dialog.open, false);
+  assert.doesNotThrow(() => ctx.closeCoverageDialog(), 'closing a closed dialog is a no-op');
 });
 
-check('the sheet sits on the bottom bar, leaves the top 44px clear, and the page gets bottom padding for it', () => {
-  const css = phoneCssAll();
-  assert.match(css, /\.coverage-sheet\.visible \{[^}]*bottom: calc\(60px \+ env\(safe-area-inset-bottom, 0px\)\)/, 'directly above the 60px bottom bar, not over it');
-  assert.match(css, /body\.coverage-open\.coverage-expanded \{ --coverage-sheet-h: min\(85dvh, calc\(100dvh - 104px /, '44px top + 60px bar');
-  assert.match(css, /body\.coverage-open \.addon-frame \{ padding-bottom: calc\(68px \+ env\(safe-area-inset-bottom, 0px\) \+ var\(--coverage-sheet-h\)\); \}/);
-  const { els, ctx, bodyClasses } = coverageSheetHarness();
-  ctx.openCoverageSheet(els['btn-summary-missing']);
-  assert.ok(bodyClasses.has('coverage-open') && !bodyClasses.has('coverage-expanded'));
-  els['btn-coverage-expand'].listeners.click();
-  assert.ok(bodyClasses.has('coverage-expanded'));
-  ctx.closeCoverageSheet();
-  assert.equal(bodyClasses.size, 0, 'closing removes both classes');
+check('the planner closes the dialog when a guild page covers it, and the tooltip portal follows into an open dialog', () => {
+  assert.match(between(appJs, 'function closePlannerOverlays()', 'removeSpotlightCallout'), /closePlayerEditor/);
+  assert.match(between(appJs, 'function closePlannerOverlays()', '// ── EXPOSE FOR TESTING'), /closeCoverageDialog\(\);/);
+  assert.match(appJs, /const host = icon\.closest\('dialog\[open\]'\) \|\| document\.body;\s*if \(portal\.parentNode !== host\) host\.appendChild\(portal\);/);
 });
 
-check('the legend shows in the sheet even when the rail is collapsed', () => {
-  assert.match(phoneCssAll(), /\.coverage-sheet \.buff-sidebar\.collapsed \.swap-legend \{ display: flex; \}/);
-});
-
-check('Escape anywhere closes the sheet, unless another overlay or the More sheet is open', () => {
-  const { els, ctx, docListeners, setOverlay } = coverageSheetHarness();
-  const key = { key: 'Escape', preventDefault() {} };
-  ctx.openCoverageSheet(els['btn-summary-missing']);
-  setOverlay({});
-  docListeners.keydown(key);
-  assert.ok(els['coverage-sheet'].classes.has('visible'), 'a dialog, the editor or a menu keeps its own Escape');
-  setOverlay(null);
-  els['mobile-more-sheet'].classes.add('visible');
-  docListeners.keydown(key);
-  assert.ok(els['coverage-sheet'].classes.has('visible'), 'the More sheet keeps its own Escape');
-  els['mobile-more-sheet'].classes.delete('visible');
-  docListeners.keydown({ key: 'Enter', preventDefault() {} });
-  assert.ok(els['coverage-sheet'].classes.has('visible'));
-  docListeners.keydown(key);
-  assert.ok(!els['coverage-sheet'].classes.has('visible'));
-  assert.equal(els['btn-summary-missing'].focused, 1);
-});
-
-check('closing with a hidden trigger (a fix cleared the last gap) focuses the summary toggle', () => {
-  const { els, ctx } = coverageSheetHarness();
-  ctx.openCoverageSheet(els['btn-summary-missing']);
-  els['btn-summary-missing'].hidden = true;
-  ctx.closeCoverageSheet();
-  assert.equal(els['phone-summary-toggle'].focused, 1);
-  assert.equal(els['btn-summary-missing'].focused, 0);
-});
-
-check('the Coverage sheet opens from a trigger on phones, marks it expanded, and starts in the peek', () => {
-  const { els, ctx } = coverageSheetHarness();
-  ctx.openCoverageSheet(els['btn-summary-missing']);
-  assert.ok(els['coverage-sheet'].classes.has('visible'));
-  assert.equal(els['btn-summary-missing'].attrs['aria-expanded'], 'true');
-  assert.equal(els['coverage-sheet-heading'].focused, 1, 'focus moves to the sheet heading');
-  els['btn-coverage-expand'].listeners.click();
-  assert.ok(els['coverage-sheet'].classes.has('expanded'));
-  assert.equal(els['btn-coverage-expand'].innerHTML, 'Show less &#9662;');
-  assert.equal(els['btn-coverage-expand'].attrs['aria-expanded'], 'true');
-  els['btn-coverage-expand'].listeners.click();
-  assert.ok(!els['coverage-sheet'].classes.has('expanded'));
-  assert.equal(els['btn-coverage-expand'].innerHTML, 'Show all &#9652;');
-  els['btn-coverage-expand'].listeners.click();
-  ctx.closeCoverageSheet();
-  ctx.openCoverageSheet(els['readiness-text']);
-  assert.ok(!els['coverage-sheet'].classes.has('expanded'), 'opening always starts in the peek');
-  assert.equal(els['readiness-text'].attrs['aria-expanded'], 'true', 'the chip works as a trigger too');
-});
-
-check('Escape and Close close the Coverage sheet and give focus back to the trigger', () => {
-  const { els, ctx } = coverageSheetHarness();
-  const trigger = els['btn-summary-missing'];
-  ctx.openCoverageSheet(trigger);
-  let prevented = false;
-  els['coverage-sheet'].listeners.keydown({ key: 'Escape', preventDefault() { prevented = true; } });
-  assert.ok(prevented);
-  assert.ok(!els['coverage-sheet'].classes.has('visible'));
-  assert.equal(trigger.attrs['aria-expanded'], 'false');
-  assert.equal(trigger.focused, 1);
-  ctx.openCoverageSheet(trigger);
-  els['btn-close-coverage-sheet'].listeners.click();
-  assert.ok(!els['coverage-sheet'].classes.has('visible'));
-  assert.equal(trigger.focused, 2);
-});
-
-check('the Coverage sheet does not open above phone width, and closes when the window widens', () => {
-  const desktop = coverageSheetHarness({ phone: false });
-  desktop.ctx.openCoverageSheet(desktop.els['readiness-text']);
-  assert.ok(!desktop.els['coverage-sheet'].classes.has('visible'));
-  const { els, ctx, query } = coverageSheetHarness();
-  ctx.openCoverageSheet(els['btn-summary-missing']);
-  query.matches = false;
-  query.listeners.change();
-  assert.ok(!els['coverage-sheet'].classes.has('visible'));
-  assert.equal(els['btn-summary-missing'].attrs['aria-expanded'], 'false');
-});
-
-check('the readiness chip opens the Coverage sheet on phones only, and the More sheet closes it', () => {
-  assert.match(appJs, /getElementById\('readiness-text'\)\.onclick = \(e\) => \{[^}]*PHONE_QUERY\.matches\) \{ openCoverageSheet\(e\.currentTarget\); return; \}\s*setSidebarExpanded\(true\)/);
-  assert.match(between(appJs, 'const openSheet = () => {', 'sheet.classList.add'), /closeCoverageSheet\(false\)/);
+check('the More sheet no longer has a Coverage sheet to close first', () => {
+  assert.doesNotMatch(between(appJs, 'const openSheet = () => {', 'sheet.classList.add'), /Coverage/);
 });
 
 // ── Player editor sheet ────────────────────────────────────────────
@@ -432,7 +280,6 @@ const phoneBlock = phoneCss.slice(phoneCss.indexOf('@media (max-width: 600px)'))
 
 check('phone-only chrome is hidden outside the media query', () => {
   const base = phoneCss.slice(0, phoneCss.indexOf('@media'));
-  // (.summary-missing is no longer phone-only: desktop shows it at the end of the action row.)
   for (const sel of ['.phone-summary-wrap', '.phone-summary', '.pe-sheet-handle', '.pe-sheet-header', '.pe-more-row']) {
     assert.ok(base.includes(sel), `${sel} must default to hidden`);
   }
@@ -477,15 +324,13 @@ check('the landing import card is ordered before the hero text without touching 
   assert.ok(hero.indexOf('class="hero-copy"') < hero.indexOf('id="import-card"'), 'DOM order is unchanged');
 });
 
-check('Coverage rail text and the Switch / Swap in button reach the approved sizes', () => {
-  assert.match(rule('.buff-row-name'), /font-size: 13px/);
-  assert.match(rule('.buff-row-insight'), /font-size: 12px/);
-  assert.match(rule('.buff-row-source'), /font-size: 11px/);
-  const b = rule('.insight-btn');
-  assert.match(b, /min-height: 36px/);
-  assert.match(b, /font-size: 12px/);
-  assert.match(b, /padding: 0 14px/);
-  assert.match(rule('.buff-row-icon'), /width: 22px; height: 22px/);
+check('Coverage dialog text is 13-14px, the row icon 28px, and the fix buttons are Forge buttons (36px, 44px on phones)', () => {
+  assert.match(stripCss, /\.gs-pb-cov \.buff-row-name \{[^}]*font-size: 14px/);
+  assert.match(stripCss, /\.gs-pb-cov \.buff-row-insight \{[^}]*font-size: 13px/);
+  assert.match(stripCss, /\.gs-pb-cov \.buff-row-source \{[^}]*font-size: 13px/);
+  assert.match(stripCss, /\.gs-pb-cov \.buff-row-icon \{[^}]*width: 28px; height: 28px/);
+  assert.match(renderJs, /class="insight-btn gs-btn" data-insight-switch/);
+  assert.match(renderJs, /class="insight-btn gs-btn" data-insight-swap/);
 });
 
 check('version tabs, raid size buttons and the plan-name toggle get 44px hit areas', () => {

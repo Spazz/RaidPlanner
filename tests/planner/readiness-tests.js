@@ -1,11 +1,11 @@
 /**
- * PartyPlanner Web - readiness banner, Coverage rail and phone toast tests (4.3.0 package L1-4, 4.3.1 banner)
+ * Raidsmith - Raid check strip, Coverage dialog and result line tests (planner redesign, lane 2)
  * Run: node tests/planner/readiness-tests.js
  *
- * The readiness banner (status chips, a minimize toggle, the result row) and the rail summary count
- * party buffs and raid debuffs through ONE helper,
- * the rail names the swap arrow, rail text carries a title for when it is cut off, the reference
- * comp shows no live-plan fixes, and phones put the toast at the top.
+ * The Raid check strip (role tiles, "Fix now" / "Needs a recruit" icon groups, "N covered") and the Coverage dialog
+ * count the SAME unit: missing party buffs and raid debuffs, through one model (buildCoverageModel). The reference comp
+ * has no live-plan fixes, an unmodeled version says "Rules pending", and the result line / save-failed elements stay
+ * alive for the notice queue.
  */
 const assert = require('node:assert/strict');
 const app = require('../load-app');
@@ -17,28 +17,34 @@ function check(name, fn) {
   console.log('PASS  ' + name);
 }
 
-const NAMES = ['State', 'Config', 'Import', 'liveCoverageGaps', 'coverageGapCounts', 'renderReadiness', 'renderBuffCatalog',
-  'getRaidBuffCoverage', 'getRaidDebuffCoverage', 'factionRelevantBuffs', 'ResultLine', 'renderSidebarSummary', 'Optimizer',
-  'ReadinessBanner', 'DataBackup', 'setCoveredListOpen'];
+const NAMES = ['State', 'Config', 'Import', 'GameVersions', 'liveCoverageGaps', 'coverageGapCounts', 'renderReadiness', 'renderBuffCatalog',
+  'buildCoverageModel', 'renderRaidCheckTiles', 'getRaidBuffCoverage', 'getRaidDebuffCoverage', 'factionRelevantBuffs', 'ResultLine', 'Optimizer',
+  'DataBackup', 'renderSummaryBar', 'renderManualChanges', 'setLoaded'];
 
-// Fake DOM: every element remembers what the code wrote to it. With fixedGaps the live gap
-// counts come from setGaps() instead of the roster, so each wording state can be driven directly.
-function makeSandbox({ fixedGaps = false, fixedInsights = false, globals = {} } = {}) {
+// Fake DOM: every element remembers what the code wrote to it. With fixedInsights the fixes come from setInsights() instead of the roster,
+// so each kind (switch, bench, shared, none) can be driven directly.
+function makeSandbox({ fixedInsights = false, globals = {} } = {}) {
   const els = {};
-  const document = { getElementById: id => els[id] || (els[id] = { id, innerHTML: '', textContent: '', hidden: false }) };
+  const element = id => ({ id, innerHTML: '', textContent: '', hidden: false, classes: new Set(), attrs: {},
+    classList: { toggle(c, on) { els[id].classes[on ? 'add' : 'delete'](c); } },
+    insertAdjacentHTML(pos, html) { this.innerHTML += html; },
+    querySelectorAll() { return []; } });
+  const document = { getElementById: id => els[id] || (els[id] = element(id)) };
   const extraSource = `
-var lastReadiness = null;
-function renderPhoneMissing() {}
-function hasLoadedWork() { return true; }
-${fixedGaps ? 'var __gaps = null; function liveCoverageGaps() { return __gaps; }' : ''}
+var __loaded = true; function setLoaded(v) { __loaded = v; } function hasLoadedWork() { return __loaded; }
 ${fixedInsights ? 'var __insights = null; function getMissingBuffInsights() { return __insights; }' : ''}
 ${app.slice('function isKnownClass(', 'function preferredColorClass(')}
 ${app.slice('function renderReadiness', '// ── RAID NOTES')}
-${app.slice('function renderBuffCatalog(', '// One line under a missing utility row')}
+${app.slice('// ── RAID CHECK STRIP + COVERAGE DIALOG', '// One line under a missing utility row')}
 ${app.slice('const ResultLine = {', 'function persistWorkingPlan')}
+${app.slice('function renderManualChanges', '// ── CONFIRM DIALOG')}
+var lastAnnouncement = '', lastRaidSummary = ''; function announce(m) { __announced.push(m); }
+${app.slice('function describeRaidSummary', '// One polite, atomic sr-only region')}
+${app.slice('function renderSummaryBar', 'function updateStatus')}
 `;
-  const ctx = app.sandbox(NAMES, { globals: { document, ...globals }, extraSource });
-  return { api: ctx.api, els, setGaps: gaps => { ctx.__gaps = gaps; }, setInsights: insights => { ctx.__insights = insights; } };
+  const announced = [];
+  const ctx = app.sandbox(NAMES, { globals: { document, __announced: announced, commit() {}, ...globals }, extraSource });
+  return { api: ctx.api, els, announced, setInsights: insights => { ctx.__insights = insights; } };
 }
 
 const plain = html => html.replace(/<[^>]+>/g, '');
@@ -52,75 +58,75 @@ function seedRaid(api) {
   api.State.activeTab = 'plan';
 }
 
-// The chips a render painted: [{ kind, title, text }], with the entities decoded.
-const decode = s => s.replace(/&#10003;/g, '(ok)').replace(/&middot;/g, '|');
-const chipsOf = html => [...html.matchAll(/<span class="chip([^"]*)" title="([^"]*)">([^<]*)<\/span>/g)]
-  .map(m => ({ kind: m[1].trim(), title: m[2], text: decode(m[3]) }));
-const chipTexts = html => chipsOf(html).map(c => c.text);
+// [{ label, figure, floor, short }] for the tiles a render painted.
+const tilesOf = html => [...html.matchAll(/<div class="gs-pb-tile"><span class="gs-fg-lbl">([^<]*)<\/span><span class="gs-pb-fig"><b>([^<]*)<\/b>(?:<span class="gs-pb-floor">([^<]*)<\/span>)?(?:<span class="sr-only">([^<]*)<\/span>)?/g)]
+  .map(m => ({ label: m[1], figure: m[2], floor: m[3] || '', short: m[4] || '' }));
 
-check('coverage chip: both kinds, one kind, none, singular', () => {
-  const { api, els, setGaps } = makeSandbox({ fixedGaps: true });
-  seedRaid(api);
-  const coverage = gaps => { setGaps(gaps); api.renderReadiness(); return chipsOf(els['readiness-text'].innerHTML).find(c => c.text.startsWith('Coverage')); };
-  const both = coverage({ buffs: 7, debuffs: 4 });
-  assert.equal(both.text, 'Coverage: 7 buffs | 4 debuffs missing');
-  assert.equal(both.kind, 'warn');
-  assert.equal(both.title, '7 party buffs missing · 4 raid debuffs missing');
-  assert.equal(coverage({ buffs: 7, debuffs: 0 }).text, 'Coverage: 7 buffs missing');
-  assert.equal(coverage({ buffs: 0, debuffs: 6 }).text, 'Coverage: 6 debuffs missing');
-  assert.equal(coverage({ buffs: 1, debuffs: 1 }).text, 'Coverage: 1 buff | 1 debuff missing');
-  const none = coverage({ buffs: 0, debuffs: 0 });
-  assert.equal(none.text, 'Coverage (ok)');
-  assert.equal(none.kind, 'ok');
-  assert.equal(none.title, 'All party buffs and raid debuffs covered');
-});
+// The strip groups: [{ label, text, icons: [{ aria, name, source }] }] in DOM order.
+const stripGroups = html => [...html.matchAll(/<div class="gs-pb-gapgroup" role="group" aria-label="([^"]*)"><span class="gs-fg-lbl">([^<]*)<\/span><div class="gs-pb-icons">(.*?)<\/div><\/div>/g)]
+  .map(m => ({ label: m[1], text: m[2], icons: [...m[3].matchAll(/<button type="button" class="gs-pb-gap" aria-label="([^"]*)" data-tt-name="([^"]*)" data-tt-desc="[^"]*" data-tt-source="([^"]*)"/g)].map(i => ({ aria: i[1], name: i[2], source: i[3] })) }));
 
-check('tank and healer chips: short in the warning colour, ok with a check mark', () => {
-  const { api, els, setGaps } = makeSandbox({ fixedGaps: true });
+check('role tiles: Tanks and Healers show have/floor with a muted floor, Melee and Ranged just the figure', () => {
+  const { api, els } = makeSandbox();
   seedRaid(api);
-  setGaps({ buffs: 0, debuffs: 0 });
+  api.renderReadiness();
   const floors = api.Optimizer.floorsFor(25);
-  const chips = () => { api.renderReadiness(); return chipsOf(els['readiness-text'].innerHTML); };
-  const short = chips();
-  const tanksShort = floors.tank - 1, healersShort = floors.healer - 1;
-  assert(tanksShort > 0 && healersShort > 0, 'the four-player raid is short on both');
-  assert.deepEqual(short.slice(0, 2).map(c => [c.kind, c.text]), [
-    ['warn', `Tanks ${tanksShort} short`], ['warn', `Healers ${healersShort} short`]]);
-  assert(short[0].title.includes(`1 of ${floors.tank} tank slots filled`), short[0].title);
+  const tiles = tilesOf(els['raid-check-tiles'].innerHTML);
+  assert.deepEqual(tiles.map(t => t.label), ['Tanks', 'Healers', 'Melee', 'Ranged']);
+  assert.deepEqual(tiles.map(t => t.figure), [`1/${floors.tank}`, `1/${floors.healer}`, '1', '1'], 'caster DPS counts as ranged');
+  assert.deepEqual(tiles.map(t => t.floor), [`floor ${floors.tank}`, `floor ${floors.healer}`, '', '']);
+  assert.equal(tiles[0].short, `, ${floors.tank - 1} short`, 'a short tile says so to screen readers');
   const P = (role, i) => ({ name: role + i, class: 'WARRIOR', spec: 'Protection', role, groupNumber: 1 });
-  for (let i = 0; i < tanksShort; i++) api.State.roster.push(P('tank', i));
-  for (let i = 0; i < healersShort; i++) api.State.roster.push(P('healer', i));
-  const ok = chips();
-  assert.deepEqual(ok.slice(0, 2).map(c => [c.kind, c.text]), [['ok', 'Tanks (ok)'], ['ok', 'Healers (ok)']]);
-  assert.equal(ok[0].title, `${floors.tank} tank slots filled`);
-  // one tank missing reads "1 tank short", not "1 tanks short"
-  api.State.roster.length = 0;
-  seedRaid(api);
-  for (let i = 0; i < floors.tank - 2; i++) api.State.roster.push(P('tank', 'z' + i));
-  const singular = chips()[0];
-  assert.equal(singular.text, 'Tanks 1 short');
-  assert(singular.title.startsWith('1 tank short'), singular.title);
+  for (let i = 0; i < floors.tank - 1; i++) api.State.roster.push(P('tank', i));
+  for (let i = 0; i < floors.healer - 1; i++) api.State.roster.push(P('healer', i));
+  api.renderReadiness();
+  const full = tilesOf(els['raid-check-tiles'].innerHTML);
+  assert.deepEqual(full.map(t => t.figure).slice(0, 2), [`${floors.tank}/${floors.tank}`, `${floors.healer}/${floors.healer}`]);
+  assert.deepEqual(full.map(t => t.short), ['', '', '', ''], 'no "short" once the floor is met');
+  api.State.roster.push(P('tank', 'x'));
+  api.renderReadiness();
+  assert.equal(tilesOf(els['raid-check-tiles'].innerHTML)[0].figure, String(floors.tank + 1), 'above the floor the figure stands alone');
 });
 
-check('open slots chip only when slots are open; mixed factions chip only for a mixed Classic roster', () => {
-  const { api, els, setGaps } = makeSandbox({ fixedGaps: true });
+check('tile figures match the seated roster; the figure is 20px white tabular, the label a Forge label', () => {
+  const { api, els } = makeSandbox();
   seedRaid(api);
-  setGaps({ buffs: 0, debuffs: 0 });
   api.renderReadiness();
-  assert.deepEqual(chipTexts(els['readiness-text'].innerHTML).filter(x => /open slot|Mixed/.test(x)), []);
-  api.State.preferredSlots = [{ group: 1, class: 'MAGE', spec: 'Fire' }];
-  api.renderReadiness();
-  let open = chipsOf(els['readiness-text'].innerHTML).find(c => /open slot/.test(c.text));
-  assert.equal(open.text, '1 open slot');
-  assert.equal(open.kind, '', 'a neutral chip');
-  assert.equal(open.title, '1 preferred slot open');
-  api.State.preferredSlots.push({ group: 2, class: 'MAGE', spec: 'Fire' });
-  api.renderReadiness();
-  open = chipsOf(els['readiness-text'].innerHTML).find(c => /open slot/.test(c.text));
-  assert.equal(open.text, '2 open slots');
-  api.State.preferredSlots = [];
+  const counts = { tank: 0, healer: 0, melee_dps: 0, ranged: 0 };
+  for (const p of api.State.roster) counts[p.role in counts ? p.role : 'ranged']++;
+  assert.deepEqual(tilesOf(els['raid-check-tiles'].innerHTML).map(t => parseInt(t.figure, 10)), [counts.tank, counts.healer, counts.melee_dps, counts.ranged]);
+  assert.match(app.css, /\.gs-pb-fig b \{[^}]*font-size: 20px;[^}]*var\(--hd-white\);[^}]*tabular-nums/);
+  assert.match(app.css, /\.gs-pb-floor \{[^}]*font-size: 12px;[^}]*var\(--text-muted\)/);
+});
 
-  // A Classic Era roster with both a Shaman and a Paladin.
+check('the strip is hidden until the plan has something in it; an unmodeled version says "Rules pending" and shows no tiles or count', () => {
+  const { api, els } = makeSandbox();
+  seedRaid(api);
+  api.setLoaded(false);
+  api.renderReadiness();
+  assert.equal(els['raid-check'].hidden, true);
+  api.setLoaded(true);
+  api.renderReadiness();
+  assert.equal(els['raid-check'].hidden, false);
+  const groups = api.State.groups;
+  api.GameVersions.pending = { name: 'Pending', modeled: false }; // no registered version is unmodeled today: register a stand-in
+  api.State.gameVersion = 'pending';
+  try {
+    api.renderReadiness();
+    assert.equal(els['raid-check-tiles'].innerHTML, '');
+    api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
+    assert.match(els['raid-check-gaps'].innerHTML, /Rules pending/);
+  } finally { delete api.GameVersions.pending; }
+  assert.equal(els['btn-coverage'].hidden, true);
+  assert.match(els['buff-catalog-gaps'].innerHTML, /not configured for this version yet/);
+  assert.equal(els['coverage-summary'].textContent, '');
+});
+
+check('mixed factions: one chip in the strip, only for a mixed Classic roster', () => {
+  const { api, els } = makeSandbox();
+  seedRaid(api);
+  api.renderReadiness();
+  assert.doesNotMatch(els['raid-check-tiles'].innerHTML, /Mixed factions/);
   const players = [
     { name: 'Sham', class: 'SHAMAN', spec: 'Enhancement', role: 'melee_dps', groupNumber: 1 },
     { name: 'Pal', class: 'PALADIN', spec: 'Retribution', role: 'melee_dps', groupNumber: 1 },
@@ -130,92 +136,10 @@ check('open slots chip only when slots are open; mixed factions chip only for a 
   api.State.bench = [];
   api.State.roster = players;
   api.renderReadiness();
-  const mixed = chipsOf(els['readiness-text'].innerHTML).find(c => c.text === 'Mixed factions');
-  assert(mixed, els['readiness-text'].innerHTML);
-  assert.equal(mixed.kind, 'danger');
-  assert.equal(mixed.title, 'Mixed Horde/Alliance roster — impossible in Classic Era');
+  assert.match(els['raid-check-tiles'].innerHTML, /<span class="gs-hd-chip is-short" title="Mixed Horde\/Alliance roster — impossible in Classic Era">Mixed factions<\/span>/);
 });
 
-check('every chip carries a title, and dynamic text is escaped', () => {
-  const { api, els, setGaps } = makeSandbox({ fixedGaps: true });
-  seedRaid(api);
-  setGaps({ buffs: 2, debuffs: 3 });
-  api.State.preferredSlots = [{ group: 1, class: 'MAGE', spec: 'Fire' }];
-  api.renderReadiness();
-  const html = els['readiness-text'].innerHTML;
-  const spans = [...html.matchAll(/<span class="chip[^"]*"[^>]*>/g)];
-  assert(spans.length >= 4 && spans.every(m => /title="[^"]+"/.test(m[0])), html);
-  assert.equal(els['readiness-chips-min'].innerHTML, html, 'the minimized bar shows the same chips');
-  assert.doesNotMatch(plain(html), /[<>"]/);
-  api.State.preferredSlots = [];
-});
-
-check('the readiness chips and the rail summary come from one helper and agree', () => {
-  const { api, els } = makeSandbox();
-  seedRaid(api);
-  const gaps = api.liveCoverageGaps();
-  assert(gaps.buffs > 0 && gaps.debuffs > 0, 'a four-player raid leaves both kinds open');
-  api.renderReadiness();
-  const groups = api.State.groups;
-  api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
-  const coverage = chipsOf(els['readiness-text'].innerHTML).find(c => c.text.startsWith('Coverage'));
-  assert.equal(coverage.text, `Coverage: ${gaps.buffs} buffs | ${gaps.debuffs} debuffs missing`);
-  const rail = els['sidebar-summary'].innerHTML;
-  assert(rail.includes(`Party buffs missing</span><b>${gaps.buffs}</b>`), rail);
-  assert(rail.includes(`Raid debuffs missing</span><b>${gaps.debuffs}</b>`), rail);
-  // The helper counts the same buff list the rail lists (faction-relevant buffs, Config.Debuffs).
-  const none = new Set();
-  assert.equal(api.coverageGapCounts(none, none).buffs, Object.keys(api.factionRelevantBuffs()).length);
-  assert.equal(api.coverageGapCounts(none, none).debuffs, Object.keys(api.Config.Debuffs).length);
-});
-
-check('rail summary: one success row when nothing is missing', () => {
-  const { api, els } = makeSandbox();
-  seedRaid(api);
-  api.renderBuffCatalog(new Set(Object.keys(api.factionRelevantBuffs())), new Set(Object.keys(api.Config.Debuffs)));
-  assert.equal(els['sidebar-summary'].innerHTML, '<div class="sidebar-summary-row ok"><span>All party buffs and raid debuffs covered</span></div>');
-  assert.match(app.css, /\.sidebar-summary-row\.ok \{[^}]*var\(--success\)/);
-});
-
-check('rail text carries a title with the full text: names, sources and insights', () => {
-  const { api, els } = makeSandbox();
-  seedRaid(api);
-  const groups = api.State.groups;
-  api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
-  const rows = els['buff-catalog-gaps'].innerHTML;
-  assert.match(rows, /<span class="buff-row-name" title="[^"]+">/);
-  assert.match(rows, /<span class="buff-row-source [^"]*" title="[^"]+">/);
-  assert.match(rows, /<span class="insight-text" title="[^"]+">/);
-  const names = [...rows.matchAll(/<span class="buff-row-name" title="([^"]+)">([^<]+)</g)];
-  assert(names.length > 0 && names.every(m => m[1] === m[2]), 'the title repeats the row name');
-});
-
-check('the reference comp shows no Switch or Swap In rows taken from the live plan', () => {
-  const { api, els } = makeSandbox();
-  seedRaid(api);
-  const groups = api.State.groups;
-  const cover = () => api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
-  cover();
-  assert.match(els['buff-catalog-gaps'].innerHTML, /buff-row-insight/, 'the live plan lists fixes');
-  api.State.activeTab = 'ideal';
-  cover();
-  assert.doesNotMatch(els['buff-catalog-gaps'].innerHTML, /buff-row-insight|data-insight-/);
-  assert.doesNotMatch(els['buff-catalog-covered'].innerHTML, /buff-row-insight|data-insight-/);
-  api.State.activeTab = 'plan';
-});
-
-check('the Coverage rail opens with the swap-arrow legend, and the arrow it names is the swappable icon chevron', () => {
-  const aside = app.html.slice(app.html.indexOf('<aside class="buff-sidebar'), app.html.indexOf('</aside>'));
-  assert(aside.includes('Icons with a small arrow can be swapped: click one to choose another buff.'));
-  assert(aside.indexOf('id="sidebar-summary"') < aside.indexOf('swap-legend'), 'the legend sits at the bottom of the open rail');
-  assert(aside.indexOf('id="buff-catalog-utility"') < aside.indexOf('swap-legend'), 'after Utility, the last thing in the rail body');
-  assert(aside.indexOf('id="sidebar-body"') < aside.indexOf('swap-legend'), 'inside the body, so a collapsed rail hides it');
-  assert.match(app.css, /\.swap-legend i \{[^}]*border-radius: 50%/);
-  assert.match(app.css, /\.gs-pb-chev \{ position: absolute; right: -4px; bottom: -4px;/);
-  assert(!/\.buff-icon\.swappable::after/.test(app.css), 'the gold corner is gone');
-});
-
-// ── Coverage rail groups (4.4.0) ──
+// ── Strip icons and dialog rows come from one model ──
 
 const person = (name, cls, spec, uid) => ({ name, class: cls, spec, uid: uid || name });
 // A board whose gaps cover every kind of fix: two one-click ones (a Switch and a Swap In), a debuff Swap In, a shout with
@@ -237,178 +161,251 @@ function groupedBoard() {
   const coveredBuffs = new Set(Object.keys(buffs).filter(id => !insights[id]));
   const coveredDebuffs = new Set(Object.keys(api.Config.Debuffs).filter(id => !insights[id]));
   api.renderBuffCatalog(coveredBuffs, coveredDebuffs);
-  return { api, els, coveredBuffs, coveredDebuffs, render: () => api.renderBuffCatalog(coveredBuffs, coveredDebuffs) };
+  return { api, els, coveredBuffs, coveredDebuffs, insights, render: () => api.renderBuffCatalog(coveredBuffs, coveredDebuffs) };
 }
 const sectionOf = (html, title) => {
-  const m = html.match(new RegExp(`<h4 class="buff-sidebar-title">${title} <span class="buff-sidebar-count">&middot; (\\d+)</span></h4>([\\s\\S]*?)(?=<div class="buff-sidebar-section">|$)`));
+  const m = html.match(new RegExp(`<h3 class="gs-fg-gh"><span class="gs-fg-ght">${title}</span><span class="gs-fg-ghn">(\\d+)</span></h3>([\\s\\S]*?)(?=<h3 class="gs-fg-gh">|$)`));
   return m && { count: +m[1], body: m[2] };
 };
 const rowNames = html => [...html.matchAll(/<span class="buff-row-name" title="[^"]*">([^<]*)</g)].map(m => m[1]);
 
-check('Fix now lists the one-click gaps, buffs before debuffs; Needs a recruit lists the rest', () => {
+check('the strip has a Fix now and a Needs a recruit group of icon buttons, each named with what fixes it', () => {
+  const { els } = groupedBoard();
+  const groups = stripGroups(els['raid-check-gaps'].innerHTML);
+  assert.deepEqual(groups.map(g => g.text), ['Fix now 4', 'Needs a recruit 3']);
+  assert.deepEqual(groups.map(g => g.label), ['Fix now 4', 'Needs a recruit 3'], 'each group is named for screen readers with its count');
+  assert.deepEqual(groups[0].icons.map(i => i.aria), [
+    'Windfury Totem. Fix now: swap in Benchy',
+    'Grace of Air Totem. Fix now: switch Shammy to it',
+    'Battle Shout. Fix now: group two warriors together',
+    'Sunder Armor. Fix now: swap in Warry',
+  ], 'dataset order, the debuff last');
+  assert.deepEqual(groups[1].icons.map(i => i.aria), [
+    'Commanding Shout. Needs a recruit: a second Warrior',
+    'Vampiric Touch. Needs a recruit: Shadow Priest',
+    'Misery. Needs a recruit: Shadow Priest',
+  ]);
+  for (const g of groups) for (const i of g.icons) {
+    assert.equal(i.aria.split('. ')[0], i.name, 'the aria-label starts with the name the tooltip shows');
+    assert(i.aria.endsWith(i.source), 'the tooltip source line is the status the aria-label ends with');
+  }
+  assert.doesNotMatch(els['raid-check-gaps'].innerHTML, /gs-hd-chip|style=/, 'a label splits the groups, never a colour');
+});
+
+check('every icon in the strip is a real button with a tooltip hook and no text of its own', () => {
+  const { els } = groupedBoard();
+  const html = els['raid-check-gaps'].innerHTML;
+  const tags = [...html.matchAll(/<(\w+)[^>]*class="gs-pb-gap"[^>]*>/g)];
+  assert(tags.length === 7 && tags.every(t => t[1] === 'button' && /type="button"/.test(t[0]) && /data-tt-name="[^"]+"/.test(t[0])), html);
+  assert.match(html, /<button[^>]*class="gs-pb-gap"[^>]*>(<img src="[^"]*" alt="" loading="lazy" class="buff-img">|[A-Za-z]+)<\/button>/, 'buff art with empty alt, or the abbreviation when there is none');
+  assert.equal([...html.matchAll(/ alt="[^"]+"/g)].length, 0, 'the image is decorative: the button carries the name');
+});
+
+check('strip and dialog count the same unit: icons per group = rows or entries per section, covered count = Covered section', () => {
+  const { els, coveredBuffs, coveredDebuffs } = groupedBoard();
+  const groups = stripGroups(els['raid-check-gaps'].innerHTML);
+  const dialog = els['buff-catalog-gaps'].innerHTML;
+  assert.equal(sectionOf(dialog, 'Fix now').count, groups[0].icons.length);
+  assert.equal(rowNames(sectionOf(dialog, 'Fix now').body).length, groups[0].icons.length);
+  const need = sectionOf(dialog, 'Needs a recruit');
+  assert.equal(need.count, groups[1].icons.length, 'N counts entries (icons), not source-spec lines');
+  const covered = coveredBuffs.size + coveredDebuffs.size;
+  assert.equal(els['btn-coverage'].textContent, `${covered} covered`);
+  assert.equal(sectionOf(els['buff-catalog-covered'].innerHTML, 'Covered').count, covered);
+  assert.equal(els['coverage-summary'].textContent, `${covered} of ${covered + groups[0].icons.length + groups[1].icons.length} covered`);
+  assert.equal(els['btn-coverage'].hidden, false);
+});
+
+check('the strip counts and the live gap helper agree on a real four-player raid', () => {
+  const { api, els } = makeSandbox();
+  seedRaid(api);
+  const gaps = api.liveCoverageGaps();
+  assert(gaps.buffs > 0 && gaps.debuffs > 0, 'a four-player raid leaves both kinds open');
+  const groups = api.State.groups;
+  api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
+  const strip = stripGroups(els['raid-check-gaps'].innerHTML);
+  assert.equal(strip.reduce((n, g) => n + g.icons.length, 0), gaps.buffs + gaps.debuffs);
+  const none = new Set();
+  assert.equal(api.coverageGapCounts(none, none).buffs, Object.keys(api.factionRelevantBuffs()).length);
+  assert.equal(api.coverageGapCounts(none, none).debuffs, Object.keys(api.Config.Debuffs).length);
+});
+
+check('nothing missing: the strip says "No gaps" and the dialog has no gap sections', () => {
+  const { api, els } = makeSandbox();
+  seedRaid(api);
+  api.renderBuffCatalog(new Set(Object.keys(api.factionRelevantBuffs())), new Set(Object.keys(api.Config.Debuffs)));
+  assert.equal(els['raid-check-gaps'].innerHTML, '<span class="gs-pb-quiet">No gaps</span>');
+  assert.equal(els['buff-catalog-gaps'].innerHTML, '');
+  assert.match(els['buff-catalog-covered'].innerHTML, /Covered<\/span><span class="gs-fg-ghn">\d+</);
+  assert.match(els['coverage-summary'].textContent, /^(\d+) of \1 covered$/);
+});
+
+check('Fix now lists the one-click gaps in the dialog, buffs before debuffs, with their fix buttons; Needs a recruit lists the rest', () => {
   const { els } = groupedBoard();
   const html = els['buff-catalog-gaps'].innerHTML;
   const fix = sectionOf(html, 'Fix now');
   assert.deepEqual(rowNames(fix.body), ['Windfury Totem', 'Grace of Air Totem', 'Battle Shout', 'Sunder Armor'],
     'switch, bench and shared >= 2, dataset order, the debuff last');
   assert.equal(fix.count, 4);
-  assert.match(fix.body, /data-insight-switch="GRACE_OF_AIR"/);
-  assert.match(fix.body, /data-insight-swap="Benchy"/);
+  assert.match(fix.body, /<button type="button" class="insight-btn gs-btn" data-insight-switch="GRACE_OF_AIR"/);
+  assert.match(fix.body, /<button type="button" class="insight-btn gs-btn" data-insight-swap="Benchy"/);
   assert.match(fix.body, /Group two warriors together/);
   assert.doesNotMatch(sectionOf(html, 'Needs a recruit').body, /<button|data-insight-|buff-row-icon/, 'recruit lines are text only');
 });
 
-check('Needs a recruit: one line per source spec, N counts lines, the debuff carries a Debuff label', () => {
+check('Needs a recruit: one line per source spec, the debuff carries a Debuff label, the one-warrior shout keeps its note', () => {
   const { els } = groupedBoard();
   const need = sectionOf(els['buff-catalog-gaps'].innerHTML, 'Needs a recruit');
   const lines = [...need.body.matchAll(/<div class="rec-line">(.*?)<\/div>/g)].map(m => plain(m[1]));
   assert.deepEqual(lines, ['Warrior: Commanding Shout', 'Shadow Priest: Vampiric Touch, Misery Debuff'], 'buffs before debuffs inside a line');
-  assert.equal(need.count, 2, 'N counts lines, not entries');
-  assert.match(need.body, /<span class="rec-spec [^"]*">Shadow Priest<\/span>: <span class="rec-name">Vampiric Touch<\/span>, <span class="rec-name">Misery <span class="tag-deb">Debuff<\/span><\/span>/);
-  assert.match(app.css, /\.buff-row-groups \.buff-sidebar-section \{ flex: none; \}/, 'tablet: sections inside a group do not stretch');
-  assert.match(app.css, /\.rec-name \{ white-space: nowrap; \}/, 'a wrapped Debuff label stays with its name');
-  assert.match(need.body, /rec-line">.*Commanding Shout<\/span><\/div><div class="buff-row-insight none"><span class="insight-text"[^>]*>Needs a 2nd warrior: <span class="insight-who [^"]*">Tanky<\/span> casts the other shout/,
-    'the one-warrior shout keeps its insight line under the Warrior line');
+  assert.match(need.body, /<span class="rec-spec">Shadow Priest<\/span>: <span class="rec-name">Vampiric Touch<\/span>, <span class="rec-name">Misery <span class="tag-deb">Debuff<\/span><\/span>/);
+  assert.match(need.body, /rec-line">.*Commanding Shout<\/span><\/div><div class="buff-row-insight none"><span class="insight-text"[^>]*>Needs a 2nd warrior: <span class="insight-who [^"]*">Tanky<\/span> casts the other shout/);
   const fix = sectionOf(els['buff-catalog-gaps'].innerHTML, 'Fix now');
   assert.match(fix.body, /Sunder Armor<\/span><span class="tag-deb">Debuff<\/span>/, 'a debuff row labels itself too');
   assert.doesNotMatch(fix.body.replace(/Sunder Armor<\/span><span class="tag-deb">Debuff<\/span>/, ''), /tag-deb/, 'buff rows carry no label');
 });
 
-check('Covered is a toggle, closed by default, with a count; it stays open across re-renders', () => {
-  const { api, els, coveredBuffs, coveredDebuffs, render } = groupedBoard();
-  const total = coveredBuffs.size + coveredDebuffs.size;
-  let html = els['buff-catalog-covered'].innerHTML;
-  assert.match(html, new RegExp(`<button type="button" class="cov-toggle" id="btn-covered-toggle" aria-expanded="false">Show ${total} covered &#9656;</button>$`));
-  assert.doesNotMatch(html, /buff-row/, 'closed: no covered rows');
-  api.setCoveredListOpen(true);
-  html = els['buff-catalog-covered'].innerHTML;
-  assert.match(html, /aria-expanded="true">Hide covered &#9662;<\/button>/);
-  assert.equal(rowNames(html).length, total, 'open: every covered row, buffs then debuffs');
-  assert(rowNames(html).indexOf('Windfury Totem') < 0 && rowNames(html).includes('Mana Spring Totem'));
-  assert.equal([...html.matchAll(/tag-deb/g)].length, coveredDebuffs.size, 'covered debuff rows are labelled');
-  render();
-  assert.match(els['buff-catalog-covered'].innerHTML, /aria-expanded="true"/, 'a re-render keeps it open');
-  api.setCoveredListOpen(false);
-  assert.match(els['buff-catalog-covered'].innerHTML, /aria-expanded="false"/);
+check('Covered lists every covered row, buffs then debuffs, with the Debuff label on debuffs', () => {
+  const { els, coveredBuffs, coveredDebuffs } = groupedBoard();
+  const covered = sectionOf(els['buff-catalog-covered'].innerHTML, 'Covered');
+  assert.equal(rowNames(covered.body).length, coveredBuffs.size + coveredDebuffs.size);
+  assert(!rowNames(covered.body).includes('Windfury Totem') && rowNames(covered.body).includes('Mana Spring Totem'));
+  assert.equal([...covered.body.matchAll(/tag-deb/g)].length, coveredDebuffs.size);
 });
 
-check('a board with nothing missing shows the success row and a Covered toggle, no gap groups', () => {
+check('dialog rows keep a title with the full text; the source word carries no class colour, player names keep theirs', () => {
   const { api, els } = makeSandbox();
   seedRaid(api);
-  api.renderBuffCatalog(new Set(Object.keys(api.factionRelevantBuffs())), new Set(Object.keys(api.Config.Debuffs)));
-  assert.equal(els['buff-catalog-gaps'].innerHTML, '');
-  assert.match(els['buff-catalog-covered'].innerHTML, /Show \d+ covered/);
-});
-
-check('the reference comp has one Missing group: no Fix now, no Needs a recruit, no insight lines', () => {
-  const { api, els } = makeSandbox();
-  seedRaid(api);
-  api.State.activeTab = 'ideal';
   const groups = api.State.groups;
   api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
+  const rows = els['buff-catalog-gaps'].innerHTML;
+  assert.match(rows, /<span class="buff-row-name" title="[^"]+">/);
+  assert.match(rows, /<span class="buff-row-source" title="[^"]+">/);
+  assert.match(rows, /<span class="insight-text" title="[^"]+">/);
+  assert.doesNotMatch(rows, /buff-row-source cc-|rec-spec cc-/, 'a class word is not a character name');
+  const names = [...rows.matchAll(/<span class="buff-row-name" title="([^"]+)">([^<]+)</g)];
+  assert(names.length > 0 && names.every(m => m[1] === m[2]), 'the title repeats the row name');
+});
+
+check('the reference comp shows no Switch or Swap In rows, and its strip has one Missing group', () => {
+  const { api, els } = makeSandbox();
+  seedRaid(api);
+  const groups = api.State.groups;
+  const cover = () => api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
+  cover();
+  assert.match(els['buff-catalog-gaps'].innerHTML, /buff-row-insight/, 'the live plan lists fixes');
+  api.State.activeTab = 'ideal';
+  cover();
   const html = els['buff-catalog-gaps'].innerHTML;
-  assert.match(html, /<h4 class="buff-sidebar-title">Missing <span class="buff-sidebar-count">&middot; \d+<\/span><\/h4>/);
+  assert.match(html, /<span class="gs-fg-ght">Missing<\/span><span class="gs-fg-ghn">\d+<\/span>/);
   assert.doesNotMatch(html, /Fix now|Needs a recruit|rec-line|buff-row-insight|data-insight-|<button/);
-  assert(rowNames(html).length > 0);
+  const strip = stripGroups(els['raid-check-gaps'].innerHTML);
+  assert.equal(strip.length, 1);
+  assert.match(strip[0].text, /^Missing \d+$/);
+  assert(strip[0].icons.every(i => i.aria.endsWith('. Missing') && i.source === 'Missing'));
   api.State.activeTab = 'plan';
 });
 
-check('no Request text or button anywhere in the rail', () => {
-  const aside = app.html.slice(app.html.indexOf('<aside class="buff-sidebar'), app.html.indexOf('</aside>'));
-  assert.doesNotMatch(aside, /Request/i);
-  const { els } = groupedBoard();
-  for (const id of ['buff-catalog-gaps', 'buff-catalog-covered']) assert.doesNotMatch(els[id].innerHTML, /Request/i);
-  assert.doesNotMatch(app.html.slice(app.html.indexOf('<aside class="buff-sidebar'), app.html.indexOf('</aside>')), /buff-count-(buffs|debuffs)/, 'the old section counts are gone');
+check('reference comp tiles count its own players and carry no floor', () => {
+  const { api, els } = makeSandbox();
+  api.renderRaidCheckTiles([{ role: 'tank' }, { role: 'healer' }, { role: 'healer' }, { role: 'melee_dps' }, { role: 'caster_dps' }, { role: 'ranged_dps' }], null);
+  const tiles = tilesOf(els['raid-check-tiles'].innerHTML);
+  assert.deepEqual(tiles.map(t => t.figure), ['1', '2', '1', '2']);
+  assert.deepEqual(tiles.map(t => t.floor), ['', '', '', '']);
 });
 
-// The banner's markup, cut out of index.html (LF-normalized).
-const bannerHtml = () => {
-  const html = app.html.replace(/\r\n/g, '\n');
-  const start = html.indexOf('<div class="readiness-banner" id="readiness-banner">');
-  assert(start > 0, 'index.html has the readiness banner');
-  return html.slice(start, html.indexOf('\n  </div>', start) + 9);
-};
+// ── Markup ──
 
-check('the banner is one element: chips button, minimize button, hidden result row, expand bar; no save text', () => {
-  const html = app.html.replace(/\r\n/g, '\n');
-  assert.doesNotMatch(html, /id="plan-feedback"|class="plan-feedback"/, 'the old strip is gone');
-  const banner = bannerHtml();
-  const order = ['id="readiness-text"', 'id="btn-readiness-minimize"', 'id="result-line" hidden', 'id="result-line-text"', 'id="btn-result-dismiss" aria-label="Dismiss"', 'id="btn-readiness-expand"'];
+const htmlText = app.html.replace(/\r\n/g, '\n');
+const dialogHtml = () => { const a = htmlText.indexOf('<dialog id="coverage-dialog"'); assert(a > 0, 'the page has the Coverage dialog'); return htmlText.slice(a, htmlText.indexOf('</dialog>', a)); };
+
+check('index.html: the Raid check strip sits above the Groups line and the board; the right rail, summary bar, banner chips and phone sheet are gone', () => {
+  assert.match(htmlText, /<section class="gs-hd-panel gs-pb-check" id="raid-check" aria-label="Raid check" hidden>/);
+  const order = ['id="changes-log-panel"', 'id="raid-check"', 'id="manual-changes"', 'id="campfire-panel"', 'id="groups-line"', 'id="groups-container"'];
   let at = -1;
-  for (const part of order) { const i = banner.indexOf(part); assert(i > at, part + ' comes in order'); at = i; }
-  assert.match(banner, /id="btn-readiness-minimize" aria-label="Minimize readiness"/);
-  assert.match(banner, /id="btn-readiness-expand" aria-label="Expand readiness"/);
-  assert.match(banner, /<button type="button" class="rb-chips" id="readiness-text"/, 'the chips are a button (it opens the Coverage rail)');
-  assert.doesNotMatch(banner, /Saved on this device|autosave-status/, 'no save text in the banner');
+  for (const part of order) { const i = htmlText.indexOf(part); assert(i > at, part + ' comes in order'); at = i; }
+  assert.match(htmlText, /<section class="gs-hd-panel gs-pb-manual" id="manual-changes" aria-label="Manual changes" hidden>/);
+  assert.doesNotMatch(htmlText, /<aside|buff-sidebar|id="sidebar-|id="summary-bar"|id="coverage-sheet"|id="readiness-banner"|id="readiness-text"|btn-readiness-|class="readiness-banner"/);
+  assert.match(htmlText, /<h2 class="gs-hd-sl"><span>Groups<\/span><span class="gs-pb-seated" id="seated-count"><\/span><\/h2>/);
+  const strip = htmlText.slice(htmlText.indexOf('id="raid-check"'), htmlText.indexOf('</section>', htmlText.indexOf('id="raid-check"')));
+  assert.match(strip, /id="raid-check-tiles"[\s\S]*id="raid-check-gaps"[\s\S]*<button type="button" class="gs-btn gs-pb-covered" id="btn-coverage" aria-haspopup="dialog" hidden><\/button>/);
 });
 
-check('#autosave-status stays in the page as a visually hidden status region', () => {
+check('index.html: the Coverage dialog holds Fix now / Needs a recruit, Covered, Utility, balance warnings, Manual changes and the swap legend, with one Close', () => {
+  const d = dialogHtml();
+  assert.match(d, /^<dialog id="coverage-dialog" class="gs-forge gs-pb-cov" aria-labelledby="coverage-heading">/);
+  assert.match(d, /<h2 class="gs-pb-cov-title" id="coverage-heading" tabindex="-1">Coverage<\/h2>/);
+  let at = -1;
+  for (const id of ['buff-catalog-gaps', 'buff-catalog-covered', 'buff-catalog-utility', 'balance-warnings', 'coverage-manual', 'swap-legend']) {
+    const i = d.indexOf(`id="${id}"`); assert(i > at, id + ' comes in order'); at = i;
+  }
+  assert.equal((d.match(/<button/g) || []).length, 1, 'one Close and nothing else');
+  assert.match(d, /<button type="button" class="gs-btn" id="btn-close-coverage">Close<\/button>/);
+  assert.match(d, /Icons with a small arrow can be swapped: click one to choose another buff\./);
+  assert.doesNotMatch(d, /Request/i);
+  assert.match(app.css, /\.swap-legend i \{[^}]*border-radius: 7px/);
+  assert.match(app.css, /\.gs-pb-chev \{ position: absolute; right: -4px; bottom: -4px;/);
+  assert(!/\.buff-icon\.swappable::after/.test(app.css), 'the gold corner is gone');
+});
+
+check('the tooltip portal stays a body-level element, and #autosave-status stays a visually hidden status region', () => {
+  assert.match(htmlText, /<div id="buff-tooltip-portal"><\/div>\s*<\/body>/);
   const tag = app.html.match(/<span[^>]*id="autosave-status"[^>]*>/)[0];
   assert.match(tag, /role="status"/);
   assert.match(tag, /class="sr-only"/);
   assert.doesNotMatch(app.css, /#autosave-status \{[^}]*display:\s*none/, 'display:none would stop it announcing');
 });
 
-check('minimized: the bar shows and the chips row and the result row hide', () => {
-  const css = app.css.replace(/\r\n/g, '\n');
-  assert.match(css, /\.readiness-banner\.min \.rb-bar \{ display: flex; \}/);
-  assert.match(css, /\.readiness-banner\.min \.rb-row, \.readiness-banner\.min \.result-line \{ display: none; \}/);
-  assert.match(css, /\.rb-bar \{\s*display: none;[^}]*min-height: 28px/);
-  assert.match(css, /\.rb-bar \{ min-height: 36px;/, 'phones: a 36px bar');
-  assert.match(css, /\.rb-toggle \{ width: 44px; height: 44px;/, 'phones: a 44px toggle');
-  assert.match(css, /\.readiness-banner \{\s*background: color-mix\(in srgb, var\(--accent-gold\) 8%, transparent\); border-bottom: 1px solid var\(--border-accent\)/);
-});
-
-check('the banner is in the plan-only list (not the old strip id)', () => {
+check('the notice slot keeps the save-failed chip and the result line with their ids, for the notice queue', () => {
+  const slot = htmlText.slice(htmlText.indexOf('id="notice-slot"'), htmlText.indexOf('id="autosave-status"'));
+  for (const part of ['id="save-failed" hidden', 'id="save-failed-chip"', 'id="result-line" hidden', 'id="result-line-text"', 'id="btn-result-dismiss" aria-label="Dismiss"']) assert(slot.includes(part), part);
+  assert.doesNotMatch(htmlText, /plan-feedback/);
   const script = app.script.replace(/\r\n/g, '\n');
   const list = script.match(/const planOnly = \[([^\]]*)\]/)[1];
-  assert(list.includes("'readiness-banner'"), list);
-  assert(!list.includes('plan-feedback'), list);
+  assert(list.includes("'notice-slot'") && list.includes("'manual-changes'"), list);
+  assert(!list.includes('readiness-banner'), list);
 });
 
-// A fake page for the minimize toggle: elements with classList and aria attributes, and a storage.
-function bannerSandbox({ phone, stored }) {
-  const storage = { data: stored === undefined ? {} : { pp_readiness_minimized: stored }, getItem(k) { return k in this.data ? this.data[k] : null; }, setItem(k, v) { this.data[k] = String(v); } };
-  const els = {};
-  const node = id => els[id] || (els[id] = { id, attrs: {}, classes: new Set(),
-    classList: { toggle: (c, on) => { if (on) els[id].classes.add(c); else els[id].classes.delete(c); } },
-    setAttribute(k, v) { this.attrs[k] = v; } });
-  const document = { getElementById: node };
-  const { api } = makeSandbox({ globals: { document, localStorage: storage, window: { matchMedia: () => ({ matches: phone }) } } });
-  return { api, els, node, storage };
-}
+// ── Groups line, Manual changes ──
 
-check('minimized state: desktop starts expanded, phones start minimized, a stored choice wins', () => {
-  assert.equal(bannerSandbox({ phone: false }).api.ReadinessBanner.isMinimized(), false);
-  assert.equal(bannerSandbox({ phone: true }).api.ReadinessBanner.isMinimized(), true);
-  assert.equal(bannerSandbox({ phone: true, stored: '0' }).api.ReadinessBanner.isMinimized(), false);
-  assert.equal(bannerSandbox({ phone: false, stored: '1' }).api.ReadinessBanner.isMinimized(), true);
+check('the Groups line says "N of M seated" (plus the open slots), marks an over-full raid, and still feeds announce()', () => {
+  const { api, els, announced } = makeSandbox();
+  seedRaid(api);
+  api.renderSummaryBar();
+  const cap = api.Config.Raids[api.State.selectedRaid].size;
+  assert.equal(els['seated-count'].textContent, `4 of ${cap} seated`);
+  assert.equal(announced.at(-1), `4 of ${cap} in raid: 1 tank, 1 healer, 1 melee, 1 ranged. 0 benched.`);
+  api.State.preferredSlots = [{ group: 1, class: 'MAGE', spec: 'Fire' }];
+  api.renderSummaryBar();
+  assert.equal(els['seated-count'].textContent, `4 of ${cap} seated · 1 open slot`);
+  api.State.preferredSlots.push({ group: 2, class: 'MAGE', spec: 'Fire' });
+  api.renderSummaryBar();
+  assert.match(els['seated-count'].textContent, /2 open slots$/);
+  api.State.preferredSlots = [];
+  assert.equal(els['seated-count'].classes.has('is-over'), false);
 });
 
-check('set() stores the choice under pp_readiness_minimized, toggles .min and the aria-expanded states', () => {
-  const { api, node, storage } = bannerSandbox({ phone: false });
-  node('readiness-banner');
-  api.ReadinessBanner.set(true);
-  assert.equal(storage.data.pp_readiness_minimized, '1');
-  assert(node('readiness-banner').classes.has('min'));
-  for (const id of ['btn-readiness-minimize', 'btn-readiness-expand', 'btn-summary-missing']) assert.equal(node(id).attrs['aria-expanded'], 'false', id);
-  api.ReadinessBanner.set(false);
-  assert.equal(storage.data.pp_readiness_minimized, '0');
-  assert(!node('readiness-banner').classes.has('min'));
-  assert.equal(node('btn-readiness-expand').attrs['aria-expanded'], 'true');
+check('Manual changes: a panel under the strip while there are any and the same list in the dialog; real remove buttons; both hide when empty', () => {
+  const { api, els } = makeSandbox();
+  seedRaid(api);
+  api.State.buffOverrides = {};
+  api.renderManualChanges();
+  assert.equal(els['manual-changes'].hidden, true);
+  assert.equal(els['coverage-manual'].hidden, true);
+  assert.equal(els['manual-changes'].innerHTML, '');
+  const uid = api.State.groups[1][0].uid;
+  api.State.buffOverrides = { [`1:${uid}`]: { buffId: 'GRACE_OF_AIR', originalBuffId: 'WINDFURY' } };
+  api.renderManualChanges();
+  for (const id of ['manual-changes', 'coverage-manual']) {
+    assert.equal(els[id].hidden, false, id);
+    assert.match(els[id].innerHTML, /<h3 class="gs-fg-gh"><span class="gs-fg-ght">Manual changes<\/span><span class="gs-fg-ghn">1<\/span><\/h3><ul>/);
+    assert.match(els[id].innerHTML, /Use <span class="change-buff">Grace of Air Totem<\/span> instead of <span class="change-buff">Windfury Totem<\/span>/);
+    assert.match(els[id].innerHTML, new RegExp(`<button type="button" class="change-remove" data-override-key="1:${uid}" aria-label="Remove override: [^"]+"`));
+  }
+  api.State.buffOverrides = {};
 });
 
-check('the minimized choice is a device preference: not part of the data backup', () => {
-  const { api } = bannerSandbox({ phone: false });
-  assert(![...api.DataBackup.keys].includes('pp_readiness_minimized'));
-});
-
-check('the minimize and expand buttons store the choice and move focus to the control that appears', () => {
-  const modals = app.slice('(function initReadinessBanner() {', "document.getElementById('btn-result-dismiss')").replace(/\r\n/g, '\n');
-  assert.match(modals, /ReadinessBanner\.apply\(ReadinessBanner\.isMinimized\(\)\)/, 'the stored state is painted at load');
-  assert.match(modals, /'btn-readiness-minimize'\)\?\.addEventListener\('click', \(\) => \{\s*ReadinessBanner\.set\(true\);\s*document\.getElementById\('btn-readiness-expand'\)\?\.focus\(\);/);
-  assert.match(modals, /'btn-readiness-expand'\)\?\.addEventListener\('click', \(\) => \{\s*ReadinessBanner\.set\(false\);\s*document\.getElementById\('btn-readiness-minimize'\)\?\.focus\(\);/);
-});
+// ── Result line ──
 
 check('ResultLine.show fills and reveals the line, hide hides it', () => {
   const { api, els } = makeSandbox();
@@ -440,6 +437,21 @@ check('imports, Optimize and the sync set the line after their commit; persistWo
 // ── CSS ──
 const cssText = app.css.replace(/\r\n/g, '\n');
 const phoneCss = (() => { const c = cssText.slice(cssText.lastIndexOf('/* ── Slim phone layout')); return c.slice(c.indexOf('@media (max-width: 600px)')); })();
+const laneCss = (() => { const a = cssText.indexOf('Planner board on Forge (T6), lane 2'); const b = cssText.indexOf('/* Watch list: Reviewed'); assert(a > 0 && b > a); return cssText.slice(a, b); })();
+
+check('strip styles: tokens only, 36px icon buttons, one neutral edge between the groups, no orange or gold', () => {
+  assert.doesNotMatch(laneCss, /#[0-9a-fA-F]{3,8}\b/, 'no hex colour in the lane 2 block');
+  assert.doesNotMatch(laneCss, /--molten|--accent-gold/, 'orange and gold are not used by the strip or the dialog');
+  assert.match(laneCss, /\.gs-pb-gap \{[^}]*width: 36px; height: 36px;/);
+  assert.match(laneCss, /\.gs-pb-gapgroup \+ \.gs-pb-gapgroup \{[^}]*border-left: 1px solid var\(--hd-hair\)/);
+});
+
+check('the old board chrome rules left app.css: summary bar, banner chips, right rail, phone sheet, Manual changes box', () => {
+  const appOnly = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'app.css'), 'utf8');
+  assert.doesNotMatch(appOnly, /\.summary-(bar|chip|main|divider|missing)|\.readiness-banner|\.rb-(row|chips|toggle|bar|arrow|note)\b|\.buff-sidebar|\.sidebar-|\.coverage-sheet|\.manual-changes-section|\.buff-row|\.insight-btn|\.swap-legend|\.cov-toggle|\.balance-warning/);
+  assert.match(appOnly, /\.result-line \{/, 'the result line keeps its base rule for the notice queue');
+  assert.match(appOnly, /\.rb-failed \{/, 'so does the save-failed chip');
+});
 
 check('phone toast: top, under the 40px header and safe area, 13px, above the player editor sheet', () => {
   const rule = phoneCss.match(/\n {2}\.toast \{([^}]*)\}/);
@@ -454,23 +466,9 @@ check('phone toast: top, under the 40px header and safe area, 13px, above the pl
   assert.match(cssText, /\.toast \{\n {2}position: fixed; bottom: 24px; right: 24px;/, 'desktop keeps the bottom-right toast');
 });
 
-check('phone: the result row has a 44px dismiss button; "N missing" has a 44px hit area at 12px text', () => {
+check('phone: the result row has a 44px dismiss button', () => {
   assert.match(phoneCss, /\.result-line-dismiss \{[^}]*min-height: 44px/);
   assert.doesNotMatch(phoneCss, /\.plan-feedback|feedback-open/, 'the banner is always shown on phones');
-  const missing = phoneCss.match(/\.phone-missing-slot \.summary-missing \{([^}]*)\}/);
-  assert(missing);
-  assert.match(missing[1], /min-height: 44px/);
-  assert.match(missing[1], /font-size: 12px/);
-});
-
-check('rail summary: a row with a count of 0 is muted (zero), the other stays red', () => {
-  const { api, els } = makeSandbox();
-  api.renderSidebarSummary({ buffs: 0, debuffs: 6 });
-  assert(els['sidebar-summary'].innerHTML.includes('<div class="sidebar-summary-row missing zero"><span>Party buffs missing</span><b>0</b></div>'), els['sidebar-summary'].innerHTML);
-  assert(els['sidebar-summary'].innerHTML.includes('<div class="sidebar-summary-row missing"><span>Raid debuffs missing</span><b>6</b></div>'));
-  api.renderSidebarSummary({ buffs: 2, debuffs: 0 });
-  assert(els['sidebar-summary'].innerHTML.includes('missing"><span>Party buffs missing'));
-  assert(els['sidebar-summary'].innerHTML.includes('missing zero"><span>Raid debuffs missing'));
 });
 
 console.log(`\n${passed} readiness checks passed`);

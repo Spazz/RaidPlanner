@@ -293,12 +293,6 @@ const LandingSample = {
 (function initPlanChrome() {
   document.getElementById('btn-undo').onclick = undoPlanChange;
   document.getElementById('btn-redo').onclick = redoPlanChange;
-  document.getElementById('readiness-text').onclick = (e) => {
-    // Phones open the Coverage sheet; desktop opens the rail in place.
-    if (PHONE_QUERY.matches) { openCoverageSheet(e.currentTarget); return; }
-    setSidebarExpanded(true);
-    document.getElementById('buff-sidebar').scrollIntoView({block:'nearest'});
-  };
   const share = document.getElementById('share-dialog');
   document.getElementById('btn-share-main').onclick = () => share.showModal();
   document.getElementById('close-share').onclick = () => share.close();
@@ -344,58 +338,34 @@ function syncRaidNotesToggle() {
 
 const PHONE_QUERY = window.matchMedia('(max-width: 600px)');
 
-// ── PHONE COVERAGE SHEET ──────────────────────────────────────────
-// The rail itself moves into this non-modal bottom sheet on phones (see initResponsiveChrome).
-// It opens half height ("peek") so the board stays usable; Show all grows it to nearly full height.
-let coverageSheetTrigger = null;
-function setCoverageSheetExpanded(expanded) {
-  const sheet = document.getElementById('coverage-sheet');
-  const more = document.getElementById('btn-coverage-expand');
-  if (!sheet || !more) return;
-  sheet.classList.toggle('expanded', expanded);
-  document.body.classList.toggle('coverage-expanded', expanded);
-  more.setAttribute('aria-expanded', String(expanded));
-  more.innerHTML = expanded ? 'Show less &#9662;' : 'Show all &#9652;';
+// ── COVERAGE DIALOG ───────────────────────────────────────────────
+// "N covered" in the Raid check strip opens it: a modal <dialog> (desktop) that is a full-height sheet on phones (CSS).
+// The browser closes it on Escape; FocusTrap keeps Tab inside it and hands focus back to the button when it closes.
+function openCoverageDialog() {
+  const dialog = document.getElementById('coverage-dialog');
+  const trigger = document.getElementById('btn-coverage');
+  if (!dialog || dialog.open || typeof dialog.showModal !== 'function') return;
+  dialog.showModal();
+  trigger?.setAttribute('aria-expanded', 'true');
+  FocusTrap.open(dialog, trigger);
 }
-function openCoverageSheet(trigger) {
-  const sheet = document.getElementById('coverage-sheet');
-  if (!sheet || !PHONE_QUERY.matches) return;
-  closeCoverageSheet(false);
-  coverageSheetTrigger = trigger || null;
-  setCoverageSheetExpanded(false);
-  sheet.classList.add('visible');
-  document.body.classList.add('coverage-open'); // the page gets bottom padding equal to the sheet, so its end can scroll clear
-  if (coverageSheetTrigger) coverageSheetTrigger.setAttribute('aria-expanded', 'true');
-  document.getElementById('coverage-sheet-heading').focus();
+function closeCoverageDialog() {
+  const dialog = document.getElementById('coverage-dialog');
+  if (dialog && dialog.open) dialog.close();
 }
-function closeCoverageSheet(restoreFocus = true) {
-  const sheet = document.getElementById('coverage-sheet');
-  if (!sheet || !sheet.classList.contains('visible')) return;
-  sheet.classList.remove('visible');
-  document.body.classList.remove('coverage-open', 'coverage-expanded');
-  const trigger = coverageSheetTrigger;
-  coverageSheetTrigger = null;
-  if (!trigger) return;
-  trigger.setAttribute('aria-expanded', 'false');
-  // A fix can clear the last gap and hide the link that opened the sheet: focus the summary toggle then.
-  if (restoreFocus) (trigger.hidden ? document.getElementById('phone-summary-toggle') : trigger)?.focus();
-}
-(function initCoverageSheet() {
-  const sheet = document.getElementById('coverage-sheet');
-  if (!sheet) return;
-  document.getElementById('btn-close-coverage-sheet').addEventListener('click', () => closeCoverageSheet());
-  document.getElementById('btn-coverage-expand').addEventListener('click', () => setCoverageSheetExpanded(!sheet.classList.contains('expanded')));
-  sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeCoverageSheet(); } });
-  // Escape from anywhere, unless another overlay is open (capture: the player editor's own Escape runs after this and closes it first).
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !sheet.classList.contains('visible')) return;
-    if (document.querySelector('dialog[open], #active-player-editor, .menu:not([hidden])')) return;
-    if (document.getElementById('mobile-more-sheet').classList.contains('visible')) return;
-    e.preventDefault();
-    closeCoverageSheet();
-  }, true);
-  // Leaving phone width puts the rail back in its desktop place, so the sheet has nothing to show.
-  PHONE_QUERY.addEventListener('change', () => { if (!PHONE_QUERY.matches) closeCoverageSheet(false); });
+(function initCoverageDialog() {
+  const dialog = document.getElementById('coverage-dialog');
+  const trigger = document.getElementById('btn-coverage');
+  if (!dialog || !trigger) return;
+  trigger.addEventListener('click', openCoverageDialog);
+  document.getElementById('btn-close-coverage').addEventListener('click', closeCoverageDialog);
+  // Escape, Close and the backdrop all end here.
+  dialog.addEventListener('close', () => {
+    trigger.setAttribute('aria-expanded', 'false');
+    FocusTrap.close(dialog);
+  });
+  // A click on the backdrop (the dialog element itself, outside its box) closes it.
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) closeCoverageDialog(); });
 })();
 
 // ── PHONE "MORE" SHEET ────────────────────────────────────────────
@@ -403,7 +373,6 @@ function closeCoverageSheet(restoreFocus = true) {
   const sheet = document.getElementById('mobile-more-sheet');
   const trigger = document.getElementById('btn-phone-more');
   const openSheet = () => {
-    closeCoverageSheet(false);
     sheet.classList.add('visible');
     trigger.setAttribute('aria-expanded', 'true');
     FocusTrap.open(sheet, trigger, closeSheet);
@@ -439,7 +408,7 @@ function closeCoverageSheet(restoreFocus = true) {
     'btn-redo:phone-sheet-quick-slot', 'btn-changes:phone-sheet-quick-slot',
     'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-split-plan:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
     'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
-    'raid-notes-panel:phone-context-notes-slot', 'buff-sidebar:coverage-sheet-slot',
+    'raid-notes-panel:phone-context-notes-slot',
     'btn-export-backup:phone-sheet-data-slot', 'btn-import-backup:phone-sheet-data-slot', 'btn-shortcuts-help:phone-sheet-data-slot', 'btn-show-tips-again:phone-sheet-data-slot',
   ].map(pair => {
     const [elId, phoneSlotId] = pair.split(':');
@@ -1618,7 +1587,6 @@ const BackupRestoreUI = {
       this.pending = null;
       if (!result.success) { showToast((result.errors && result.errors[0]) || 'Restore failed'); return; }
       showToast('Backup restored');
-      try { setSidebarExpanded(localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1', false); } catch {}
       if (State.view === 'landing') renderLanding();
     };
   },
@@ -2190,7 +2158,7 @@ function switchTab(tab) {
 
   // Show/hide plan-mode-only sections, plus the header and action-row controls
   // marked .plan-only (Optimize, Undo/Redo, plan name, Share, menu, notes, missing).
-  const planOnly = ['phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'readiness-banner', 'raid-notes-panel', 'changes-log-panel'].map(
+  const planOnly = ['phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'notice-slot', 'raid-notes-panel', 'changes-log-panel'].map(
     cls => document.querySelector('.' + cls) || document.getElementById(cls)
   ).filter(Boolean);
   for (const el of [...planOnly, ...document.querySelectorAll('.plan-only')]) {
@@ -2283,6 +2251,11 @@ function renderIdealComp() {
   const coveredDebuffIds = getRaidDebuffCoverage(groups);
   renderBuffCatalog(coveredBuffIds, coveredDebuffIds);
   renderUtilityCatalog(groups, []);
+  // The Raid check strip shows the reference comp's own role counts; the Groups line has no seated count to give.
+  document.getElementById('raid-check').hidden = false;
+  renderRaidCheckTiles(groups.flat(), null);
+  const seatedEl = document.getElementById('seated-count');
+  if (seatedEl) seatedEl.textContent = '';
   // Balance warnings are about the live plan's realism, not the static
   // reference comp, so they're cleared rather than computed here.
   const balanceEl = document.getElementById('balance-warnings');
@@ -2405,7 +2378,7 @@ function closePlannerOverlays() {
   Menu.closeAll();
   document.querySelectorAll('.menu:not([hidden])').forEach(menu => { menu.hidden = true; });
   document.querySelectorAll('[aria-haspopup="menu"][aria-expanded="true"]').forEach(btn => btn.setAttribute('aria-expanded', 'false'));
-  closeCoverageSheet(false);
+  closeCoverageDialog();
   if (document.getElementById('mobile-more-sheet').classList.contains('visible')) document.getElementById('btn-close-more-sheet').click();
   if (document.getElementById('save-overlay').classList.contains('visible')) closeSaveOverlay();
   // A pending Modal.confirm resolves as cancelled through the dialog's close event.
@@ -2461,6 +2434,9 @@ document.addEventListener('DOMContentLoaded', function() {
   let shownFor = null;
   let lastTouchAt = 0;
   function showTooltip(icon) {
+    // A modal dialog sits in the top layer, above everything in the page: inside one, the portal moves into it.
+    const host = icon.closest('dialog[open]') || document.body;
+    if (portal.parentNode !== host) host.appendChild(portal);
     const name = icon.getAttribute('data-tt-name');
     const desc = icon.getAttribute('data-tt-desc');
     const source = icon.getAttribute('data-tt-source');

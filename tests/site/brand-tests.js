@@ -58,10 +58,6 @@ check('the plan name is larger and gold, with the underline-only hover', () => {
   assert.match(css, /#roster-name-text\s*\{[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis/);
 });
 
-check('the Coverage summary rows keep a gap between label and count (narrow rail rows)', () => {
-  assert.match(css, /\.sidebar-summary-row\s*\{[^}]*gap:\s*6px/);
-});
-
 // ── 4.4.0: one planner header row, one landing brand row, Share menu headings ──
 function sliceBetween(src, from, to) {
   const a = src.indexOf(from), b = src.indexOf(to, a);

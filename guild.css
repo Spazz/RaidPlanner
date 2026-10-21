@@ -2583,6 +2583,108 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-pb-board .preferred-fan .stack-other { min-height: 44px; }
 }
 
+/* ── Planner board on Forge (T6), lane 2: the Raid check strip, the Groups line, the Manual changes panel and the Coverage dialog. ──
+   Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop strip, R3-details tooltips + Coverage list, R3-phone counts line).
+   The strip is one .gs-hd-panel: role tiles (Tanks, Healers with the muted floor, Melee, Ranged), two labelled icon groups (Fix now, Needs a recruit;
+   one neutral edge, the label splits them, never colour), and the "N covered" button that opens the dialog. Like the board, the strip, the Groups line
+   and the Manual changes panel undo the planner frame's zoom 1.5 above 600 px (zoom 2/3), so every size here is a real pixel. */
+.gs-pb-check { display: flex; align-items: center; gap: 24px; min-height: 76px; margin: 16px 16px 0; padding: 10px 16px; }
+.gs-pb-check[hidden], .gs-pb-manual[hidden] { display: none; }
+@media (min-width: 601px) { .gs-pb-check, .gs-pb-manual, .gs-pb-groupsline { zoom: 0.6666667; } }
+.gs-pb-tiles { display: flex; align-items: center; gap: 22px; flex: none; }
+.gs-pb-tiles:empty { display: none; }
+.gs-pb-tile { display: flex; flex-direction: column; gap: 1px; min-width: 70px; }
+.gs-pb-fig { display: flex; align-items: baseline; gap: 6px; }
+.gs-pb-fig b { font-size: 20px; font-weight: 700; line-height: 1.2; color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-pb-floor { font-size: 12px; color: var(--text-muted); }
+.gs-pb-gaps { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 0; padding-left: 24px; border-left: 1px solid var(--hd-hair); }
+.gs-pb-tiles:empty + .gs-pb-gaps { padding-left: 0; border-left: 0; }
+.gs-pb-gapgroup { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.gs-pb-gapgroup + .gs-pb-gapgroup { margin-left: 28px; padding-left: 28px; border-left: 1px solid var(--hd-hair); }
+.gs-pb-icons { display: flex; flex-wrap: wrap; gap: 6px; }
+.gs-pb-gap { display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; width: 36px; height: 36px; padding: 0; border: 1px solid var(--border-field); border-radius: 4px; background: var(--bg-frame); color: var(--text-primary); font: 700 12px/1 var(--font-body); cursor: help; }
+.gs-pb-gap img { display: block; width: 24px; height: 24px; border-radius: 3px; object-fit: cover; }
+.gs-pb-gap:hover { border-color: var(--text-secondary); }
+.gs-pb-quiet { align-self: center; font-size: 14px; color: var(--text-secondary); }
+.gs-pb-covered { flex: none; margin-left: auto; }
+.gs-pb-covered[hidden] { display: none; }
+.gs-pb-tiles .gs-hd-chip { align-self: center; }
+
+.gs-pb-groupsline { margin: 16px 16px 0; }
+.gs-pb-groupsline .gs-hd-sl::before { display: none; }
+.gs-pb-groupsline .gs-hd-sl::after { order: 1; }
+.gs-pb-seated { order: 2; font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 13px; font-variant-numeric: tabular-nums; }
+.gs-pb-seated.is-over { color: var(--danger-text); }
+.gs-pb-seated:empty { display: none; }
+/* The board below brings its own 16 px of padding, so the line sits flush on it. */
+.gs-pb-groupsline + .gs-pb-board { padding-top: 12px; }
+
+/* Manual changes: a panel under the strip while there are any, the same list in the dialog. */
+.gs-pb-manual { margin: 16px 16px 0; padding: 12px 16px; }
+:is(.gs-pb-manual, .gs-pb-cov-sec) ul { margin: 6px 0 0; padding: 0; list-style: none; }
+:is(.gs-pb-manual, .gs-pb-cov-sec) li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 44px; padding: 4px 0; border-top: 1px solid var(--hd-hair); font-size: 14px; color: var(--text-secondary); }
+:is(.gs-pb-manual, .gs-pb-cov-sec) .change-player { font-weight: 600; }
+:is(.gs-pb-manual, .gs-pb-cov-sec) .change-buff { color: var(--text-primary); font-weight: 600; }
+:is(.gs-pb-manual, .gs-pb-cov-sec) .change-arrow { color: var(--text-muted); }
+:is(.gs-pb-manual, .gs-pb-cov-sec) .change-remove { display: inline-flex; align-items: center; justify-content: center; flex: none; margin-left: auto; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--text-muted); font-size: 18px; line-height: 1; cursor: pointer; }
+:is(.gs-pb-manual, .gs-pb-cov-sec) .change-remove:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
+
+/* The Coverage dialog: a raised surface, 640 px wide; a full-height sheet on phones. */
+.gs-pb-cov { box-sizing: border-box; width: min(640px, calc(100vw - 32px)); max-width: none; max-height: min(780px, calc(100dvh - 48px)); margin: auto; padding: 0; overflow: hidden; background: var(--hd-raised); color: var(--text-primary); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); font-family: var(--font-body); color-scheme: dark; }
+.gs-pb-cov[open] { display: flex; flex-direction: column; }
+.gs-pb-cov::backdrop { background: color-mix(in srgb, var(--bg-page) 85%, transparent); }
+.gs-pb-cov-head { display: flex; align-items: center; gap: 12px; flex: none; padding: 12px 16px; border-bottom: 1px solid var(--hd-hair); }
+.gs-pb-cov-title { margin: 0; font: 700 20px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); }
+.gs-pb-cov-title:focus { outline: none; }
+.gs-pb-cov-sum { margin-left: auto; font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gs-pb-cov-body { display: flex; flex-direction: column; gap: 20px; flex: 1; min-height: 0; padding: 16px; overflow-y: auto; }
+.gs-pb-cov-sec:empty, .gs-pb-cov-sec[hidden] { display: none; }
+.gs-pb-cov-sec .gs-fg-gh { margin-bottom: 4px; }
+.gs-pb-cov .buff-row-list { display: flex; flex-direction: column; }
+.gs-pb-cov .buff-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 0; border-top: 1px solid var(--hd-hair); }
+.gs-pb-cov .buff-row-icon { flex: none; width: 28px; height: 28px; overflow: hidden; border: 1px solid var(--border-field); border-radius: 4px; background: var(--bg-frame); cursor: help; }
+.gs-pb-cov .buff-row-icon img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.gs-pb-cov .buff-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; color: var(--hd-white); }
+.gs-pb-cov .buff-row-source { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-muted); }
+.gs-pb-cov .buff-row-warn { flex: none; font-size: 14px; color: var(--text-muted); cursor: help; }
+.gs-pb-cov .tag-deb { flex: none; padding: 0 6px; border: 1px solid var(--hd-panel-edge); border-radius: 4px; font-size: 12px; font-weight: 600; line-height: 18px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); }
+.gs-pb-cov .buff-row-insight { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 0 6px 38px; font-size: 13px; color: var(--text-secondary); }
+.gs-pb-cov .buff-row-insight .insight-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-pb-cov .buff-row-insight .insight-who { font-weight: 600; }
+.gs-pb-cov .buff-row-insight.none .insight-text { color: var(--text-muted); font-style: italic; }
+.gs-pb-cov .insight-btn { flex: none; margin-left: auto; }
+.gs-pb-cov .rec-item { border-top: 1px solid var(--hd-hair); }
+.gs-pb-cov .rec-line { padding: 10px 0; font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.gs-pb-cov .rec-spec { font-weight: 600; color: var(--text-primary); }
+.gs-pb-cov .rec-name { white-space: nowrap; }
+.gs-pb-cov .rec-item .buff-row-insight { padding-left: 0; }
+.gs-pb-cov .buff-sidebar-sub { margin: 10px 0 2px; }
+.gs-pb-cov .balance-warning-row { padding: 10px 0; border-top: 1px solid var(--hd-hair); font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.gs-pb-cov .swap-legend { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
+.gs-pb-cov .swap-legend i { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 14px; height: 14px; border: 1px solid var(--bg-frame); border-radius: 7px; background: var(--border-strong); color: var(--text-primary); }
+.gs-pb-cov .swap-legend svg { display: block; }
+.gs-pb-cov .gs-pb-quiet { margin: 0; align-self: auto; }
+
+/* Fingers: 44 px icons and targets, one column; the dialog is a full-height sheet. */
+@media (width <= 600px) {
+  .gs-pb-check { flex-direction: column; align-items: stretch; gap: 12px; min-height: 0; margin: 12px 16px 0; padding: 12px; }
+  .gs-pb-tiles { flex-wrap: wrap; gap: 4px 18px; }
+  .gs-pb-tile { flex-direction: row; align-items: baseline; gap: 6px; min-width: 0; }
+  .gs-pb-fig b { font-size: 16px; }
+  .gs-pb-floor { display: none; }
+  .gs-pb-gaps { flex-direction: column; gap: 12px; padding: 0; border-left: 0; }
+  .gs-pb-gapgroup + .gs-pb-gapgroup { margin: 0; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--hd-hair); }
+  .gs-pb-icons { gap: 8px; }
+  .gs-pb-gap { width: 44px; height: 44px; }
+  .gs-pb-covered { width: 100%; margin-left: 0; min-height: 44px; }
+  .gs-pb-groupsline { margin: 12px 16px 0; }
+  .gs-pb-manual { margin: 12px 16px 0; }
+  :is(.gs-pb-manual, .gs-pb-cov-sec) .change-remove { width: 44px; height: 44px; }
+  .gs-pb-cov { width: 100vw; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; }
+  .gs-pb-cov .insight-btn { min-height: 44px; }
+  .gs-pb-cov .gs-btn { min-height: 44px; }
+}
+
 /* Watch list: Reviewed / Undo on an entry; a reviewed entry stays listed, muted, with who reviewed it and when it comes back */
 .gs-watch-act { grid-column: 1 / -1; justify-self: start; }
 .gs-watch-reviewed { grid-column: 1 / -1; margin: 0; }

@@ -481,9 +481,9 @@ check('the Changes button ends the action row as a hidden disclosure for the pan
   assert.match(html, /<button type="button" id="btn-phone-more"[^>]*>More <span class="changes-count" id="phone-more-changes-count" hidden><\/span><\/button>/);
 });
 
-check('the panel sits after the banners and before the summary bar, with its heading and Mark all seen', () => {
+check('the panel sits after the banners and before the Raid check strip, with its heading and Mark all seen', () => {
   const panelAt = html.indexOf('id="changes-log-panel"');
-  assert(panelAt > html.indexOf('id="tab-conflict-banner"') && panelAt < html.indexOf('id="summary-bar"'));
+  assert(panelAt > html.indexOf('id="tab-conflict-banner"') && panelAt < html.indexOf('id="raid-check"'));
   const panel = html.slice(panelAt, html.indexOf('</section>', panelAt));
   assert.match(panel, /aria-labelledby="changes-log-heading"/);
   assert.match(panel, /id="changes-log-heading" tabindex="-1">Recent changes</);

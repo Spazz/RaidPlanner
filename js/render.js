@@ -894,15 +894,16 @@ function groupBuffIconHTML(b, gi, allowSwap) {
 }
 // ── end GROUP PANELS ────────────────────────────────────────────
 
-// The rail groups what is missing by what fixes it: Fix now (one click: a Switch or a Swap In, or two warriors to
-// group together), Needs a recruit (nobody in the roster can; text only), then a Covered list behind a toggle.
-// The reference comp has no live-plan fixes, so it gets one Missing group of plain rows.
-function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
-  lastCatalogCoverage = [coveredBuffIds, coveredDebuffIds];
+// ── RAID CHECK STRIP + COVERAGE DIALOG ──────────────────────────
+// ONE model of what the raid is missing feeds both: the strip shows each missing buff or debuff as an icon button, the
+// Coverage dialog lists the same items as rows. Missing items are grouped by what fixes them: Fix now (one click: a Switch
+// or a Swap In, or two warriors to group together), Needs a recruit (nobody in the roster can). The reference comp has no
+// live-plan fixes, so it gets one Missing group of plain rows.
+let lastCatalogCoverage = null;
+function buildCoverageModel(coveredBuffIds, coveredDebuffIds) {
   // The reference comp is a static board: the live plan's Switch / Swap In fixes do not belong on it.
   const insights = State.activeTab === 'ideal' ? null : getMissingBuffInsights();
-  // Faction-locked rosters (Classic) never show a buff the detected faction
-  // could never field (Windfury for Alliance, Devotion Aura for Horde).
+  // Faction-locked rosters (Classic) never show a buff the detected faction could never field (Windfury for Alliance, Devotion Aura for Horde).
   const lists = [
     { dataset: factionRelevantBuffs(), abbr: Config.BuffAbbreviations, iconUrl: id => Config.BuffIconURL(id), covered: coveredBuffIds, debuff: false },
     { dataset: Config.Debuffs, abbr: Config.DebuffAbbreviations, iconUrl: id => Config.DebuffIconURL(id), covered: coveredDebuffIds, debuff: true },
@@ -912,66 +913,118 @@ function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
   for (const list of lists) {
     for (const id of Object.keys(list.dataset)) (list.covered.has(id) ? covered : missing).push({ id, ...list });
   }
-  const rows = (items) => items.map(m => renderBuffRowList(m.id, m.dataset, m.abbr, m.iconUrl, m.covered.has(m.id), insights ? insights[m.id] : null, m.debuff)).join('');
-  const group = (title, count, body) => `<div class="buff-sidebar-section">
-    <h4 class="buff-sidebar-title">${title} <span class="buff-sidebar-count">&middot; ${count}</span></h4>${body}</div>`;
+  const oneClick = (m) => {
+    const i = insights && insights[m.id];
+    return !!i && (i.kind === 'switch' || i.kind === 'bench' || (i.kind === 'shared' && i.casters >= 2));
+  };
+  return {
+    insights, missing, covered,
+    fixNow: insights ? missing.filter(oneClick) : [],
+    recruit: insights ? missing.filter(m => !oneClick(m)) : [],
+  };
+}
 
+const firstName = (p) => ((p && p.name) || 'Unknown').split('-')[0];
+// What fixes a Fix now gap, as a phrase ("swap in Arimyr").
+function fixPhrase(insight) {
+  if (insight.kind === 'switch') return `switch ${firstName(insight.player)} to it`;
+  if (insight.kind === 'bench') return `swap in ${firstName(insight.player)}`;
+  return 'group two warriors together';
+}
+// Who to recruit for a gap, as a phrase ("Shadow Priest", "a second Warrior").
+function recruitPhrase(m, insight) {
+  const entry = m.dataset[m.id];
+  if (insight && insight.kind === 'shared' && entry.sourceClass) return `a second ${entry.sourceClass.charAt(0) + entry.sourceClass.slice(1).toLowerCase()}`;
+  return buffSourceInfo(entry).label || 'a new player';
+}
+
+// One missing item as an icon button in the strip. The name shows through the shared tooltip portal (hover, focus, tap).
+function gapIconHTML(m, status) {
+  const entry = m.dataset[m.id];
+  const url = m.iconUrl(m.id) || (entry.sourceClass ? Config.IconURL('classicon_' + entry.sourceClass.toLowerCase()) : '');
+  const inner = url ? `<img src="${esc(url)}" alt="" loading="lazy" class="buff-img">` : esc(m.abbr[m.id] || m.id);
+  return `<button type="button" class="gs-pb-gap" aria-label="${esc(entry.name)}. ${esc(status)}" data-tt-name="${esc(entry.name)}" data-tt-desc="${esc(entry.desc || '')}" data-tt-source="${esc(status)}" data-tt-source-color="var(--text-secondary)">${inner}</button>`;
+}
+function gapGroupHTML(label, icons) {
+  if (!icons.length) return '';
+  return `<div class="gs-pb-gapgroup" role="group" aria-label="${label} ${icons.length}"><span class="gs-fg-lbl">${label} ${icons.length}</span><div class="gs-pb-icons">${icons.join('')}</div></div>`;
+}
+
+function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
+  lastCatalogCoverage = [coveredBuffIds, coveredDebuffIds];
+  const gapsEl = document.getElementById('raid-check-gaps');
+  const coveredBtn = document.getElementById('btn-coverage');
+  const summaryEl = document.getElementById('coverage-summary');
+  const dialogGaps = document.getElementById('buff-catalog-gaps');
+  const coveredEl = document.getElementById('buff-catalog-covered');
+  if (!GameVersions[State.gameVersion].modeled) {
+    if (gapsEl) gapsEl.innerHTML = '<span class="gs-pb-quiet">Rules pending</span>';
+    if (coveredBtn) coveredBtn.hidden = true;
+    if (summaryEl) summaryEl.textContent = '';
+    if (dialogGaps) dialogGaps.innerHTML = '<p class="gs-pb-quiet">Coverage rules are not configured for this version yet.</p>';
+    if (coveredEl) coveredEl.innerHTML = '';
+    return;
+  }
+  const { insights, missing, covered, fixNow, recruit } = buildCoverageModel(coveredBuffIds, coveredDebuffIds);
+  const rows = (items) => items.map(m => renderBuffRowList(m.id, m.dataset, m.abbr, m.iconUrl, m.covered.has(m.id), insights ? insights[m.id] : null, m.debuff)).join('');
+  const group = (title, count, body) => `<h3 class="gs-fg-gh"><span class="gs-fg-ght">${title}</span><span class="gs-fg-ghn">${count}</span></h3>${body}`;
+
+  // The strip: icon groups and the covered count.
+  let stripHTML = '';
+  if (!missing.length) stripHTML = '<span class="gs-pb-quiet">No gaps</span>';
+  else if (!insights) stripHTML = gapGroupHTML('Missing', missing.map(m => gapIconHTML(m, 'Missing')));
+  else {
+    stripHTML = gapGroupHTML('Fix now', fixNow.map(m => gapIconHTML(m, `Fix now: ${fixPhrase(insights[m.id])}`)))
+      + gapGroupHTML('Needs a recruit', recruit.map(m => gapIconHTML(m, `Needs a recruit: ${recruitPhrase(m, insights[m.id])}`)));
+  }
+  if (gapsEl) gapsEl.innerHTML = stripHTML;
+  if (coveredBtn) { coveredBtn.hidden = false; coveredBtn.textContent = `${covered.length} covered`; }
+  if (summaryEl) summaryEl.textContent = `${covered.length} of ${missing.length + covered.length} covered`;
+
+  // The dialog: the same items as rows.
   let gaps = '';
   if (!insights) {
     if (missing.length) gaps = group('Missing', missing.length, `<div class="buff-row-list">${rows(missing)}</div>`);
   } else {
-    const oneClick = (m) => {
-      const i = insights[m.id];
-      return i && (i.kind === 'switch' || i.kind === 'bench' || (i.kind === 'shared' && i.casters >= 2));
-    };
-    const fixNow = missing.filter(oneClick);
     // One line per source spec; the shared-shout entry with one warrior seated keeps its insight line under it.
     const lines = new Map();
-    for (const m of missing.filter(m => !oneClick(m))) {
+    for (const m of recruit) {
       const entry = m.dataset[m.id];
       const key = buffSourceInfo(entry).label || 'Other';
-      if (!lines.has(key)) lines.set(key, { label: key, cls: classColorClass(entry.sourceClass, 'secondary'), names: [], notes: [] });
+      if (!lines.has(key)) lines.set(key, { label: key, names: [], notes: [] });
       const line = lines.get(key);
       line.names.push(`<span class="rec-name">${esc(entry.name)}${m.debuff ? ' <span class="tag-deb">Debuff</span>' : ''}</span>`);
       if (insights[m.id] && insights[m.id].kind === 'shared') line.notes.push(renderInsightLine(m.id, insights[m.id]));
     }
     if (fixNow.length) gaps += group('Fix now', fixNow.length, `<div class="buff-row-list">${rows(fixNow)}</div>`);
     if (lines.size) {
-      const body = [...lines.values()].map(l => `<div class="rec-item"><div class="rec-line"><span class="rec-spec ${l.cls}">${esc(l.label)}</span>: ${l.names.join(', ')}</div>${l.notes.join('')}</div>`).join('');
-      gaps += group('Needs a recruit', lines.size, `<div class="rec-list">${body}</div>`);
+      const body = [...lines.values()].map(l => `<div class="rec-item"><div class="rec-line"><span class="rec-spec">${esc(l.label)}</span>: ${l.names.join(', ')}</div>${l.notes.join('')}</div>`).join('');
+      gaps += group('Needs a recruit', recruit.length, `<div class="rec-list">${body}</div>`);
     }
   }
-  const gapsEl = document.getElementById('buff-catalog-gaps');
-  if (gapsEl) gapsEl.innerHTML = gaps;
-
-  const coveredEl = document.getElementById('buff-catalog-covered');
-  if (coveredEl) {
-    coveredEl.innerHTML = covered.length ? `<button type="button" class="cov-toggle" id="btn-covered-toggle" aria-expanded="${coveredListOpen}">${coveredListOpen ? 'Hide covered &#9662;' : `Show ${covered.length} covered &#9656;`}</button>`
-      + (coveredListOpen ? `<div class="buff-row-list" id="buff-covered-list">${rows(covered)}</div>` : '') : '';
-  }
-  renderSidebarSummary(coverageGapCounts(coveredBuffIds, coveredDebuffIds));
+  if (dialogGaps) dialogGaps.innerHTML = gaps;
+  if (coveredEl) coveredEl.innerHTML = covered.length ? group('Covered', covered.length, `<div class="buff-row-list">${rows(covered)}</div>`) : '';
 }
 
-// The Covered list under the rail's groups: open or closed, kept for the page session (not stored).
-let coveredListOpen = false;
-let lastCatalogCoverage = null;
-function setCoveredListOpen(open) {
-  coveredListOpen = open;
-  if (lastCatalogCoverage) renderBuffCatalog(...lastCatalogCoverage);
-}
-
-// Collapsed-state strip: "Party buffs missing 7", "Raid debuffs missing 6", or one "all covered" row.
-function renderSidebarSummary(gaps) {
-  const el = document.getElementById('sidebar-summary');
+// The strip's role tiles: Tanks and Healers show "have/floor" with the muted floor, Melee and Ranged just the figure.
+// players = the seated roster (live plan) or every player of the reference comp; floors = Optimizer.floorsFor(size) or null.
+function renderRaidCheckTiles(players, floors) {
+  const el = document.getElementById('raid-check-tiles');
   if (!el) return;
-  if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p class="sidebar-note">Coverage rules are not configured for this version yet.</p>'; return; }
-  if (gaps.buffs === 0 && gaps.debuffs === 0) {
-    el.innerHTML = '<div class="sidebar-summary-row ok"><span>All party buffs and raid debuffs covered</span></div>';
-    return;
+  const counts = { tank: 0, healer: 0, melee_dps: 0, ranged: 0 };
+  for (const p of players) {
+    if (p.role === 'tank') counts.tank++;
+    else if (p.role === 'healer') counts.healer++;
+    else if (p.role === 'melee_dps') counts.melee_dps++;
+    else counts.ranged++;
   }
-  el.innerHTML = `
-    <div class="sidebar-summary-row missing${gaps.buffs === 0 ? ' zero' : ''}"><span>Party buffs missing</span><b>${gaps.buffs}</b></div>
-    <div class="sidebar-summary-row missing${gaps.debuffs === 0 ? ' zero' : ''}"><span>Raid debuffs missing</span><b>${gaps.debuffs}</b></div>`;
+  const tile = (label, n, floor) => {
+    const short = floor && n < floor;
+    const figure = floor && n <= floor ? `${n}/${floor}` : `${n}`;
+    return `<div class="gs-pb-tile"><span class="gs-fg-lbl">${label}</span><span class="gs-pb-fig"><b>${figure}</b>${floor ? `<span class="gs-pb-floor">floor ${floor}</span>` : ''}${short ? `<span class="sr-only">, ${floor - n} short</span>` : ''}</span></div>`;
+  };
+  el.innerHTML = tile('Tanks', counts.tank, floors && floors.tank) + tile('Healers', counts.healer, floors && floors.healer)
+    + tile('Melee', counts.melee_dps, 0) + tile('Ranged', counts.ranged, 0);
 }
 
 // One line under a missing row saying what would fix it, with the button
@@ -984,7 +1037,7 @@ function renderInsightLine(id, insight) {
     const p = insight.player;
     return `<div class="buff-row-insight switch">
       <span class="insight-text" title="In raid: ${short(p)}">In raid: <span class="insight-who ${color(p)}">${short(p)}</span></span>
-      <button type="button" class="insight-btn" data-insight-switch="${esc(id)}" data-group="${insight.groupIdx}" data-uid="${esc(p.uid)}" title="Make ${short(p)} run ${esc(Config.Buffs[id].name)}">Switch</button>
+      <button type="button" class="insight-btn gs-btn" data-insight-switch="${esc(id)}" data-group="${insight.groupIdx}" data-uid="${esc(p.uid)}" title="Make ${short(p)} run ${esc(Config.Buffs[id].name)}">Switch</button>
     </div>`;
   }
   if (insight.kind === 'bench') {
@@ -992,7 +1045,7 @@ function renderInsightLine(id, insight) {
     const specLabel = p.spec ? `${esc(p.spec)}` : '';
     return `<div class="buff-row-insight bench">
       <span class="insight-text" title="Benched: ${short(p)}${specLabel ? ' (' + specLabel + ')' : ''}">Benched: <span class="insight-who ${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
-      <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Put ${short(p)} in a group; bench the lowest-value player in the same role if the raid is full">Swap In</button>
+      <button type="button" class="insight-btn gs-btn" data-insight-swap="${esc(p.uid)}" title="Put ${short(p)} in a group; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
   if (insight.kind === 'shared') {
@@ -1032,7 +1085,7 @@ function renderBuffRowList(id, dataset, abbrMap, iconUrlFn, isCovered, insight, 
   return `<div class="buff-row${isCovered ? ' covered' : ''}${isDebuff ? ' tagged' : ''}">
     <div class="buff-row-icon"${ttAttrs}>${imgTag}</div>
     <span class="buff-row-name" title="${esc(entry.name)}">${esc(entry.name)}</span>${isDebuff ? '<span class="tag-deb">Debuff</span>' : ''}${warnBadge}
-    <span class="buff-row-source ${classColorClass(entry.sourceClass, 'secondary')}" title="${esc(sourceLabel)}">${esc(sourceLabel)}</span>
+    <span class="buff-row-source" title="${esc(sourceLabel)}">${esc(sourceLabel)}</span>
   </div>` + (!isCovered && insight ? renderInsightLine(id, insight) : '');
 }
 
@@ -1059,7 +1112,7 @@ function renderUtilityInsightLine(item) {
     const specLabel = p.spec ? ` (${esc(p.spec)})` : '';
     return `<div class="buff-row-insight bench">
       <span class="insight-text" title="Benched: ${short}${specLabel}">Benched: <span class="insight-who ${color}">${short}</span>${specLabel}</span>
-      <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Put ${short} in a group; bench the lowest-value player in the same role if the raid is full">Swap In</button>
+      <button type="button" class="insight-btn gs-btn" data-insight-swap="${esc(p.uid)}" title="Put ${short} in a group; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
   return `<div class="buff-row-insight none"><span class="insight-text" title="Nobody in roster">Nobody in roster</span></div>`;
@@ -1084,10 +1137,10 @@ function renderUtilityCatalog(groups, bench) {
   if (countEl) countEl.textContent = `${covered.length} / ${items.length}`;
 
   let html = '';
-  if (missing.length) html += `<div class="buff-sidebar-sub missing">Missing &middot; ${missing.length}</div>`;
+  if (missing.length) html += `<div class="gs-fg-lbl buff-sidebar-sub missing">Missing &middot; ${missing.length}</div>`;
   const ordered = [...missing, ...(covered.length ? ['__covered__'] : []), ...covered];
   for (const item of ordered) {
-    if (item === '__covered__') { html += `<div class="buff-sidebar-sub">Covered &middot; ${covered.length}</div>`; continue; }
+    if (item === '__covered__') { html += `<div class="gs-fg-lbl buff-sidebar-sub">Covered &middot; ${covered.length}</div>`; continue; }
     const seatedNames = item.seatedProviders.map(p => esc((p.name || 'Unknown').split('-')[0])).join(', ');
     const sourceText = item.covered ? seatedNames : 'Not covered';
     const ttAttrs = ` data-tt-name="${esc(item.name)}" data-tt-desc="${esc(item.desc)}"`
@@ -1102,46 +1155,32 @@ function renderUtilityCatalog(groups, bench) {
 }
 
 // Soft composition warnings (melee/ranged skew, class stacking, healer
-// ratio) shown above the Buffs/Debuffs/Utility sections, always visible
-// (not gated behind the sidebar's collapsed state) since they're short.
+// ratio) shown in the Coverage dialog below the Utility section.
 function renderBalanceWarnings() {
   const el = document.getElementById('balance-warnings');
   if (!el) return;
   if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = ''; return; }
   const warnings = Readiness.balanceWarnings();
-  el.innerHTML = warnings.map(w => `<div class="balance-warning-row">${esc(w.text)}</div>`).join('');
+  el.innerHTML = warnings.length
+    ? `<h3 class="gs-fg-gh"><span class="gs-fg-ght">Balance</span><span class="gs-fg-ghn">${warnings.length}</span></h3>` + warnings.map(w => `<div class="balance-warning-row">${esc(w.text)}</div>`).join('')
+    : '';
 }
 
-// ── Sidebar collapse + insight actions (delegated, attached once) ──
-const SIDEBAR_STORAGE_KEY = 'pp_sidebar_expanded';
-function setSidebarExpanded(expanded, persist = true) {
-  const aside = document.getElementById('buff-sidebar');
-  const toggle = document.getElementById('sidebar-toggle');
-  if (!aside || !toggle) return;
-  aside.classList.toggle('collapsed', !expanded);
-  toggle.setAttribute('aria-expanded', String(expanded));
-  if (persist) safeSetItem(localStorage, SIDEBAR_STORAGE_KEY, expanded ? '1' : '0');
-}
-(function initSidebar() {
-  const aside = document.getElementById('buff-sidebar');
-  const toggle = document.getElementById('sidebar-toggle');
-  if (!aside || !toggle) return;
-  let expanded = false;
-  try { expanded = localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1'; } catch (e) {}
-  setSidebarExpanded(expanded, false);
-  toggle.addEventListener('click', () => setSidebarExpanded(aside.classList.contains('collapsed')));
-
-  aside.addEventListener('click', (e) => {
-    if (e.target.closest('#btn-covered-toggle')) {
-      setCoveredListOpen(!coveredListOpen);
-      document.getElementById('btn-covered-toggle')?.focus(); // the render replaced the button
-      return;
-    }
+// ── Coverage dialog: the fix buttons on its rows (delegated, attached once) ──
+(function initCoverageActions() {
+  const dialog = document.getElementById('coverage-dialog');
+  if (!dialog) return;
+  // A fix re-renders the dialog and the clicked button goes with it: focus moves to the heading so the modal keeps it.
+  const afterFix = () => {
+    commit();
+    if (!dialog.contains(document.activeElement)) document.getElementById('coverage-heading')?.focus();
+  };
+  dialog.addEventListener('click', (e) => {
     const swapBtn = e.target.closest('[data-insight-swap]');
     if (swapBtn) {
       const res = RosterEdit.SwapIn(swapBtn.dataset.insightSwap);
       if (!res.success) { showToast(res.error); return; }
-      commit();
+      afterFix();
       const who = (res.player.name || '').split('-')[0];
       showToast(res.benched
         ? `${who} seated in Group ${res.groupIdx + 1}; ${(res.benched.name || '').split('-')[0]} benched`
@@ -1152,14 +1191,14 @@ function setSidebarExpanded(expanded, persist = true) {
     if (switchBtn) {
       const res = RosterEdit.SwitchBuff(parseInt(switchBtn.dataset.group), switchBtn.dataset.uid, switchBtn.dataset.insightSwitch);
       if (!res.success) { showToast(res.error); return; }
-      commit();
+      afterFix();
       showToast(`${(res.player.name || '').split('-')[0]} now runs ${Config.Buffs[res.buffId].name}`);
     }
   });
 })();
 
-// ── Sticky raid summary bar ──
-// The sentence the screen-reader region announces for the summary bar; the bar itself is
+// ── Raid summary (Groups line + screen-reader sentence) ──
+// The sentence the screen-reader region announces for the Groups line; the line itself is
 // not a live region (it is rebuilt on every render, which would re-read all of it).
 function describeRaidSummary({ seated, capacity, counts, benched }) {
   const n = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
@@ -1305,41 +1344,8 @@ ChangeLog.onRecord = entry => {
   setInterval(() => { if (ChangesPanel.isOpen()) ChangesPanel.render(); }, 60000);
 })();
 
-// Phone: a short link on line 2 of the context row expands the readiness banner and opens
-// the coverage panel. The link says what the banner warns about, most serious first: tanks
-// short, healers short, a mixed-faction Classic roster ("⚠ 1 healer short"), then "N missing"
-// for party buffs plus raid debuffs (the two counts the banner names). Hidden when there is
-// nothing to warn about or coverage rules are not configured. Desktop has no link.
-// lastReadiness is set by renderReadiness: {missingCoverage, tanksShort, healersShort, mixedFactions} or null.
-let lastReadiness = null;
-function phoneReadinessLabel(r) {
-  if (!r) return '';
-  const n = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
-  if (r.tanksShort > 0) return `<b>&#9888; ${n(r.tanksShort, 'tank')} short</b> &#9656;`;
-  if (r.healersShort > 0) return `<b>&#9888; ${n(r.healersShort, 'healer')} short</b> &#9656;`;
-  if (r.mixedFactions) return '<b>&#9888; Mixed factions</b> &#9656;';
-  if (r.missingCoverage > 0) return `<b>${r.missingCoverage}</b> missing &#9656;`;
-  return '';
-}
-function renderPhoneMissing() {
-  const btn = document.getElementById('btn-summary-missing');
-  if (!btn) return;
-  const label = phoneReadinessLabel(lastReadiness);
-  btn.hidden = !label;
-  if (label) btn.innerHTML = label;
-}
-(function initSummaryMissing() {
-  const btn = document.getElementById('btn-summary-missing');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    ReadinessBanner.set(false);
-    openCoverageSheet(btn);
-  });
-})();
-
+// The Groups line above the board: "24 of 25 seated" (plus the open slots), and the sentence the screen-reader region announces.
 function renderSummaryBar() {
-  const bar = document.getElementById('summary-bar');
-  if (!bar) return;
   const raidInfo = Config.Raids[State.selectedRaid];
   const capacity = raidInfo ? raidInfo.size : 25;
   const seated = State.roster.length;
@@ -1351,15 +1357,12 @@ function renderSummaryBar() {
     else counts.ranged++;
   }
   const benched = (State.bench || []).length;
-  const chip = (role, label, n) => `<span class="summary-chip">${getRoleIcon(role)}<b>${n}</b> ${label}</span>`;
-  bar.innerHTML = `
-    <span class="summary-main${seated > capacity ? ' over' : ''}"><b>${seated}</b>/ ${capacity} in raid</span>
-    <span class="summary-divider"></span>
-    ${chip('tank', 'Tanks', counts.tank)}
-    ${chip('healer', 'Healers', counts.healer)}
-    ${chip('melee', 'Melee', counts.melee_dps)}
-    ${chip('ranged', 'Ranged', counts.ranged)}
-    <span class="summary-chip bench"><b>${benched}</b> Benched</span>`;
+  const open = State.preferredSlots.length;
+  const seatedEl = document.getElementById('seated-count');
+  if (seatedEl) {
+    seatedEl.textContent = `${seated} of ${capacity} seated${open ? ` · ${open} open slot${open === 1 ? '' : 's'}` : ''}`;
+    seatedEl.classList.toggle('is-over', seated > capacity);
+  }
   lastRaidSummary = describeRaidSummary({ seated, capacity, counts, benched });
   announce(lastRaidSummary);
 }

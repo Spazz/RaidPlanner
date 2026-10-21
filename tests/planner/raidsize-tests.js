@@ -650,7 +650,7 @@ function referenceHarness({ phone = false } = {}) {
     globals: { document: doc, __log: log, window: { matchMedia: () => ({ matches: phone }) } },
     extraSource: 'function esc(s) { return String(s); }\nfunction showToast(m) { __log.toasts.push(m); }\n' +
       'function initGroups() {}\nfunction commit() {}\nfunction getDominantRoleLabel() { return ""; }\nfunction classColorClass() { return ""; }\n' +
-      'function getSpecIcon() { return ""; }\nfunction renderBuffCatalog() {}\nfunction renderUtilityCatalog() {}\n' +
+      'function getSpecIcon() { return ""; }\nfunction renderBuffCatalog() {}\nfunction renderUtilityCatalog() {}\nfunction renderRaidCheckTiles() {}\n' +
       app.slice('// ── GROUP PANELS', '// ── end GROUP PANELS') +
       app.slice('const IdealComp = {', '// Reference comp is a quiet link'),
   });

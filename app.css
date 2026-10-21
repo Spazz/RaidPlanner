@@ -316,32 +316,12 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   width: min(1080px, 100%);
   background: var(--bg-frame);
   border: 1px solid var(--border-subtle);
-  overflow: clip; /* clip, not hidden: hidden makes the frame a scroll root and kills the sticky summary bar */
+  overflow: clip; /* clip, not hidden: hidden makes the frame a scroll root and keeps the frame from scrolling sideways */
   zoom: 1.5;
 }
-/* ── Sticky raid summary bar ── */
-.summary-bar {
-  position: sticky; top: 0; z-index: 30;
-  display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap;
-  padding: 6px var(--sp-4);
-  background: var(--bg-deepest);
-  border-bottom: 1px solid var(--border-medium);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
-}
-.summary-main { font-size: 12px; color: var(--text-secondary); display: flex; align-items: baseline; gap: 4px; }
-.summary-main b { font-family: var(--font-cond); font-size: 16px; color: var(--text-primary); letter-spacing: 0.04em; }
-.summary-main.over b { color: var(--danger); }
-.summary-divider { width: 1px; height: 16px; background: var(--border-medium); }
-.summary-chip { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-secondary); }
-.summary-chip b { font-family: var(--font-cond); font-size: 14px; color: var(--text-primary); }
-.summary-chip .role-icon { width: 12px; height: 12px; font-size: 9px; box-shadow: none; background: none; }
-.summary-chip .role-icon img { filter: grayscale(0.7) brightness(0.9); opacity: 0.55; transition: filter .15s, opacity .15s; }
-.summary-chip:hover .role-icon img { filter: none; opacity: 1; }
-.summary-chip.bench { color: var(--text-muted); margin-left: auto; }
-.summary-chip.bench b { color: var(--accent-gold); }
 
 /* ── Condensed label helper ── */
-.cond, .btn, .buff-sidebar-title, .buff-sidebar-sub,
+.cond, .btn,
 .bench-header h3,
 .roster-label, .title-bar h1 {
   font-family: var(--font-cond);
@@ -389,15 +369,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   background: var(--accent-gold); color: var(--text-on-accent);
   font: 700 11px/18px var(--font-body); text-align: center; letter-spacing: 0;
 }
-/* Phone readiness link on line 2 of the context row ("N missing", "⚠ 1 healer short"). */
-.summary-missing {
-  display: block; padding: 0; background: none; border: 0; cursor: pointer;
-  font-family: var(--font-body); font-size: 12px; color: var(--text-muted); white-space: nowrap;
-}
-.summary-missing[hidden] { display: none; }
-.summary-missing b { font-weight: 600; color: var(--warning); }
-.summary-missing:hover { color: var(--text-secondary); }
-.summary-missing:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 /* Raid size segmented control (nav slim-down; replaced the raid dropdown). */
 .raid-size-wrap { display: flex; align-items: center; gap: var(--sp-2); margin-right: var(--sp-3); }
 .raid-size-label { font-size: 11px; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
@@ -491,132 +462,9 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .share-btn { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
 .share-btn:hover { background: var(--accent-gold); color: var(--text-on-accent); border-color: var(--accent-gold); }
 
-/* ── App body (main column + buff sidebar) ── */
+/* ── App body (main column) ── */
 .app-body { display: flex; align-items: stretch; }
 .main-column { flex: 1; min-width: 0; }
-
-.buff-sidebar {
-  width: 240px; flex-shrink: 0;
-  padding: var(--sp-3) var(--sp-2);
-  background: var(--bg-panel);
-  border-left: 1px solid var(--border-subtle);
-  display: flex; flex-direction: column; gap: var(--sp-3);
-  transition: width 0.15s ease;
-}
-.buff-sidebar.collapsed { width: 132px; }
-.buff-sidebar.collapsed .sidebar-body { display: none; }
-.sidebar-toggle {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
-  width: 100%; padding: 4px 3px; background: none; border: none; cursor: pointer;
-  border-bottom: 1px solid var(--border-medium);
-}
-.sidebar-toggle-label {
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
-  font-size: 12px; color: var(--accent-gold); font-weight: 600;
-}
-.sidebar-chevron { color: var(--text-muted); font-size: 11px; transition: transform 0.15s ease; }
-.buff-sidebar.collapsed .sidebar-chevron { transform: rotate(-90deg); }
-.sidebar-toggle:hover .sidebar-toggle-label { color: var(--accent-gold-bright); }
-.sidebar-summary { display: flex; flex-direction: column; gap: 3px; padding: 0 3px; }
-.sidebar-summary-row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 11px; color: var(--text-secondary); }
-.sidebar-summary-row b { font-family: var(--font-cond); font-size: 13px; color: var(--text-primary); letter-spacing: 0.04em; }
-.sidebar-summary-row.missing { color: var(--danger); }
-.sidebar-summary-row.missing b { color: var(--danger); }
-.sidebar-summary-row.missing.zero { color: var(--text-muted); }
-.sidebar-summary-row.missing.zero b { color: var(--text-muted); }
-.sidebar-body { display: flex; flex-direction: column; gap: var(--sp-4); }
-/* Soft composition warnings (melee/ranged skew, class stacking, healer ratio) —
-   informational only, so muted/gold rather than alarm red. Empty when clean. */
-.balance-warnings { display: flex; flex-direction: column; gap: 2px; padding: 0 3px; }
-.balance-warnings:empty { display: none; }
-.balance-warning-row {
-  font-size: 10px; line-height: 1.35; color: var(--text-secondary);
-  padding-left: 12px; position: relative;
-}
-.balance-warning-row::before { content: '·'; position: absolute; left: 3px; color: var(--accent-gold-dim); }
-
-/* Missing-buff insight line under a missing row */
-.buff-row-insight {
-  display: flex; align-items: center; justify-content: space-between; gap: 6px;
-  padding: 1px 3px 5px 23px; margin-top: -2px;
-  font-size: 9.5px; color: var(--text-muted); line-height: 1.3;
-}
-.buff-row-insight .insight-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.buff-row-insight .insight-who { font-weight: 600; }
-.buff-row-insight.none .insight-text { color: var(--text-faint); font-style: italic; }
-.insight-btn {
-  flex-shrink: 0; cursor: pointer;
-  padding: 2px 6px; background: transparent; border: 1px solid var(--accent-gold-dim);
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.08em;
-  font-size: 9px; font-weight: 600; color: var(--accent-gold); line-height: 1.2;
-}
-.insight-btn:hover { background: var(--accent-gold); color: var(--text-on-accent); }
-.buff-sidebar-title {
-  display: flex; align-items: baseline; gap: var(--sp-2);
-  font-size: 12px; color: var(--accent-gold); font-weight: 600;
-  padding: 0 3px 4px; margin-bottom: 4px;
-  border-bottom: 1px solid var(--border-medium);
-}
-.buff-sidebar-count { font-size: 10px; color: var(--text-muted); font-weight: 500; letter-spacing: 0.06em; }
-.buff-sidebar-sub {
-  font-size: 10px; color: var(--text-faint); font-weight: 600;
-  padding: 6px 3px 2px;
-}
-.buff-sidebar-sub.missing { color: var(--danger); }
-.buff-row-list { display: flex; flex-direction: column; gap: 1px; }
-.buff-row {
-  display: flex; align-items: center; gap: 6px;
-  padding: 2px 3px;
-  opacity: 0.38;
-  transition: opacity 0.15s ease, background 0.15s ease;
-}
-.buff-row.covered { opacity: 1; }
-.buff-row-icon {
-  width: 14px; height: 14px; flex-shrink: 0;
-  overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 6px; font-weight: 700; color: #fff;
-  border: 1px solid var(--border-strong);
-  background: var(--border-subtle);
-}
-.buff-row.covered .buff-row-icon { border-color: var(--accent-gold); }
-.buff-row-icon { cursor: help; }
-.buff-row-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.buff-row-name {
-  font-size: 10.5px; font-weight: 500; color: var(--text-primary);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  flex: 1 1 auto; min-width: 24px;
-}
-.buff-row.covered .buff-row-name { color: var(--accent-gold-bright); }
-.buff-row-groups { display: flex; flex-direction: column; gap: var(--sp-4); }
-.buff-row-groups:empty { display: none; }
-.tag-deb {
-  flex-shrink: 0; padding: 0 4px; border: 1px solid var(--border-strong);
-  font-family: var(--font-cond); font-size: 8.5px; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--text-muted); white-space: nowrap;
-}
-/* Needs a recruit: text only, one line per source spec. */
-.rec-item { border-bottom: 1px solid var(--border-subtle); }
-.rec-line { padding: 3px 3px; font-size: 10.5px; line-height: 1.3; color: var(--text-muted); }
-.rec-spec { font-weight: 600; }
-.rec-name { white-space: nowrap; } /* a wrapped Debuff label stays with its name and the comma */
-.rec-item .buff-row-insight { margin-top: 0; padding-left: 3px; }
-.cov-toggle {
-  width: 100%; padding: 4px 8px; background: none; border: 1px solid var(--border-strong); cursor: pointer;
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; text-align: left;
-  color: var(--text-secondary);
-}
-.cov-toggle:hover { background: var(--bg-card-hover); }
-#buff-catalog-covered { gap: var(--sp-2); }
-/* A debuff row keeps its label right after the name and pushes the source to the edge. */
-.buff-row.tagged .buff-row-name { flex-grow: 0; }
-.buff-row.tagged .buff-row-source { margin-left: auto; }
-.buff-row-warn { font-size: 9px; color: var(--accent-gold-dim); flex-shrink: 0; cursor: help; }
-.buff-row-source {
-  font-size: 9px; font-weight: 500; flex: 0 1 auto; margin-left: 4px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  max-width: 92px;
-}
 
 /* ── Player slots ── */
 .player-list { padding: 0; }
@@ -1017,30 +865,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .player-why-here ul { margin:0; padding-left:16px; }
 .player-why-here li { font-size:13px; color:var(--text-secondary); margin-bottom:4px; line-height:1.4; }
 .why-here-empty { font-size:13px; color:var(--text-muted); margin:0; }
-
-.manual-changes-section {
-  display: none;
-  margin: 0 var(--sp-3) var(--sp-3); padding: 10px 12px;
-  background: var(--bg-card); border: 1px solid var(--border-medium);
-}
-.manual-changes-section h3 {
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
-  font-size: 12px; font-weight: 600; color: var(--accent-gold);
-  margin: 0 0 6px;
-}
-.manual-changes-section ul { list-style: none; padding: 0; margin: 0; }
-.manual-changes-section li {
-  font-size: 12px; padding: 6px 0; color: var(--text-secondary);
-  display: flex; align-items: center; gap: 4px;
-}
-.manual-changes-section li + li { border-top: 1px solid var(--border-subtle); }
-.manual-changes-section .change-arrow { color: var(--text-muted); margin: 0 2px; }
-.manual-changes-section .change-buff { color: var(--text-primary); font-weight: 500; }
-.manual-changes-section .change-remove {
-  margin-left: auto; cursor: pointer; color: var(--text-muted);
-  font-size: 16px; padding: 0 4px; line-height: 1;
-}
-.manual-changes-section .change-remove:hover { color: var(--danger-bright); }
 /* Flat fallback colors for buff chips (shown when the Wowhead icon is unavailable) */
 .buff-wf  { background: #1f5a9e; color: #cce0ff; }
 .buff-goa { background: #3a8ab0; color: #e0f5ff; }
@@ -1282,19 +1106,9 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 @media (max-width: 900px) {
   .app-body { flex-direction: column; }
-  .buff-sidebar, .buff-sidebar.collapsed {
-    width: 100%; border-left: none; border-top: 1px solid var(--border-subtle);
-  }
-  .sidebar-summary { flex-direction: row; gap: var(--sp-4); }
-  .sidebar-body { flex-direction: row; flex-wrap: wrap; }
-  .buff-sidebar-section, .buff-row-groups { flex: 1; min-width: 0; }
-  .buff-row-groups .buff-sidebar-section { flex: none; }
-  .swap-legend { flex: 1 0 100%; }
   .toolbar { flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
   /* Once the action row can wrap, a divider may end up dangling at a line end. */
   .action-divider { display: none; }
-  .summary-bar { gap: 4px var(--sp-3); }
-  .summary-chip.bench { margin-left: 0; }
 }
 /* Phone-only chrome stays hidden above 600px — the @media(max-width:600px)
    block below turns each one on for its own breakpoint. Declared outside
@@ -1395,16 +1209,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   }
   .mobile-sheet-group .btn .btn-label { display: inline; }
 
-  .summary-bar { gap: 2px var(--sp-3); padding: 4px var(--sp-2); }
-  .summary-divider { display: none; }
-  .summary-chip.bench { margin-left: 0; }
-
-  /* Coverage sidebar: one column so buff names and providers stay readable. */
-  .sidebar-body { flex-direction: column; }
-  .sidebar-summary { flex-wrap: wrap; }
-
   .status-bar { flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--sp-1) var(--sp-2); }
-  .manual-changes-section { margin: var(--sp-2) var(--sp-2) 0; }
 
   /* Overlays live inside the zoomed frame: size the modal against the overlay,
      not the viewport, or the zoom makes it 1.5x too wide. */
@@ -1423,15 +1228,11 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 /* Touch devices: bigger tap targets and no long-press text callout on draggable slots. */
 @media (hover: none) and (pointer: coarse) {
   .btn { padding: 8px 12px; }
-  .sidebar-toggle { padding: 8px 3px; }
-  .buff-row { padding: 4px 3px; }
-  .insight-btn { padding: 4px 9px; }
   .player-slot { min-height: 30px; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   .player-slot.drag-target { background: var(--bg-card-hover); }
-  .manual-changes-section .change-remove { padding: 4px 8px; }
   .faq summary { padding-top: 14px; padding-bottom: 14px; }
 }
-/* Plan-mode chrome: readiness banner + raid notes. The save status lives in the title bar
+/* Plan-mode chrome: notice slot + raid notes. The save status lives in the title bar
    (#roster-status-line); #autosave-status is only the screen-reader copy of it. */
 .roster-status-line[data-failed] { color:var(--warning); }
 @media (min-width: 601px) {
@@ -1481,18 +1282,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 @media(max-width:600px) {
   .player-editor { max-height:calc(100dvh - 20px); overflow-y:auto; }
 }
-/* Readiness banner: status chips for tanks, healers and coverage, the result of the last import, sync
-   or Optimize as a second row, and one slim bar when minimized (the choice is kept on this device). */
-.readiness-banner {
-  background: color-mix(in srgb, var(--accent-gold) 8%, transparent); border-bottom: 1px solid var(--border-accent);
-  font-size: 12px; color: var(--text-secondary);
-}
-.rb-row { display: flex; align-items: center; gap: var(--sp-3); padding: 8px var(--sp-4); min-width: 0; }
-.rb-chips {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0;
-  margin: 0; padding: 0; background: none; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
-}
-.rb-note { color: var(--text-muted); line-height: 1.4; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px;
   border: 1px solid var(--border-strong); color: var(--text-secondary);
@@ -1502,12 +1291,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .chip.ok { color: var(--success); border-color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); }
 .chip.warn { color: var(--warning); border-color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); }
 .chip.danger { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
-.rb-toggle {
-  flex-shrink: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0;
-  background: none; border: 1px solid var(--border-accent); color: var(--accent-gold); font-size: 10px; cursor: pointer;
-}
-.rb-toggle:hover { background: color-mix(in srgb, var(--accent-gold) 15%, transparent); color: var(--accent-gold-bright); border-color: var(--accent-gold-dim); }
-.rb-chips:focus-visible, .rb-toggle:focus-visible, .rb-bar:focus-visible, .result-line-dismiss:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.result-line-dismiss:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 .rb-failed { padding: 0 var(--sp-4) 8px; }
 .rb-failed .chip { white-space: normal; }
 /* Result row: what the last import, Optimize or sync did, with its dismiss button. */
@@ -1518,30 +1302,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .result-line[hidden], .rb-failed[hidden] { display: none; }
 .result-line-dismiss { flex-shrink: 0; min-width: 24px; min-height: 24px; padding: 0; background: none; border: 0; color: var(--text-muted); font-size: 16px; line-height: 1; cursor: pointer; }
 .result-line-dismiss:hover { color: var(--text-primary); }
-/* Minimized: only the slim bar shows, with the same chips in a compact size. */
-.rb-bar {
-  display: none; align-items: center; gap: var(--sp-3); width: 100%; min-height: 28px; padding: 0 var(--sp-4);
-  background: none; border: 0; font: inherit; font-size: 12px; color: var(--text-muted); text-align: left; cursor: pointer;
-}
-.rb-arrow { flex-shrink: 0; width: 24px; text-align: center; font-size: 10px; color: var(--accent-gold); }
-.rb-bar:hover .rb-arrow { color: var(--accent-gold-bright); }
-.readiness-banner.min .rb-bar { display: flex; }
-.readiness-banner.min .rb-row, .readiness-banner.min .result-line { display: none; }
-.rb-chips.compact { flex-wrap: nowrap; gap: 4px; overflow: hidden; cursor: inherit; }
-.rb-chips.compact .chip { flex-shrink: 0; padding: 0 6px; font-size: 10.5px; letter-spacing: .05em; }
-.rb-chips.compact .chip.warn { display: block; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.rb-chips.compact .rb-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Coverage rail legend for the gold corner on swappable buff icons. */
-.swap-legend {
-  display: flex; gap: 6px; padding: 6px 8px;
-  font-size: 10px; line-height: 1.4; color: var(--text-secondary);
-  background: color-mix(in srgb, var(--accent-gold) 8%, transparent); border: 1px solid var(--border-accent);
-}
-.swap-legend i { flex-shrink: 0; width: 8px; height: 8px; margin-top: 3px; background: var(--border-strong); border: 1px solid var(--text-muted); border-radius: 50%; }
-.buff-sidebar.collapsed .swap-legend { display: none; }
-/* Phone-only Coverage sheet; the slim phone block below shows it. */
-.coverage-sheet { display: none; }
-.sidebar-summary-row.ok { color: var(--success); }
 /* Larger homepage type and controls for comfortable reading. */
 .landing { width:min(1180px,100%); }
 .hero h2 { font-size:clamp(38px,5vw,60px); }
@@ -1677,12 +1437,10 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .pref-mage { --preferred-color:var(--class-mage); } .pref-warlock { --preferred-color:var(--class-warlock); } .pref-druid { --preferred-color:var(--class-druid); }
 /* Former inline styles (the CSP forbids style attributes) */
 .role-icon-empty { opacity:.3; }
-.sidebar-note { font-size:12px; line-height:1.5; color:var(--text-muted); }
 .modal-note { font-size:11px; color:var(--text-muted); }
 .modal-empty-note { font-size:11px; color:var(--text-muted); text-align:center; padding:16px; }
 .pe-inline-label { display:flex; align-items:center; gap:6px; }
 .player-move label.pe-inline-label { font-size:14px; color:var(--text-primary); }
-.manual-changes-section .change-player { font-weight:600; }
 .assign-conflict { background:color-mix(in srgb, var(--danger) 8%, transparent); }
 .assign-warning { color:var(--danger); font-size:12px; margin-top:10px; }
 .assign-empty { color:var(--text-muted); font-size:12px; padding:10px 0; }
@@ -1796,8 +1554,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   #raid-size-phone-slot .raid-size-label { display: none; }
   #raid-size-phone-slot .raid-size-seg button { position: relative; min-height: 30px; padding: 0 12px; font-size: 12px; }
   #raid-size-phone-slot .raid-size-seg button::before { content: ''; position: absolute; inset: -7px 0; }
-  .phone-missing-slot { margin-left: auto; }
-  .phone-missing-slot .summary-missing { display: flex; align-items: center; gap: 0.3em; min-height: 44px; margin: -7px 0; font-size: 12px; }
   .phone-context-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; border-top: 1px solid var(--border-subtle); }
   .phone-context-body[hidden] { display: none; }
   .phone-context-row .lbl { font-size: 11px; }
@@ -1808,44 +1564,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   #phone-context-notes-slot .raid-notes-panel { margin: 0; }
   .raid-notes-panel summary { padding: 8px 10px; }
   .raid-notes-textarea { font-size: 14px; }
-
-  /* The desktop summary bar is not shown on phones; the seated count sits on line 2 of the
-     context row. The readiness banner is always shown, minimized until the user expands it. */
-  .summary-bar { display: none; }
-  .rb-row { gap: 0; padding: 0 0 0 var(--sp-3); }
-  .rb-chips { min-height: 44px; padding: 6px 0; }
-  .rb-toggle { width: 44px; height: 44px; border-color: transparent; font-size: 12px; }
-  .rb-bar { min-height: 36px; padding: 0 0 0 var(--sp-3); gap: 0; }
-  .rb-arrow { width: 44px; }
   .rb-failed { padding: 0 var(--sp-3) 8px; }
-  /* Coverage sheet (M2): the rail lives in it on phones. Peek is half the viewport, expanded nearly all of it;
-     above the board and the bottom bar (40), below the player editor sheet (200) and the toast (300). */
-  body.coverage-open { --coverage-sheet-h: 50dvh; }
-  body.coverage-open.coverage-expanded { --coverage-sheet-h: min(85dvh, calc(100dvh - 104px - env(safe-area-inset-bottom, 0px))); }
-  body.coverage-open .addon-frame { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px) + var(--coverage-sheet-h)); }
-  .coverage-sheet.visible {
-    display: flex; flex-direction: column; position: fixed; left: 0; right: 0; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); z-index: 60;
-    height: var(--coverage-sheet-h); background: var(--bg-frame); border-top: 1px solid var(--border-strong);
-    box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
-  }
-  .coverage-sheet-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); }
-  .coverage-sheet-header h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 15px; color: var(--accent-gold); }
-  .coverage-sheet-header h3:focus { outline: none; }
-  .coverage-sheet-header .btn { min-height: 44px; }
-  .coverage-sheet-slot { flex: 1; min-height: 0; overflow-y: auto; }
-  .coverage-sheet-slot .buff-sidebar { width: 100%; border: none; padding: var(--sp-3); }
-  .coverage-sheet .sidebar-toggle { display: none; }
-  .coverage-sheet .buff-sidebar.collapsed .sidebar-body { display: flex; }
-  .coverage-sheet .buff-sidebar.collapsed .swap-legend { display: flex; }
-  .coverage-sheet-more {
-    flex-shrink: 0; min-height: 44px; padding: 0 12px; background: var(--bg-panel); border: none; border-top: 1px solid var(--border-strong);
-    font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 13px; color: var(--accent-gold); cursor: pointer;
-  }
-  .buff-sidebar-title { font-size: 14px; }
-  .buff-sidebar-count { font-size: 13px; }
-  .rec-line { font-size: 13px; padding: 8px 3px; }
-  .tag-deb { font-size: 10px; }
-  .cov-toggle { min-height: 44px; font-size: 13px; padding: 0 12px; }
   /* Result row of the banner: the dismiss button gets the 44px hit area. */
   .result-line { padding: 0 0 0 var(--sp-3); }
   .result-line-dismiss { min-width: 44px; min-height: 44px; font-size: 18px; }
@@ -1953,14 +1672,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   /* Landing: the import card comes before the hero text (M0-8). Visual order only; the DOM is unchanged. */
   .hero .import-card { order: 1; }
   .hero .hero-copy { order: 2; }
-
-  /* Coverage rail (M0-13). */
-  .buff-row { gap: 8px; }
-  .buff-row-icon { width: 22px; height: 22px; font-size: 8px; }
-  .buff-row-name { font-size: 13px; }
-  .buff-row-insight { padding-left: 33px; font-size: 12px; }
-  .buff-row-source { font-size: 11px; }
-  .insight-btn { display: flex; align-items: center; min-height: 36px; padding: 0 14px; font-size: 12px; }
 
   /* Landing: 44px tap areas for the restore link and the saved-plan Delete buttons. */
   #btn-landing-restore, .landing .row-actions .link-btn.del { display: inline-flex; align-items: center; min-height: 44px; }

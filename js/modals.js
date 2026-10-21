@@ -69,18 +69,13 @@
   });
 })();
 
+// The Manual changes list (buff overrides that need an in-game swap): a panel under the Raid check strip while there are
+// any, and the same list as a section of the Coverage dialog.
 function renderManualChanges() {
-  const container = document.getElementById('manual-changes');
+  const panel = document.getElementById('manual-changes');
+  const inDialog = document.getElementById('coverage-manual');
   const entries = Object.entries(State.buffOverrides);
-
-  if (entries.length === 0) {
-    container.style.display = 'none';
-    return;
-  }
-
-  container.style.display = 'block';
-  let html = '<h3>&#9888; Manual Changes Required</h3><ul>';
-
+  let html = '';
   for (const [key, override] of entries) {
     const parts = key.split(':');
     const gi = parseInt(parts[0]);
@@ -100,19 +95,21 @@ function renderManualChanges() {
       <span>(Group ${gi + 1})</span>
       <span class="change-arrow">&#8594;</span>
       <span>Use <span class="change-buff">${esc(toBuff.name)}</span> instead of <span class="change-buff">${esc(fromBuff.name)}</span></span>
-      <span class="change-remove" data-override-key="${esc(key)}" title="Remove override">&times;</span>
+      <button type="button" class="change-remove" data-override-key="${esc(key)}" aria-label="Remove override: ${esc(displayName)} uses ${esc(toBuff.name)}" title="Remove override">&times;</button>
     </li>`;
   }
-  html += '</ul>';
-  container.innerHTML = html;
-
-  // Wire up remove buttons
-  container.querySelectorAll('.change-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
-      delete State.buffOverrides[btn.dataset.overrideKey];
-      commit();
+  const markup = html ? `<h3 class="gs-fg-gh"><span class="gs-fg-ght">Manual changes</span><span class="gs-fg-ghn">${(html.match(/<li>/g) || []).length}</span></h3><ul>${html}</ul>` : '';
+  for (const container of [panel, inDialog]) {
+    if (!container) continue;
+    container.hidden = !markup;
+    container.innerHTML = markup;
+    container.querySelectorAll('.change-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        delete State.buffOverrides[btn.dataset.overrideKey];
+        commit();
+      });
     });
-  });
+  }
 }
 
 // ── CONFIRM DIALOG ──────────────────────────────────────────────
@@ -319,7 +316,7 @@ function showSaveOutcome(outcome) {
   mirrorSaveStatus();
 }
 
-// The one-line answer to "what did that just do": the second row of the readiness banner.
+// The one-line answer to "what did that just do" (the notice queue of lane 3 restyles it).
 // Shown AFTER an action's own commit (that commit
 // goes through persistWorkingPlan, which clears the line); any later change clears it.
 const ResultLine = {
@@ -333,31 +330,6 @@ const ResultLine = {
   hide() {
     const el = document.getElementById('result-line');
     if (el) el.hidden = true;
-  },
-};
-
-// The readiness banner is expanded (chips plus the result row) or one slim bar. The choice is a
-// device preference (not in DataBackup.keys); with none stored, phones start minimized.
-const READINESS_MIN_KEY = 'pp_readiness_minimized';
-const ReadinessBanner = {
-  isMinimized() {
-    let stored = null;
-    try { stored = localStorage.getItem(READINESS_MIN_KEY); } catch { stored = null; }
-    if (stored === '1') return true;
-    if (stored === '0') return false;
-    return !!(window.matchMedia && window.matchMedia('(max-width: 600px)').matches);
-  },
-  // Paints the state without storing it.
-  apply(minimized) {
-    document.getElementById('readiness-banner')?.classList.toggle('min', minimized);
-    for (const id of ['btn-readiness-minimize', 'btn-readiness-expand', 'btn-summary-missing']) {
-      document.getElementById(id)?.setAttribute('aria-expanded', String(!minimized));
-    }
-  },
-  // The user's choice: stored, then painted.
-  set(minimized) {
-    safeSetItem(localStorage, READINESS_MIN_KEY, minimized ? '1' : '0');
-    this.apply(minimized);
   },
 };
 
@@ -416,89 +388,27 @@ function redoPlanChange() {
   showToast('Change redone');
 }
 
-(function initReadinessBanner() {
-  ReadinessBanner.apply(ReadinessBanner.isMinimized());
-  // Focus follows the control that just vanished.
-  document.getElementById('btn-readiness-minimize')?.addEventListener('click', () => {
-    ReadinessBanner.set(true);
-    document.getElementById('btn-readiness-expand')?.focus();
-  });
-  document.getElementById('btn-readiness-expand')?.addEventListener('click', () => {
-    ReadinessBanner.set(false);
-    document.getElementById('btn-readiness-minimize')?.focus();
-  });
-})();
-
 document.getElementById('btn-result-dismiss')?.addEventListener('click', () => {
   ResultLine.hide();
-  document.getElementById('readiness-text')?.focus(); // the dismiss button just vanished
+  document.getElementById('btn-coverage')?.focus(); // the dismiss button just vanished
 });
 
+// The Raid check strip's frame and role tiles. The icon groups and the covered count come from renderBuffCatalog (they share
+// its model with the Coverage dialog). Hidden until the plan has something in it; an unmodeled version says "Rules pending".
 function renderReadiness() {
-  lastReadiness = null;
-  if (!GameVersions[State.gameVersion].modeled) {
-    const text = `${GameVersions[State.gameVersion].name} · Manual planning · Buff and optimizer rules pending`;
-    setReadinessChips(readinessChip('', esc(text), text));
-    renderPhoneMissing();
-    return;
-  }
-  const floors = Optimizer.floorsFor(Config.Raids[State.selectedRaid]?.size || 25);
-  const tanks = State.roster.filter(p => p.role === 'tank').length;
-  const healers = State.roster.filter(p => p.role === 'healer').length;
-  const gaps = liveCoverageGaps();
-  const missing = gaps.buffs + gaps.debuffs;
-  const tanksShort = Math.max(0, floors.tank - tanks);
-  const healersShort = Math.max(0, floors.healer - healers);
-  // Classic Era is faction-locked: Shaman and Paladin cannot exist in the
-  // same real raid. A roster that has both is a data problem worth calling
-  // out, not something the optimizer should silently paper over.
+  const strip = document.getElementById('raid-check');
+  if (!strip) return;
+  strip.hidden = !hasLoadedWork();
+  if (strip.hidden) return;
+  const tiles = document.getElementById('raid-check-tiles');
+  if (!GameVersions[State.gameVersion].modeled) { tiles.innerHTML = ''; return; }
+  renderRaidCheckTiles(State.roster, Optimizer.floorsFor(Config.Raids[State.selectedRaid]?.size || 25));
+  // Classic Era is faction-locked: Shaman and Paladin cannot exist in the same real raid. A roster that has both is a data
+  // problem worth calling out, not something the optimizer should silently paper over.
   const rules = activeRules();
-  const mixedFactions = !!(rules.rules && rules.rules.factionLock && Faction.current() === 'mixed');
-  // The phone link names the same things the banner warns about (see phoneReadinessLabel).
-  if (hasLoadedWork()) {
-    lastReadiness = { missingCoverage: missing, tanksShort, healersShort, mixedFactions };
+  if (rules.rules && rules.rules.factionLock && Faction.current() === 'mixed') {
+    tiles.insertAdjacentHTML('beforeend', '<span class="gs-hd-chip is-short" title="Mixed Horde/Alliance roster — impossible in Classic Era">Mixed factions</span>');
   }
-  renderPhoneMissing();
-  if (!hasLoadedWork()) {
-    setReadinessChips('<span class="rb-note">Import a roster, or click an empty slot to request a class and spec</span>');
-    return;
-  }
-  const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
-  const chips = [
-    tanksShort > 0
-      ? readinessChip('warn', `Tanks ${tanksShort} short`, `${plural(tanksShort, 'tank')} short: ${tanks} of ${floors.tank} tank slots filled`)
-      : readinessChip('ok', 'Tanks &#10003;', `${plural(tanks, 'tank slot')} filled`),
-    healersShort > 0
-      ? readinessChip('warn', `Healers ${healersShort} short`, `${plural(healersShort, 'healer')} short: ${healers} of ${floors.healer} healers ready`)
-      : readinessChip('ok', 'Healers &#10003;', `${plural(healers, 'healer')} ready`),
-    coverageChip(gaps),
-  ];
-  const open = State.preferredSlots.length;
-  if (open) chips.push(readinessChip('', plural(open, 'open slot'), `${plural(open, 'preferred slot')} open`));
-  if (mixedFactions) chips.push(readinessChip('danger', 'Mixed factions', 'Mixed Horde/Alliance roster — impossible in Classic Era'));
-  setReadinessChips(chips.join(''));
-}
-
-// One status chip. label is markup built from numbers and fixed strings; title is escaped here.
-function readinessChip(kind, label, title) {
-  return `<span class="chip${kind ? ' ' + kind : ''}" title="${esc(title)}">${label}</span>`;
-}
-
-// The coverage chip: the shared gap counts as "Coverage: 7 buffs · 4 debuffs missing", naming only
-// the kind that is missing, or "Coverage ✓" when nothing is.
-function coverageChip(gaps) {
-  const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
-  const short = [], long = [];
-  if (gaps.buffs > 0) { short.push(count(gaps.buffs, 'buff')); long.push(`${count(gaps.buffs, 'party buff')} missing`); }
-  if (gaps.debuffs > 0) { short.push(count(gaps.debuffs, 'debuff')); long.push(`${count(gaps.debuffs, 'raid debuff')} missing`); }
-  if (!short.length) return readinessChip('ok', 'Coverage &#10003;', 'All party buffs and raid debuffs covered');
-  return readinessChip('warn', `Coverage: ${short.join(' &middot; ')} missing`, long.join(' · '));
-}
-
-// Paints the chips into the expanded banner and the minimized bar.
-function setReadinessChips(html) {
-  document.getElementById('readiness-text').innerHTML = html;
-  document.getElementById('readiness-chips-min').innerHTML = html;
 }
 
 // ── RAID NOTES (backlog #11) ────────────────────────────────────
