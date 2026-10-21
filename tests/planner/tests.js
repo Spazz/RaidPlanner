@@ -3015,21 +3015,23 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   payload.startTime=1790550000; // the event was rescheduled
   assert(await context.importFromText('https://raid-helper.dev/event/123456789'), 'same event URL reopens');
   PP.PlanSession.observe();
-  assertEqual(JSON.stringify(State.groups),layout,'reimport preserves edited groups');
+  // New rule (2026-10-21): a new Signed up sign-up lands on the plan while the raid has free seats, and Optimize decides the groups.
+  assertEqual(State.roster.map(p=>p.name).sort().join(),'FirstMage,NewMage,SecondMage','reimport seats the new sign-up');
   assertEqual(State.rosterName,'Custom event name','custom name preserved');
   assertEqual(PP.PlanStore.read(storage).length,1,'same event does not duplicate plan');
-  assertEqual(State.bench.map(p=>p.name).join(),'NewMage','reimport pulls the new signup onto the bench without a Refresh click');
+  assertEqual(State.bench.length,0,'reimport seats the new signup without a Refresh click');
   assert(lastToast.startsWith('Reopened your plan: 1 new sign-up'),'reimport toast reports what changed');
-  assertEqual(ChangeLog.entries.length,1,'the re-paste sync is logged once');
-  assertEqual(ChangeLog.entries[0].kind+':'+ChangeLog.entries[0].items.map(i=>i.kind+' '+i.name+' '+i.detail).join(),'sync:added NewMage added to the bench','the log names the new sign-up');
-  assertEqual(PP.PlanStore.read(storage)[0].data.bench.length,1,'merged sign-ups are saved with the plan');
+  assertEqual(ChangeLog.entries.length,2,'the re-paste sync is logged once, plus its Optimize moves');
+  const syncEntry=ChangeLog.entries.find(e=>e.kind==='sync');
+  assert(/^added NewMage added to Group [1-5]$/.test(syncEntry.items.map(i=>i.kind+' '+i.name+' '+i.detail).join()),'the log names the new sign-up and its group');
+  assertEqual(PP.PlanStore.read(storage)[0].data.groups.flat().length,3,'merged sign-ups are saved with the plan');
   assertEqual(State.eventStartTime,1790550000*1000,'reopening picks up the rescheduled event start');
   PP.PlanSession.undoLast(); PP.PlanSession.observe();
   assertEqual(State.bench.length,0,'reimport merge can be undone');
   assertEqual(JSON.stringify(State.groups),layout,'undo keeps original layout');
   assert(await context.importFromText('123456789'), 'unchanged event reopens');
-  assert(lastToast.startsWith('Reopened your plan. Up to date.'),'unchanged reimport says it is current');
-  assertEqual(ChangeLog.entries.length,1,'a sync that changed nothing records nothing');
+  assert(lastToast.startsWith('Reopened your plan. Roster is up to date'),'unchanged reimport says it is current: '+lastToast);
+  assertEqual(ChangeLog.entries.length,2,'a sync that changed nothing records nothing (still the sync and its Optimize entry)');
   // A different event's link must start that event's own plan, even when the
   // open plan has Open-slot requests (which otherwise fill the open layout).
   State.preferredSlots=[{group:1,class:'MAGE',spec:'Fire'}]; State.notes='Friday notes';

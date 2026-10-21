@@ -229,19 +229,29 @@ const Optimizer = {
   // have to move to make room. The first layout is a draft (one swap pass,
   // no further refinement): it only gives choose() a board that does not
   // depend on how the players arrived, at a fraction of the full cost.
-  optimize() {
+  // Nobody already on the bench is seated (user rule 2026-10-21), with ONE exception that stays until the user decides:
+  // players a raid-size shrink parked (_sizeBenchedPlayers). opts.joiners (the new Signed up sign-ups of a Raid-Helper
+  // sync, see Import.seatNewRaiders) replaces that exception for this run: the pool is the board plus those players only,
+  // and whoever is left out is just on the bench (not remembered as size-benched).
+  optimize(opts = {}) {
+    const joiners = Array.isArray(opts.joiners) ? opts.joiners : null;
     devMeasure('pp:optimize', () => {
       State.preferredSlots = PreferredSlots.manual();
       // A full raid has no seat to suggest for: skip the draft.
       // Size-benched players count as seated here: the draft would pull them in anyway, so this only skips it.
       const raid = Config.Raids[State.selectedRaid];
       const seats = raid ? Math.min(raid.size, State.groups.length * RosterEdit.MAX_GROUP_SIZE) : 0;
-      if (State.groups.flat().length + this._sizeBenchedPlayers().length + State.preferredSlots.length < seats) {
-        this._optimizeSeats(true);
+      if (State.groups.flat().length + this._benchPool(joiners).length + State.preferredSlots.length < seats) {
+        this._optimizeSeats(true, joiners);
         State.preferredSlots.push(...OpenSlots.choose().map(p => ({ group: -1, class: p.class, spec: p.spec, auto: true, ...(p.alts.length ? { alts: p.alts } : {}) })));
       }
-      this._optimizeSeats();
+      this._optimizeSeats(false, joiners);
     });
+  },
+
+  // The bench players this run may seat: the sync's joiners when given, else the shrink-parked ones.
+  _benchPool(joiners) {
+    return joiners ? joiners.filter(p => (State.bench || []).includes(p)) : this._sizeBenchedPlayers();
   },
 
   // Players a raid-size shrink benched (State.sizeBenched, see SizeBench in js/state.js) are the optimizer's to seat
@@ -260,7 +270,7 @@ const Optimizer = {
   // raid's seats are dropped (suggested ones first), never a real player.
   // The pool is the board plus the players a raid-size shrink benched (_sizeBenchedPlayers).
   // draft: a quick layout for choose() to price on (see plan).
-  _optimizeSeats(draft = false) {
+  _optimizeSeats(draft = false, joiners = null) {
     if (!GameVersions[State.gameVersion].modeled) {
       enforceRaidCapacity(State.groups, State.bench, Config.Raids[State.selectedRaid].groups);
       State.roster = State.groups.flat();
@@ -275,7 +285,7 @@ const Optimizer = {
     };
     const raidInfo = Config.Raids[State.selectedRaid];
     const numGroups = raidInfo ? raidInfo.groups : 5;
-    const pulled = this._sizeBenchedPlayers();
+    const pulled = this._benchPool(joiners);
     if (pulled.length) State.bench = State.bench.filter(p => !pulled.includes(p));
     const players = State.groups.flat().concat(pulled);
     State.preferredSlots = State.preferredSlots.slice(0, Math.max(0, numGroups * RosterEdit.MAX_GROUP_SIZE - players.length));
@@ -291,7 +301,7 @@ const Optimizer = {
     }
     // Once a shrink's players are pooled, everyone plan() leaves out is the size change's bench (remembered, so a
     // later grow seats them all); the player the leader benched by hand was never in the pool.
-    if (pulled.length) SizeBench.remember(bench.filter(p => !p.openSlot).map(p => p.uid));
+    if (pulled.length && !joiners) SizeBench.remember(bench.filter(p => !p.openSlot).map(p => p.uid));
     this._applyPlan(groups, bench);
   },
 

@@ -1959,11 +1959,12 @@ function closeBuffPicker() {
 // Late come from State.bench (real players, draggable as before); Absent ("Can't
 // come") and classless sign-ups come from State.unplaced and are seated through
 // UnplacedDialog. Pills filter the list, the search narrows it, and the rows sit
-// under a Bench head and a Can't come head. Tentative and Late are subsets of Bench.
+// under a Bench, Tentative, Late and Can't come head (SignupStatus.tabFor). Tentative and Late are not benched:
+// the Bench head and pill hold only Bench-status people and confirmed people left out beyond the raid size.
 const SignupTray = {
   FILTERS: [
     { id:'all',       label:'All',        hint:'Everyone not in a group' },
-    { id:'bench',     label:'Bench',      hint:'On the Raid-Helper bench, or signed up beyond the raid size' },
+    { id:'bench',     label:'Bench',      hint:'On the Raid-Helper bench, or signed up beyond the raid size (not Tentative or Late)' },
     { id:'tentative', label:'Tentative',  hint:'Marked Tentative on Raid-Helper' },
     { id:'late',      label:'Late',       hint:'Marked Late on Raid-Helper. Add them to a group when they arrive' },
     { id:'absent',    label:"Can't come", hint:"Marked Absent. You'll confirm before seating them" },
@@ -1981,13 +1982,11 @@ const SignupTray = {
 
   tabOf(entry) { return SignupStatus.tabFor(entry.p.signupStatus); },
 
-  // Tentative and Late people are on the Bench; only Absent ones can't come.
-  groupOf(entry) { return this.tabOf(entry) === 'absent' ? 'absent' : 'bench'; },
+  // The head a row sits under: Bench, Tentative, Late or Can't come (its tab).
+  groupOf(entry) { return this.tabOf(entry); },
 
   inFilter(entry, id) {
-    if (id === 'all') return true;
-    if (id === 'bench') return this.groupOf(entry) === 'bench';
-    return this.tabOf(entry) === id;
+    return id === 'all' || this.groupOf(entry) === id;
   },
 
   matchesQuery(entry) {
@@ -2022,8 +2021,8 @@ const SignupTray = {
     try { return Optimizer.benchReasons().get(p.uid) || ''; } catch { return ''; }
   },
 
-  // One row, like a board row. Exceptions only: a status chip (Signed up / Tentative / Late) under the Bench head, the standby
-  // arrow, the guild's note, a review badge, the sit-out reason. The Can't come head already says why.
+  // One row, like a board row. Exceptions only: a "Signed up" chip under the Bench head (a Bench row for a confirmed person), the
+  // standby arrow, the guild's note, a review badge, the sit-out reason. The Tentative, Late and Can't come heads already say why.
   slotHTML(entry) {
     const p = entry.p;
     const displayName = (p.name || 'Unknown').split('-')[0];
@@ -2075,7 +2074,7 @@ const SignupTray = {
       const msg = this.query.trim() ? 'No one matches that search.' : `No one is marked ${esc(f.label)}.`;
       return `<p class="gs-pb-poolempty">${msg}</p>`;
     }
-    return [{ id:'bench', label:'Bench' }, { id:'absent', label:"Can't come" }].map(g => {
+    return [{ id:'bench', label:'Bench' }, { id:'tentative', label:'Tentative' }, { id:'late', label:'Late' }, { id:'absent', label:"Can't come" }].map(g => {
       const rows = shown.filter(e => this.groupOf(e) === g.id);
       if (!rows.length) return '';
       return `<div class="gs-pb-pgroup"><h3 class="gs-fg-gh gs-pb-pgh"><span class="gs-fg-ght">${g.label}</span><span class="gs-fg-ghn">${rows.length}</span></h3>${rows.map(e => this.slotHTML(e)).join('')}</div>`;

@@ -313,10 +313,10 @@ function benchByHand(env, name) {
     await openRaid(env);
     assert.equal(State.planId, 'raid:r1');
     assert(!byName(State, 'Galdor'), 'a withdrawn sign-up leaves the plan');
-    assert.deepEqual([byName(State, 'Harlan').groupNumber, byName(State, 'Harlan').class], [0, 'HUNTER'], 'a new sign-up waits on the bench');
+    assert.deepEqual([byName(State, 'Harlan').groupNumber > 0, byName(State, 'Harlan').class], [true, 'HUNTER'], 'a new Signed up sign-up is seated by Optimize (the raid has free seats)');
     assert.equal(byName(State, 'Brindle').signupStatus, 'tentative');
     assert.equal(byName(State, 'Brindle').groupNumber, 0, 'a seated player now tentative is unseated');
-    assert.equal(seatOf('Fenwick'), fenwickSeat, 'untouched seats stay put');
+    assert(fenwickSeat > 0 && seatOf('Fenwick') > 0, 'a seated player stays seated (Optimize may move them between groups)');
     assert.equal(State.notes, 'MT swaps: Aldric then Fenwick');
     assert.match(env.els['raid-context-status'].textContent, /^Opened the raid's plan/);
     assert(env.toasts.some(t => /Synced with the raid: .*1 new sign-up.*1 withdrew/.test(t)), env.toasts.join(' | '));
@@ -392,14 +392,15 @@ function benchByHand(env, name) {
     const { State, PlanDb, PlanPoll } = env.api;
     assert.equal(State.notes, 'Saved by Kim');
     assert(State.bench.some(p => p.name === 'Fenwick'), 'Kim\'s bench choice is what opened');
-    assert.deepEqual([byName(State, 'Harlan').groupNumber, State.sourceEventId], [0, EVENT_ID]);
+    assert.deepEqual([byName(State, 'Harlan').groupNumber > 0, State.sourceEventId], [true, EVENT_ID], 'the new sign-up is seated by Optimize');
+    assert(State.bench.some(p => p.name === 'Fenwick'), 'a player benched by hand is never seated by the fold-in');
     assert.equal(env.els['raid-context-status'].textContent, 'Opened the raid\'s plan, last saved by Kim.');
     assert(PlanDb.active() && PlanPoll.active());
     assert.equal(env.guildCalls.filter(c => c.path === DOC_PATH).length, 1, 'the plan is asked for once, next to the sign-ups');
     await env.advance(5000);
     assert.equal(server.rev, 2, 'the sign-up fold-in changed the plan: one new revision');
     assert.deepEqual([server.puts[1].baseRev, server.puts[1].who, server.puts[1].source], [1, 'Me', null]);
-    assert(server.plan.bench.some(p => p.name === 'Harlan'));
+    assert(!server.plan.bench.some(p => p.name === 'Harlan'), 'the saved plan seats the new sign-up');
     assert.deepEqual([bindingOf(env).rev, bindingOf(env).dirty], [2, false]);
     assert.match(env.els['raid-context-status'].textContent, /^Saved to the raid at /);
     assert.equal(env.els['autosave-status'].textContent, 'Saved to the raid');
@@ -470,7 +471,7 @@ function benchByHand(env, name) {
     env.ctx.commit();
     await openRaid(env);
     assert.deepEqual([State.planId, State.rosterName], ['raid:r1', 'My event plan']);
-    assert.equal(byName(State, 'Aldric').groupNumber, 2, 'the seat the event plan gave stays');
+    assert(byName(State, 'Aldric').groupNumber > 0, 'the event plan player stays seated');
     assert.match(env.els['raid-context-status'].textContent, /^Opened your plan for this raid's Raid-Helper event/);
     assert(PlanStore.read(env.storage).some(p => p.data.planId === 'event:' + EVENT_ID), 'the event plan is still on this device');
     await env.advance(5000);
@@ -493,7 +494,7 @@ function benchByHand(env, name) {
     const { State, LiveLinks } = env.api;
     assert.equal(State.notes, 'Saved on the live link');
     assert.equal(State.planId, 'raid:r1');
-    assert.deepEqual([byName(State, 'Harlan').groupNumber, State.sourceEventId], [0, EVENT_ID], 'the current sign-ups are merged into it');
+    assert.deepEqual([byName(State, 'Harlan').groupNumber > 0, State.sourceEventId], [true, EVENT_ID], 'the current sign-ups are merged into it (the new one seated by Optimize)');
     assert.equal(LiveLinks.get(env.storage, LiveLinks.planKey(State)), null);
     assert.match(env.els['raid-context-status'].textContent, /^Opened the plan saved on the raid\./);
     await env.advance(5000);

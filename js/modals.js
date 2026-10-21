@@ -1158,13 +1158,24 @@ const RaidHelperSync = {
     Import.claimHandAdded(diff);
     Import.applyMarkers(diff);
     if (diff.eventStartTime) State.eventStartTime = diff.eventStartTime;
-    // Logged as one Changes entry, including anyone initGroups benches for room.
+    // Logged as one Changes entry, including anyone initGroups benches for room and the new sign-ups Optimize seats
+    // (Import.seatNewRaiders); the seats it moves other players between are a second, quiet Optimize entry. One commit: one Undo step.
+    let afterSync = null, seatRun = null;
     const { result: counts, entry } = ChangeLog.track('sync', 'Sign-up sync', () => {
       const applied = Import.hasRaidHelperChanges(diff) ? Import.applyRaidHelperSync(diff) : null;
       initGroups();
+      if (applied && applied.newRaiders.length) {
+        afterSync = ChangeLog.snapshot();
+        seatRun = Import.seatNewRaiders(applied.newRaiders);
+        if (seatRun.ran) applied.autoSeated = seatRun.seated;
+      }
       commit();
       return applied;
     });
+    if (seatRun && seatRun.ran) {
+      const moves = ChangeLog.diff(afterSync, ChangeLog.snapshot(), { moves: true }).filter(it => it.kind === 'moved');
+      ChangeLog.record('optimize', moves, 'Optimize for new sign-ups');
+    }
     if (!counts) {
       showToast(diff.promoted.length
         ? `${lead}. Up to date. ${this.describe(diff)}, swap them in from the bench`

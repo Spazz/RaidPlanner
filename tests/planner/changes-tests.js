@@ -376,7 +376,7 @@ check('bench and unplaced cards are highlighted too, and the tray dots a hidden 
   const pillOf = id => section.innerHTML.match(new RegExp('<button[^>]*data-pool-filter="' + id + '"[^>]*>[\\s\\S]*?</button>'))[0];
   assert.match(pillOf('tentative'), /gs-pb-dot/, 'the hidden Tentative pill holds a changed player');
   assert.match(pillOf('tentative'), /<span class="sr-only">, has changes<\/span>/);
-  assert.match(pillOf('bench'), /gs-pb-dot/, 'Tentative is a subset of Bench, so Bench holds the change too');
+  assert.doesNotMatch(pillOf('bench'), /gs-pb-dot/, 'Tentative is not Bench, so the Bench pill holds no change');
   assert.doesNotMatch(pillOf('absent'), /gs-pb-dot/, 'the selected pill gets no dot');
   assert.doesNotMatch(pillOf('all'), /gs-pb-dot/, 'All never gets one');
   t.SignupTray.filter = 'tentative';

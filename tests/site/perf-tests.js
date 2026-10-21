@@ -74,7 +74,7 @@ check('devMeasure measures a failing call, rethrows, and tolerates a missing per
 });
 
 check('Optimize runs inside devMeasure', () => {
-  assert(/optimize\(\) \{\s*devMeasure\('pp:optimize'/.test(app.script));
+  assert(/optimize\(opts = \{\}\) \{\s*const joiners = [^\n]*\n\s*devMeasure\('pp:optimize'/.test(app.script));
 });
 
 function ghostEnv() {

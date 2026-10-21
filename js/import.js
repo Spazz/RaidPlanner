@@ -232,7 +232,8 @@ const Import = {
   // touching State. Players are matched by name (case-insensitive) across the
   // groups, the bench and the unplaced list, since saved rosters carry no
   // Raid-Helper IDs.
-  //   added:    sign-ups not in the plan            -> bench / unplaced by status
+  //   added:    sign-ups not in the plan            -> an Open slot they fit, else the bench / unplaced by status; applyRaidHelperSync
+  //             lists the Signed up ones as newRaiders, which seatNewRaiders gives free seats to through Optimize
   //   removed:  plan members no longer signed up    -> will be dropped (players added by hand, `handAdded`, are kept)
   //   changed:  same person, new class/spec/role    -> updated in place
   //   restatus: same person, new sign-up status     -> {player, status, backfill};
@@ -366,6 +367,7 @@ const Import = {
       if (!seated.has(player)) this._fileOffRaid(player);
     }
     let filled = 0;
+    const newRaiders = [];
     for (const player of diff.promoted) if (PreferredSlots.seat(player)) filled++;
     for (const entry of diff.added) {
       if (entry.category === 'unplaced') { State.unplaced.push(this._makeUnplaced(entry)); continue; }
@@ -376,7 +378,11 @@ const Import = {
       if (entry.needsReview) { player.needsReview = true; player.reviewReason = entry.reviewReason; }
       if (entry.marker) player.marker = entry.marker;
       if (entry.category !== 'bench' && PreferredSlots.seat(player)) filled++;
-      else State.bench.push(player);
+      else {
+        State.bench.push(player);
+        // A Signed up newcomer (not Standby) is a raid candidate: seatNewRaiders decides whether Optimize seats them.
+        if (entry.category === 'raider' && !(entry.marker && entry.marker.kind === 'standby')) newRaiders.push(player);
+      }
     }
 
     // A designated backup still sitting on the bench is offered as a
@@ -402,8 +408,26 @@ const Import = {
     return {
       added: diff.added.length, removed: diff.removed.length,
       changed: diff.changed.length, demoted: diff.demoted, promoted: diff.promoted.length, filled,
-      moved: this.statusMoves(diff), backupSwapReady,
+      moved: this.statusMoves(diff), backupSwapReady, newRaiders,
     };
+  },
+
+  // New Signed up sign-ups (applyRaidHelperSync's newRaiders, waiting on the bench) land on the plan while the raid has a
+  // free seat (user decision 2026-10-21): Optimize runs as its button does (max_dps, buff overrides reset) over the board
+  // plus these players and nobody else from the bench (Optimizer.optimize joiners), so it decides who gets the free seats;
+  // whoever it leaves out stays on the bench, not remembered anywhere. A full raid, or a version whose rules are not modeled,
+  // leaves everyone on the bench. The caller commits. Returns {ran, seated, benched} counted over `players`.
+  seatNewRaiders(players) {
+    const list = Array.isArray(players) ? players.filter(p => (State.bench || []).includes(p)) : [];
+    const none = { ran: false, seated: 0, benched: list.length };
+    if (!list.length || !GameVersions[State.gameVersion].modeled) return none;
+    const raid = Config.Raids[State.selectedRaid];
+    if (!raid || State.groups.flat().length >= raid.size) return none;
+    State.optimizerMode = 'max_dps';
+    State.buffOverrides = {};
+    Optimizer.optimize({ joiners: list });
+    const seated = list.filter(p => State.groups.some(g => g.includes(p))).length;
+    return { ran: true, seated, benched: list.length - seated };
   },
 
   // One line for the banner/toast. Accepts a diff (arrays) or
@@ -426,6 +450,7 @@ const Import = {
     for (const [s, k] of byStatus(moved.map(r => r.player))) parts.push(`${k} now ${SignupStatus.label(s)}`);
     if (n(diff.promoted)) parts.push(`${n(diff.promoted)} on the bench now confirmed`);
     if (n(diff.filled)) parts.push(`${n(diff.filled)} preferred slots filled`);
+    if (n(diff.autoSeated)) parts.push(`${n(diff.autoSeated)} seated by Optimize`);
     return parts.join(', ');
   },
 
