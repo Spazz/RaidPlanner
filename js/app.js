@@ -1293,7 +1293,9 @@ const RaidContext = {
       // The sign-ups and the raid's database plan are asked together (after a raid just left has sent its last save, so the plan
       // read is not older than what this browser wrote); the plan failing only keeps this page off the database.
       fetched = (this.flushing || Promise.resolve()).then(() => {
-        const docGet = api.get(this.basePath(c) + '/plan-doc').then(doc => ({ doc }), err => ({ err }));
+        // plansync.js (PlanDb, PlanPoll, PlanDbLinks) is optional: without it the raid opens from this device and the database is never asked.
+        const saver = typeof PlanDb !== 'undefined' && typeof PlanPoll !== 'undefined' && typeof PlanDbLinks !== 'undefined';
+        const docGet = (saver ? api.get(this.basePath(c) + '/plan-doc') : Promise.reject(new Error('plan saving is not loaded'))).then(doc => ({ doc }), err => ({ err }));
         return Promise.all([api.get(this.basePath(c) + '/planner'), docGet]);
       });
     } else fetched = Promise.reject(new Error('guild tools missing'));
@@ -1353,7 +1355,7 @@ const RaidContext = {
     PlanStore.flush();
     const found = this.findLocal(c, seed.raid, version);
     // This browser saved the plan to the raid before, yet the raid holds none now: the raid page replaced or removed it (migrate()).
-    const binding = PlanDbLinks.get(linkStorage(), version + '|' + c.planId);
+    const binding = typeof PlanDbLinks !== 'undefined' ? PlanDbLinks.get(linkStorage(), version + '|' + c.planId) : null;
     found.replaced = !!doc && doc.rev === 0 && !!binding && binding.rev > 0;
     // No plan in the database yet and nothing on this device to start from: the live link the raid page holds is the next source.
     let live = null;
@@ -1428,6 +1430,7 @@ const RaidContext = {
 
   // The plan the database holds. PlanDbLinks.decide says what to do with this browser's copy.
   loadFromDatabase(c, seed, doc, local) {
+    if (typeof PlanDbLinks === 'undefined') return this.loadLocal(c, seed, doc.plan.gameVersion || State.gameVersion, local, '');
     const planKey = LiveLinks.planKey(doc.plan);
     const binding = PlanDbLinks.get(linkStorage(), planKey);
     const localDiffers = !!local && JSON.stringify(local.data) !== JSON.stringify(doc.plan);
@@ -1470,7 +1473,7 @@ const RaidContext = {
     // What the raid holds now wins over this device's copy, which is set aside.
     if (found.replaced) {
       this.setAside(local);
-      try { PlanDbLinks.forget(linkStorage(), planKey); } catch {}
+      try { if (typeof PlanDbLinks !== 'undefined') PlanDbLinks.forget(linkStorage(), planKey); } catch {}
       local = null; event = null;
     }
     let source = 'signups';
@@ -1661,7 +1664,7 @@ const RaidContext = {
     if (this.dbOwner !== c || this.current !== c) return false;
     if (!this.applyRemote(c, remote)) return false;
     c.rev = remote.rev;
-    PlanDb.adopt(remote.rev);
+    if (typeof PlanDb !== 'undefined') PlanDb.adopt(remote.rev);
     return true;
   },
 
@@ -1675,7 +1678,7 @@ const RaidContext = {
 
   // The state of the saver changed: a failure shows in the banner, the save line and the next-step bar; recovery is reported by onDbSaved.
   onDbStatus(c) {
-    if (this.dbOwner !== c) return;
+    if (this.dbOwner !== c || typeof PlanDb === 'undefined') return;
     const key = PlanDb.statusKey();
     if (this.current === c && key && key !== 'saving') {
       if (key === 'saved') { if (c.failed) this.setStatus('Saved to the raid', false); }
@@ -1713,7 +1716,7 @@ const RaidContext = {
       if (typeof PlanDb !== 'undefined') PlanDb.stop();
       this.dbOwner = null;
     }
-    try { PlanDbLinks.forget(linkStorage(), planKey); } catch {}
+    try { if (typeof PlanDbLinks !== 'undefined') PlanDbLinks.forget(linkStorage(), planKey); } catch {}
   },
 
   // "Keep as my own copy": the plan on screen becomes a plan of this browser, as SharedPlanBanner.makeCopy does it.
@@ -1759,14 +1762,14 @@ const RaidContext = {
     if (JSON.stringify(PlanStore.capture()) === c.settledJson) return;
     c.userEdited = true;
     if (c.db) { if (typeof PlanPoll !== 'undefined') PlanPoll.wake(); return; }
-    try { PlanDbLinks.markDirty(linkStorage(), LiveLinks.planKey(State)); } catch {}
+    try { if (typeof PlanDbLinks !== 'undefined') PlanDbLinks.markDirty(linkStorage(), LiveLinks.planKey(State)); } catch {}
   },
 
   // persistWorkingPlan: the plan changed. A raid plan edited outside its raid context (Back to raid, then the plain Planner) is saved on this
   // device only, so its binding is marked unsent: the next open pushes it, or offers it as Undo, instead of replacing it silently.
   noteLocalEdit() {
     if (this.current || !RaidLink.isRaidPlan(State.planId)) return;
-    try { PlanDbLinks.markDirty(linkStorage(), LiveLinks.planKey(State)); } catch {}
+    try { if (typeof PlanDbLinks !== 'undefined') PlanDbLinks.markDirty(linkStorage(), LiveLinks.planKey(State)); } catch {}
   },
 
   // Refresh in the planner reads the raid's sign-ups from the guild (what Plan in Planner or Refresh sign-ups imported last).
