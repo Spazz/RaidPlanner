@@ -432,10 +432,21 @@
     return G.api.get(apiBase(gid) + '/attendance/policy').then(function (res) { a.policy[gid] = res; return res; }, function () { return null; });
   }
 
+  // The team page is for the roles that review attendance on the team; everyone else gets their own record (D1). No team yet: a reviewer anywhere still sees the no-team state.
+  function reviewsTeam(gd, teamId) {
+    const can = gd.me && gd.me.can;
+    return teamId ? G.shell.allowsTeam(can, 'attendance.review', teamId) : G.shell.hasAction(can, 'attendance.review');
+  }
+  function ownPersonId(gd) { return gd.me && gd.me.personId ? gd.me.personId : ''; }
+
   function load(r, gd) {
     const a = attState();
     const gid = gd.guild.id;
     const teamId = G.app.teamFor(gd);
+    if (!reviewsTeam(gd, teamId)) {
+      const pid = ownPersonId(gd);
+      return pid ? G.pages.personAtt.load({ name: 'personatt', gid: gid, pid: pid }, gd) : null;
+    }
     if (!teamId) { a.team = { gid: gid, teamId: null, data: null }; return null; }
     if (!G.shell.allowsTeam(gd.me && gd.me.can, 'attendance.view', teamId)) { a.team = { gid: gid, teamId: teamId, data: null, denied: true }; return null; }
     const view = attView();
@@ -458,6 +469,13 @@
 
   function main(r, gd) {
     const a = attState();
+    if (!reviewsTeam(gd, G.app.teamFor(gd))) {
+      const pid = ownPersonId(gd);
+      if (!pid) {
+        return G.ui.listPageHtml({ head: { title: 'Attendance' }, bodyHtml: G.ui.emptyStateHtml({ kind: 'first', icon: 'roster', title: 'No roster entry yet', text: 'Your attendance shows here once an officer links you to the roster.' }) });
+      }
+      return G.pages.personAtt.main({ name: 'personatt', gid: gd.guild.id, pid: pid }, gd);
+    }
     const t = a.team;
     if (!t || t.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
     if (!t.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);

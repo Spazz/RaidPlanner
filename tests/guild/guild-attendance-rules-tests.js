@@ -132,7 +132,7 @@ check('policy: DEFAULT_POLICY holds the kickoff answers and is frozen', async ()
   assert.deepEqual([d.noSignup, d.tentative, d.absence, d.bench, d.lateSignup, d.fillIn, d.effectiveStart], ['shown', 'asNoSignup', 'missedWithNotice', 'full', 'fullCreditNoFlag', 'always', 'laterOfJoinAndFirst']);
   assert.deepEqual(d.detection, { mode: 'pulls' });
   assert.deepEqual(d.credit.values, [{ id: 'full', label: 'Full', value: 1 }, { id: 'half', label: 'Half', value: 0.5 }, { id: 'none', label: 'None', value: 0 }]);
-  assert.deepEqual(d.window, { defaultWeeks: 8, switchWeeks: [8, 12] });
+  assert.deepEqual(d.window, { defaultWeeks: 8, switchWeeks: [4, 8] });
   assert.equal(d.streakFlagAt, 4);
   assert.equal(d.resetDay, null);
   assert(Object.isFrozen(d) && Object.isFrozen(d.expected) && Object.isFrozen(d.credit.values[0]));
@@ -155,7 +155,7 @@ check('policy: resolvePolicy merges defaults <- guild <- team per key, arrays re
   const resolved = policy.resolvePolicy(guild, team, 'US');
   assert.equal(resolved.tentative, 'asNoSignup', 'team beats guild');
   assert.deepEqual(resolved.expected, { mode: 'statuses', statuses: ['raider'] }, 'sections merge per key');
-  assert.deepEqual(resolved.window, { defaultWeeks: 12, switchWeeks: [8, 12] });
+  assert.deepEqual(resolved.window, { defaultWeeks: 12, switchWeeks: [4, 8] });
   assert.equal(resolved.credit.values.length, 2, 'arrays replace');
   assert.equal(resolved.noSignup, 'shown');
   assert.equal(policy.resolvePolicy(guild, null, 'US').tentative, 'asSignedUp');

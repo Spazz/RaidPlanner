@@ -302,7 +302,7 @@ check('watch list: the Worker\'s watch object draws the card (rule line, names, 
   const href = new RegExp(`href="#/g/${s.gid}/attendance/p/${s.p.Kaelith}"`);
   assert(href.test(G.pages.attendance.main(view, gd)), 'the name links to the person\'s history');
 
-  // A Team Lead of the team sees it; Erin (a member who can view the team) sees the grid without the card.
+  // A Team Lead of the team sees it; Erin (a member) gets her own record, no team page.
   const carolGd = await s.guildData('carol');
   pageState(s, s.pages.carol, carolGd);
   await s.pages.carol.pages.attendance.load(view, carolGd);
@@ -310,7 +310,7 @@ check('watch list: the Worker\'s watch object draws the card (rule line, names, 
   const erinGd = await s.guildData('erin');
   pageState(s, s.pages.erin, erinGd);
   await s.pages.erin.pages.attendance.load(view, erinGd);
-  assert.equal(s.pages.erin.app.state.att.team.data.watch, null);
+  assert(!s.pages.erin.app.state.att.team, 'a member never fetches the team page');
   assert(!/Watch list/.test(stripTags(s.pages.erin.pages.attendance.main(view, erinGd))));
 
   // Both thresholds off through the real policy route: no card.

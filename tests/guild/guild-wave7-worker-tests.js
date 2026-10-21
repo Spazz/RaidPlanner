@@ -737,10 +737,8 @@ check('ladder (team page): everyone\'s rank; the suggestions only for those who 
   assert.deepEqual([by.Cora.rankSuggestion.kind, by.Cora.rankSuggestion.from.name, by.Cora.rankSuggestion.to.name], ['review', 'Raider', 'Member']);
   assert.equal(by.Dax.rankSuggestion, undefined, 'a reserve');
   assert.equal(by.Eve.rankSuggestion, undefined);
-  // A member sees the ranks, never the suggestions.
-  const member = s.byName(await s.team('m1'));
-  assert.deepEqual(member.Cora.rank, { id: 'raider', name: 'Raider', set: true });
-  assert(Object.values(member).every((p) => p.rankSuggestion === undefined));
+  // A member is refused the team page (their own record comes from the person route).
+  assert.equal((await s.call('m1', 'GET', `/attendance/team?team=${s.tid}`)).status, 403);
   // No ladder: no rank anywhere and nothing new in the answer.
   assert.equal((await s.setPolicy({ ladder: { ranks: [] } })).status, 200);
   const none = await s.team('gm');

@@ -5,7 +5,7 @@ import { auditStatement } from '../audit.js';
 import { addDays, localDate, weekStart } from '../attendance-calendar.js';
 import { DEFAULT_POLICY, REGION_RESET_DAY, resolvePolicy, validateOverride } from '../attendance-policy.js';
 import { watchStaysReviewed } from '../attention.js';
-import { teamMetrics, watchList } from '../attendance-metrics.js';
+import { teamMetrics, watchList, WATCH_MIN_PREVIOUS } from '../attendance-metrics.js';
 import { ladderOf, rankReview } from '../rank-ladder.js';
 import {
   bumpRaidStatement, findUnmatched, isPlainObject, makePolicyResolver, markRaidsStale, policyRowsStatement, presenceKey, recomputeRaid,
@@ -25,7 +25,7 @@ import { loadRaid, raidFetchRate, recomputeAndReply } from './raids.js';
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const MAX_UPLOADERS = 10;
 const REVIEW_RAIDS = 100;
-const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
+const forbidden = (message = 'You do not have permission to do that.') => new HttpError(403, 'forbidden', message);
 const parseFlags = (text) => { try { const value = JSON.parse(text); return Array.isArray(value) ? value : []; } catch { return []; } };
 
 async function requireTeam(db, guildId, teamId, field = 'team') {
@@ -552,8 +552,9 @@ export async function getTeamAttendance(ctx) {
   const guild = guildContext.guild;
   const params = new URL(ctx.request.url).searchParams;
   const team = await requireTeam(ctx.db, guild.id, params.get('team'));
-  if (!allows(guildContext.can, 'attendance.view', team.id)) throw forbidden();
-  const includeWatch = allows(guildContext.can, 'attendance.review', team.id);
+  // User decision 2026-10-21: the team page is for the roles that review attendance; everyone else reads their own record (getPersonAttendance).
+  if (!allows(guildContext.can, 'attendance.review', team.id)) throw forbidden('The team attendance page is for the officers and team leads of this team.');
+  const includeWatch = true;
   return jsonResponse(await teamAttendanceData(ctx.db, guild, team, params, ctx.now(), viewerOf(ctx), { includeWatch }));
 }
 
@@ -618,13 +619,23 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
     borrowed: borrowedResult.results.map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
     dismissals: new Map(dismissalResult.results.map((row) => [row.player_id, row])),
   }) : null;
+  // The previous window of the same length (what the watch list compares against), for the People view's change column; reviewers only, never for 'all'.
+  const previousMetrics = options.includeWatch && weeks !== 'all' && metrics.windowStart ? teamMetrics({
+    people: peopleResult.results.map((row) => ({ id: row.id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on })),
+    raids: raids.map(metricsRaid),
+    rows: rowResult.results.map((row) => metricsRow(row, hostTeamOf)),
+    borrowed: borrowedResult.results.map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
+    policy, today: addDays(metrics.windowStart, -1), resetDay, windowWeeks: weeks,
+  }) : null;
   const people = peopleResult.results.map((row) => {
     const character = displayCharacter(charactersByPlayer.get(row.id) || [], team.id);
     const mine = metricsOf(metrics, row.id) || {};
     const ranked = review ? review.get(row.id) : null;
     const cells = Array.isArray(mine.cells) ? mine.cells.filter((cell) => inWindow(cell.date)).map((cell) => ({ ...cell, via: viaOf(cell.via) })) : [];
+    const before = previousMetrics && previousMetrics.people[row.id];
     return {
       ...mine,
+      ...(previousMetrics ? { previousPct: before && before.counted >= WATCH_MIN_PREVIOUS ? before.pct : null } : {}),
       cells,
       id: row.id,
       name: character ? character.name : 'Unknown',

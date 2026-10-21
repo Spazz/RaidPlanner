@@ -330,12 +330,11 @@ check('Rank ladder: saved in the attendance settings, drawn on the Attendance pa
   A.handlers.click['rank-set'](el({ 'data-pid': brindle, 'data-team': s.teamId, 'data-from': 'raider' }));
   await settle();
   assert.equal((await s.rows('SELECT rank FROM players WHERE id = ?', brindle))[0].rank, 'member');
-  // A member sees the ranks on the team page and no suggestion, no Accept.
+  // A member is refused the team page (the officers-only decision of 2026-10-21).
   const E = s.E;
   await E.api.get(s.base);
   await exec(s, "UPDATE players SET user_id = ? WHERE id = ?", s.erinUser, aldric);
-  const memberPage = await E.api.get(`${s.base}/attendance/team?team=${s.teamId}`);
-  assert(memberPage.people.every((p) => p.rank && !p.rankSuggestion), JSON.stringify(plain(memberPage.people.map((p) => [p.name, p.rank, p.rankSuggestion]))));
+  await assert.rejects(E.api.get(`${s.base}/attendance/team?team=${s.teamId}`), (err) => err.status === 403);
 });
 
 

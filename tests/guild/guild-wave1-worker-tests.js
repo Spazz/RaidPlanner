@@ -1104,24 +1104,49 @@ check('watch list (team attendance): who is flagged and why, with the previous w
   assert.equal(await counted(s.w, () => s.team('bob')), 4, 'one batch more than the context; the watch list costs no extra call');
 });
 
-check('watch list (team attendance): only for those who may review the team; a member sees the page without it', async () => {
+check('watch list (team attendance): only for those who may review the team; a member is refused the page', async () => {
   const s = await watchWorld();
   assert.notEqual((await s.team('carol')).json.watch, null, 'a Team Lead of the team');
   assert.notEqual((await s.team('alice')).json.watch, null);
   assert.equal((await s.team('dave')).status, 403, 'a Team Lead of another team cannot open the page at all');
   // Erin is the person behind Dorrin: she may view her team's attendance but not review it.
   s.w.exec(`UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.Dorrin}'`);
-  const erin = await s.team('erin');
-  assert.equal(erin.status, 200);
-  assert.equal(erin.json.watch, null);
-  assert(erin.json.people.length > 0);
+  assert.equal((await s.team('erin')).status, 403, 'a member with attendance.view only reads her own record');
   assert.equal((await s.team('gina')).status, 403);
+});
+
+check('team page permission matrix: guild master, officer and team lead read it; a member, a guest link and the public are refused (D1, 2026-10-21)', async () => {
+  const s = await watchWorld();
+  for (const who of ['alice', 'bob', 'carol']) assert.equal((await s.team(who)).status, 200, who);
+  for (const who of ['erin', 'gina']) {
+    const refused = await s.team(who);
+    assert.equal(refused.status, 403, who);
+    assert.equal(refused.json.message, 'The team attendance page is for the officers and team leads of this team.');
+  }
+  const { token } = (await s.call('alice', 'POST', '/guest-links', { expiresIn: '1d' })).json.created;
+  const guest = {};
+  await s.w.call(guest, 'POST', '/auth/guest', { token });
+  const guestVisit = (await s.w.call(guest, 'GET', `${s.base}/attendance/team?team=${s.A}`)).status;
+  assert(guestVisit === 401 || guestVisit === 403, `a guest link has no account session: ${guestVisit}`);
+  const publicVisit = (await s.w.call({}, 'GET', `${s.base}/attendance/team?team=${s.A}`)).status;
+  assert(publicVisit === 401 || publicVisit === 403, `the public has no session: ${publicVisit}`);
+});
+
+check('team page: every person carries previousPct (the previous window, null under 2 counted raids); none for "all"', async () => {
+  const s = await watchWorld();
+  const page = (await s.team('bob')).json;
+  const by = Object.fromEntries(page.people.map((p) => [p.name, p]));
+  const watched = page.watch.entries.find((entry) => entry.name === 'Thoren');
+  assert(watched && by.Thoren.previousPct === watched.previousPct, 'same number the watch list computes');
+  assert('previousPct' in by.Kaelith && 'previousPct' in by.Dorrin, 'people off the watch list carry it too');
+  assert(Object.values(by).every((p) => p.previousPct === null || typeof p.previousPct === 'number'));
+  assert((await s.team('bob', '&window=all')).json.people.every((p) => !('previousPct' in p)));
 });
 
 check('watch list (team attendance): follows the page window; "all" has no previous window; thresholds can be turned off, one or both; a team override wins', async () => {
   const s = await watchWorld();
-  const twelve = await s.team('bob', '&window=12');
-  assert.deepEqual([twelve.json.watch.window, twelve.json.watch.previousFrom], [12, '2026-08-04']);
+  const four = await s.team('bob', '&window=4');
+  assert.deepEqual([four.json.watch.window, four.json.watch.previousFrom], [4, '2026-11-24']);
   const all = await s.team('bob', '&window=all');
   assert.deepEqual([all.json.watch.window, all.json.watch.previousFrom], ['all', null]);
   const thoren = all.json.watch.entries.find((e) => e.name === 'Thoren');

@@ -1020,7 +1020,7 @@ check('balance: the contract shape and the maths over the window and all time; C
   const b = r.json;
   assert.deepEqual(Object.keys(b), ['team', 'window', 'mode', 'countTags', 'scope', 'people', 'teamAverage']);
   assert.deepEqual(b.team, { id: s.A, name: 'Alpha' });
-  assert.deepEqual(b.window, { weeks: 8, switchWeeks: [8, 12], from: '2026-11-24' });
+  assert.deepEqual(b.window, { weeks: 8, switchWeeks: [4, 8], from: '2026-11-24' });
   assert.deepEqual([b.mode, b.countTags, b.scope], ['perRaid', ['MS'], 'team']);
   assert.deepEqual(b.people.map((p) => p.name), ['Aldric', 'Brindle', 'Cassia', 'Dunmar']);
   assert.deepEqual(Object.keys(b.people[0]), ['personId', 'name', 'class', 'status', 'raids', 'items', 'counted', 'perRaid', 'vsTeam', 'isMe']);
@@ -1040,6 +1040,9 @@ check('balance: the contract shape and the maths over the window and all time; C
   assert.deepEqual([dunmar.raids, dunmar.perRaid, dunmar.vsTeam], [{ window: 0, all: 0 }, { window: null, all: null }, null], 'zero raids: no per-raid rate and no comparison');
   assert.deepEqual(b.teamAverage, { window: 0.667, all: 0.667 });
 
+  // The default offers 4 and 8 weeks; this guild offers 12 too.
+  const policyView = (await s.call('bob', 'GET', '/attendance/policy')).json;
+  assert.equal((await s.call('bob', 'PUT', '/attendance/policy', { policy: { window: { switchWeeks: [8, 12] } }, expectedVersion: policyView.versions.guild })).status, 200);
   const twelve = (await s.call('bob', 'GET', `/loot/balance?team=${s.A}&weeks=12`)).json;
   assert.deepEqual(twelve.window, { weeks: 12, switchWeeks: [8, 12], from: '2026-10-27' });
   assert.deepEqual([row(twelve, s.p.aldric).raids, row(twelve, s.p.aldric).items.MS], [{ window: 3, all: 3 }, { window: 3, all: 3 }], '12 weeks reaches back to 2026-11-03');

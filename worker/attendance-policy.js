@@ -29,7 +29,7 @@ export const DEFAULT_POLICY = deepFreeze({
     ],
   },
   fillIn: 'always',
-  window: { defaultWeeks: 8, switchWeeks: [8, 12] },
+  window: { defaultWeeks: 8, switchWeeks: [4, 8] },
   effectiveStart: 'laterOfJoinAndFirst',
   streakFlagAt: 4,
   resetDay: null,

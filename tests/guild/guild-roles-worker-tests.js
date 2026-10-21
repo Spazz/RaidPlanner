@@ -1789,6 +1789,7 @@ check('review: the read-only view respects a team\'s private loot ("own" visibil
   const officer = (await s.call('alice', 'GET', '/roles')).json.roles.find((r) => r.id === 'officer');
   const trimmed = { ...officer.permissions, 'guild.roles': 'guild' };
   delete trimmed['attendance.view'];
+  delete trimmed['attendance.review'];
   delete trimmed['loot.view'];
   assert.equal((await s.call('alice', 'PUT', '/roles/officer', { permissions: trimmed })).status, 200);
   assert.equal((await s.call('bob', 'GET', `/attendance/team?team=${s.A}`)).status, 403, 'Bob cannot see attendance');
@@ -1921,10 +1922,9 @@ check('wave 1 x roles: a custom role with attendance.review on a team gets that 
   assert(daveAttention.json.items.every((item) => item.teamId === s.A), 'every item is Alpha\'s: no Bravo, no guild-wide claims');
   assert.equal((await s.call('dave', 'GET', `/attendance/team?team=${s.B}`)).status, 403, 'Bravo\'s page needs attendance.view there');
 
-  // Erin (reader of Alpha: attendance.view only): the page without the watch list, no Needs attention.
+  // Erin (reader of Alpha: attendance.view only): refused the team page, no Needs attention.
   const erin = await s.call('erin', 'GET', base);
-  assert.equal(erin.status, 200, erin.text);
-  assert.equal(erin.json.watch, null, 'no attendance.review, no watch list');
+  assert.equal(erin.status, 403, 'no attendance.review, no team page');
   assert.equal((await s.call('erin', 'GET', '/attention')).status, 403);
 
   // Gina: a plain Member until Discord gives her the clerk role for Alpha.
@@ -1945,7 +1945,7 @@ check('wave 1 x roles: a custom role with attendance.review on a team gets that 
   // Taking the right from the role takes it from everyone who holds it, at once.
   assert.equal((await s.call('alice', 'PUT', `/roles/${clerk}`, { permissions: { 'attendance.view': 'team' } })).status, 200);
   assert.equal((await s.call('dave', 'GET', '/attention')).status, 403);
-  assert.equal((await s.call('dave', 'GET', base)).json.watch, null);
+  assert.equal((await s.call('dave', 'GET', base)).status, 403, 'without attendance.review the team page is closed');
 });
 
 check('wave 1 x roles: the calendar feed and the trial card follow the effective permissions (a guild that edited Member, a custom role)', async () => {

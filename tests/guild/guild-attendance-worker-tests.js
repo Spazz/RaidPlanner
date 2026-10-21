@@ -876,8 +876,8 @@ check('redaction: the raid detail hides people, sign-ups and nicknames from thos
   assert(erin.signups.every((x) => x.nickname === null));
   assert.deepEqual(byName(erin).Brindle.decision, { at: byName(erin).Brindle.decision.at, applied: true });
   assert.equal(erin.can.review, false);
-  // Her own team only: team B's attendance is closed to her.
-  assert.equal((await s.call('erin', 'GET', `/attendance/team?team=${s.A}`)).status, 200);
+  // The team page needs attendance.review: a member (erin) reads her own record instead, on either team.
+  assert.equal((await s.call('erin', 'GET', `/attendance/team?team=${s.A}`)).status, 403);
   assert.equal((await s.call('erin', 'GET', `/attendance/team?team=${s.B}`)).status, 403);
   const wanderer = await s.call('erin', 'GET', `/attendance/person/${s.p.wander}`);
   assert.deepEqual(wanderer.json.teams.map((t) => t.team.id), [s.A], 'team B is omitted; the Other-team cell on team A is hers to see');
@@ -976,7 +976,7 @@ check('team page: windows (default, a switch value, all, a bad value), weeks, me
   const team = await s.call('carol', 'GET', `/attendance/team?team=${s.A}`);
   assert.equal(team.status, 200, JSON.stringify(team.json));
   const t = team.json;
-  assert.deepEqual([t.window, t.policy.switchWeeks, t.policy.defaultWeeks, t.policy.streakFlagAt], [8, [8, 12], 8, 4]);
+  assert.deepEqual([t.window, t.policy.switchWeeks, t.policy.defaultWeeks, t.policy.streakFlagAt], [8, [4, 8], 8, 4]);
   assert.deepEqual(t.policy.creditValues.map((c) => c.id), ['full', 'half', 'none']);
   assert.equal(t.weeks.length, 1);
   assert.deepEqual(t.weeks[0].raids.map((r) => r.id), [id]);
@@ -990,7 +990,7 @@ check('team page: windows (default, a switch value, all, a bad value), weeks, me
   assert.equal(people.Aldric.cells.length, 1);
   assert.deepEqual([people.Aldric.cells[0].letter, people.Brindle.cells[0].letter, people.Cassia.cells[0].letter], ['A', 'M', 'L?']);
   assert.equal(people.Aldric.isMe, false);
-  assert.equal((await s.call('carol', 'GET', `/attendance/team?team=${s.A}&window=12`)).json.window, 12);
+  assert.equal((await s.call('carol', 'GET', `/attendance/team?team=${s.A}&window=4`)).json.window, 4);
   assert.equal((await s.call('carol', 'GET', `/attendance/team?team=${s.A}&window=all`)).json.window, 'all');
   assert.equal((await s.call('carol', 'GET', `/attendance/team?team=${s.A}&window=5`)).json.field, 'window');
   assert.equal((await s.call('carol', 'GET', `/attendance/team?team=${s.A}&window=abc`)).status, 400);
@@ -1001,7 +1001,7 @@ check('team page: windows (default, a switch value, all, a bad value), weeks, me
   await s.call('bob', 'PUT', s.raid(old, '/plan'), { label: 'Old', players: [{ name: 'Aldric', group: 1 }] });
   assert.equal((await s.call('bob', 'PUT', s.raid(old, '/manual'), { reason: 'Logger was off', presentPlayerIds: [] })).status, 200);
   const pctOf = async (query) => (await s.call('carol', 'GET', `/attendance/team?team=${s.A}${query}`)).json;
-  for (const query of ['', '&window=12']) {
+  for (const query of ['', '&window=4']) {
     const w = await pctOf(query);
     assert.deepEqual([w.weeks.length, w.people.find((p) => p.name === 'Aldric').pct], [1, 100], query);
   }
@@ -1428,20 +1428,20 @@ check('F: a Raid-Helper event that has not started imports as an upcoming raid, 
 check('G: a guild policy save re-validates every team override on top of it; the person route falls back to a team\'s default window instead of a 400', async () => {
   const s = await raidWorld();
   const put = (who, body) => s.call(who, 'PUT', '/attendance/policy', body);
-  assert.equal((await put('bob', { teamId: s.B, policy: { window: { defaultWeeks: 12 } }, expectedVersion: 0 })).status, 200);
+  assert.equal((await put('bob', { teamId: s.B, policy: { window: { defaultWeeks: 4 } }, expectedVersion: 0 })).status, 200);
   const refused = await put('bob', { teamId: null, policy: { window: { defaultWeeks: 8, switchWeeks: [8] } }, expectedVersion: 0 });
   assert.deepEqual([refused.status, refused.json.error, refused.json.teamId, refused.json.field], [400, 'policy_invalid', s.B, 'window.defaultWeeks']);
   assert.match(refused.json.message, /Bravo/);
   assert.equal((await s.call('bob', 'GET', '/attendance/policy')).json.versions.guild, 0, 'nothing was saved');
-  assert.equal((await put('bob', { teamId: null, policy: { window: { defaultWeeks: 12, switchWeeks: [8, 12] } }, expectedVersion: 0 })).status, 200);
-  // A state the save no longer allows (written by hand): team B defaults to 12, the guild offers only 8.
+  assert.equal((await put('bob', { teamId: null, policy: { window: { defaultWeeks: 8, switchWeeks: [4, 8, 12] } }, expectedVersion: 0 })).status, 200);
+  // A state the save no longer allows (written by hand): team B defaults to 4, the guild offers only 8.
   exec(s.w, `UPDATE attendance_policies SET policy = '{"window":{"defaultWeeks":8,"switchWeeks":[8]}}' WHERE team_id IS NULL`);
   assert.equal((await addAlt(s, 'bob', s.p.wander, s.A, 'Wanderalt')).status, 201);
   const person = async (query) => (await s.call('bob', 'GET', `/attendance/person/${s.p.wander}${query}`)).json;
   const lenient = await person('?window=12');
-  assert.deepEqual(Object.fromEntries(lenient.teams.map((t) => [t.team.id, t.window])), { [s.A]: 8, [s.B]: 12 }, 'each team falls back to its own default');
+  assert.deepEqual(Object.fromEntries(lenient.teams.map((t) => [t.team.id, t.window])), { [s.A]: 8, [s.B]: 4 }, 'each team falls back to its own default');
   assert.deepEqual(Object.fromEntries((await person('?window=8')).teams.map((t) => [t.team.id, t.window])), { [s.A]: 8, [s.B]: 8 });
-  assert.deepEqual(Object.fromEntries((await person('')).teams.map((t) => [t.team.id, t.window])), { [s.A]: 8, [s.B]: 12 });
+  assert.deepEqual(Object.fromEntries((await person('')).teams.map((t) => [t.team.id, t.window])), { [s.A]: 8, [s.B]: 4 });
   assert.equal((await s.call('bob', 'GET', `/attendance/person/${s.p.wander}?window=abc`)).status, 400, 'a malformed window is still refused');
   assert.equal((await s.call('bob', 'GET', `/attendance/team?team=${s.A}&window=12`)).status, 400, 'the team page stays strict');
 });

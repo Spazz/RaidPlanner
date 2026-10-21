@@ -539,6 +539,29 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(env.html('gs-main').includes('You cannot open this'));
   });
 
+  await check('attendance section: a viewer without attendance.review gets their own record (no team page call); no person -> the link-to-roster empty state', async () => {
+    const memberCan = Object.assign({}, MEMBER_CAN, { 'raids.view': 'guild', 'attendance.view': ['t1'] });
+    const withMe = (me) => { const body = guildBody(memberCan); body.me = Object.assign({}, body.me, me); return { status: 200, body }; };
+    const own = makeEnv({ url: '/#/g/g1/attendance', routes: signedInRoutes(memberCan, {
+      '/api/guild/g1': withMe({ personId: 'p1' }),
+      '/api/guild/g1/attendance/person/p1': { status: 200, body: { person: { id: 'p1', name: 'Thoren', class: 'PALADIN', status: 'raider', isMe: true }, teams: [] } },
+    }) });
+    await settle();
+    assert.equal(own.fetched('/attendance/person/p1'), 1, 'the own record is fetched');
+    assert.equal(own.fetched('/attendance/team'), 0, 'the team page is never requested');
+    assert(own.html('gs-main').includes('Thoren'), 'the person history renders');
+    assert(own.html('shell-sidebar').includes('Attendance'), 'the nav label stays Attendance');
+    const none = makeEnv({ url: '/#/g/g1/attendance', routes: signedInRoutes(memberCan, { '/api/guild/g1': withMe({}) }) });
+    await settle();
+    assert.equal(none.fetched('/attendance/team'), 0);
+    assert(none.html('gs-main').includes('Your attendance shows here once an officer links you to the roster.'));
+    const reviewer = makeEnv({ url: '/#/g/g1/attendance', routes: signedInRoutes(Object.assign({}, memberCan, { 'attendance.review': ['t1'] }), {
+      '/api/guild/g1/attendance/team?team=t1': { status: 200, body: { team: 't1', window: 8, policy: { switchWeeks: [4, 8] }, weeks: [], people: [], awaitingReview: 0, staleRaids: 0, watch: null } },
+    }) });
+    await settle();
+    assert.equal(reviewer.fetched('/attendance/team'), 1, 'a reviewer still gets the team page');
+  });
+
   await check('routeAll: idempotent - a hash-link click (popstate then hashchange) is one route; force re-runs', async () => {
     const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes() });
     await settle();
