@@ -321,7 +321,7 @@ return { ${exported.join(', ')} };
       },
       PlanStore: { nameFor: () => 'Name', read: () => [], holdsPlayers: () => false },
       document: { getElementById: () => ({ value: '' }) },
-      initGroups: () => 0, commit() {}, showToast() {}, rememberImport: () => '',
+      initGroups: () => 0, commit() {}, showToast() {}, rememberImport: () => '', NewPlanVersion: { target: () => 'tbc', begin: () => false }, hasLoadedWork: () => false,
       maybeSuggestVersionSwitch() {},
     };
     const { importFromText } = bind(importSrc, deps, ['importFromText']);

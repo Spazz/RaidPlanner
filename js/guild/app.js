@@ -856,6 +856,33 @@
     return '';
   }
 
+  // What the planner is showing, for the top bar's trail: its view ('landing' or 'app') and the plan's name.
+  function plannerNow() {
+    const shell = plannerShell();
+    return { view: shell && shell.view ? shell.view() : 'landing', name: shell && shell.planName ? shell.planName() : '' };
+  }
+
+  // The guild the sidebar shows on the planner (signed in with a guild), { id, name }; null otherwise.
+  function plannerGuild() {
+    const gid = state.me ? chromeGuildId() : null;
+    const row = gid ? (state.me.guilds || []).filter(function (g) { return g.id === gid; })[0] : null;
+    return row ? { id: row.id, name: row.name } : null;
+  }
+
+  // The game version of the guild the sidebar shows, from its full payload (null until that arrives, and for a person on no guild).
+  // The planner starts a new plan from the landing in this version (js/app.js NewPlanVersion).
+  function plannerGuildVersion() {
+    const gid = state.me ? chromeGuildId() : null;
+    const gd = gid ? state.guilds[gid] : null;
+    return gd && gd.guild && typeof gd.guild.gameVersion === 'string' ? gd.guild.gameVersion : null;
+  }
+
+  // The planner changed what the trail shows (its view, or the plan's name): redraw the top bar's lead only.
+  function renderPlannerLead() {
+    if (!root || state.section !== 'planner') return;
+    writeSlot('shell-topbar-lead', G.shell.leadHtml(buildCtx(null)));
+  }
+
   // The shell context for the current section: who is looking, which guild's nav to draw, what is collapsed.
   function buildCtx(r) {
     const me = state.me;
@@ -870,6 +897,7 @@
     return {
       section: state.section || 'guild', page: state.page, me: me, signedOut: state.loaded && !me, pending: !state.loaded,
       route: r || null, guildData: gd, teamId: gd ? teamFor(gd) : null, collapsed: sidebarCollapsed(),
+      planner: state.section === 'planner' ? plannerNow() : null, plannerGuild: state.section === 'planner' ? plannerGuild() : null,
       whatsNewUnseen: whatsNewUnseen(),
       devNotice: state.devNotice || '',
       attentionCount: gd ? attentionCountFor(gd.guild.id) : 0,
@@ -1037,6 +1065,8 @@
   app.teamFor = teamFor;
   app.sidebarCollapsed = sidebarCollapsed;
   app.buildCtx = buildCtx;
+  app.plannerGuildVersion = plannerGuildVersion;
+  app.renderPlannerLead = renderPlannerLead;
 
   // Every mutation reply that carries `rosterFlags`, `attendanceFlags` or `pendingClaims` refreshes the nav badge without a refetch.
   app.applyFlags = function (gid, res) {
@@ -1401,10 +1431,13 @@
     document.addEventListener('submit', onSubmit);
     document.addEventListener('change', function (ev) { dispatch('change', 'data-change', ev); });
     document.addEventListener('input', function (ev) { dispatch('input', 'data-input', ev); });
-    // The planner switches between its landing and a plan: the sidebar keeps its state, nothing to redraw.
+    // The planner switches between its landing and a plan: the sidebar keeps its state, only the top bar's trail changes.
     document.addEventListener('planner:view', function (ev) {
+      renderPlannerLead();
       if (ev && ev.detail && ev.detail.view === 'landing') refreshPlannerLanding();
     });
+    // A rename, or another plan opening, changes the trail's last crumb.
+    document.addEventListener('planner:plan-name', renderPlannerLead);
     window.addEventListener('hashchange', function () { routeAll(); });
     // A click on a link fires popstate too; only a popstate with no link click just before it is Back / Forward.
     window.addEventListener('popstate', function () { routeAll({ history: Date.now() - lastNavClickAt > NAV_CLICK_WINDOW_MS }); });

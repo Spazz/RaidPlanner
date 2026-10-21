@@ -933,7 +933,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   // back to the tolerant plain-text/CSV roster parser. It never replaces the
   // JSON/URL/PP: paths above — only tried when nothing else matched.
   if (!src.url && !isValidJson) {
-    const parsed = Import.parsePlainRoster(jsonStr, State.gameVersion);
+    const parsed = Import.parsePlainRoster(jsonStr, NewPlanVersion.target());
     if (parsed.entries.length) {
       PlainRosterImport.preview(parsed, report);
       return false;
@@ -954,7 +954,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   if (src.eventId && Array.isArray(metadata.signUps) && typeof PlanAttach !== 'undefined') PlanAttach.noteEvent(src.eventId, metadata);
   if (src.eventId && Array.isArray(metadata.signUps)) {
     let existing;
-    try { existing = PlanStore.read(localStorage).find(p => p.data.planId === 'event:' + src.eventId && (p.data.gameVersion || 'tbc') === State.gameVersion); } catch {}
+    try { existing = PlanStore.read(localStorage).find(p => p.data.planId === 'event:' + src.eventId && (p.data.gameVersion || 'tbc') === NewPlanVersion.target()); } catch {}
     // Pasting the link again means "give me this event now": reopen the plan
     // and merge the sign-ups just fetched, so edited seats survive and the
     // roster is current without a second click on Refresh.
@@ -971,6 +971,8 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   const incomingEventId = src.eventId || (/^\d{6,}$/.test(String(metadata.id || '')) ? String(metadata.id) : null);
   const previousPlan = (State.sourceEventId ? incomingEventId !== State.sourceEventId : PlanStore.holdsPlayers()) ? PlanStore.capture() : null;
   if (previousPlan) PlanStore.startFresh();
+  // A new plan (not the open one filled in) is built in the guild's version; the plan on the board keeps its own.
+  if (previousPlan || !hasLoadedWork()) NewPlanVersion.begin();
   // Filling a planned layout is a sync (logged below); a fresh import clears the log.
   const beforeImport = ChangeLog.snapshot();
   const result = Import.importRaidHelper(jsonStr);
@@ -1055,9 +1057,10 @@ const PlainRosterImport = {
   summaryText(parsed, flaggedCount) {
     const count = parsed.entries.length;
     if (!count) return 'No players recognized.';
-    const raidKey = Import.plainRosterRaid(count, State.gameVersion, State.selectedRaid);
+    const versionKey = NewPlanVersion.target();
+    const raidKey = Import.plainRosterRaid(count, versionKey, versionKey === State.gameVersion ? State.selectedRaid : GameVersions[versionKey].defaultRaid);
     const raid = Config.Raids[raidKey];
-    const version = GameVersions[State.gameVersion];
+    const version = GameVersions[versionKey];
     const target = raid ? `${version ? version.name + ' ' : ''}${raid.name} (${raid.size}-man)` : 'the selected raid';
     return `${count} player${count === 1 ? '' : 's'} into ${target}. Groups are arranged automatically.` +
       (flaggedCount ? ` ${flaggedCount} flagged for review.` : '') +
@@ -1075,8 +1078,9 @@ const PlainRosterImport = {
     const parsed = this.pending;
     const dialog = document.getElementById('plain-import-dialog');
     if (!parsed || !parsed.entries.length) { dialog.close(); return; }
-    const result = Import.importPlainRoster(parsed.entries);
     dialog.close();
+    NewPlanVersion.begin();
+    const result = Import.importPlainRoster(parsed.entries);
     this.pending = null;
     if (!result.success) { showToast(importErrorMessage({ raw: result.error })); return; }
     State.planId = null;

@@ -24,7 +24,7 @@ function importEnv(fetchImpl) {
     fetch: fetchImpl || (async () => { throw new TypeError('x'); }),
     AbortController, TypeError, setTimeout, clearTimeout, localStorage: {},
     document: { getElementById: () => null },
-    initGroups: () => 0, commit() {}, showToast() {}, rememberImport: () => '', maybeSuggestVersionSwitch() {},
+    initGroups: () => 0, commit() {}, showToast() {}, rememberImport: () => '', maybeSuggestVersionSwitch() {}, NewPlanVersion: { target: () => 'tbc', begin: () => false }, hasLoadedWork: () => false,
   };
   return app.sandbox(['importFromText', 'importErrorMessage', 'fetchRosterJson'], { globals, extraSource: importSrc }).api;
 }

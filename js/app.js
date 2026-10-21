@@ -289,6 +289,7 @@ const LandingSample = {
 
   document.getElementById('btn-landing-random').addEventListener('click', async () => {
     if (!await confirmReplaceWithRandom()) return;
+    NewPlanVersion.begin();
     State.planId = null;
     ChangeLog.clear();
     RandomRoster.generate();
@@ -580,6 +581,7 @@ document.getElementById('btn-clear').addEventListener('click', async () => {
 document.getElementById('btn-landing-empty').addEventListener('click', () => {
   State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
   PlanStore.startFresh();
+  NewPlanVersion.begin();
   ChangeLog.clear();
   State.rosterName = 'New raid plan';
   initGroups(); commit(); showView('app');
@@ -2788,6 +2790,8 @@ const PlannerShell = {
     if (section) section.scrollIntoView();
   },
   view: () => State.view,
+  // The open plan's name, for the top bar's trail ("<Guild> / Planner / <plan name>").
+  planName: () => State.rosterName,
   isActive: () => plannerActive(),
   setActive: setPlannerActive,
 };

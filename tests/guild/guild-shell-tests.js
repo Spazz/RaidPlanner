@@ -322,7 +322,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
       assert(lead.includes('aria-label="Open menu"'));
     }
     const planner = G.shell.slots({ section: 'planner', page: 'app', me: null }).lead;
-    assert(!planner.includes('gs-lead-phone') && !planner.includes('gs-crumbs-wrap'), 'planner: nothing after the button (the plan slot follows)');
+    assert(!planner.includes('gs-lead-phone'), 'planner: no phone title area (the trail is desktop only, guild.css hides it on a phone)');
     for (const route of [{ name: 'person', gid: 'g1', pid: 'p1' }, { name: 'import', gid: 'g1', source: 'wcl' }]) {
       const lead = guild(route).lead;
       assert(lead.includes('class="gs-back" href="#/g/g1/roster" aria-label="Back to Roster">&lsaquo; Roster</a>'), route.name);
@@ -337,6 +337,49 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const abs = G.shell.slots({ section: 'page', page: 'faq', me: meBody(), route: null, guildData: guildBody(), teamId: 't1' });
     assert(!abs.lead.includes('gs-back'));
   });
+
+  await check('planner trail: Guild / Planner on the landing, Guild / Planner / plan name on a plan; signed out has no guild crumb; the plan name is the current page', () => {
+    const { G } = makeEnv();
+    const lead = (ctx) => G.shell.slots(Object.assign({ section: 'planner', page: 'app', me: meBody(), route: null }, ctx)).lead;
+    const crumbs = (html) => [...html.matchAll(/<li([^>]*)>(.*?)<\/li>/g)].map((m) => m[2].replace(/<[^>]+>/g, '') + (m[1].includes('aria-current') ? '*' : ''));
+    const gd = { guildData: guildBody(OFFICER_CAN), teamId: 't1' };
+    const landing = lead(Object.assign({ planner: { view: 'landing', name: 'Old plan' } }, gd));
+    assert.deepEqual(crumbs(landing), ['Ravens', '/', 'Planner*'], 'landing: the guild, then Planner as the current page (the plan name is not shown)');
+    assert(landing.includes('<a href="#/g/g1/roster">Ravens</a>'), 'the guild links like the other pages\' first crumb');
+    const plan = lead(Object.assign({ planner: { view: 'app', name: 'Karazhan <Tue>' } }, gd));
+    assert.deepEqual(crumbs(plan), ['Ravens', '/', 'Planner', '/', 'Karazhan <Tue>*'].map((x) => x.replace('<Tue>', '&lt;Tue&gt;')), 'the plan name is the current page, escaped');
+    assert(plan.includes('<a href="/" data-action="open-planner">Planner</a>'), 'Planner links to the landing with the open-planner action');
+    const sideOnly = lead({ plannerGuild: { id: 'g9', name: 'Sidebar Guild' }, planner: { view: 'app', name: 'P' } });
+    assert(sideOnly.includes('<a href="#/g/g9/roster">Sidebar Guild</a>'), 'the guild the sidebar shows is used before its full data arrives');
+    assert.deepEqual(crumbs(lead({ me: null, planner: { view: 'landing', name: 'x' } })), ['Planner*'], 'signed out, landing');
+    assert.deepEqual(crumbs(lead({ me: null, planner: { view: 'app', name: 'Raid A' } })), ['Planner', '/', 'Raid A*'], 'signed out, plan');
+    assert.deepEqual(crumbs(lead({ planner: { view: 'app', name: 'Raid A' } })), ['Planner', '/', 'Raid A*'], 'signed in on no guild, plan');
+    assert(!G.shell.slots({ section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(OFFICER_CAN), teamId: 't1' }).lead.includes('data-action="open-planner"'), 'other pages are unchanged');
+  });
+
+  await check('planner trail: the last crumb follows the plan live (view and rename events redraw the lead only); the tabs hide in a guild; the guild reports its version', async () => {
+    const env = makeEnv({ url: '/', hint: true, routes: signedInRoutes(OFFICER_CAN) });
+    await settle();
+    const crumbs = () => [...env.html('shell-topbar-lead').matchAll(/<li[^>]*>(.*?)<\/li>/g)].map((m) => m[1].replace(/<[^>]+>/g, ''));
+    assert.deepEqual(crumbs(), ['Ravens', '/', 'Planner'], 'the landing');
+    let name = 'Plan one';
+    let view = 'app';
+    Object.assign(env.sandbox.PP.shell, { view: () => view, planName: () => name });
+    env.fire('document', 'planner:view', { detail: { view } });
+    assert.deepEqual(crumbs(), ['Ravens', '/', 'Planner', '/', 'Plan one'], 'a plan opens');
+    name = 'Renamed';
+    env.fire('document', 'planner:plan-name', {});
+    assert.deepEqual(crumbs(), ['Ravens', '/', 'Planner', '/', 'Renamed'], 'a rename');
+    view = 'landing';
+    env.fire('document', 'planner:view', { detail: { view } });
+    assert.deepEqual(crumbs(), ['Ravens', '/', 'Planner'], 'back to the landing');
+    assert.equal(env.G.app.plannerGuildVersion(), 'tbc', 'the version of the guild payload');
+    const css = read('app.css');
+    assert(css.includes('body[data-planner-view="landing"]:not(.has-planner-guild):not(.shell-pending) #shell-topbar-plan .game-version-nav { display: inline-flex'), 'tabs are shown only without a guild');
+    assert(css.includes('#shell-topbar-plan .game-version-nav { display: none; }'), 'and never on a plan');
+    assert(read('js/render.js').includes("new CustomEvent('planner:plan-name'"), 'the planner announces a changed plan name');
+  });
+
 
   await check('phone A2: the account menu has no "Open the planner"; signed out shows the sign-in button; a divider only on the planner section', () => {
     const { G } = makeEnv();
@@ -1178,14 +1221,13 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(!back.plannerCalls.includes('scrollTo'), 'history move: the scroll position is the browser\'s');
   });
 
-  await check('fix1 nit: app.css hides the empty #planner-notice slot; the phone version tabs have dividers and keep FOREVER + BETA on one line', () => {
+  await check('fix1 nit: app.css hides the empty #planner-notice slot; the phone version tabs are 44px Forge segments and the Beta marker keeps the 12px floor', () => {
     const css = read('app.css');
     assert(/#planner-notice:empty \{ display: none; \}/.test(css));
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
-    assert(/\.game-version-tab \+ \.game-version-tab \{ border-left: 1px solid var\(--border-subtle\); \}/.test(phone), 'a divider between the cells');
-    assert(/\.game-version-nav \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) auto;/.test(phone), 'the Forever cell is as wide as its content');
-    assert(/\.game-version-tab \{[^}]*padding: 0 6px;[^}]*white-space: nowrap;/.test(phone));
-    assert(/@media \(max-width: 360px\) \{ \.game-beta \{ font-size: 7px; padding: 0 2px; \} \}/.test(phone), 'the tag shrinks before anything is dropped');
+    assert(/\.game-version-nav \{[^}]*flex: 1 1 0;[^}]*display: flex;/.test(phone), 'the nav fills the bar between the menu button and the account area');
+    assert(/\.game-version-tab \{[^}]*height: 44px;[^}]*white-space: nowrap;/.test(phone), '44px cells, FOREVER + Beta on one line');
+    assert(/\.game-beta \{[^}]*font:500 12px/.test(css), 'the Beta marker is muted text at the 12px floor');
   });
 
   // ── Future enhancements (#/roadmap) ────────────────────────────

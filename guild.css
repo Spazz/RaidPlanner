@@ -193,6 +193,11 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .guild-page .gs-crumbs a { color: var(--text-muted); text-decoration: none; }
 .guild-page .gs-crumbs a:hover { color: var(--text-primary); }
 .gs-crumbs .is-current { color: var(--text-primary); font-weight: 500; }
+/* On the planner the trail shares the bar with the version tabs: a long plan name is cut with an ellipsis instead of wrapping. */
+body.shell-section-planner .gs-crumbs-wrap { overflow: hidden; }
+body.shell-section-planner .gs-crumbs { flex-wrap: nowrap; }
+body.shell-section-planner .gs-crumbs li { flex: none; white-space: nowrap; }
+body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .gs-phone-pick { display: none; }
 .gs-account { position: relative; flex: none; }
 .gs-avatar-btn { display: inline-flex; align-items: center; gap: var(--sp-1); margin: 0; padding: 0; background: none; border: 0; border-radius: 0; color: var(--text-muted); cursor: pointer; }
@@ -467,8 +472,6 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 
 @media (min-width: 601px) {
   .gs-drawer { display: none !important; }
-  /* On the planner section the lead holds only the phone menu button, so it takes no room beside the plan row. */
-  body.shell-section-planner #shell-topbar-lead { display: none; }
 }
 
 /* ── Roster (Phase 2): class colours, chips, roster table, person record, import pages ───── */
@@ -2683,6 +2686,18 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-pb-cov { width: 100vw; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; }
   .gs-pb-cov .insight-btn { min-height: 44px; }
   .gs-pb-cov .gs-btn { min-height: 44px; }
+}
+
+/* ── Planner board on Forge (T6): the frame. The board sits on the page colour like the Raid page: no fill, no edge, left-aligned (its own max
+   width kept), 32 px from the top bar to the back link and 32 px from the column edge. The planner root pads 16 px at the sides above 1100 px
+   and the head pads 16 px inside, so above 1100 px the 32 px is that pair; from 601 to 1100 px the board adds the 16 px itself. Scoped to the
+   board's own id plus gs-forge, so the shared frame class keeps its look for every other use. Phone (<= 600 px) is unchanged. */
+main#app.gs-forge { background: transparent; border: 0; align-self: flex-start; }
+@media (min-width: 601px) {
+  main#app.gs-forge .gs-pb-planhead { padding-top: 32px; }
+}
+@media (min-width: 601px) and (max-width: 1100px) {
+  main#app.gs-forge { margin-left: 16px; width: min(1620px, calc(100% - 16px)); }
 }
 
 /* ── Planner board on Forge (T6), lane 3a: the head, the More and Share menus, Raid settings, the Raid notes panel, the phone bottom bar. ──

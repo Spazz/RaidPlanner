@@ -412,10 +412,26 @@
     launch: { parent: 'roster', parentLabel: 'Roster', label: 'Launch' },
   };
   const IMPORT_LABELS = { 'raid-helper': 'Import from Raid-Helper', wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net', csv: 'Import from a CSV file' };
+  // The Planner's trail (desktop top bar). The guild is the one the sidebar shows (ctx.plannerGuild, else the loaded guild data); none for a
+  // signed-out visitor or an account on no guild. On a plan "Planner" links back to the landing (the same open-planner action as the nav item)
+  // and the last crumb is the plan name, which follows the planner live (ctx.planner = { view, name }).
+  function plannerCrumbs(ctx) {
+    const gd = guildOf(ctx);
+    const guild = ctx.plannerGuild || (gd ? { id: gd.guild.id, name: gd.guild.name } : null);
+    const p = ctx.planner || {};
+    const onPlan = p.view === 'app';
+    const crumbs = [];
+    if (guild) crumbs.push({ label: guild.name, href: guildHref(guild.id, 'roster', baseOf(ctx)) });
+    crumbs.push(onPlan ? { label: 'Planner', href: '/', action: 'open-planner' } : { label: 'Planner' });
+    if (onPlan && p.name) crumbs.push({ label: p.name });
+    return crumbs;
+  }
+
   function breadcrumbItems(ctx) {
     const r = ctx.route || {};
     const gd = ctx.guildData;
     const crumbs = [];
+    if (ctx.section === 'planner') return plannerCrumbs(ctx);
     if (ctx.section === 'page') return [{ label: PAGE_NAMES[ctx.page] || 'Raidsmith' }];
     if (r.name === 'new') return [{ label: 'Create a guild' }];
     if (r.name === 'privacy') return [{ label: 'Privacy & my data' }];
@@ -460,7 +476,7 @@
   function breadcrumbHtml(crumbs) {
     return '<nav aria-label="Breadcrumb"><ol class="gs-crumbs">' + crumbs.map(function (c, i) {
       const last = i === crumbs.length - 1;
-      const inner = c.href && !last ? '<a href="' + esc(c.href) + '">' + esc(c.label) + '</a>' : esc(c.label);
+      const inner = c.href && !last ? '<a href="' + esc(c.href) + '"' + (c.action ? ' data-action="' + esc(c.action) + '"' : '') + '>' + esc(c.label) + '</a>' : esc(c.label);
       return (i ? '<li aria-hidden="true">/</li>' : '') + '<li' + (last ? ' aria-current="page" class="is-current"' : '') + '>' + inner + '</li>';
     }).join('') + '</ol></nav>';
   }
@@ -507,10 +523,9 @@
 
   // #shell-topbar-lead: the phone menu button (every page), the phone title area, the desktop breadcrumb.
   function leadHtml(ctx) {
-    const section = sectionOf(ctx);
     const menu = '<button type="button" class="gs-menu-btn" data-action="open-drawer" data-key="menu-btn" aria-haspopup="dialog" aria-controls="gs-drawer" aria-label="Open menu">' + ic('menu', 24) + '</button>';
     const phone = phoneLeadHtml(ctx);
-    const crumbs = section === 'planner' ? '' : '<div class="gs-crumbs-wrap">' + breadcrumbHtml(breadcrumbItems(ctx)) + '</div>';
+    const crumbs = '<div class="gs-crumbs-wrap">' + breadcrumbHtml(breadcrumbItems(ctx)) + '</div>';
     return menu + (phone ? '<div class="gs-lead-phone">' + phone + '</div>' : '') + crumbs;
   }
 
@@ -685,6 +700,7 @@
     claimsBadge: claimsBadge,
     allowsTeam: allowsTeam,
     breadcrumbItems: breadcrumbItems,
+    leadHtml: leadHtml,
     settingsFrameHtml: settingsFrameHtml,
     settingsListHtml: settingsListHtml,
     accountMenuHtml: accountMenuHtml,

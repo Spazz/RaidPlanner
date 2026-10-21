@@ -809,20 +809,11 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .game-header-mark { width:34px; height:34px; display:grid; place-items:center; color:var(--accent-gold); }
 .game-header-mark .mark-svg { display:block; width:100%; height:100%; }
 /* The game switcher (Classic / TBC / Forever) lives in the shell's top bar. */
-.game-version-nav { display:flex; gap:2px; padding:3px; border:1px solid var(--border-subtle); background:#17181a; }
-.game-version-tab { --game-color:var(--version-classic); appearance:none; border:0; border-bottom:3px solid transparent; background:transparent; color:#a7aaa4; padding:5px 18px 4px; text-align:center; cursor:pointer; position:relative; transition:background .15s,color .15s; }
-.game-version-tab[data-version="tbc"] { --game-color:#abd47d; }
-.game-version-tab[data-version="forever"] { --game-color:#b9a0ec; }
-.game-version-tab:hover { background:var(--bg-card); color:#f1f1eb; }
-.game-version-tab:focus-visible { outline:2px solid var(--game-color); outline-offset:-5px; }
-.game-version-tab[aria-pressed="true"] { color:var(--game-color); border-bottom-color:var(--game-color); background:#232526; }
-.game-version-tab .game-name { font:700 18px var(--font-cond); letter-spacing:.045em; text-transform:uppercase; white-space:nowrap; }
-.game-beta { display:inline-block; vertical-align:middle; padding:3px 5px; margin-left:7px; border:1px solid #65577e; color:var(--camp-accent); font:600 9px var(--font-body); letter-spacing:.06em; }
+/* Forge joined segments (.gs-fg-segs / .gs-fg-seg in guild.css): the tab only adds its label and the Beta marker. */
+.game-version-tab .game-name { white-space:nowrap; }
+.game-beta { display:inline-block; margin-left:6px; color:var(--text-muted); font:500 12px/1 var(--font-body); letter-spacing:.02em; }
 /* The wordmark in the hero is for phones only (the shell's menu button and top bar carry no wordmark there). */
 .hero-wordmark { display:none; }
-@media(max-width:900px) {
-  .game-version-tab { min-width:0; padding:5px 14px 4px; }
-}
 
 /* Assignments panel — Healer→Tank, Paladin Blessings, boss Debuffs. */
 .assignments-panel { padding:20px; max-width:960px; margin:0 auto; width:100%; }
@@ -930,17 +921,9 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 
   /* Version tabs in the shell's top bar: Classic | TBC | Forever fill the row between the menu button and the account. */
   .game-header-mark { width: 26px; height: 26px; }
-  .game-version-nav { flex: 1; width: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 0; padding: 0; background: none; height: 28px; border: 1px solid var(--border-subtle); }
-  .game-version-tab { min-width: 0; padding: 0 6px; display: flex; align-items: center; justify-content: center; white-space: nowrap; border-bottom: 0; color: var(--text-secondary); }
-  .game-version-tab + .game-version-tab { border-left: 1px solid var(--border-subtle); }
-  .game-version-tab .game-name { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; }
-  .game-version-tab[aria-pressed="true"] { background: var(--accent-gold); color: var(--text-on-accent); }
-  .game-version-tab[aria-pressed="true"] .game-name { font-weight: 700; }
-  .game-version-tab[aria-pressed="true"] .game-beta { color: var(--text-on-accent); border-color: var(--text-on-accent); }
-  .game-version-tab:focus-visible { outline-offset: -3px; }
-  .game-version-tab::before { content: ''; position: absolute; inset: -9px 0; }
-  .game-beta { font-size: 8px; margin-left: 4px; padding: 1px 3px; }
-  @media (max-width: 360px) { .game-beta { font-size: 7px; padding: 0 2px; } }
+  .game-version-nav { flex: 1 1 0; min-width: 0; display: flex; }
+  .game-version-tab { flex: 1 1 auto; min-width: 0; height: 44px; padding: 0 8px; font-size: 15px; white-space: nowrap; }
+  .game-beta { margin-left: 4px; }
 
   .hero-wordmark { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
   .hero-wordmark .game-header-mark { width: 28px; height: 28px; }
@@ -994,6 +977,15 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 @media (max-width: 1100px) {
   .planner-root { padding: 0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
 }
+/* The landing sits 32 px under the top bar and 32 px from the column edge, like the Raid page: the signed-in (compact) landing is left-aligned at
+   the root's 16 px + the landing's 16 px (32 px between 601 and 1100 px, where the root pads nothing); the full landing stays centred inside the same gutters. */
+@media (min-width: 601px) {
+  .planner-root > .landing { padding: 32px 16px 48px; }
+  body:not(.is-signed-out):not(.landing-full) .planner-root > .landing { align-self: flex-start; }
+}
+@media (min-width: 601px) and (max-width: 1100px) {
+  .planner-root > .landing { padding-left: 32px; padding-right: 32px; }
+}
 /* The shell's notice slot adds no gap when it is empty (the landing, signed out). */
 #planner-notice:empty { display: none; }
 /* The import card's second tab and its heading read "Other plans on this device" once the viewer is in a guild (Upcoming raids to plan leads). */
@@ -1003,13 +995,15 @@ body.has-planner-guild .lbl-guild { display: inline; }
 
 /* The planner's slot in the top bar: nothing on a guild section or a static page, version tabs on the landing,
    nothing on the plan (its head is inside the page, guild.css "Planner board on Forge"). */
-#shell-topbar-plan { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: var(--sp-3); }
+#shell-topbar-plan { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-3); }
 body.shell-section-guild #shell-topbar-plan, body.shell-section-page #shell-topbar-plan { display: none; }
 #shell-topbar-plan .game-version-nav { display: none; }
-body[data-planner-view="landing"] #shell-topbar-plan .game-version-nav { display: flex; flex-shrink: 0; }
+/* The version tabs pick the version of a new plan, so they show on the landing only, and only where nothing else decides it: a guild's plans
+   take the guild's version (body.has-planner-guild). They sit at the right of the bar, before the account area. */
+body[data-planner-view="landing"]:not(.has-planner-guild):not(.shell-pending) #shell-topbar-plan .game-version-nav { display: inline-flex; flex-shrink: 0; }
 @media (max-width: 600px) {
   #shell-topbar-plan { gap: var(--sp-2); }
-  body[data-planner-view="landing"] #shell-topbar-plan .game-version-nav { flex: 1 1 0; min-width: 0; }
+  body[data-planner-view="landing"]:not(.has-planner-guild):not(.shell-pending) #shell-topbar-plan .game-version-nav { display: flex; flex: 1 1 0; min-width: 0; }
 }
 
 /* Landing modes: signed out (or How it works) = the full landing; signed in = the compact planner home;

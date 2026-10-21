@@ -171,8 +171,8 @@ check('the Share menu has three headed groups, then Share and export last', () =
 
 check('the landing has no brand row of its own: version tabs in the top bar, no landing-nav, no Features, no cards', () => {
   const bar = sliceBetween(html, 'id="shell-topbar-plan"', 'id="shell-topbar-account"');
-  assert.match(bar, /<nav class="game-version-nav" aria-label="Game version">/);
-  assert.equal((bar.match(/class="game-version-tab"/g) || []).length, 3);
+  assert.match(bar, /<nav class="game-version-nav gs-fg-segs" aria-label="Game version">/);
+  assert.equal((bar.match(/class="game-version-tab gs-fg-seg"/g) || []).length, 3, 'three Forge segments');
   assert.ok(!/href="#(?:faq|whats-new)"/.test(html), 'no link to the moved sections');
   assert.ok(!html.includes('landing-nav') && !html.includes('landing-brand') && !/>Features</.test(html) && !html.includes('class="features"') && !html.includes('id="features"'));
   assert.ok(!/\.landing-nav|\.features|\.feature\b/.test(css), 'dead CSS removed');
@@ -184,7 +184,8 @@ check('the landing has no brand row of its own: version tabs in the top bar, no 
 check('top-bar rules: the planner slot hides on guild sections and static pages and holds the version tabs on the landing only', () => {
   assert.match(css, /body\.shell-section-guild #shell-topbar-plan, body\.shell-section-page #shell-topbar-plan \{ display: none; \}/);
   assert.match(css, /#shell-topbar-plan \{[^}]*flex: 1 1 0;[^}]*min-width: 0/);
-  assert.match(css, /body\[data-planner-view="landing"\] #shell-topbar-plan \.game-version-nav \{ display: flex/);
+  assert.match(css, /body\[data-planner-view="landing"\]:not\(\.has-planner-guild\):not\(\.shell-pending\) #shell-topbar-plan \.game-version-nav \{ display: inline-flex/, 'tabs: landing only, never in a guild, not while the session question is open');
+  assert.match(css, /#shell-topbar-plan \{[^}]*justify-content: flex-end/, 'the tabs sit at the right of the bar, before the account area');
   assert.match(css, /#shell-topbar-plan \.game-version-nav \{ display: none; \}/, 'the plan view leaves the slot empty: its head is inside the page');
   assert.doesNotMatch(css, /#shell-topbar-plan \.(title-bar|phone-summary-line1|roster-name)/);
   assert.ok(!/#shell-topbar-plan \{[^}]*position:\s*sticky/.test(css), 'the top bar is not sticky');

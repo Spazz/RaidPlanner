@@ -295,8 +295,8 @@ check('Coverage dialog text is 13-14px, the row icon 28px, and the fix buttons a
   assert.match(renderJs, /class="insight-btn gs-btn" data-insight-swap/);
 });
 
-check('version tabs get a 44px hit area; the plan name button, back link and bar buttons are 44px tall on a phone', () => {
-  assert.match(rule('.game-version-tab::before'), /inset: -9px 0/);
+check('version tabs are 44px tall on a phone; the plan name button, back link and bar buttons are 44px tall on a phone', () => {
+  assert.match(rule('.game-version-tab'), /height: 44px/);
   assert.match(lane3a, /\.gs-pb-name \{[^}]*min-height: 44px;/, "the plan name button is 44px tall at every width");
   assert.match(lane3aPhone, /\.gs-pb-back \{ min-height: 44px; \}/);
   assert.match(lane3aPhone, /\.gs-pb-sharewrap > \.gs-btn \{ width: 100%; min-height: 44px; \}/);
@@ -304,12 +304,9 @@ check('version tabs get a 44px hit area; the plan name button, back link and bar
 
 check('the phone hit areas add up to 44px and do not overlap their neighbours', () => {
   const px = (line, re) => Number(line.match(re)[1]);
-  // Version tabs: grid row inside the 1px-bordered 28px nav, grown by the ::before inset on both sides.
-  const nav = rule('.game-version-nav');
-  const tabHeight = px(nav, /height: (\d+)px/) - 2 * px(nav, /border: (\d+)px/);
-  const tabInset = px(rule('.game-version-tab::before'), /inset: -(\d+)px 0/);
-  assert.ok(tabHeight + 2 * tabInset >= 44, `tabs reach ${tabHeight + 2 * tabInset}px`);
-  // The tabs sit alone in the shell's top bar on the landing view, so their hit area has no neighbour to overlap.
+  // Version tabs are Forge segments: a 44px cell, no extra hit-area inset.
+  assert.ok(px(rule('.game-version-tab'), /height: (\d+)px/) >= 44);
+  // The tabs share the shell's top bar with the menu button and the account area; the nav takes what is left (flex 1 1 0) and cannot overlap them.
 });
 
 check('the buff icon fallback label stays visible (12px floor) where the image is missing; an icon with an image hides it', () => {

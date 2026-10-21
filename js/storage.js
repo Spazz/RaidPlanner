@@ -977,3 +977,25 @@ const PlanSession = {
   },
 };
 
+
+// The game version a NEW plan started from the landing is built in. In a guild (the one the sidebar shows) that is the guild's own
+// version, since the landing's version tabs are hidden there; otherwise the version already open (the tabs set it). begin() is called by
+// each landing entry point (paste / Raid-Helper link, plain-text roster, random roster, empty plan) at the moment it starts a new plan,
+// never on a plan the person is working in: the plan on the board keeps its version, and the old plan stays saved under its own id.
+const NewPlanVersion = {
+  guildVersion() {
+    const app = typeof window !== 'undefined' && window.Guild && window.Guild.app;
+    const version = app && typeof app.plannerGuildVersion === 'function' ? app.plannerGuildVersion() : null;
+    return version && Object.prototype.hasOwnProperty.call(GameVersions, version) ? version : null;
+  },
+  target() { return this.guildVersion() || State.gameVersion; },
+  // True when the guild's version differs from the open one and the new plan was set up in it (empty, on that version's default raid).
+  begin() {
+    const version = this.target();
+    if (version === State.gameVersion) return false;
+    PlanStore.startFresh();
+    State.gameVersion = version;
+    State.selectedRaid = GameVersions[version].defaultRaid;
+    return true;
+  },
+};

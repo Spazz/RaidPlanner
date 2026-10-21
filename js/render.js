@@ -5,6 +5,14 @@ const VERSION_BUTTON_TEXT = {
   tbc: { text: 'TBC', label: 'TBC Anniversary' },
   forever: { text: 'Forever', label: 'WoW Forever Beta' },
 };
+// The shell's trail (Guild / Planner / plan name) ends in the plan's name: tell it when the name changes (a rename, another plan opening).
+let announcedPlanName = null;
+function announcePlanName() {
+  if (announcedPlanName === State.rosterName) return;
+  announcedPlanName = State.rosterName;
+  if (typeof document !== 'undefined' && typeof CustomEvent === 'function') document.dispatchEvent(new CustomEvent('planner:plan-name', { detail: { name: State.rosterName } }));
+}
+
 function syncVersionControls() {
   const profile = GameVersions[State.gameVersion];
   // Scoped to the real switcher tabs only — the landing page's informational
@@ -818,6 +826,7 @@ function renderGroups() {
   // Update version and raid controls after imports, restores and undo.
   syncVersionControls();
   document.getElementById('roster-name-text').textContent = State.rosterName;
+  if (typeof announcePlanName === 'function') announcePlanName();
   syncRaidNotesUI();
   RaidHelperSync.updateControls();
   renderCampfires();

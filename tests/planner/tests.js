@@ -2987,6 +2987,7 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   const ChangeLog = PP.ChangeLog;
   const context = { State, Import, PlanStore:PP.PlanStore, NO_ROSTER_NAME, ChangeLog,
     localStorage:storage, document:{getElementById(){return {}; }},
+    NewPlanVersion:{ target:()=>State.gameVersion, begin:()=>false }, hasLoadedWork:()=>false,
     initGroups:()=>0, commit:()=>{ commitCount++; PP.PlanStore.save(storage,PP.PlanStore.capture()); },
     showToast:(m)=>{lastToast=m;}, ResultLine:{ show(t){ shownResults.push({ t, commits: commitCount }); }, hide(){} }, rememberImport:()=>'', fetchRosterJson:async()=>JSON.stringify(payload) };
   // app.slice throws if a marker is missing, so a renamed function can't silently slice the wrong code.

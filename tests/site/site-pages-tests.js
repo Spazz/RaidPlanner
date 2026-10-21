@@ -160,7 +160,7 @@ check('index.html carries the shell skeleton: every id, in order, with the plann
   const root = indexHtml.slice(rootStart, rootEnd);
   for (const part of ['id="landing-view"', 'id="app"', '<dialog id="share-dialog"', '<dialog id="confirm-dialog"', 'id="planner-notice"']) assert(root.includes(part), part + ' inside #planner-root');
   const plan = indexHtml.slice(at('shell-topbar-plan'), at('shell-topbar-account'));
-  assert(plan.includes('class="game-version-nav"'), 'the version tabs stay in the planner top bar for the landing');
+  assert(plan.includes('class="game-version-nav gs-fg-segs"'), 'the version tabs stay in the planner top bar for the landing');
   for (const part of ['class="title-bar"', 'id="roster-name"', 'id="btn-share-menu"', 'id="btn-settings-menu"', 'phone-summary', 'phone-version-slot']) assert(!plan.includes(part), part + ' left the planner top bar: the plan head lives in main#app');
   const appMain = indexHtml.slice(indexHtml.indexOf('<main class="addon-frame gs-forge" id="app"'));
   for (const part of ['<header class="gs-pb-planhead" id="plan-head">', 'id="btn-back-plans"', 'id="roster-name"', 'id="plan-chip"', 'id="plan-context"', 'id="btn-undo"', 'id="btn-redo"', 'id="btn-share-menu"', 'id="btn-settings-menu"', 'id="btn-optimize"']) assert(appMain.includes(part), part + ' in the plan head');
