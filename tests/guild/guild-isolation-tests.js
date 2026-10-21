@@ -79,6 +79,7 @@ const VALID_BODIES = {
 // A read gets ?team=<the team id>, a write the valid body of its route if it has one, else a body naming the ids it might look for. Fields a
 // route does not know are ignored by it.
 const requestOf = (route, path, ids) => {
+  if (route.method === 'GET' && route.path.endsWith('/raid-for-event')) return [`${path}?event=100000`]; // a Raid-Helper event id no raid has: { raid: null }
   if (route.method === 'GET') return [`${path}?team=${ids.tid || ''}`];
   const valid = VALID_BODIES[`${route.method} ${route.path}`];
   return [path, valid ? valid(ids) : { teamId: ids.tid, playerId: ids.pid, characterId: ids.cid }];

@@ -25,7 +25,7 @@ export const ACTION_GROUP = Object.freeze({
   'person.create': 'roster', 'person.update': 'roster', 'person.delete': 'roster', 'person.notes': 'roster',
   'person.account_link': 'roster', 'person.account_unlink': 'roster',
   'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'roster.import': 'roster',
-  'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.manual': 'raids',
+  'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.plan_edit': 'raids', 'raid.manual': 'raids',
   'schedule.update': 'raids', 'schedule.fill': 'raids', 'raid.settings': 'raids', 'roster.publish': 'raids', 'roster.unpublish': 'raids', 'roster.decline': 'signups',
   'away.set': 'signups', 'away.remove': 'signups',
   'attendance.decide': 'attendance', 'attendance.undo': 'attendance', 'attendance.link': 'attendance', 'attendance.guest': 'attendance',
@@ -297,6 +297,7 @@ export function describeRow(row, names = {}) {
     case 'raid.plan':
       if (after.plan === false) return `Removed the plan from ${onRaid(ent)}`;
       return `Attached a plan of ${plural(Number(after.players) || 0, 'player', 'players')} to ${onRaid(ent)}`;
+    case 'raid.plan_edit': return `Edited the plan of ${onRaid(ent)}: ${plural(Number(after.players) || 0, 'player', 'players')} seated`;
     case 'raid.manual':
       if (after.manual === false) return `Went back from hand-entered attendance on ${onRaid(ent)}`;
       if (after.paste) return `Entered attendance from a pasted roster for ${onRaid(ent)}: ${Number(after.present) || 0} attended, ${plural(Number(after.unmatched) || 0, 'name', 'names')} to review`;

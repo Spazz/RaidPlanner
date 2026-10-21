@@ -31,6 +31,7 @@ export const AUDIT_ACTIONS = [
   'raid.event',
   'raid.report',
   'raid.plan',
+  'raid.plan_edit',
   'raid.manual',
   'attendance.decide',
   'attendance.undo',

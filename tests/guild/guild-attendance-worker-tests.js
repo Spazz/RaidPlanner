@@ -1187,6 +1187,11 @@ check('audit: every attendance action is written, none holds a nickname, a Disco
   await decide(s, 'bob', id, { playerId: brindle, outcome: 'bench', reason: 'Told us in Discord', expectedFlags: ['no_show'] });
   await s.call('bob', 'DELETE', s.raid(id, `/decisions/${brindle}`), { reason: 'Mistake' });
   await s.call('bob', 'PUT', s.raid(id, '/plan'), { label: 'Plan', players: [{ name: 'Aldric', group: 1 }] });
+  // The Planner's whole plan: a first write (raid.plan) and another officer's edit (raid.plan_edit).
+  const docOf = (names) => ({ planId: `raid:${id}`, gameVersion: 'tbc', selectedRaid: 'kara', rosterName: 'Plan', optimizerMode: 'max_dps', buffOverrides: {}, bench: [],
+    groups: [names.map((name) => ({ uid: `u-${name}`, name, class: 'WARRIOR', spec: 'Arms', role: 'dps' }))] });
+  assert.equal((await s.call('bob', 'PUT', s.raid(id, '/plan-doc'), { baseRev: 0, plan: docOf(['Aldric']) })).status, 200);
+  assert.equal((await s.call('carol', 'PUT', s.raid(id, '/plan-doc'), { baseRev: 1, plan: docOf(['Aldric', 'Brindle']) })).status, 200);
   await s.call('bob', 'POST', s.raid(id, '/unmatched'), { key: 'zorgax|nightslayer', action: 'alt', personId: s.p.fenwick });
   const second = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-02' })).json.raid.id;
   s.w.sources.reports.set(R3, wclReport({ startTime: Date.parse('2027-01-02T20:00:00Z'), actors: [[1, 'Aldric', 'Warrior'], [2, 'Visitor', 'Mage']], fights: [[1, 'Gruul', 650, true, 0, 100, [1, 2]]] }));
@@ -1204,7 +1209,7 @@ check('audit: every attendance action is written, none holds a nickname, a Disco
   await s.call('bob', 'DELETE', s.raid(second), {});
   const written = (await s.w.rows("SELECT DISTINCT action FROM audit_log WHERE action LIKE 'raid.%' OR action LIKE 'attendance.%' OR action IN ('policy.update', 'wcl.settings')")).map((r) => r.action).sort();
   const expected = AUDIT_ACTIONS.filter((a) => /^(raid|attendance)\./.test(a) || ['policy.update', 'wcl.settings'].includes(a)).sort();
-  assert.equal(expected.length, 13);
+  assert.equal(expected.length, 14);
   assert.deepEqual(written, expected);
   const dump = (await s.w.rows('SELECT action, before, after FROM audit_log')).map((r) => `${r.before} ${r.after}`).join('\n');
   for (const secret of ['Stranger', DID(1), DID(5), '299999999999999999', PEOPLE.erin.id, 'Aldric', 'Zorgax', 'Visitor', 'Uploader', 'nightslayer']) {
@@ -2224,7 +2229,7 @@ check('plan live link: PUT stores the live id, PUT without it clears it, DELETE 
   assert.equal((await s.call('erin', 'GET', s.raid(id))).json.raid.planLive, null, 'a member sees no live link');
   assert.equal((await s.call('erin', 'GET', `/raids?team=${s.A}`)).json.upcoming.find((r) => r.id === id).planLive, null);
   const audit = await s.w.rows("SELECT after FROM audit_log WHERE action = 'raid.plan' ORDER BY rowid DESC LIMIT 1");
-  assert.deepEqual(JSON.parse(audit[0].after), { players: 2, live: true });
+  assert.deepEqual(JSON.parse(audit[0].after), { players: 2, live: true, source: 'legacy' });
   assert.equal(JSON.stringify(audit).includes('Ab3dEfG'), false, 'the link id is not written to the audit log');
   // A plan pasted as a long link or code carries no live id: it replaces the link.
   const replaced = await put(plan);

@@ -65,6 +65,8 @@ import { getDuties, putDuties } from './routes/duties.js';
 import { createJoinLink, deleteGuestSignup, listJoinLinks, revokeJoinLink, submitJoin, viewJoin } from './routes/join.js';
 import { getLaunch, putLaunchStatus, putLaunchTeam } from './routes/launch.js';
 import { commitPaste, previewPaste } from './routes/paste.js';
+import { getPlanDoc, getRaidForEvent, putPlanDoc } from './routes/plan-doc.js';
+import { PLAN_DOC_MAX_BODY } from './plan-doc.js';
 
 const COMMIT_MAX_BODY = 64 * 1024;
 const PLAN_MAX_BODY = 32 * 1024;
@@ -162,6 +164,10 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/raids/:rid/planner', auth: true, handler: getPlanner },
   { method: 'PUT', path: '/api/guild/:gid/raids/:rid/plan', auth: true, handler: putPlan, maxBody: PLAN_MAX_BODY },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/plan', auth: true, handler: deletePlan },
+  // The Planner's whole plan of the raid (autosave + poll), and the lookup the Raid-Helper import uses to attach a plan to a raid.
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/plan-doc', auth: true, handler: getPlanDoc },
+  { method: 'PUT', path: '/api/guild/:gid/raids/:rid/plan-doc', auth: true, handler: putPlanDoc, maxBody: PLAN_DOC_MAX_BODY },
+  { method: 'GET', path: '/api/guild/:gid/raid-for-event', auth: true, handler: getRaidForEvent },
   { method: 'PUT', path: '/api/guild/:gid/raids/:rid/manual', auth: true, handler: putManual, maxBody: PLAN_MAX_BODY },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/manual', auth: true, handler: deleteManual },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/recompute', auth: true, handler: recomputeRoute },

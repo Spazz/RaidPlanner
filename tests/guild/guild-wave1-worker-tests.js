@@ -315,6 +315,8 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('raid.report', 'raid', 'r_1', { code: 'x' }, { removed: true }), 'Removed a Warcraft Logs report from the raid on Tue Oct 21 (Alpha)'],
     [row('raid.plan', 'raid', 'r_1', { plan: false }, { players: 25, live: true }), 'Attached a plan of 25 players to the raid on Tue Oct 21 (Alpha)'],
     [row('raid.plan', 'raid', 'r_1', { plan: true }, { plan: false }), 'Removed the plan from the raid on Tue Oct 21 (Alpha)'],
+    [row('raid.plan_edit', 'raid', 'r_1', null, { players: 25 }), 'Edited the plan of the raid on Tue Oct 21 (Alpha): 25 players seated'],
+    [row('raid.plan_edit', 'raid', 'r_1', null, { players: 1 }), 'Edited the plan of the raid on Tue Oct 21 (Alpha): 1 player seated'],
     [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 20, reason: 'x' }), 'Entered attendance by hand for the raid on Tue Oct 21 (Alpha): 20 attended'],
     [row('raid.manual', 'raid', 'r_1', { manual: true }, { manual: false, reason: 'x' }), 'Went back from hand-entered attendance on the raid on Tue Oct 21 (Alpha)'],
     [row('team.size', 'team', 't_a', { size: 25 }, { size: 20 }), 'Set the raid size of Alpha to 20'],

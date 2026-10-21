@@ -64,6 +64,7 @@ const raidExists = (raidId) => ({ sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ?
 export async function loadRaid(ctx, guildContext, { edit = false } = {}) {
   const raid = await ctx.db.prepare(
     `SELECT r.*, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
+            (SELECT COUNT(*) FROM raid_plan_doc d WHERE d.raid_id = r.id) AS plan_doc,
             (SELECT t.size FROM teams t WHERE t.id = r.team_id) AS team_size,
             (SELECT t.signup_close_hours FROM teams t WHERE t.id = r.team_id) AS team_close_hours,
             ${SLOT_TIME_SQL} AS slot_time
@@ -760,13 +761,15 @@ export async function putPlan(ctx) {
   const guard = raidExists(raid.id);
   await db.batch([
     db.prepare('DELETE FROM raid_plan WHERE raid_id = ?').bind(raid.id),
+    // A pasted plan replaces the raid's whole Planner plan too (the raid page warned first when sources.plan.full).
+    db.prepare('DELETE FROM raid_plan_doc WHERE raid_id = ? AND guild_id = ?').bind(raid.id, guildContext.guild.id),
     db.prepare(
       `INSERT INTO raid_plan (raid_id, name, name_key, group_number)
        SELECT ?, json_extract(value, '$.name'), json_extract(value, '$.nameKey'), json_extract(value, '$.group') FROM json_each(?) WHERE ${guard.sql}`,
     ).bind(raid.id, JSON.stringify(rows), ...guard.params),
     db.prepare('UPDATE raids SET plan_label = ?, plan_live = ?, plan_synced = ?, updated_at = ?, version = version + 1, policy_fp = \'\' WHERE id = ? AND guild_id = ?')
       .bind(label, live, now, now, raid.id, guildContext.guild.id),
-    raidAudit(ctx, guildContext, 'raid.plan', raid.id, { plan: raid.plan_synced !== null }, { players: rows.length, live: live !== null }),
+    raidAudit(ctx, guildContext, 'raid.plan', raid.id, { plan: raid.plan_synced !== null, ...(raid.plan_doc > 0 ? { full: true } : {}) }, { players: rows.length, live: live !== null, source: 'legacy' }),
   ]);
   return recomputeAndReply(ctx, guildContext, raid.id);
 }
@@ -775,13 +778,14 @@ export async function deletePlan(ctx) {
   const { db } = ctx;
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
-  if (raid.plan_synced !== null) {
+  if (raid.plan_synced !== null || raid.plan_doc > 0) {
     const now = ctx.now();
     await db.batch([
       db.prepare('DELETE FROM raid_plan WHERE raid_id = ?').bind(raid.id),
+      db.prepare('DELETE FROM raid_plan_doc WHERE raid_id = ? AND guild_id = ?').bind(raid.id, guildContext.guild.id),
       db.prepare('UPDATE raids SET plan_label = NULL, plan_live = NULL, plan_synced = NULL, updated_at = ?, version = version + 1, policy_fp = \'\' WHERE id = ? AND guild_id = ?')
         .bind(now, raid.id, guildContext.guild.id),
-      raidAudit(ctx, guildContext, 'raid.plan', raid.id, { plan: true }, { plan: false }),
+      raidAudit(ctx, guildContext, 'raid.plan', raid.id, { plan: true, ...(raid.plan_doc > 0 ? { full: true } : {}) }, { plan: false }),
     ]);
   }
   return recomputeAndReply(ctx, guildContext, raid.id);

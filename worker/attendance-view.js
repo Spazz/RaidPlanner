@@ -53,6 +53,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const [raidResult, reportResult, pullResult, signupResult, planResult, attendanceResult, characterResult, presenceResult, guestResult,
     policyResult, userResult, teamResult, flagResult, decisionResult, manualResult, dutyResult, laterResult] = await db.batch([
     bind(`SELECT r.*, t.name AS team_name, t.size AS team_size, t.signup_close_hours AS team_close_hours, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
+                 (SELECT COUNT(*) FROM raid_plan_doc d WHERE d.raid_id = r.id) AS plan_doc,
                  ${SLOT_TIME_SQL} AS slot_time
             FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id WHERE r.guild_id = ?1 AND r.id = ?2`),
     bind(`SELECT code, flavour, started_at, ended_at, owner, synced_at,
@@ -218,7 +219,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       } : null,
       reports: reportResult.results.map((row) => ({ code: row.code, flavour: row.flavour, startedAt: row.started_at, pulls: row.pulls })),
       plan: raid.plan_synced !== null && raid.plan_synced !== undefined
-        ? { label: raid.plan_label, players: planNames.length, unmatched: seeAttendance ? planNames.filter((entry) => !matchedPlanKeys.has(entry.name_key)).map((entry) => entry.name) : [] }
+        ? { label: raid.plan_label, players: planNames.length, full: raid.plan_doc > 0, unmatched: seeAttendance ? planNames.filter((entry) => !matchedPlanKeys.has(entry.name_key)).map((entry) => entry.name) : [] }
         : null,
     },
     pulls: pullResult.results.map((row) => ({ encounter: row.encounter_name, kill: row.kill === 1, startedAt: row.started_at })),
