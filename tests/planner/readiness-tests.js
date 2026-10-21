@@ -17,7 +17,7 @@ function check(name, fn) {
   console.log('PASS  ' + name);
 }
 
-const NAMES = ['State', 'Config', 'Import', 'GameVersions', 'liveCoverageGaps', 'coverageGapCounts', 'renderReadiness', 'renderBuffCatalog',
+const NAMES = ['State', 'Config', 'Import', 'GameVersions', 'coverageGapCounts', 'renderReadiness', 'renderBuffCatalog',
   'buildCoverageModel', 'renderRaidCheckTiles', 'getRaidBuffCoverage', 'getRaidDebuffCoverage', 'factionRelevantBuffs', 'ResultLine', 'Optimizer',
   'DataBackup', 'renderSummaryBar', 'renderManualChanges', 'setLoaded'];
 
@@ -219,12 +219,12 @@ check('strip and dialog count the same unit: icons per group = rows or entries p
   assert.equal(els['btn-coverage'].hidden, false);
 });
 
-check('the strip counts and the live gap helper agree on a real four-player raid', () => {
+check('the strip counts and the gap counter agree on a real four-player raid', () => {
   const { api, els } = makeSandbox();
   seedRaid(api);
-  const gaps = api.liveCoverageGaps();
-  assert(gaps.buffs > 0 && gaps.debuffs > 0, 'a four-player raid leaves both kinds open');
   const groups = api.State.groups;
+  const gaps = api.coverageGapCounts(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
+  assert(gaps.buffs > 0 && gaps.debuffs > 0, 'a four-player raid leaves both kinds open');
   api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
   const strip = stripGroups(els['raid-check-gaps'].innerHTML);
   assert.equal(strip.reduce((n, g) => n + g.icons.length, 0), gaps.buffs + gaps.debuffs);

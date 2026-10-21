@@ -23,8 +23,8 @@ const pickerSrc = norm(app.slice('function showBuffPicker(', 'function closeBuff
 check('swappable buff icons render as buttons with an accessible name; the drum icon is a button beside the group name', () => {
   const m = renderSrc.match(/const iconTag = isSwappable \? 'button' : 'div';/);
   assert(m, 'icon tag is chosen from isSwappable');
-  assert(/const iconAttrs = isSwappable\s*\? ` type="button" aria-label="\$\{esc\(swappableBuffLabel\(b, from\)\)\}"`\s*: ` role="img" aria-label="\$\{esc\(b\.buff\.name\)\}"`;/.test(renderSrc),
-    'button type and escaped label on swappable icons; role=img and the escaped buff name on the others');
+  assert(/const iconAttrs = isSwappable\s*\? ` type="button" aria-label="\$\{esc\(swappableBuffLabel\(b, from\)\)\}"`\s*: ` role="img" tabindex="0" aria-label="\$\{esc\(b\.buff\.name\)\}"`;/.test(renderSrc),
+    'button type and escaped label on swappable icons; focusable role=img and the escaped buff name on the others');
   assert(/<\$\{iconTag\} class="buff-icon [^`]*<\/\$\{iconTag\}>/.test(renderSrc), 'icon uses the chosen tag for open and close');
   assert(/<button type="button" class="gs-pb-drum" aria-label="\$\{drummers\.length === 1 \? 'Drummer' : 'Drummers'\}: \$\{esc\(names\)\}"/.test(renderSrc), 'drum icon is a focusable button named "Drummer: <name>"');
   assert(!/BuffCSSClass\.DRUMS/.test(renderSrc), 'Drm no longer sits in the buff row');

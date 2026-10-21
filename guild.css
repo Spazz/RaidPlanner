@@ -2533,10 +2533,11 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 :is(.gs-pb-board, .gs-pb-pool) .status-late, .gs-pb-board .marker-also { border-color: var(--status-info-edge); background: var(--status-info-bg); color: var(--status-info-ink); }
 :is(.gs-pb-board, .gs-pb-pool) .status-absent, .gs-pb-board .marker-away, .gs-pb-board .review-badge { border-color: var(--status-danger-edge); background: var(--status-danger-bg); color: var(--status-danger-ink); }
 :is(.gs-pb-board, .gs-pb-pool) .marker-late, .gs-pb-board .marker-leaving { border-color: var(--status-warning-edge); background: var(--status-warning-bg); color: var(--status-warning-ink); }
-:is(.gs-pb-board, .gs-pb-pool) .changed-tag { border-color: currentColor; background: none; color: var(--changed-color, var(--status-neutral-ink)); }
-:is(.gs-pb-board, .gs-pb-pool) .changed-status .changed-tag { color: var(--status-info-ink); }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed-status { box-shadow: inset 0 0 0 2px var(--status-info-ink); }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed-status:focus-visible { box-shadow: inset 0 0 0 4px var(--status-info-ink); }
+:is(.gs-pb-board, .gs-pb-pool) .changed-tag { border-color: currentColor; background: none; color: var(--hd-white); }
+/* Unseen change: a white inset ring plus the change tag (neutral, never gold or orange; the focus outline stays 2 px white outside it). */
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed { box-shadow: inset 0 0 0 2px var(--hd-white); opacity: 1; }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed:focus-visible { box-shadow: inset 0 0 0 4px var(--hd-white); }
+:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed.dragging { opacity: 0.3; }
 :is(.gs-pb-board, .gs-pb-pool) .gs-hd-chip { align-self: center; }
 
 /* Open slots (requested / suggested) and the runner-up stack. */
@@ -2656,7 +2657,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-pb-cov .rec-spec { font-weight: 600; color: var(--text-primary); }
 .gs-pb-cov .rec-name { white-space: nowrap; }
 .gs-pb-cov .rec-item .buff-row-insight { padding-left: 0; }
-.gs-pb-cov .buff-sidebar-sub { margin: 10px 0 2px; }
+.gs-pb-cov .gs-pb-sub { margin: 10px 0 2px; }
 .gs-pb-cov .balance-warning-row { padding: 10px 0; border-top: 1px solid var(--hd-hair); font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
 .gs-pb-cov .swap-legend { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
 .gs-pb-cov .swap-legend i { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 14px; height: 14px; border: 1px solid var(--bg-frame); border-radius: 7px; background: var(--border-strong); color: var(--text-primary); }
@@ -2685,12 +2686,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 
 /* ── Planner board on Forge (T6), lane 3a: the head, the More and Share menus, Raid settings, the Raid notes panel, the phone bottom bar. ──
    Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop and R3-phone head + bottom bar) and round 4 (R4-phone-more). The planner frame no
-   longer zooms (lane 3a retired it with the title bar and the lane 1-2 counter-zooms), so every size here is a real pixel.
-   Interim: the blocks that are not on Forge yet (notice banners, Changes panel, Campfire, Assignments, the Save modal) keep
-   their old 1.5 scale on their own element until lane 6 rebuild them; each lane deletes its selector from the rule below. */
-@media (min-width: 601px) {
-  #app .changes-log-panel, #app #campfire-panel, #app #assignments-panel, #app .save-modal { zoom: 1.5; }
-}
+   longer zooms (lane 3a retired it with the title bar and the lane 1-2 counter-zooms), so every size here is a real pixel (nothing in main#app is zoomed). */
 .gs-pb-planhead { display: flex; flex-direction: column; gap: 6px; padding: 16px 16px 0; }
 .gs-pb-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: var(--text-secondary); font: 500 14px/1.3 var(--font-body); cursor: pointer; }
 .gs-pb-back:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
@@ -2999,6 +2995,90 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .player-editor-actions > span:empty { display: none; }
   .player-editor:not(.pe-more-open) .pe-more-only { display: none; }
   .player-editor.pe-more-open .pe-short-only, .player-editor.pe-more-open .pe-fields, .player-editor.pe-more-open #pe-remove { display: none; }
+}
+
+/* ── Planner board on Forge (T6), lane 6: the Changes panel, the Campfire panel (Forever) and the Save / Templates modal. ──
+   Forge panels at real pixels: gs-hd-panel, gs-fg-lbl labels, gs-btn buttons. Neutral ink only (no gold, no orange). */
+.gs-pb-changes, .gs-pb-camp { margin: 16px 16px 0; }
+.gs-pb-changes { display: flex; flex-direction: column; }
+.gs-pb-changes .changes-log-header { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid var(--hd-hair); }
+.gs-pb-changes .changes-log-heading { flex: 1; min-width: 0; margin: 0; }
+.gs-pb-changes .changes-log-list { display: flex; flex-direction: column; padding: 0 16px; }
+.gs-pb-changes .changes-log-entry { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
+.gs-pb-changes .changes-log-entry + .changes-log-entry { border-top: 1px solid var(--hd-hair); }
+.gs-pb-changes .changes-log-meta { margin: 0; font: 600 12px/1.3 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.gs-pb-changes .changes-log-entry.is-unseen .changes-log-meta { color: var(--hd-white); }
+.gs-pb-changes .changes-log-time { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.gs-pb-changes .changes-log-items { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.gs-pb-changes .changes-log-item { font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.gs-pb-changes .changes-log-item strong { font-weight: 600; color: var(--text-primary); }
+.gs-pb-changes .changes-log-kind { font-weight: 600; color: var(--hd-white); }
+.gs-pb-changes .changes-log-kind-dropped { color: var(--status-danger-ink); }
+.gs-pb-changes .changes-log-more { align-self: flex-start; min-height: 32px; padding: 0; background: none; border: 0; font: 500 14px/1.3 var(--font-body); color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.gs-pb-changes .changes-log-more:hover { color: var(--text-primary); }
+
+.gs-pb-camp { padding: 16px; }
+.gs-pb-camp .camp-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gs-pb-camp .camp-heading h2 { margin: 2px 0 0; font: 700 24px/1.15 var(--font-body); color: var(--hd-white); }
+.gs-pb-camp .camp-rules, .gs-pb-camp details p, .gs-pb-camp .camp-note { margin: 12px 0; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
+.gs-pb-camp .camp-note { color: var(--text-muted); }
+.gs-pb-camp details { margin: 12px 0; padding: 0 12px; border: 1px solid var(--hd-hair); border-radius: 8px; }
+.gs-pb-camp summary { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; font: 600 14px/1.3 var(--font-body); color: var(--text-primary); }
+.gs-pb-camp summary span { margin: 0; font-size: 13px; font-weight: 400; color: var(--text-muted); }
+.gs-pb-camp .camp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.gs-pb-camp .camp-card { min-width: 0; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--hd-hair); border-radius: 8px; }
+.gs-pb-camp label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.gs-pb-camp input, .gs-pb-camp select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 40px; padding: 0 10px; background: var(--bg-input); border: 1px solid var(--border-medium); border-radius: 0; color: var(--text-primary); font: 400 14px/1.2 var(--font-body); letter-spacing: 0; text-transform: none; }
+.gs-pb-camp :is(input, select):focus-visible { outline: var(--focus-ring); outline-offset: -2px; }
+.gs-pb-camp .camp-card-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.gs-pb-camp .camp-card-heading label { flex: 1; }
+.gs-pb-camp .camp-capacity { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.gs-pb-camp .camp-capacity label { flex: 1; }
+.gs-pb-camp .camp-capacity strong { font-size: 18px; font-variant-numeric: tabular-nums; color: var(--hd-white); }
+.gs-pb-camp .camp-assets { margin: 12px 0; padding: 0; list-style: none; }
+.gs-pb-camp .camp-assets li { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-top: 1px solid var(--hd-hair); }
+.gs-pb-camp .camp-assets a { font-size: 14px; font-weight: 600; color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.gs-pb-camp .camp-assets p { margin: 4px 0; font-size: 14px; }
+.gs-pb-camp .camp-owner { display: block; margin-top: 4px; font-size: 12px; color: var(--text-muted); }
+.gs-pb-camp .camp-assets small { font-size: 12px; color: var(--text-muted); }
+.gs-pb-camp .camp-empty { padding: 12px 0; font-size: 14px; color: var(--text-muted); }
+.gs-pb-camp .camp-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.gs-pb-camp .camp-form label { flex: 1 1 120px; }
+.gs-pb-camp .camp-form label:last-of-type { flex: 0 1 90px; }
+.gs-pb-camp .camp-professions > div { display: flex; align-items: center; gap: 12px; padding: 4px 0; font-size: 14px; }
+.gs-pb-camp .camp-professions span { flex: 1; color: var(--text-secondary); }
+
+/* Save a copy / Comp templates: a raised dialog on the Forge surface. */
+.save-modal { box-sizing: border-box; width: min(440px, calc(100vw - 32px)); max-height: min(80dvh, 640px); overflow-y: auto; padding: 20px; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); font: 400 14px/1.4 var(--font-body); color: var(--text-primary); }
+.save-modal h3, .save-modal h4 { margin: 0 0 12px; }
+.save-modal h4 { margin-top: 16px; }
+.save-modal .save-input { box-sizing: border-box; min-height: 40px; margin-bottom: 12px; padding: 0 10px; background: var(--bg-input); border: 1px solid var(--border-medium); border-radius: 0; font: 400 14px/1.2 var(--font-body); color: var(--text-primary); }
+.save-modal .save-input:focus-visible { outline: var(--focus-ring); outline-offset: -2px; }
+.save-modal .modal-note, .save-modal .modal-empty-note { font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
+.save-modal .import-buttons { flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+.save-modal .import-buttons .save-input { flex: 1 1 160px; width: auto; margin: 0; }
+.save-modal .saved-roster-list { max-height: 240px; margin-bottom: 12px; overflow-y: auto; }
+.save-modal .saved-roster-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; margin-bottom: 4px; padding: 6px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--hd-hair); border-radius: 4px; cursor: pointer; }
+.save-modal .saved-roster-item:hover { background: rgba(255, 255, 255, 0.08); }
+.save-modal .roster-item-name { font-size: 14px; color: var(--text-primary); }
+.save-modal .roster-item-meta { font-size: 12px; color: var(--text-muted); }
+.save-modal .roster-item-delete { min-width: 36px; min-height: 36px; background: none; border: 0; font-size: 18px; color: var(--text-muted); cursor: pointer; }
+.save-modal .roster-item-delete:hover { color: var(--danger-text); }
+.gs-btn-strong { border-color: var(--hd-white); color: var(--hd-white); font-weight: 700; }
+.gs-btn-strong:hover { background: rgba(255, 255, 255, 0.16); }
+@media (width <= 600px) {
+  .gs-pb-changes, .gs-pb-camp { margin: 12px 16px 0; }
+  .gs-pb-changes .changes-log-header { padding: 0 12px 0 16px; }
+  .gs-pb-changes .gs-btn { min-height: 44px; }
+  .gs-pb-changes .changes-log-more { min-height: 44px; }
+  .gs-pb-camp { padding: 12px; }
+  .gs-pb-camp .camp-heading h2 { font-size: 22px; }
+  .gs-pb-camp .camp-grid { grid-template-columns: 1fr; }
+  .gs-pb-camp .gs-btn { min-height: 44px; }
+  .gs-pb-camp :is(input, select) { min-height: 44px; font-size: 16px; }
+  .save-modal { width: calc(100vw - 24px); max-height: 85dvh; }
+  .save-modal .gs-btn { min-height: 44px; }
+  .save-modal .save-input { min-height: 44px; font-size: 16px; }
 }
 
 /* Watch list: Reviewed / Undo on an entry; a reviewed entry stays listed, muted, with who reviewed it and when it comes back */

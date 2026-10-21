@@ -31,6 +31,8 @@ It is a static site with no build step and no npm dependencies: `index.html` (th
 | `icons/` | Self-hosted spec, class, role and buff icons. |
 | `tests/` | The test suites (`tests/planner/`, `tests/guild/`, `tests/site/`), their runner and helpers. Not deployed. |
 
+The planner page (`index.html`, drawn by `js/render.js`) reads top to bottom as: the plan head (plan name, one status chip, a context line, Undo, Redo, Share, More and the Optimize button); the next-step bar, which shows the first notice that needs you and its buttons; the Raid check strip (role counts, missing buffs and debuffs as icons, and a Coverage button that opens the full list); optional panels (Manual changes, Campfires on WoW Forever, Raid notes, Changes); then the body, with the "Not in a group" list on the left (everyone who is benched, tentative, late or unplaced, with filters and search) and the raid groups beside it, three and two to a row. It uses the shared Forge look from `guild.css` (classes `gs-pb-*`) at real pixel sizes, with no CSS zoom. On a phone the groups and the "Not in a group" list switch with a two-way control, and the head's buttons sit in a bottom bar.
+
 `.gitignore` is a whitelist: a new tracked file needs a `!path` line there.
 
 ## Local development

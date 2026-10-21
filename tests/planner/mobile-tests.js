@@ -461,12 +461,12 @@ check('the drawer and the sheet open on Name; add mode keeps #pe-class', () => {
   assert.doesNotMatch(renderJs, /#pe-destination/);
 });
 
-check('the drawer follows the title bar and stops following when the editor closes', () => {
+check('the drawer follows the shell top bar and stops following when the editor closes', () => {
   const calls = { added: [], removed: [], fns: [] };
   const win = { addEventListener: (t, fn, c) => { calls.added.push([t, c]); calls.fns.push(fn); }, removeEventListener: (t, fn, c) => calls.removed.push([t, c]) };
   let frameFn = null;
   const bar = { getBoundingClientRect: () => ({ bottom: 96.4 }) };
-  const g = { window: win, document: { querySelector: s => s === '.title-bar' ? bar : null },
+  const g = { window: win, document: { querySelector: s => s === '#shell-topbar' ? bar : null },
     requestAnimationFrame: fn => { frameFn = fn; return 7; }, cancelAnimationFrame: () => {} };
   const src = between(renderJs, 'let stopEditorDrawerTracking', 'const MOVE_HINT');
   const ctx = vm.createContext(g);
@@ -479,12 +479,12 @@ check('the drawer follows the title bar and stops following when the editor clos
   bar.getBoundingClientRect = () => ({ bottom: 40 });
   calls.fns[0]();
   frameFn();
-  assert.equal(editor.style.top, '40px', 'a scroll moves the drawer with the title bar');
+  assert.equal(editor.style.top, '40px', 'a scroll moves the drawer with the shell top bar');
   ctx.api.stopTrackingEditorDrawer();
   assert.deepEqual(calls.removed, [['scroll', true], ['resize', undefined]]);
   g.document.querySelector = () => null;
   ctx.api.placeEditorDrawer(editor);
-  assert.equal(editor.style.top, '0px', 'no title bar: the drawer starts at the top');
+  assert.equal(editor.style.top, '0px', 'no top bar: the drawer starts at the top');
 });
 
 check('the first-run tip is skipped, still unseen, when there is no room left of the drawer', () => {

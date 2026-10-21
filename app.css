@@ -123,7 +123,6 @@ body {
 .import-pane { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
 .import-pane p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 .import-pane code { font-size: 11.5px; color: var(--text-muted); font-family: Consolas, 'Courier New', monospace; }
-.import-hints { display: flex; flex-direction: column; gap: 2px; }
 .import-field {
   width: 100%; padding: 11px 12px;
   background: var(--bg-input); border: 1px solid var(--border-strong); color: var(--text-primary);
@@ -305,8 +304,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 
 /* ── Condensed label helper ── */
-.cond, .btn,
-.roster-label {
+.cond, .btn {
   font-family: var(--font-cond);
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -390,15 +388,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
    ("Backup: Name") and the benched backup's own card ("-> Name"). */
 .backup-badge { flex-shrink:0; font-size: 9px; letter-spacing: .04em; color: var(--accent-gold-bright); border: 1px solid var(--accent-gold-dim); border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
 .backup-badge-bench { color: var(--text-secondary); border-color: var(--border-medium); }
-.drag-handle {
-  display: flex; flex-direction: column; gap: 2px;
-  opacity: 0; transition: opacity 0.15s ease;
-  flex-shrink: 0; padding: 2px;
-}
-.player-slot:hover .drag-handle { opacity: 0.4; }
-.drag-dot-row { display: flex; gap: 2px; }
-.drag-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); }
-
 #buff-tooltip-portal {
   display: none;
   position: fixed;
@@ -484,55 +473,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .marker-leaving { color: #d9a95b; }
 .marker-standby { color: var(--accent-gold-dim); }
 
-/* ── Changed players (ChangeLog highlights) ──
-   An inset ring, not an outline: :focus-visible already draws the outline. */
-.changed-benched { --changed-color: var(--warning); }
-.changed-seated  { --changed-color: var(--success); }
-.changed-status  { --changed-color: var(--accent-gold); }
-.changed-moved   { --changed-color: color-mix(in srgb, var(--role-tank) 85%, #fff); }
-.changed-added   { --changed-color: var(--text-secondary); }
-.player-slot.changed { box-shadow: inset 0 0 0 2px var(--changed-color, var(--accent-gold)); opacity: 1; }
-/* The gold focus outline would sit on the ring (and vanish on a gold Status ring):
-   focus turns the outline light and pushes the kind color inward. */
-.player-slot.changed:focus-visible { outline-color: var(--text-primary); box-shadow: inset 0 0 0 4px var(--changed-color, var(--accent-gold)); }
-.player-slot.changed.dragging { opacity: 0.3; }
-.changed-tag {
-  flex-shrink: 0; padding: 1px 4px; border: 1px solid currentColor; border-radius: 3px;
-  color: var(--changed-color, var(--accent-gold));
-  font-size: 9px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: default;
-}
-
-/* ── Recent changes panel (below the banners) ── */
-.changes-log-panel {
-  margin: var(--sp-2) var(--sp-4); padding: 12px 16px;
-  background: var(--bg-frame); border: 1px solid var(--border-medium);
-  display: flex; flex-direction: column; gap: 12px;
-}
-.changes-log-header { display: flex; align-items: center; gap: var(--sp-2); }
-.changes-log-heading {
-  flex: 1; margin: 0; font-family: var(--font-cond); font-size: 15px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: .06em; color: var(--accent-gold-bright);
-}
-.changes-log-list { display: flex; flex-direction: column; gap: 12px; }
-.changes-log-entry { display: flex; flex-direction: column; gap: 4px; }
-.changes-log-entry + .changes-log-entry { border-top: 1px solid var(--border-subtle); padding-top: 12px; }
-.changes-log-meta {
-  margin: 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);
-}
-.changes-log-entry.is-unseen .changes-log-meta { color: var(--text-secondary); }
-.changes-log-time { font-weight: 400; }
-.changes-log-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-.changes-log-item { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
-.changes-log-item strong { color: var(--text-primary); font-weight: 600; }
-.changes-log-detail { color: var(--text-secondary); }
-.changes-log-kind { font-weight: 600; }
-.changes-log-kind-benched { color: var(--warning); }
-.changes-log-kind-seated  { color: var(--success); }
-.changes-log-kind-status  { color: var(--accent-gold); }
-.changes-log-kind-moved   { color: color-mix(in srgb, var(--role-tank) 85%, #fff); }
-.changes-log-kind-added   { color: var(--text-secondary); }
-.changes-log-kind-dropped { color: var(--danger); }
-.changes-log-more { align-self: flex-start; min-height: 24px; }
 .unplaced-icon { opacity: 0.4; }
 .unplaced-dialog-fields { display: grid; gap: 10px; margin: 12px 0; }
 .unplaced-dialog-fields label { display: grid; gap: 4px; font-size: 12px; color: var(--text-muted); }
@@ -641,18 +581,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 .save-overlay.visible { display: flex; }
 .save-overlay { z-index: 60; }
-.save-modal {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-strong);
-  padding: var(--sp-5); width: 380px;
-  max-height: 58vh; overflow-y: auto;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-}
-.save-modal h3 {
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.12em;
-  font-size: 15px; font-weight: 600;
-  color: var(--accent-gold); margin-bottom: var(--sp-3);
-}
 .save-input {
   width: 100%; padding: var(--sp-2) var(--sp-3);
   background: var(--bg-input); border: 1px solid var(--border-medium);
@@ -661,37 +589,18 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   margin-bottom: var(--sp-3);
 }
 .save-input:focus { outline: none; border-color: var(--accent-gold); }
-.saved-roster-list { margin-bottom: var(--sp-3); max-height: 200px; overflow-y: auto; }
-.saved-roster-item {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: var(--sp-2) var(--sp-3);
-  background: var(--bg-card); border: 1px solid var(--border-subtle);
-  margin-bottom: var(--sp-1);
-  cursor: pointer; transition: all 0.15s ease;
-}
-.saved-roster-item:hover { border-color: var(--accent-gold-dim); background: var(--bg-card-hover); }
-.saved-roster-item .roster-item-name { font-size: 12px; color: var(--text-primary); }
-.saved-roster-item .roster-item-meta { font-size: 10px; color: var(--text-muted); }
-.saved-roster-item .roster-item-delete {
-  background: none; border: none; color: var(--text-muted);
-  cursor: pointer; font-size: 14px; padding: 0 4px;
-  transition: color 0.15s ease;
-}
-.saved-roster-item .roster-item-delete:hover { color: var(--danger-bright); }
-
 /* ── Notification toast ── */
 .toast {
   position: fixed; bottom: 24px; right: 24px;
-  background: var(--bg-panel); border: 1px solid var(--accent-gold);
+  background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px;
   padding: var(--sp-3) var(--sp-4);
-  color: var(--text-primary); font-size: 12px;
+  color: var(--text-primary); font-size: 14px; line-height: 1.4;
   font-family: var(--font-body);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  box-shadow: var(--hd-raised-shadow);
   z-index: 100; opacity: 0;
   transform: translateY(10px);
   transition: opacity 0.3s ease, transform 0.3s ease;
   pointer-events: none;
-  zoom: 1.5;
   /* Hidden once the fade ends, so a faded-out Undo button leaves the tab order. */
   visibility: hidden;
   transition: opacity 0.3s ease, transform 0.3s ease, visibility 0s linear 0.3s;
@@ -699,11 +608,11 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; visibility: visible; transition-delay: 0s; }
 .toast { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
 .toast-action {
-  background: transparent; border: 1px solid var(--accent-gold); color: var(--accent-gold);
-  padding: 3px 10px; font: inherit; font-weight: 600; cursor: pointer;
+  background: transparent; border: 1px solid var(--hd-white); border-radius: 4px; color: var(--hd-white);
+  min-height: 32px; padding: 0 12px; font: inherit; font-weight: 600; cursor: pointer;
 }
 .toast-action:hover { background: var(--btn-secondary-hover); }
-.toast-action:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.toast-action:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 
 /* ── Feature spotlight callouts (feature-backlog-3.md #4) ── */
 .spotlight-callout {
@@ -810,7 +719,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   }
   .mobile-sheet-group { display: flex; flex-direction: column; gap: 4px; }
 
-  .save-modal { width: calc(100% - 24px); max-width: 440px; min-width: auto; padding: var(--sp-4); }
   .toast { left: 12px; right: 12px; bottom: 56px; }
   #buff-tooltip-portal { width: min(420px, calc(100vw - 16px)); font-size: 15px; padding: 10px 14px; }
   #buff-tooltip-portal .tt-name { font-size: 16px; }
@@ -916,36 +824,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .game-version-tab { min-width:0; padding:5px 14px 4px; }
 }
 
-#campfire-panel { padding:18px; border-bottom:1px solid var(--border-medium); background:#1d1b20; }
-.camp-heading,.camp-card-heading,.camp-capacity { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.camp-heading h2 { font:600 24px var(--font-cond); margin:3px 0; }
-.camp-kicker { color:var(--camp-accent); text-transform:uppercase; letter-spacing:.1em; font-size:10px; }
-.camp-rules { color:var(--camp-text); font-size:12px; line-height:1.6; margin:10px 0 16px; }
-#campfire-panel details { border:1px solid var(--camp-border); padding:12px; margin:12px 0; }
-#campfire-panel summary { cursor:pointer; font-size:13px; font-weight:600; }
-#campfire-panel summary span { color:var(--text-muted); font-size:11px; margin-left:10px; }
-#campfire-panel details p,.camp-note { color:var(--text-muted); font-size:11px; line-height:1.5; margin:10px 0; }
-.camp-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
-.camp-card { background:#242127; border:1px solid var(--camp-border-strong); border-top:2px solid #b79ad7; padding:14px; min-width:0; }
-#campfire-panel label { display:flex; flex-direction:column; gap:5px; font-size:10px; color:var(--camp-text-muted); min-width:0; }
-#campfire-panel input,#campfire-panel select { background:#18161c; border:1px solid var(--camp-border-strong); padding:8px; color:var(--text-primary); font:12px var(--font-body); width:100%; min-width:0; }
-.camp-card-heading label { flex:1; }
-.camp-capacity { margin-top:12px; }
-.camp-capacity strong { color:var(--camp-accent); font-size:14px; }
-.camp-assets { list-style:none; margin:12px 0; }
-.camp-assets li { display:flex; justify-content:space-between; gap:8px; border-top:1px solid var(--camp-border); padding:10px 0; }
-.camp-assets a { color:#e2c48b; font-size:13px; font-weight:600; }
-.camp-owner { display:block; color:var(--camp-text-muted); font-size:10px; margin-top:4px; }
-.camp-assets p { font-size:12px; line-height:1.5; margin:5px 0; }
-.camp-assets small { color:var(--camp-text-muted); font-size:10px; }
-.camp-empty { color:var(--text-muted); font-size:12px; padding:15px 0; }
-.camp-form { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
-.camp-form label { flex:1; min-width:90px!important; }
-.camp-form label:last-of-type { flex:0 1 75px; }
-.camp-professions>div { display:flex; gap:12px; align-items:center; padding:6px 0; font-size:12px; }
-.camp-professions span { flex:1; color:var(--camp-text); }
-@media(max-width:600px) { #campfire-panel { padding:10px; } .camp-grid { grid-template-columns:1fr; } }
-
 /* Assignments panel — Healer→Tank, Paladin Blessings, boss Debuffs. */
 .assignments-panel { padding:20px; max-width:960px; margin:0 auto; width:100%; }
 .assign-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px; flex-wrap:wrap; }
@@ -1048,7 +926,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 @media (max-width: 600px) {
   .addon-frame { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
   /* The toast sits at the top, under the 40px header and above the player editor sheet (z-index 200). */
-  .toast { zoom: 1; top: calc(env(safe-area-inset-top, 0px) + 44px); bottom: auto; left: 12px; right: 12px; font-size: 13px; z-index: 300; transform: translateY(-10px); }
+  .toast { top: calc(env(safe-area-inset-top, 0px) + 44px); bottom: auto; left: 12px; right: 12px; font-size: 13px; z-index: 300; transform: translateY(-10px); }
 
   /* Version tabs in the shell's top bar: Classic | TBC | Forever fill the row between the menu button and the account. */
   .game-header-mark { width: 26px; height: 26px; }
@@ -1075,9 +953,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .player-name { font-size: 14px; }
   .player-spec { font-size: 11px; }
 
-  .changes-log-panel { margin: 8px 12px; padding: 10px 12px; }
-  #btn-changes-seen, #btn-changes-close, #changes-log-panel .changes-log-more { min-height: 44px; }
-  #changes-log-panel .changes-log-more { padding: 0 8px; }
 
   /* Landing: the import card comes before the hero text (M0-8). Visual order only; the DOM is unchanged. */
   .hero .import-card { order: 1; }

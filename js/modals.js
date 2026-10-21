@@ -595,11 +595,11 @@ function showSaveModal() {
     'Raid ' + new Date().toLocaleDateString();
 
   modal.innerHTML = `
-    <h3>Save a copy</h3>
+    <h3 class="gs-fg-lbl">Save a copy</h3>
     <input class="save-input" id="save-name-input" type="text" value="${esc(defaultName)}" placeholder="Roster name...">
     <div class="import-buttons">
-      <button class="btn btn-secondary" id="btn-cancel-save">Cancel</button>
-      <button class="btn btn-primary" id="btn-do-save">Save</button>
+      <button type="button" class="gs-btn" id="btn-cancel-save">Cancel</button>
+      <button type="button" class="gs-btn gs-btn-strong" id="btn-do-save">Save</button>
     </div>`;
 
   overlay.setAttribute('aria-label', 'Save a copy');
@@ -649,17 +649,17 @@ function showTemplatesModal() {
   }
 
   modal.innerHTML = `
-    <h3>Comp Templates</h3>
+    <h3 class="gs-fg-lbl">Comp Templates</h3>
     <p class="modal-note">${esc(versionLabel)} &middot; ${esc(raidLabel)}. Save tonight's group layout, then apply it to a fresh import to seed the same names into the same groups. Optimize fills the rest.</p>
     <div class="import-buttons">
       <input class="save-input" id="template-name-input" type="text" placeholder="Template name...">
-      <button class="btn btn-secondary" id="btn-do-save-template">Save current layout</button>
+      <button type="button" class="gs-btn" id="btn-do-save-template">Save current layout</button>
     </div>
-    <h4>Saved templates</h4>
+    <h4 class="gs-fg-lbl">Saved templates</h4>
     <div class="saved-roster-list">${listHTML}</div>
     <div class="import-buttons">
-      ${anyLocked ? '<button type="button" class="btn btn-quiet" id="btn-unlock-templates">Unlock all placements</button>' : '<span></span>'}
-      <button class="btn btn-secondary" id="btn-cancel-templates">Close</button>
+      ${anyLocked ? '<button type="button" class="gs-btn gs-btn-ghost" id="btn-unlock-templates">Unlock all placements</button>' : '<span></span>'}
+      <button type="button" class="gs-btn" id="btn-cancel-templates">Close</button>
     </div>`;
 
   overlay.setAttribute('aria-label', 'Comp Templates');

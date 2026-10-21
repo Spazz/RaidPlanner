@@ -231,10 +231,6 @@ function getMarkerTag(p) {
   return `<span class="marker-tag marker-${esc(p.marker.kind)}" title="${esc(p.marker.text)}">${esc(shown)}</span>`;
 }
 
-function getDragHandle() {
-  return '<div class="drag-handle"><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div></div>';
-}
-
 // A player slot is a role="button" (Enter/Space opens the editor), so the icon
 // and badges inside would be read out piecemeal; this is the one spoken label.
 function playerSlotLabel(p, where) {
@@ -405,16 +401,16 @@ function renderCampfires() {
   if (panel.hidden) return;
   const data=State.campfires, members=Campfires.members();
   const open=panel.querySelector('details')?.open || false;
-  panel.innerHTML=`<div class="camp-heading"><div><span class="camp-kicker">Forever · Pre-raid preparation</span><h2>Campfires</h2></div><button type="button" class="btn btn-secondary" id="camp-add">+ Add campfire</button></div>
+  panel.innerHTML=`<div class="camp-heading"><div><span class="gs-fg-lbl camp-kicker">Forever · Pre-raid preparation</span><h2>Campfires</h2></div><button type="button" class="gs-btn gs-btn-sm" id="camp-add">+ Add campfire</button></div>
     <p class="camp-rules">1 minute sitting or crafting → 1 hour of buffs. Your last fire replaces your entire previous campfire buff package. Stronger class buffs take precedence.</p>
     <details ${open?'open':''}><summary>Raid professions <span>${data.professions.length} recorded</span></summary><p>Record profession skills to unlock eligible assets. Each member can contribute one asset across all fires. Benched members are labeled.</p>
-    <div class="camp-professions">${data.professions.map((p,i)=>`<div><strong>${esc(p.player)}</strong><span>${esc(p.profession)} · ${p.skill}</span><button type="button" class="link-btn" data-prof-remove="${i}" aria-label="Remove ${esc(p.player)} ${esc(p.profession)}">Remove</button></div>`).join('')}</div>
-    ${members.length?`<form id="camp-prof-form" class="camp-form"><label>Member<select name="player">${members.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}${State.bench.includes(p)?' (bench)':''}</option>`).join('')}</select></label><label>Profession<select name="profession">${Campfires.professionNames.map(p=>`<option>${p}</option>`).join('')}</select></label><label>Skill<input name="skill" type="number" min="1" max="300" step="1" value="300" required></label><button class="btn btn-secondary" type="submit">Set profession</button></form>`:'<p>Add or import raid members first to assign professions and assets.</p>'}</details>
+    <div class="camp-professions">${data.professions.map((p,i)=>`<div><strong>${esc(p.player)}</strong><span>${esc(p.profession)} · ${p.skill}</span><button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" data-prof-remove="${i}" aria-label="Remove ${esc(p.player)} ${esc(p.profession)}">Remove</button></div>`).join('')}</div>
+    ${members.length?`<form id="camp-prof-form" class="camp-form"><label>Member<select name="player">${members.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}${State.bench.includes(p)?' (bench)':''}</option>`).join('')}</select></label><label>Profession<select name="profession">${Campfires.professionNames.map(p=>`<option>${p}</option>`).join('')}</select></label><label>Skill<input name="skill" type="number" min="1" max="300" step="1" value="300" required></label><button class="gs-btn gs-btn-sm" type="submit">Set profession</button></form>`:'<p>Add or import raid members first to assign professions and assets.</p>'}</details>
     <div class="camp-grid">${data.fires.map((f,i)=>{
       const candidates=Campfires.eligible(i), tier=Campfires.tiers[f.capacity];
       const cook=data.professions.some(p=>p.profession==='Cooking' && p.skill>=tier.skill);
-      return `<article class="camp-card"><div class="camp-card-heading"><label>Campfire name<input data-fire-name="${i}" maxlength="60" value="${esc(f.name)}"></label><button type="button" class="link-btn" data-fire-remove="${i}">Remove fire</button></div><div class="camp-capacity"><label>Campfire tier<select data-fire-capacity="${i}">${[3,5,10].map(n=>`<option value="${n}" ${n===f.capacity?'selected':''}>${Campfires.tiers[n].name} · ${n} assets</option>`).join('')}</select></label><strong>${f.assets.length} / ${f.capacity}</strong></div><p class="camp-note">Cooking ${tier.skill} required to build this fire${cook?' · Eligible cook recorded': ' · No eligible cook recorded'}.</p>
-      <ul class="camp-assets">${f.assets.map((a,j)=>{const item=Campfires.catalog.find(x=>x.id===a.asset);return `<li><div><a href="https://www.wowhead.com/forever/item=${item.id}" target="_blank" rel="noopener noreferrer">${esc(item.name)}</a><span class="camp-owner">${esc(a.player)} · ${item.profession} ${item.skill}${State.bench.some(p=>Campfires.key(p.name)===Campfires.key(a.player))?' · Bench':''}</span><p>${esc(item.effect||'Utility asset')}${item.utility?' · '+esc(item.utility):''}</p>${item.conflict?`<small>Does not stack with ${esc(item.conflict)}</small>`:''}</div><button type="button" class="link-btn" data-asset-remove="${i}:${j}" aria-label="Remove ${esc(item.name)}">×</button></li>`;}).join('')||'<li class="camp-empty">No assets assigned. Choose contributors below.</li>'}</ul>
+      return `<article class="camp-card"><div class="camp-card-heading"><label>Campfire name<input data-fire-name="${i}" maxlength="60" value="${esc(f.name)}"></label><button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" data-fire-remove="${i}">Remove fire</button></div><div class="camp-capacity"><label>Campfire tier<select data-fire-capacity="${i}">${[3,5,10].map(n=>`<option value="${n}" ${n===f.capacity?'selected':''}>${Campfires.tiers[n].name} · ${n} assets</option>`).join('')}</select></label><strong>${f.assets.length} / ${f.capacity}</strong></div><p class="camp-note">Cooking ${tier.skill} required to build this fire${cook?' · Eligible cook recorded': ' · No eligible cook recorded'}.</p>
+      <ul class="camp-assets">${f.assets.map((a,j)=>{const item=Campfires.catalog.find(x=>x.id===a.asset);return `<li><div><a href="https://www.wowhead.com/forever/item=${item.id}" target="_blank" rel="noopener noreferrer">${esc(item.name)}</a><span class="camp-owner">${esc(a.player)} · ${item.profession} ${item.skill}${State.bench.some(p=>Campfires.key(p.name)===Campfires.key(a.player))?' · Bench':''}</span><p>${esc(item.effect||'Utility asset')}${item.utility?' · '+esc(item.utility):''}</p>${item.conflict?`<small>Does not stack with ${esc(item.conflict)}</small>`:''}</div><button type="button" class="gs-btn gs-btn-sm gs-btn-ghost" data-asset-remove="${i}:${j}" aria-label="Remove ${esc(item.name)}">×</button></li>`;}).join('')||'<li class="camp-empty">No assets assigned. Choose contributors below.</li>'}</ul>
       ${f.assets.length<f.capacity?`<label class="camp-assign">Assign an asset<select data-fire-assign="${i}"><option value="">${candidates.length?'Choose member and asset…':'No eligible unassigned contributors'}</option>${candidates.map((a,j)=>{const item=Campfires.catalog.find(x=>x.id===a.asset);return `<option value="${j}">${esc(a.player)} — ${esc(item.name)} (${item.profession} ${item.skill})</option>`;}).join('')}</select></label>`:'<p class="camp-note">This fire is full.</p>'}</article>`;
     }).join('')}</div>${data.fires.length?'':'<p class="camp-empty">Plan your first fire, or create separate fires for buffs and services.</p>'}<p class="camp-note">Effects are tracked per fire, never combined. Numeric scaling is pending; campfires do not change group optimization. Assets share a 1-hour placement cooldown.</p>`;
   const commitFire=()=>{const before=data.fires.reduce((n,f)=>n+f.assets.length,0);commit();const after=State.campfires.fires.reduce((n,f)=>n+f.assets.length,0);if(after<before)showToast('Ineligible campfire assignments removed after profession changes. Undo is available.');};
@@ -877,7 +873,7 @@ function groupBuffIconHTML(b, gi, allowSwap) {
   const iconTag = isSwappable ? 'button' : 'div';
   const iconAttrs = isSwappable
     ? ` type="button" aria-label="${esc(swappableBuffLabel(b, from))}"`
-    : ` role="img" aria-label="${esc(b.buff.name)}"`;
+    : ` role="img" tabindex="0" aria-label="${esc(b.buff.name)}"`;
   const chevron = isSwappable ? `<span class="gs-pb-chev" aria-hidden="true">${GROUP_CHEVRON}</span>` : '';
   return `<${iconTag} class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${iconAttrs}${dataAttrs}${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span>${chevron}</${iconTag}>`;
 }
@@ -1129,10 +1125,10 @@ function renderUtilityCatalog(groups, bench) {
   if (countEl) countEl.textContent = `${covered.length} / ${items.length}`;
 
   let html = '';
-  if (missing.length) html += `<div class="gs-fg-lbl buff-sidebar-sub missing">Missing &middot; ${missing.length}</div>`;
+  if (missing.length) html += `<div class="gs-fg-lbl gs-pb-sub missing">Missing &middot; ${missing.length}</div>`;
   const ordered = [...missing, ...(covered.length ? ['__covered__'] : []), ...covered];
   for (const item of ordered) {
-    if (item === '__covered__') { html += `<div class="gs-fg-lbl buff-sidebar-sub">Covered &middot; ${covered.length}</div>`; continue; }
+    if (item === '__covered__') { html += `<div class="gs-fg-lbl gs-pb-sub">Covered &middot; ${covered.length}</div>`; continue; }
     const seatedNames = item.seatedProviders.map(p => esc((p.name || 'Unknown').split('-')[0])).join(', ');
     const sourceText = item.covered ? seatedNames : 'Not covered';
     const ttAttrs = ` data-tt-name="${esc(item.name)}" data-tt-desc="${esc(item.desc)}"`
@@ -2491,11 +2487,11 @@ function closePlayerEditor() {
 }
 
 // ── Editor drawer + move chips ─────────────────────────────────────
-// On desktop the editor is a drawer fixed to the right edge, from the bottom of the title bar down.
-// The title bar scrolls with the page, so the drawer's top follows it while the editor is open.
+// On desktop the editor is a drawer fixed to the right edge, from the bottom of the shell top bar down.
+// The top bar scrolls with the page, so the drawer's top follows it while the editor is open.
 let stopEditorDrawerTracking = null;
 function placeEditorDrawer(editor) {
-  const bar = document.querySelector('.title-bar');
+  const bar = document.querySelector('#shell-topbar');
   editor.style.top = Math.max(0, bar ? bar.getBoundingClientRect().bottom : 0) + 'px';
 }
 function trackEditorDrawer(editor) {

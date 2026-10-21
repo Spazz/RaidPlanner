@@ -202,17 +202,11 @@ function getMissingBuffInsights() {
 }
 
 // How many party buffs and raid debuffs the given coverage leaves open. The one
-// count behind the readiness line and the Coverage rail summary, so they agree.
-// Buffs are the faction-relevant list (what the rail lists), debuffs Config.Debuffs.
+// count behind the Raid check strip and the Coverage dialog, so they agree.
+// Buffs are the faction-relevant list (what the dialog lists), debuffs Config.Debuffs.
 function coverageGapCounts(coveredBuffIds, coveredDebuffIds) {
   const open = (dataset, covered) => Object.keys(dataset).filter(id => !covered.has(id)).length;
   return { buffs: open(factionRelevantBuffs(), coveredBuffIds), debuffs: open(Config.Debuffs, coveredDebuffIds) };
-}
-
-// The same counts for the live plan.
-function liveCoverageGaps() {
-  const groups = State.groups || [];
-  return coverageGapCounts(getRaidBuffCoverage(groups), getRaidDebuffCoverage(groups));
 }
 
 // ── UTILITY & BALANCE READINESS (backlog #2, #3) ────────────────

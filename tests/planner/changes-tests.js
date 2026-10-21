@@ -491,7 +491,7 @@ check('the panel sits under the Raid check strip and before the board, with its 
   assert.match(panel, /id="changes-log-heading" tabindex="-1">Recent changes</);
   assert.match(panel, /id="btn-changes-seen">Mark all seen</);
   assert.match(panel, /id="btn-changes-close">Close</, 'closable where it opens (phones open it from the More sheet)');
-  assert.match(html, /<section class="changes-log-panel" id="changes-log-panel"[^>]*hidden>/);
+  assert.match(html, /<section class="gs-hd-panel gs-pb-changes changes-log-panel" id="changes-log-panel"[^>]*hidden>/);
   assert.doesNotMatch(panel, /aria-live/, 'no new live region: announce() speaks for it');
 });
 
@@ -827,20 +827,21 @@ check('diffBuffReach uses the singular role word for a change of one player', ()
   assert.equal(word({ tank: 1 }, { healer: 2 }), 'player', 'a mix of one player');
 });
 
-check('CSS: a changed slot is an inset ring (focus keeps the outline), coloured per kind', () => {
+check('CSS: a changed slot is a neutral white inset ring (focus keeps the outline), never gold or orange', () => {
   const css = app.css;
-  assert.match(css, /\.player-slot\.changed \{[^}]*box-shadow: inset[^}]*\}/);
-  assert.doesNotMatch(css.match(/\.player-slot\.changed \{[^}]*\}/)[0], /outline/);
-  for (const kind of ['benched', 'seated', 'status', 'moved', 'added']) assert.match(css, new RegExp(`\\.changed-${kind}\\s*\\{ --changed-color:`), kind);
-  for (const kind of ChangeLog.KINDS) assert.match(css, new RegExp(`\\.changes-log-kind-${kind}\\s*\\{`), kind);
+  const ring = css.match(/\.player-slot\.changed \{[^}]*\}/)[0];
+  assert.match(ring, /box-shadow: inset 0 0 0 2px var\(--hd-white\)/);
+  assert.doesNotMatch(ring, /outline|accent-gold|warning|molten/);
+  assert.doesNotMatch(css, /--changed-color/, 'no per-kind ring colours');
   assert.match(css, /\.player-slot\.changed\.dragging \{ opacity: 0\.3; \}/, 'a highlighted card still dims while dragged');
-  assert.match(css, /#btn-changes-seen, #btn-changes-close, #changes-log-panel \.changes-log-more \{ min-height: 44px; \}/, 'phone tap targets');
-  assert.match(css, /\.changes-log-more \{[^}]*min-height: 24px;/, 'the Show all toggle is a 24px target everywhere');
-  // Focus must still read on a changed card, including a gold Status ring under the gold outline.
+  const tag = css.match(/\.changed-tag \{[^}]*\}/g).pop();
+  assert.match(tag, /color: var\(--hd-white\)/);
+  assert.match(css, /\.gs-pb-changes \.gs-btn \{ min-height: 44px; \}/, 'phone tap targets');
+  assert.match(css, /\.gs-pb-changes \.changes-log-more \{ min-height: 44px; \}/, 'the Show all toggle is a 44px target on phones');
+  assert.doesNotMatch(css, /\.changes-log-kind-(benched|seated|status|moved|added)\s*\{/, 'the kind words are neutral ink');
   const focus = css.match(/\.player-slot\.changed:focus-visible \{[^}]*\}/);
   assert(focus, 'changed cards restyle focus');
-  assert.match(focus[0], /outline-color: var\(--text-primary\)/);
-  assert.match(focus[0], /box-shadow: inset 0 0 0 4px var\(--changed-color/);
+  assert.match(focus[0], /box-shadow: inset 0 0 0 4px var\(--hd-white\)/);
 });
 
 setTimeout(() => console.log(`\nChange report tests: ${passed} passed, 0 failed, ${passed} total`), 50);
