@@ -381,6 +381,52 @@ const noComments = (text) => text.split('\n').filter(l => !/^\s*\/\//.test(l)).j
     assert.equal(PlanDbLinks.get(fakeStorage, 'tbc|raid:r2').rev, 1, 'added');
   });
 
+  await check('a guild raid plan row: "Guild raid" chip, opens through the raid, Delete only clears this device and says the raid keeps its plan', async () => {
+    reset();
+    const raidPlan = planData('raid:r1', 'Sat BT');
+    const standalone = planData('plan:a', 'Gruul Thursday');
+    PlanStore.save(fakeStorage, raidPlan);
+    PlanStore.save(fakeStorage, standalone);
+    PlanDbLinks.bind(fakeStorage, 'tbc|raid:r1', { gid: 'g1', rid: 'r1', rev: 2 });
+    const raidKey = LiveLinks.planKey(raidPlan);
+    // The list: the chip on the raid row only; a click opens the raid's address, not this device's copy.
+    const clicks = {};
+    const list = { innerHTML: '', closest: () => ({ classList: { toggle() {} } }), querySelectorAll: sel => (sel === '.saved-open'
+      ? ['tbc|raid:r1', 'tbc|plan:a'].map(key => ({ dataset: { plan: key }, addEventListener: (_e, fn) => { clicks[key] = fn; } })) : []) };
+    const hash = { value: '' };
+    const win = { location: { set hash(v) { hash.value = v; } }, Guild: { router: { format: r => '#/planner?raid=' + r.gid + '.' + r.rid } } };
+    const sandbox = app.sandbox(['renderLandingSavedList', 'PlanStore', 'ImportHistory', 'BackupStamp', 'PlanDbLinks'], { extraSource: app.slice('function renderLandingSavedList', '// The sample behind') + '\n', globals: {
+      document: { getElementById: id => id === 'landing-saved-list' ? list : { textContent: '' } },
+      localStorage: fakeStorage, getSavedRosters: () => ({}), window: win, ChangeLog: { clear() {} }, initGroups() {}, commit() {}, showView() {}, RaidHelperSync: { check() {} },
+    } });
+    sandbox.api.ImportHistory.read = () => [];
+    sandbox.api.BackupStamp.label = () => '';
+    sandbox.api.renderLandingSavedList();
+    const rows = list.innerHTML.split('<div class="history-row saved-row">').slice(1);
+    assert.equal(rows.length, 2);
+    const raidRow = rows.find(r => r.includes('Sat BT'));
+    const plainRow = rows.find(r => r.includes('Gruul Thursday'));
+    assert(raidRow.includes('<span class="gs-hd-chip is-grey">Guild raid</span>'), 'the raid plan carries the chip');
+    assert(!plainRow.includes('Guild raid'), 'a standalone plan has none');
+    let restored = 0;
+    sandbox.api.PlanStore.restore = () => { restored++; return true; };
+    clicks['tbc|raid:r1']();
+    assert.equal(hash.value, '#/planner?raid=g1.r1', 'opens through the raid context');
+    assert.equal(restored, 0, 'not from this device\'s copy');
+    clicks['tbc|plan:a']();
+    assert.equal(restored, 1, 'a standalone plan opens from the device as before');
+    // Delete.
+    assert.equal(await deleteSavedEntry('plan', raidKey, 'Sat BT'), true);
+    const q = asked[asked.length - 1];
+    assert.equal(q.message, 'Remove "Sat BT" from this device? The raid keeps its plan.');
+    assert.deepEqual([q.title, q.confirmLabel], ['Remove from this device', 'Remove']);
+    assert.deepEqual([...plansLeft()], ['Gruul Thursday']);
+    assert.equal(PlanDbLinks.get(fakeStorage, raidKey), null, 'the raid binding of this device goes with the copy');
+    assert.equal(toasts[toasts.length - 1], 'Removed "Sat BT" from this device');
+    assert.equal(await deleteSavedEntry('plan', LiveLinks.planKey(standalone), 'Gruul Thursday'), true);
+    assert.equal(asked[asked.length - 1].message, 'Delete "Gruul Thursday"? This can\'t be undone.', 'a standalone plan keeps the old text');
+  });
+
   console.log(`\nSaved data tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);
   process.exit(failed ? 1 : 0);
 })();

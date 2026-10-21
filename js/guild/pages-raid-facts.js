@@ -55,7 +55,7 @@
     const value = plan ? (plan.label || 'Plan') + ', ' + plural(plan.players || 0, 'player', 'players') : (model.upcoming ? 'Not planned' : 'Skipped');
     const unmatched = plan && plan.unmatched && plan.unmatched.length ? sub(plural(plan.unmatched.length, 'planned name is', 'planned names are') + ' not on the roster.') : '';
     const items = [opItem('plan-in-planner', 'Open in Planner'), opItem('plan-replace', plan ? 'Replace plan' : 'Link a plan')];
-    if (plan) items.push({ separator: true }, opItem('plan-remove', 'Remove plan', null, true));
+    if (plan || (data.sources && data.sources.planDoc)) items.push({ separator: true }, opItem('plan-remove', 'Remove plan', null, true));
     return { id: 's-plan', label: 'Plan', valueHtml: esc(value), subHtml: unmatched, changeHtml: edit ? changeMenu('plan', 'Plan settings', items) : '' };
   }
 

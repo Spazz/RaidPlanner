@@ -511,6 +511,7 @@ function withState(fn) {
     assert(first.includes('aria-label="Plan Wed Oct 21, 8:00 PM CT"') && first.includes('data-action="pl-plan" data-gid="g1" data-rid="r_alt1"'));
     assert(out.includes('Not planned') && out.includes('<span class="gs-pl-count">-</span>'), 'no counts for a viewer who may not see them');
     assert.equal(count(out, /gs-btn-molten/g), 0, 'the landing has its own primary (Load roster)');
+    assert(stripTags(out).includes("Plans you start here, or import below, are saved on this device only. A raid's plan is saved to the raid."), 'the footnote is true for standalone plans and does not claim the device for raid plans');
     assertNoRawAttrs(out);
   }));
 

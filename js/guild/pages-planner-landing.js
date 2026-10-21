@@ -105,7 +105,7 @@
     }
     const more = model.hidden > 0 ? '<p class="gs-fine">' + esc('and ' + model.hidden + ' more on the Raids page') + '</p>' : '';
     return '<section class="gs-pl" aria-labelledby="pl-h">' + head + '<ul class="gs-pl-list">' + model.rows.map(rowHtml).join('') + '</ul>' + more + error +
-      '<p class="gs-fine">Plans you start here, or import below, are saved on this device only.</p></section>';
+      '<p class="gs-fine">Plans you start here, or import below, are saved on this device only. A raid\'s plan is saved to the raid.</p></section>';
   }
 
   // The guild the "Raids page" link of the empty panel names: the first that lets the viewer plan.

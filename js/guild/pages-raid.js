@@ -628,8 +628,12 @@
         focusSource();
         break;
       case 'plan-replace':
-        G.ui.openDialog(sourceDialogHtml({ submit: 'plan-form', title: c.data.sources && c.data.sources.plan ? 'Replace the plan' : 'Link a plan', label: 'Plan link or share code', button: 'Save plan', multiline: true, help: 'Paste a Raidsmith plan link or share code. Only names and groups are sent to Raidsmith; the link itself is not kept.' }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
-        focusSource();
+        // A raid with a full Planner plan (even one nobody is seated in) asks first: the pasted link replaces all of it (PUT /plan deletes raid_plan_doc).
+        if (c.data.sources && c.data.sources.planDoc) {
+          G.ui.openDialog(confirmDialogHtml({ op: op, title: 'Replace the plan?', text: "This replaces the raid's plan in the Planner, including groups, Open slots and notes.", button: 'Continue', danger: true }), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+          break;
+        }
+        openPlanLinkDialog(c);
         break;
       case 'event-remove':
         G.ui.openDialog(confirmDialogHtml({ op: op, title: 'Remove the Raid-Helper event?', text: 'Its sign-ups are removed from this raid and the attendance is recalculated. Decisions are kept.', button: 'Remove event', danger: true }), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
@@ -638,7 +642,7 @@
         G.ui.openDialog(confirmDialogHtml({ op: op, code: code, title: 'Remove this report?', text: 'Its boss pulls and who was present are removed from this raid and the attendance is recalculated.', button: 'Remove report', danger: true }), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
         break;
       case 'plan-remove':
-        G.ui.openDialog(confirmDialogHtml({ op: op, title: 'Remove the plan?', text: 'Plan placements stop counting as sign-ups on this raid.', button: 'Remove plan', danger: true }), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+        G.ui.openDialog(confirmDialogHtml({ op: op, title: 'Remove the plan?', text: c.data.sources && c.data.sources.planDoc ? "This deletes the raid's plan for every officer." : 'Plan placements stop counting as sign-ups on this raid.', button: 'Remove plan', danger: true }), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
         break;
       case 'raid-delete':
         G.ui.openDialog(confirmDialogHtml({ op: op, title: 'Delete this raid?', text: 'Removes the raid with its sign-ups, presence, plan and attendance, including decisions. This cannot be undone.', button: 'Delete raid', danger: true }), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
@@ -654,6 +658,11 @@
       default: break;
     }
   };
+
+  function openPlanLinkDialog(c) {
+    G.ui.openDialog(sourceDialogHtml({ submit: 'plan-form', title: c.data.sources && c.data.sources.plan ? 'Replace the plan' : 'Link a plan', label: 'Plan link or share code', button: 'Save plan', multiline: true, help: 'Paste a Raidsmith plan link or share code. Only names and groups are sent to Raidsmith; the link itself is not kept.' }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+    focusSource();
+  }
 
   function focusSource() {
     const input = typeof document !== 'undefined' ? document.getElementById('dlg-source') : null;
@@ -714,6 +723,7 @@
     const op = form.getAttribute('data-op');
     const base = raidBase(c.gid, c.rid);
     let promise;
+    if (op === 'plan-replace') { openPlanLinkDialog(c); return; } // the confirm hands over to the paste dialog (opening one replaces the other)
     if (op === 'event-remove') promise = G.api.del(base + '/event', {});
     else if (op === 'report-remove') promise = G.api.del(base + '/reports/' + encodeURIComponent(form.getAttribute('data-code')), {});
     else if (op === 'plan-remove') promise = G.api.del(base + '/plan', {});

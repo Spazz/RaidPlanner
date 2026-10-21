@@ -340,7 +340,11 @@ check('legacy PUT /plan replaces the document too, legacy DELETE /plan removes i
   // A document nobody sits in has no projection (plan_synced is NULL): the DELETE still removes it.
   await s.doc('alice').put({ baseRev: 0, plan: planOf(s.rid, [[]], { bench: [member('Aldric')] }) });
   assert.equal(await s.w.count('raid_plan_doc'), 1);
+  // The raid page still reads "not planned" (no projection), but its replace / remove dialogs are told a full plan exists.
+  const benchOnly = (await s.call('alice', 'GET', `/raids/${s.rid}`)).json.sources;
+  assert.deepEqual([benchOnly.plan, benchOnly.planDoc], [null, true], 'sources.planDoc is EXISTS(raid_plan_doc), not the projection');
   assert.equal((await s.call('alice', 'DELETE', `/raids/${s.rid}/plan`, {})).status, 200);
+  assert.deepEqual((await s.call('alice', 'GET', `/raids/${s.rid}`)).json.sources.planDoc, false);
   assert.equal(await s.w.count('raid_plan_doc'), 0);
   assert.equal(await s.w.count('raid_plan', 'raid_id = ?', s.rid), 0);
   const rows = await auditRows(s);

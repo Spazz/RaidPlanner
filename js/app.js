@@ -111,10 +111,16 @@ function onVersionCardClick(event) {
 // Asks, then removes one landing row: a working plan (kind 'plan', id = its plan key) or a saved
 // copy (kind 'copy', id = its name). Resolves true only when something was removed. Declining keeps it.
 async function deleteSavedEntry(kind, id, label) {
-  const ok = await Modal.confirm({ title: 'Delete plan', message: `Delete "${label}"? This can't be undone.`, confirmLabel: 'Delete' });
+  // A guild raid's plan lives in the database: deleting the row only clears this device's copy.
+  const planId = kind === 'plan' ? String(id).slice(String(id).indexOf('|') + 1) : ''; // a plan key is "<version>|<plan id>"
+  const raidPlan = kind === 'plan' && typeof RaidLink !== 'undefined' && RaidLink.isRaidPlan(planId);
+  const ok = await Modal.confirm(raidPlan
+    ? { title: 'Remove from this device', message: `Remove "${label}" from this device? The raid keeps its plan.`, confirmLabel: 'Remove' }
+    : { title: 'Delete plan', message: `Delete "${label}"? This can't be undone.`, confirmLabel: 'Delete' });
   if (!ok) return false;
   try {
     if (kind === 'plan') {
+      if (raidPlan && typeof RaidContext !== 'undefined' && RaidContext.current && RaidContext.current.planId === planId) RaidContext.leave(); // sends what is waiting, then stops saving
       PlanStore.remove(localStorage, id);
       LiveLinks.drop(localStorage, id);
       if (typeof PlanDbLinks !== 'undefined') PlanDbLinks.forget(localStorage, id); // only the device copy goes; the raid keeps its plan
@@ -130,7 +136,7 @@ async function deleteSavedEntry(kind, id, label) {
       }
     } else if (!deleteRosterFromStorage(id)) return false;
   } catch { showToast('Could not delete this plan from browser storage'); return false; }
-  showToast(`Deleted "${label}"`);
+  showToast(raidPlan ? `Removed "${label}" from this device` : `Deleted "${label}"`);
   return true;
 }
 
@@ -155,7 +161,8 @@ function renderLandingSavedList() {
   list.innerHTML = drafts.map(p => `<div class="history-row saved-row">
     <button type="button" class="saved-item history-open saved-open" data-plan="${esc(LiveLinks.planKey(p.data))}">
       <span class="saved-item-name">${esc(p.data.rosterName)}</span>
-      <span class="saved-item-meta">${p.data.groups.flat().length} seated · ${p.data.bench.length} benched · ${esc(new Date(p.updatedAt).toLocaleString())}</span>
+      <span class="saved-item-meta">${p.data.groups.flat().length} seated · ${p.data.bench.length} benched · ${esc(new Date(p.updatedAt).toLocaleString())}</span>${RaidLink.isRaidPlan(p.data.planId) ? `
+      <span class="gs-hd-chip is-grey">Guild raid</span>` : ''}
     </button>
     <span class="row-actions"><button type="button" class="link-btn del" data-delete-plan="${esc(LiveLinks.planKey(p.data))}" data-label="${esc(p.data.rosterName)}" aria-label="Delete plan ${esc(p.data.rosterName)}">Delete</button></span>
   </div>`).join('') + (names.length ? '<div class="saved-item-meta">Saved copies</div>' : '') + names.map(name => {
@@ -179,6 +186,7 @@ function renderLandingSavedList() {
   list.querySelectorAll('.saved-open').forEach(item => item.addEventListener('click', () => {
     if (item.dataset.plan) {
       const plan = drafts.find(p => LiveLinks.planKey(p.data) === item.dataset.plan);
+      if (plan && openThroughRaid(plan.data, item.dataset.plan)) return;
       if (plan && PlanStore.restore(plan.data)) { ChangeLog.clear(); initGroups(); commit(); showView('app'); RaidHelperSync.check(); }
       return;
     }
@@ -191,6 +199,17 @@ function renderLandingSavedList() {
     showView('app');
     RaidHelperSync.check();
   }));
+}
+
+// A guild raid's plan opens through the raid: the database copy is the plan, this device's copy only the cache. A browser that never opened
+// the raid has no raid binding (PlanDbLinks) and opens the device copy. True when the raid's address was set.
+function openThroughRaid(data, planKey) {
+  if (!RaidLink.isRaidPlan(data.planId) || typeof PlanDbLinks === 'undefined') return false;
+  const bound = PlanDbLinks.get(localStorage, planKey);
+  const guild = window.Guild;
+  if (!bound || !guild || !guild.router) return false;
+  window.location.hash = guild.router.format({ name: 'planner', gid: bound.gid, rid: bound.rid });
+  return true;
 }
 
 // The sample behind "a player list": shown gray like placeholder text, and the leader's first edit replaces it.
@@ -1483,7 +1502,7 @@ const RaidContext = {
       if (seated) {
         source = 'legacy';
         status = `Opened the plan saved on the raid: ${seated.seated} ${seated.seated === 1 ? 'name' : 'names'} back in their groups.` +
-          (seated.skipped ? ` ${seated.skipped} ${seated.skipped === 1 ? 'name is' : 'names are'} not among the sign-ups and ${seated.skipped === 1 ? 'was' : 'were'} left out.` : '');
+          (seated.added ? ` ${seated.added} ${seated.added === 1 ? 'name is' : 'names are'} not among the sign-ups and ${seated.added === 1 ? 'waits' : 'wait'} on the bench: pick ${seated.added === 1 ? 'its' : 'their'} class, then seat them.` : '');
       }
     }
     if (fold) { initGroups(); commit(); }
@@ -1529,18 +1548,25 @@ const RaidContext = {
     return result.success ? `Started from the raid's ${result.playerCount + result.benchCount + result.unplacedCount} sign-ups.` : 'The raid has no sign-ups yet. Add players here, or import them on the raid page and open it again.';
   },
 
-  // The names the raid page holds (group 0 = the bench) go back into their groups. A name that is not among the sign-ups, or one whose
-  // group is full, stays where the sign-ups put it (the first counts as skipped). Returns {seated, skipped}.
+  // The names the raid page holds (group 0 = the bench) go back into their groups. A name that is not among the sign-ups is added as a
+  // player with no class (the unplaced path of a classless Raid-Helper sign-up: it waits in the tray and the seating dialog asks for the class),
+  // so no saved name is lost. A name whose group is full stays where the sign-ups put it. Returns {seated, added}.
   seatLegacy(entries) {
     const key = name => String(name || '').trim().toLowerCase();
     let seated = 0;
-    let skipped = 0;
+    let added = 0;
     for (const entry of entries) {
       const wanted = key(entry && entry.name);
       const from = State.groups.findIndex(g => g.some(p => key(p.name) === wanted));
       const list = from >= 0 ? State.groups[from] : State.bench;
       const at = list.findIndex(p => key(p.name) === wanted);
-      if (at < 0) { if (!State.unplaced.some(p => key(p.name) === wanted)) skipped++; continue; } // absent sign-ups stay absent
+      if (at < 0) { // absent sign-ups stay absent; a name nobody signed up with is added without a class
+        if (wanted && !State.unplaced.some(p => key(p.name) === wanted)) {
+          State.unplaced.push(Import._makeUnplaced({ name: String(entry.name).trim(), status: 'confirmed', class: null, spec: null, role: null }));
+          added++;
+        }
+        continue;
+      }
       const group = Number(entry.group);
       const target = group >= 1 ? State.groups[group - 1] : group === 0 ? State.bench : null;
       if (!target || (target !== list && group >= 1 && target.length >= 5)) continue;
@@ -1552,7 +1578,7 @@ const RaidContext = {
       seated++;
     }
     State.roster = State.groups.flat();
-    return { seated, skipped };
+    return { seated, added };
   },
 
   // This device's copy of a raid plan the database replaced goes to Your plans under an id of its own, so nothing is lost.
@@ -1668,10 +1694,13 @@ const RaidContext = {
   },
 
   timeText(c) {
-    // The time is the guild's ("11:14 AM ET"), the same clock the raid page shows, not the browser's.
+    // The time is the guild's ("11:14 AM ET"), the same clock and label the raid page shows: the guild's zone, else the one the raid's
+    // sign-ups came with. Without either (guild tools missing) it is the browser's clock, with no label.
     const guild = window.Guild;
     const gdata = guild && guild.app && guild.app.state && guild.app.state.guilds ? guild.app.state.guilds[c.gid] : null;
-    return guild && guild.ui && guild.ui.timeInZone ? guild.ui.timeInZone(Date.now(), gdata && gdata.guild ? gdata.guild.timeZone : '') : new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const zone = (gdata && gdata.guild && gdata.guild.timeZone) || (c.seed && c.seed.raid && c.seed.raid.timeZone) || '';
+    const labelled = zone && guild && guild.ui && guild.ui.timeInZone ? guild.ui.timeInZone(Date.now(), zone) : '';
+    return labelled || new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   },
 
   // Stops saving and polling for good and forgets the raid binding (the plan becomes this browser's own).

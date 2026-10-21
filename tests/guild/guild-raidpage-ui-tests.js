@@ -195,6 +195,46 @@ const labelsOf = (out, id) => {
   const facts = out => out.slice(out.indexOf('id="raid-facts"'), out.indexOf('</section>', out.indexOf('id="raid-facts"')));
   const factRow = (out, label) => facts(out).split('<div class="gs-rpg-fact"').slice(1).filter(r => r.includes('<dt>' + label + '</dt>'))[0] || '';
 
+  await check('Plan menu with a full Planner plan (sources.planDoc): Replace plan asks first (confirm, then the paste dialog), Remove plan says it deletes the plan for every officer; without one the old flow stays', () => {
+    const S = G.app.state;
+    S.guilds = { g1: gd(OFFICER_CAN) }; S.currentGid = 'g1';
+    const att = G.pages.attendance.attState();
+    const run = (data, op) => {
+      att.raid = { gid: 'g1', rid: 'u1', data, filter: null };
+      const opened = [];
+      const realOpen = G.ui.openDialog; G.ui.openDialog = (html) => { opened.push(html); return null; };
+      G.handlers.click['raid-op']({ getAttribute: k => ({ 'data-op': op }[k] || null) });
+      G.ui.openDialog = realOpen;
+      return opened;
+    };
+    const full = up({ sources: { event: null, reports: [], plan: PLAN, planDoc: true } });
+    const replace = run(full, 'plan-replace');
+    assert.equal(replace.length, 1);
+    assert(replace[0].includes('data-submit="raid-confirm-form"') && replace[0].includes('data-op="plan-replace"') && replace[0].includes('<h2 class="gs-dialog-title" id="dlg-title">Replace the plan?</h2>'));
+    assert(replace[0].includes("This replaces the raid's plan in the Planner, including groups, Open slots and notes.") || replace[0].includes('This replaces the raid&#39;s plan in the Planner, including groups, Open slots and notes.'), replace[0]);
+    assert(replace[0].includes('data-action="dialog-cancel">Cancel</button>') && replace[0].indexOf('Cancel') < replace[0].indexOf('>Continue<'), 'Cancel left of the one primary');
+    // Continue hands over to the paste dialog (opening one replaces the other).
+    const next = [];
+    const realOpen = G.ui.openDialog; G.ui.openDialog = (html) => { next.push(html); return null; };
+    G.handlers.submit['raid-confirm-form']({ getAttribute: k => ({ 'data-op': 'plan-replace' }[k] || null) });
+    G.ui.openDialog = realOpen;
+    assert(next.length === 1 && next[0].includes('data-submit="plan-form"') && next[0].includes('Replace the plan'), 'the paste dialog follows');
+    // A bench-only plan: the line reads Not planned, the dialogs still know.
+    const benchOnly = up({ sources: { event: null, reports: [], plan: null, planDoc: true } });
+    assert(stripTags(factRow(page(benchOnly, {}), 'Plan')).includes('Not planned'));
+    assert.deepEqual(labelsOf(page(benchOnly, {}), 'fact-plan'), ['Open in Planner', 'Link a plan', 'Remove plan']);
+    assert(run(benchOnly, 'plan-replace')[0].includes('data-op="plan-replace"'), 'asks even when nobody is seated');
+    const remove = run(benchOnly, 'plan-remove');
+    assert(remove[0].includes('data-op="plan-remove"') && /This deletes the raid(&#39;|')s plan for every officer\./.test(remove[0]), remove[0]);
+    // No full plan: Replace goes straight to the paste dialog, Remove keeps its text.
+    const plain = up({ sources: { event: null, reports: [], plan: PLAN, planDoc: false } });
+    assert(run(plain, 'plan-replace')[0].includes('data-submit="plan-form"'));
+    assert(run(plain, 'plan-remove')[0].includes('Plan placements stop counting as sign-ups on this raid.'));
+    // No copy on the raid page leans on saving to the raid or on a live link.
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'js', 'guild', 'pages-raid.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '..', '..', 'js', 'guild', 'pages-raid-facts.js'), 'utf8');
+    assert(!/save to (the )?raid|saved to the raid|live link/i.test(src), 'no stale save-to-raid or live-link copy');
+  });
+
   await check('Raid facts, before the raid (officer): Sign-ups from = This page / the Raid-Helper event with its count and sync, Plan, Line-up, Duties - each with a Change menu or button', () => {
     const none = page(up(), { signups: sState(view()), roster: rState() });
     assert.deepEqual([...facts(none).matchAll(/<dt>([^<]+)<\/dt>/g)].map(m => m[1]), ['Sign-ups from', 'Plan', 'Line-up', 'Duties']);

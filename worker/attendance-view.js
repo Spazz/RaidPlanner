@@ -221,6 +221,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       plan: raid.plan_synced !== null && raid.plan_synced !== undefined
         ? { label: raid.plan_label, players: planNames.length, full: raid.plan_doc > 0, unmatched: seeAttendance ? planNames.filter((entry) => !matchedPlanKeys.has(entry.name_key)).map((entry) => entry.name) : [] }
         : null,
+      planDoc: raid.plan_doc > 0, // a full Planner plan exists, even when nobody is seated in it (then `plan` is null: the line-up projection is empty)
     },
     pulls: pullResult.results.map((row) => ({ encounter: row.encounter_name, kill: row.kill === 1, startedAt: row.started_at })),
     people,

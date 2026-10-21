@@ -58,7 +58,7 @@ function loadGuildParts() {
   const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  for (const file of ['router.js', 'plan-source.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', '..', 'js', 'guild', file), 'utf8'), sandbox, { filename: file });
+  for (const file of ['router.js', 'ui.js', 'plan-source.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', '..', 'js', 'guild', file), 'utf8'), sandbox, { filename: file });
   return sandbox.Guild;
 }
 const guildParts = loadGuildParts();
@@ -129,7 +129,7 @@ function makeEnv(server = makeServer(), userName = 'Me') {
   const globals = {
     btoa, atob, escape, unescape, AbortSignal, AbortController, Date: FakeDate,
     __env: env, localStorage: env.storage, document: env.document,
-    window: { location, localStorage: env.storage, addEventListener() {}, Guild: { api: guildApi, router: guildParts.router, planSource: guildParts.planSource } },
+    window: { location, localStorage: env.storage, addEventListener() {}, Guild: { api: guildApi, router: guildParts.router, planSource: guildParts.planSource, ui: guildParts.ui } },
     history: { replaceState() {} }, navigator: {},
     fetch: async (url, init = {}) => {
       const call = { url, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null };
@@ -142,6 +142,7 @@ function makeEnv(server = makeServer(), userName = 'Me') {
   };
   env.ctx = app.sandbox(NAMES, { globals, extraSource: STUBS + CONTEXT_SOURCE + '\n' + INIT_SOURCE + '\n' + SYNC_SOURCE });
   env.api = env.ctx.api;
+  env.window = globals.window;
   env.api.PlanSession.ready = true;
   env.advance = async ms => {
     const target = env.now + ms;
@@ -517,7 +518,7 @@ function benchByHand(env, name) {
     assert.match(gone.els['raid-context-status'].textContent, /^Started from the raid's 7 sign-ups/);
   });
 
-  await check('migrate: the names the raid page holds go back into their groups (source legacy); a name that is not a sign-up is left out and counted', async () => {
+  await check('migrate: the names the raid page holds go back into their groups (source legacy); a name that is not a sign-up is added without a class and waits on the bench', async () => {
     const env = makeEnv();
     guildRoute(env, () => SEED());
     env.server.legacy = { label: 'Sat BT 2026-10-24', players: [{ name: 'Aldric', group: 2 }, { name: 'Brindle', group: 1 }, { name: 'Galdor', group: 0 }, { name: 'Nobody', group: 3 }] };
@@ -527,10 +528,29 @@ function benchByHand(env, name) {
     assert(State.groups[1].some(p => p.name === 'Aldric'));
     assert.equal(byName(State, 'Brindle').groupNumber, 1);
     assert(State.bench.some(p => p.name === 'Galdor'));
-    assert.match(env.els['raid-context-status'].textContent, /^Opened the plan saved on the raid: 3 names back in their groups\. 1 name is not among the sign-ups and was left out\./);
+    const nobody = State.unplaced.find(p => p.name === 'Nobody');
+    assert(nobody && !nobody.class && nobody.signupStatus === 'confirmed', 'a saved name nobody signed up with is added as a player with no class (the unplaced path), not dropped');
+    assert.match(env.els['raid-context-status'].textContent, /^Opened the plan saved on the raid: 3 names back in their groups\. 1 name is not among the sign-ups and waits on the bench: pick its class, then seat them\./);
     await env.advance(5000);
     assert.deepEqual(env.server.puts.map(p => [p.baseRev, p.source]), [[0, 'legacy']]);
     assert(env.server.plan.groups[1].some(p => p.name === 'Aldric'));
+    assert((env.server.plan.unplaced || []).some(p => p.name === 'Nobody'), 'and it is in the plan the raid keeps');
+  });
+
+  await check('banner time: "Saved to the raid at 2:14 PM CT" is the guild\'s zone with its label (guild data, else the zone the raid came with); with neither it is the browser clock and no label', async () => {
+    const withUi = await openedEnv(makeServer(), 'Me');
+    const { RaidContext } = withUi.api;
+    const labelled = RaidContext.timeText(RaidContext.current);
+    assert.match(labelled, /^\d{1,2}:\d{2} [AP]M CT$/, 'the seed\'s zone (America/Chicago) with the label the raid page uses');
+    assert.equal(labelled, guildParts.ui.timeInZone(withUi.now, 'America/Chicago'), 'the same text the raid page shows');
+    // The guild's own zone wins over the seed's.
+    withUi.window.Guild.app = { state: { guilds: { g1: { guild: { timeZone: 'America/New_York' } } } } };
+    assert.match(RaidContext.timeText(RaidContext.current), /^\d{1,2}:\d{2} [AP]M ET$/);
+    // No zone anywhere: the browser's clock, no label.
+    const bare = makeEnv(makeServer(), 'Me');
+    guildRoute(bare, () => SEED({ raid: Object.assign(SEED().raid, { timeZone: null }) }));
+    await openRaid(bare);
+    assert.match(bare.api.RaidContext.timeText(bare.api.RaidContext.current), /^\d{1,2}:\d{2} [AP]M$/);
   });
 
   await check('migrate: the raid page replaced the plan since this browser saved it (the document is gone): the page\'s names win and this device\'s copy is kept under another name', async () => {
