@@ -792,7 +792,7 @@ check('compile is pure: the inputs are unchanged and the result shares nothing w
 // ── Checks: the rules report ────────────────────────────────────
 check('tools/rules-report.js prints its four sections for every version within 160 columns, --json parses, a bad argument exits 2', () => {
   const { spawnSync } = require('child_process');
-  const run = (...args) => spawnSync(process.execPath, [path.join(app.ROOT, 'tools', 'rules-report.js'), ...args], { encoding: 'utf8' });
+  const run = (...args) => spawnSync(process.execPath, [path.join(app.ROOT, 'tools', 'rules-report.js'), ...args], { encoding: 'utf8', windowsHide: true });
   const sections = ['(a) Buff by recipient', '(b) Mitigation weight', '(c) Debuffs', '(d) Conventions'];
   noProblems(problem => {
     for (const version of VERSIONS) {

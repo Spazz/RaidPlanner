@@ -145,7 +145,7 @@ check('.env.example lists names only and covers every secret the Worker reads', 
 });
 
 check('every guild-tracker file is whitelisted in .gitignore (so it can be committed), and secrets, Wrangler state and packages stay ignored', () => {
-  const git = spawnSync('git', ['--version'], { cwd: ROOT });
+  const git = spawnSync('git', ['--version'], { cwd: ROOT, windowsHide: true });
   if (git.status !== 0) return; // no git on this machine: the whitelist cannot be probed
   // Structural: whatever is in these folders today is checked, so a new file needs no entry here (the .gitignore globs cover the folders).
   const files = new Set([
@@ -156,7 +156,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
   ]);
   assert(files.size > 100, `only ${files.size} files found`);
   const probe = (list) => {
-    const run = spawnSync('git', ['check-ignore', '--no-index', '--stdin'], { cwd: ROOT, input: list.join('\n'), encoding: 'utf8' });
+    const run = spawnSync('git', ['check-ignore', '--no-index', '--stdin'], { cwd: ROOT, windowsHide: true, input: list.join('\n'), encoding: 'utf8' });
     return run.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
   };
   assert.deepEqual(probe([...files]), [], 'a ! line (or a folder glob) is missing in .gitignore for these');

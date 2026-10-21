@@ -163,7 +163,7 @@ if (!baseRef) {
   console.log('SKIP  split equals the pre-split inline page (set SPLIT_BASE_REF=<commit> to run)');
 } else {
   check(`split proof vs ${baseRef}: scripts, styles and the rest of the page are unchanged`, () => {
-    const original = execFileSync('git', ['show', `${baseRef}:index.html`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 28 }).replace(/\r\n/g, '\n');
+    const original = execFileSync('git', ['show', `${baseRef}:index.html`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 28, windowsHide: true }).replace(/\r\n/g, '\n');
     const scripts = [...original.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     const styles = [...original.matchAll(/<style>([\s\S]*?)<\/style>/g)];
     assert.equal(scripts.length, 1, 'the base page must hold exactly one inline script');

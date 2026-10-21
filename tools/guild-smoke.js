@@ -402,7 +402,7 @@ async function up(options) {
 function removeDir(stateDir, why) {
   if (!isDeletableStateDir(stateDir)) throw new Error(`refusing to delete ${stateDir}`);
   for (let attempt = 0; attempt < 8; attempt++) {
-    try { fs.rmSync(stateDir, { recursive: true, force: true }); return true; } catch { spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},700)']); }
+    try { fs.rmSync(stateDir, { recursive: true, force: true }); return true; } catch { spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},700)'], { windowsHide: true }); }
   }
   log(`could not delete ${stateDir} after ${why} (a process still holds a file); delete it by hand`);
   return false;
@@ -426,7 +426,7 @@ function run(options) {
   if (!state) throw new Error(`"${options.name}" is not up: run \`node tools/guild-smoke.js up --name ${options.name}\` first`);
   const { pids, ...injected } = state;
   const result = spawnSync(process.execPath, [path.resolve(options.script), ...options.scriptArgs], {
-    stdio: 'inherit', env: { ...process.env, GUILD_SMOKE_JSON: JSON.stringify(injected), GUILD_SMOKE_BASE: state.base },
+    stdio: 'inherit', windowsHide: true, env: { ...process.env, GUILD_SMOKE_JSON: JSON.stringify(injected), GUILD_SMOKE_BASE: state.base },
   });
   return result.status === null ? 1 : result.status;
 }

@@ -117,7 +117,7 @@ function parseRows(stdout) {
 // deps: { exec(plan) -> { status, stdout, stderr }, now(), itemIds() } (each injectable for tests). Returns the exit code.
 function run(argv, deps = {}, out = console) {
   const exec = deps.exec || ((plan) => spawnSync(plan.command, plan.args, {
-    cwd: ROOT, encoding: 'utf8', shell: plan.shell, maxBuffer: 32 * 1024 * 1024,
+    cwd: ROOT, encoding: 'utf8', shell: plan.shell, windowsHide: true, maxBuffer: 32 * 1024 * 1024,
     env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
   }));
   let parsed;

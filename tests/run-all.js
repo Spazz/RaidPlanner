@@ -44,7 +44,7 @@ const units = suites.flatMap(({ name, file }) => {
 function runUnit(unit) {
   return new Promise(resolve => {
     const started = process.hrtime.bigint();
-    const child = spawn(process.execPath, unit.args, { cwd: ROOT });
+    const child = spawn(process.execPath, unit.args, { cwd: ROOT, windowsHide: true });
     let stdout = '', stderr = '', error = null;
     child.stdout.on('data', d => { stdout += d; });
     child.stderr.on('data', d => { stderr += d; });

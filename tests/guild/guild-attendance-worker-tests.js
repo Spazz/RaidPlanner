@@ -1594,8 +1594,8 @@ check('config: no *_API_BASE in wrangler.jsonc, the new files are whitelisted, R
   const { spawnSync } = require('node:child_process');
   const files = ['tests/guild/guild-attendance-worker-tests.js', 'migrations/0003_attendance.sql', 'worker/attendance-store.js', 'worker/attendance-view.js',
     'worker/routes/raids.js', 'worker/routes/attendance.js', 'worker/attendance-policy.js'];
-  if (spawnSync('git', ['--version'], { cwd: ROOT }).status === 0) {
-    for (const file of files) assert.notEqual(spawnSync('git', ['check-ignore', '-q', '--no-index', '--', file], { cwd: ROOT }).status, 0, `${file} is whitelisted`);
+  if (spawnSync('git', ['--version'], { cwd: ROOT, windowsHide: true }).status === 0) {
+    for (const file of files) assert.notEqual(spawnSync('git', ['check-ignore', '-q', '--no-index', '--', file], { cwd: ROOT, windowsHide: true }).status, 0, `${file} is whitelisted`);
   }
   assert(/Fake000000000002/.test(fs.readFileSync(path.join(ROOT, 'tools/fake-sources.js'), 'utf8')));
 });
