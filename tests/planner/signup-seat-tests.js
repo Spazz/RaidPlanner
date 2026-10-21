@@ -293,4 +293,55 @@ check('pool heads: an empty head is not drawn', () => {
   assert.equal(pillCount(section.innerHTML, 'bench'), 0);
 });
 
+// ── the real board: seats left over are shown as suggested Open slots ────────────────
+const autoSlots = a => Array.from(a.State.preferredSlots).filter(p => p.auto);
+const NEW_ENH = { name: 'NewEnh', className: 'Shaman', specName: 'Enhancement', id: 940 };
+
+check('13 seated + 12 suggested Open slots: a newcomer whose spec fits no suggestion is seated by Optimize (suggestions are not seated people)', () => {
+  const { a, signUps } = planWith(13);
+  assert.equal(autoSlots(a).length, 12, 'the board carries 12 suggestions');
+  assert(!autoSlots(a).some(p => p.class === 'ROGUE' && p.spec === 'Combat'), 'no suggestion fits the newcomer');
+  const counter = countOptimize(a);
+  sync(a, [...signUps, NEW_ONES[0]]);
+  assert.equal(counter.n, 1, 'Optimize ran');
+  assert(a.State.roster.some(p => p.name === 'NewRogue' && p.groupNumber >= 1), 'seated, not benched');
+  assert.equal(a.State.bench.length, 0);
+  assert.equal(a.State.roster.length, 14);
+});
+
+check('24 seated + 1 suggested Open slot: still a free seat, so the newcomer is seated (the suggestion is not counted)', () => {
+  const { a, signUps } = planWith(24);
+  assert.equal(autoSlots(a).length, 1);
+  sync(a, [...signUps, NEW_ONES[0]]);
+  assert.equal(a.State.roster.length, 25);
+  assert.equal(a.State.bench.length, 0);
+});
+
+check('13 seated + 12 suggestions: a newcomer that fits a suggestion takes that seat directly (no Optimize)', () => {
+  const { a, signUps } = planWith(13);
+  const slot = autoSlots(a).find(p => p.class === 'SHAMAN' && p.spec === 'Enhancement');
+  assert(slot, 'the board suggests an Enhancement Shaman');
+  const before = layout(a);
+  const counter = countOptimize(a);
+  sync(a, [...signUps, NEW_ENH]);
+  assert.equal(counter.n, 0, 'Optimize did not run');
+  const seat = a.State.roster.find(p => p.name === 'NewEnh');
+  assert(seat && seat.groupNumber === slot.group + 1, "seated in the suggestion's group");
+  assert.equal(autoSlots(a).length, 11, 'the suggestion was used up');
+  assert.equal(a.State.bench.length, 0);
+  assert.notEqual(layout(a), before);
+  assert.equal(a.State.roster.length, 14);
+});
+
+check('25 real players seated: a newcomer that would fit a spec suggestion still goes to the bench', () => {
+  const { a, signUps } = planWith(25);
+  assert.equal(autoSlots(a).length, 0, 'a full raid suggests nothing');
+  const before = layout(a);
+  const counter = countOptimize(a);
+  sync(a, [...signUps, NEW_ENH]);
+  assert.equal(counter.n, 0);
+  assert.equal(layout(a), before);
+  assert.deepEqual(names(a.State.bench), ['NewEnh']);
+});
+
 console.log(`\nSign-up seat tests: ${passed} passed`);
