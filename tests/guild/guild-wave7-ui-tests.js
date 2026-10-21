@@ -380,11 +380,13 @@ function keyData(extra) {
     ],
   });
 
-  await check('Attendance page: each person\'s rank under their name on the table and the phone cards, and the suggestion where there is one; nothing when the guild has no ladder', () => {
+  await check('Attendance page: the rank under the name in the In between rows, the suggestion where there is one (also in a compact Reliable row); nothing when the guild has no ladder', () => {
     const gd = guildData();
-    const out = G.pages.attendance.attendanceHtml({ guildData: gd, teamId: 't1', data: teamData(), view: {}, policy: null });
-    assert.equal((out.match(/gs-rank-chip/g) || []).length, 4, 'two people, table and card');
-    assert.equal((out.match(/data-action="rank-accept"/g) || []).length, 2, 'the one suggestion, table and card');
+    const withLadder = teamData();
+    withLadder.people[1].pct = 80; // Aria is In between (a rank chip), Bran is Reliable (a compact row: only his suggestion)
+    const out = G.pages.attendance.attendanceHtml({ guildData: gd, teamId: 't1', data: withLadder, view: {}, policy: null });
+    assert.equal((out.match(/gs-rank-chip/g) || []).length, 2, 'Aria\'s rank, and Bran\'s with his suggestion');
+    assert.equal((out.match(/data-action="rank-accept"/g) || []).length, 1, 'the one suggestion');
     assert(text(out).includes('Suggested: promote to Core'));
     const none = teamData([{ id: 'p_1', name: 'Bran', class: 'MAGE', status: 'raider', pct: 100, pctAll: 100, signupRate: 100, streak: 0, lastAttended: '2027-01-12', cells: [] }]);
     delete none.ladder;

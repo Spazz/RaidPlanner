@@ -120,41 +120,24 @@ const keys = items => plain(items.map(i => i.key));
   }, over || {});
   const attHtml = (data, can, view) => G.pages.attendance.attendanceHtml({ guildData: gd(can || OFFICER_CAN, { attendanceFlags: { t1: 2 } }), teamId: 't1', data, view: Object.assign({ sort: G.pages.attendance.DEFAULT_SORT, includeInactive: false }, view || {}) });
 
-  await check('attendance: the viewer\'s own row keeps its sorted place in the matrix and in the phone cards (never pinned), with the You tag and the tint', () => {
-    const out = attHtml(ATT());
-    const rows = [...out.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => [m[2], !!m[1]]);
+  await check('attendance: the viewer\'s own row keeps its sorted place in the Week grid and in the People bands (never pinned), with the You tag and the tint', () => {
+    const grid = attHtml(ATT(), OFFICER_CAN, { mode: 'grid' });
+    const rows = [...grid.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-at-c-name">.*?gs-char-link[^>]*>([^<]*)</g)].map(m => [m[2], !!m[1]]);
     assert.deepEqual(rows, [['Aimer', false], ['Me', true], ['Zed', false]], 'A-Z, You in place');
-    assert(out.includes('<span class="gs-you">You</span>'));
-    const cards = [...out.matchAll(/<li class="gs-att-card( is-you)?">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[2]);
-    assert.deepEqual(cards, ['Aimer', 'Me', 'Zed']);
-    const desc = attHtml(ATT(), OFFICER_CAN, { sort: { column: 'pct', dir: 'desc' } });
-    assert.deepEqual([...desc.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[2]), ['Aimer', 'Zed', 'Me'], 'Me has the lowest %, so Me is last');
+    assert(grid.includes('<span class="gs-you">You</span>'));
+    const desc = attHtml(ATT(), OFFICER_CAN, { mode: 'grid', sort: { column: 'pct', dir: 'desc' } });
+    assert.deepEqual([...desc.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-at-c-name">.*?gs-char-link[^>]*>([^<]*)</g)].map(m => m[2]), ['Aimer', 'Zed', 'Me'], 'Me has the lowest %, so Me is last');
+    const people = attHtml(ATT());
+    assert(/<li class="gs-at-row gs-at-b is-you"><div class="gs-at-who"><span class="gs-at-name">.*?>Me</.test(people), 'In between (60%): the tinted row');
     assert.equal(G.pages.attendance.pinMine, undefined, 'the pin helper is gone');
-    assert(!attHtml(ATT({ people: [person('p_a', 'Aimer', false, 100)] })).includes('class="is-you"'), 'a viewer with no row tints nothing');
+    assert(!attHtml(ATT({ people: [person('p_a', 'Aimer', false, 100)] })).includes('is-you'), 'a viewer with no row tints nothing');
   });
 
-  await check('attendance: the legend is folded behind a Legend toggle; the page is one list page with the viewer\'s facts in a context line', () => {
+  await check('attendance: the page is one Forge list page with the facts in a context line; the Legend is a button; the flag count is the molten button and the More item', () => {
     const out = attHtml(ATT());
-    assert(out.includes('<details class="gs-how gs-legend-box"><summary>Legend</summary>') && !/<details[^>]*open/.test(out), 'closed');
-    assert(count(out, /class="gs-legend-item"/g) >= 10, 'the legend is still all there for a click');
-    assert(out.includes('<div class="gs-page gs-list-page gs-att-page">') && out.includes('<header class="gs-pagehead">') && out.includes('class="gs-listbar"'));
-    assert(out.includes('Last 8 weeks - 3 people - 0 on the watch list - 2 flags to review'), out.slice(out.indexOf('gs-pagehead-context'), out.indexOf('gs-pagehead-context') + 200));
-    assert(!out.includes('Nobody is on the watch list'));
-  });
-
-  await check('attendance: with people on the watch list the card stays above the matrix and the phrase counts them; no watch (cannot review) = no phrase', () => {
-    const entry = { playerId: 'p_z', name: 'Zed', class: 'DRUID', status: 'raider', pct: 50, previousPct: 80, drop: 30, missed: 3, missedNotice: 0, counted: 6, reasons: ['below'] };
-    const out = attHtml(ATT({ watch: { below: 0.75, dropBy: null, window: 8, previousFrom: null, entries: [entry] } }));
-    assert(out.includes('1 on the watch list') && out.indexOf('id="att-watch-h"') > 0 && out.indexOf('id="att-watch-h"') < out.indexOf('class="gs-listbar"'));
-    assert(!attHtml(ATT({ watch: null })).includes('on the watch list'));
-  });
-
-  await check('attendance: the matrix page is not capped at 1200 px; the name column and its head stay while the weeks scroll; the viewer\'s row has the gold edge', () => {
-    assert(/\.gs-att-page \{ max-width: none; \}/.test(css), 'full width');
-    assert(/\.gs-att-page \.gs-table-att \{ width: 100%/.test(css));
-    assert(/\.gs-table-att th\[scope="row"\] \{[^}]*position: sticky; left: 0/.test(css), 'sticky name column');
-    assert(/\.gs-table-att thead th:first-child \{ position: sticky; left: 0/.test(css), 'its head too');
-    assert(/\.gs-table-att tr\.is-you th\[scope="row"\] \{[^}]*text-primary/.test(css) && /\.gs-att-card\.is-you \{[^}]*text-primary/.test(css));
+    assert(out.includes('<div class="gs-page gs-list-page gs-forge gs-at-page">') && out.includes('<header class="gs-pagehead">'));
+    assert(out.includes('Last 8 weeks') && out.includes('3 people') && out.includes('Review 2 flags') && out.includes('Review queue (2)'));
+    assert(/data-action="att-legend"[^>]*aria-haspopup="dialog">Legend</.test(out) && !out.includes('gs-legend-box'));
   });
 
   // ═══ 5. Loot ═══
@@ -178,7 +161,7 @@ const keys = items => plain(items.map(i => i.key));
     const sidebar = G.shell.slots(shellCtx(OFFICER_CAN, { guildData: g, route: { name: 'section', gid: 'g1', section: 'raids' } }));
     assert(sidebar.sidebar.includes('aria-label="Attendance, 5 flags to review"') && sidebar.tabs.includes('aria-label="Attendance, 5 flags to review"'));
     const att = G.pages.attendance.attendanceHtml({ guildData: g, teamId: 't1', data: ATT(), view: { sort: G.pages.attendance.DEFAULT_SORT, includeInactive: false } });
-    assert(att.includes('Review queue (5)') && att.includes('5 flags to review'));
+    assert(att.includes('Review queue (5)') && att.includes('Review 5 flags'));
     // The queue lists 3 flags on 2 raids: opening it makes the badge say 3.
     const item = n => ({ playerId: 'p' + n, name: 'N' + n, class: 'DRUID', status: 'raider', flags: ['no_show'], row: { outcome: 'missed' } });
     const review = { team: { id: 't1', name: 'Main team' }, raids: [{ raid: { id: 'r1', raidOn: '2026-10-02', zone: 'BT', openFlags: 2 }, items: [item(1), item(2)] }, { raid: { id: 'r2', raidOn: '2026-10-09', zone: 'BT', openFlags: 1 }, items: [item(3)] }], stale: [], lootUnmatched: [] };

@@ -3,7 +3,8 @@
 // pages-person-attendance and pages-raids use them. The page itself: header, window switch, legend, a sortable table
 // of people with the recent-raids grid grouped by reset week (phone: person cards), "How this is counted".
 // Data: GET /attendance/team?team=&window= and GET /attendance/policy (see the Phase 3 spec, API section).
-// Above the grid sits the Watch list card (data.watch: people under the policy's `watch` thresholds), for viewers who can review the team.
+// People view: Needs a look (data.watch) and Awaiting your call (GET /attendance/review) panels, then the rest in In between / Reliable (pages-attendance-people.js);
+// Week grid view: one table of raids by reset week (pages-attendance-grid.js). Officers only; everyone else sees their own record (pages-person-attendance.js).
 // This file is safe to load alone (the letters-table parity test does): nothing here runs at load time.
 (function (G) {
   'use strict';
@@ -23,9 +24,10 @@
   const FLAG_LABELS = { no_show: 'No show', late: 'Late', left_early: 'Left early', unmatched: 'Unmatched' };
   const DEFAULT_CREDITS = [{ id: 'full', label: 'Full', value: 1 }, { id: 'half', label: 'Half', value: 0.5 }, { id: 'none', label: 'None', value: 0 }];
   const ATTENDED_OUTCOMES = ['present', 'bench', 'late', 'left_early', 'late_left', 'fill_in'];
-  const COLUMNS = ['player', 'pct', 'all', 'signup', 'streak', 'last'];
+  const COLUMNS = ['player', 'pct', 'streak'];
   const DEFAULT_SORT = { column: 'player', dir: 'asc' };
-  const PHONE_CELLS = 8;
+  const STRIP_RAIDS = 8; // the raids a People row shows, newest last
+  const RELIABLE_AT = 0.9; // a window % at or above this puts a person in the Reliable group (an app constant, not a setting)
   const RAID_PAGE_GUARD = 30;
 
   function has(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
@@ -157,79 +159,58 @@
     return m;
   }
 
-  function weekLabel(weekStart) {
-    const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(String(weekStart || ''));
-    return m ? 'Wk ' + Number(m[1]) + '/' + Number(m[2]) : 'Wk';
+  // ── shared by the People and Week grid views ──
+  // The person's name in class colour, linking to their history (watch entries and review items carry playerId, team people carry id).
+  function nameLinkHtml(gid, p, withIcon) {
+    const pid = p.id || p.playerId;
+    const cls = G.ui.classClass(p.class);
+    const label = '<span class="gs-char-name' + (cls ? ' ' + cls : '') + '">' + esc(p.name) + '</span>';
+    const who = pid ? '<a class="gs-char-link' + (cls ? ' ' + cls : '') + '" href="' + esc(G.router.format({ name: 'personatt', gid: gid, pid: pid })) + '">' + esc(p.name) + '</a>' : label;
+    return '<span class="gs-at-name">' + (withIcon ? G.ui.specIconHtml(p.class, p.mainSpec || null, 20) : '') + who + (p.isMe ? '<span class="gs-you">You</span>' : '') + '</span>';
   }
 
-  function colHeadHtml(gid, col) {
-    const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(col.date || '');
-    const wd = (G.ui.weekdayDay(col.date) || '').split(' ')[0];
-    const inner = '<span class="gs-att-wd">' + esc(wd) + '</span><span>' + esc(m ? Number(m[1]) + '/' + Number(m[2]) : col.date) + '</span>';
-    if (col.extra) return '<th scope="col" class="gs-att-col"><span title="Other-team attendance">' + inner + '</span></th>';
-    return '<th scope="col" class="gs-att-col"><a href="' + esc(G.router.format({ name: 'raid', gid: gid, rid: col.id })) + '" aria-label="' + esc('Raid on ' + (G.ui.weekdayDay(col.date) || col.date)) + '">' + inner + '</a></th>';
+  // The last `n` raid columns of the grid, still grouped by reset week: [{ weekStart, cols }].
+  function lastRaidWeeks(grid, n) {
+    let left = n;
+    const out = [];
+    for (let i = grid.length - 1; i >= 0 && left > 0; i--) {
+      const cols = grid[i].cols.slice(-left);
+      left -= cols.length;
+      out.unshift({ weekStart: grid[i].weekStart, cols: cols });
+    }
+    return out;
   }
 
-  function statName(p) {
-    return '<span class="gs-att-name">' + G.ui.classNameHtml(p.name, p.class) + (p.isMe ? '<span class="gs-you">You</span>' : '') + '</span>';
-  }
-
-  function streakHtml(p) {
-    const n = typeof p.streak === 'number' ? p.streak : 0;
-    return '<span class="gs-streak' + (p.streakFlag ? ' is-flag' : '') + '">' + esc(n) + (p.streakFlag ? '<span class="gs-sr"> raids missed in a row, flagged</span>' : '') + '</span>';
-  }
-
-  function pctHtml(p, key) {
-    const v = G.ui.percent(p[key]);
-    if (key === 'pct' && p.pending > 0) return esc(v) + '<span class="gs-sr">, ' + esc(plural(p.pending, 'raid', 'raids')) + ' awaiting review</span>';
-    return esc(v);
-  }
-
-  function windowShort(w) { return w === 'all' ? 'All time' : (w ? w + '-wk' : 'Window') + ' %'; }
-
-  function sortHeaderHtml(col, label, sort) {
-    const aria = ariaSort(sort, col);
-    const dir = aria === 'descending' ? 'desc' : aria === 'ascending' ? 'asc' : '';
-    return '<th scope="col" rowspan="2"' + (aria ? ' aria-sort="' + aria + '"' : '') + '><button type="button" class="gs-sort" data-action="att-sort" data-col="' + col + '" data-key="asort-' + col + '"' + (dir ? ' data-dir="' + dir + '"' : '') + '>' +
-      esc(label) + '<span class="gs-sort-ind" aria-hidden="true"></span></button></th>';
-  }
-
-  // PM wave 7: the person's rank and the ladder's suggestion (pages-ranks.js); '' while the guild has no ladder.
-  function rankLine(p, teamId) { return G.pages.ranks ? G.pages.ranks.lineHtml(p, teamId) : ''; }
-
-  function tableHtml(gid, data, people, view) {
-    const grid = gridOf(data, people);
-    const labels = { player: 'Player', pct: windowShort(data.window), all: 'All time %', signup: 'Sign-up rate', streak: 'Streak', last: 'Last attended' };
-    const head1 = '<tr>' + COLUMNS.map(function (c) { return sortHeaderHtml(c, labels[c], view.sort); }).join('') +
-      grid.map(function (w) { return '<th scope="colgroup" colspan="' + w.cols.length + '" class="gs-att-week">' + esc(weekLabel(w.weekStart)) + '</th>'; }).join('') + '</tr>';
-    const head2 = '<tr>' + grid.map(function (w) { return w.cols.map(function (c) { return colHeadHtml(gid, c); }).join(''); }).join('') + '</tr>';
-    const rows = people.map(function (p) {
-      const cm = cellMapOf(p);
-      return '<tr' + (p.isMe ? ' class="is-you"' : '') + '><th scope="row" class="gs-cell-strong">' + statName(p) + '<span class="gs-char-sub">' + esc(G.ui.statusLabel(p.status)) + '</span>' + rankLine(p, data.team && data.team.id) + '</th>' +
-        '<td class="gs-nowrap">' + pctHtml(p, 'pct') + '</td><td class="gs-nowrap">' + pctHtml(p, 'pctAll') + '</td><td class="gs-nowrap">' + pctHtml(p, 'signupRate') + '</td>' +
-        '<td>' + streakHtml(p) + '</td><td class="gs-nowrap">' + esc(G.ui.shortDay(p.lastAttended) || '-') + '</td>' +
-        grid.map(function (w) { return w.cols.map(function (c) { return '<td class="gs-att-cell">' + cellHtml(cm[c.id] || null, c.date) + '</td>'; }).join(''); }).join('') + '</tr>';
-    }).join('');
-    return '<div class="gs-table-wrap gs-att-table"><table class="gs-table gs-table-att" aria-label="Team attendance"><thead>' + head1 + head2 + '</thead><tbody>' + rows + '</tbody></table></div>';
-  }
-
-  function cardsHtml(gid, people, teamId) {
-    return '<ul class="gs-att-cards" aria-label="Team attendance">' + people.map(function (p) {
-      const cells = (Array.isArray(p.cells) ? p.cells : []).slice().sort(function (a, b) { return dateOf(a) < dateOf(b) ? -1 : 1; }).slice(-PHONE_CELLS);
-      return '<li class="gs-att-card' + (p.isMe ? ' is-you' : '') + '"><div class="gs-card-top">' + statName(p) + G.ui.statusChipHtml(p.status) + '</div>' + rankLine(p, teamId) +
-        '<dl class="gs-att-stats"><div><dt>Window</dt><dd>' + pctHtml(p, 'pct') + '</dd></div><div><dt>All time</dt><dd>' + pctHtml(p, 'pctAll') + '</dd></div>' +
-        '<div><dt>Sign-up</dt><dd>' + pctHtml(p, 'signupRate') + '</dd></div><div><dt>Streak</dt><dd>' + streakHtml(p) + '</dd></div></dl>' +
-        '<div class="gs-att-strip">' + cells.map(function (c) { return cellHtml(c, dateOf(c)); }).join('') + '</div></li>';
-    }).join('') + '</ul>';
-  }
-
-  function windowSwitchHtml(data) {
-    const policy = data.policy || {};
-    const weeks = Array.isArray(policy.switchWeeks) && policy.switchWeeks.length ? policy.switchWeeks : [8, 12];
-    const items = weeks.map(function (n) { return { value: n, label: n + ' weeks' }; }).concat([{ value: 'all', label: 'All time' }]);
-    return '<div class="gs-segs" role="group" aria-label="Time window">' + items.map(function (it) {
-      return '<button type="button" class="gs-seg" data-action="att-window" data-window="' + esc(it.value) + '" data-key="awin-' + esc(it.value) + '" aria-pressed="' + (String(data.window) === String(it.value) ? 'true' : 'false') + '">' + esc(it.label) + '</button>';
+  // One person's last raids as cells, a pair of days per reset week; `weeks` come from lastRaidWeeks so every row lines up.
+  function stripHtml(name, weeks, p) {
+    const count = weeks.reduce(function (n, w) { return n + w.cols.length; }, 0);
+    if (!count) return '';
+    const cm = cellMapOf(p || {});
+    return '<div class="gs-at-strip" role="group" aria-label="' + esc(name + ', last ' + plural(count, 'raid', 'raids') + ', oldest first') + '">' + weeks.map(function (w) {
+      return '<span class="gs-at-pair">' + w.cols.map(function (c) { return cellHtml(cm[c.id] || null, c.date); }).join('') + '</span>';
     }).join('') + '</div>';
+  }
+
+  // ── the bar: view switch, window segments, Include inactive, Legend ──
+  function viewSegsHtml(mode) {
+    return '<div class="gs-fg-segs" role="group" aria-label="View">' + [['people', 'People'], ['grid', 'Week grid']].map(function (v) {
+      return '<button type="button" class="gs-fg-seg" data-action="att-view" data-view="' + v[0] + '" data-key="aview-' + v[0] + '" aria-pressed="' + (mode === v[0] ? 'true' : 'false') + '">' + v[1] + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function windowSegsHtml(data) {
+    const policy = data.policy || {};
+    const weeks = Array.isArray(policy.switchWeeks) && policy.switchWeeks.length ? policy.switchWeeks : [4, 8];
+    const items = weeks.map(function (n) { return { value: n, label: n + ' weeks' }; }).concat([{ value: 'all', label: 'All time' }]);
+    return '<div class="gs-fg-segs" role="group" aria-label="Time window">' + items.map(function (it) {
+      return '<button type="button" class="gs-fg-seg" data-action="att-window" data-window="' + esc(it.value) + '" data-key="awin-' + esc(it.value) + '" aria-pressed="' + (String(data.window) === String(it.value) ? 'true' : 'false') + '">' + esc(it.label) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function barHtml(data, view) {
+    return '<div class="gs-at-bar"><div class="gs-at-barl">' + viewSegsHtml(view.mode) + windowSegsHtml(data) + '</div><div class="gs-at-barl">' +
+      '<label class="gs-at-chk" for="att-inactive"><input type="checkbox" id="att-inactive" data-change="att-inactive"' + (view.includeInactive ? ' checked' : '') + '>Include inactive</label>' +
+      '<button type="button" class="gs-btn" data-action="att-legend" data-key="att-legend" aria-haspopup="dialog">Legend</button></div></div>';
   }
 
   // ── "How this is counted": the resolved policy as plain sentences ──
@@ -274,80 +255,7 @@
   function howCountedHtml(policyView, teamId) {
     const resolved = policyView && policyView.resolved && policyView.resolved[teamId] ? policyView.resolved[teamId] : (policyView && policyView.defaults) || null;
     if (!resolved) return '';
-    return '<details class="gs-how"><summary>How this is counted</summary><ul class="gs-bullets">' + describePolicy(resolved).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul></details>';
-  }
-
-  // ── the Watch list card ──
-  // data.watch is null (the viewer cannot review the team, or both thresholds are off) or { below, dropBy, window, previousFrom, entries }.
-  // A policy fraction as typed percent: 0.75 -> 75, 0.125 -> 12.5.
-  function watchPoints(fraction) { return Math.round(fraction * 1000) / 10; }
-
-  // "Below 75% or down 15+ points against the previous 8 weeks": only the checks that are on.
-  function watchRuleText(w) {
-    const hasBelow = typeof w.below === 'number';
-    const hasDrop = typeof w.dropBy === 'number';
-    const against = ' against the previous ' + (typeof w.window === 'number' ? plural(w.window, 'week', 'weeks') : 'period');
-    if (hasBelow && hasDrop) return 'Below ' + watchPoints(w.below) + '% or down ' + watchPoints(w.dropBy) + '+ points' + against;
-    if (hasBelow) return 'Below ' + watchPoints(w.below) + '%';
-    if (hasDrop) return 'Down ' + watchPoints(w.dropBy) + '+ points' + against;
-    return 'No watch rule is set';
-  }
-
-  function watchReasonChips(w, reasons) {
-    const labels = {
-      below: typeof w.below === 'number' ? 'Below ' + watchPoints(w.below) + '%' : 'Below the line',
-      drop: typeof w.dropBy === 'number' ? 'Down ' + watchPoints(w.dropBy) + '+ points' : 'Dropped',
-    };
-    return (Array.isArray(reasons) ? reasons : []).filter(function (r) { return has(labels, r); })
-      .map(function (r) { return '<span class="gs-chip gs-chip-flag">' + esc(labels[r]) + '</span>'; }).join('');
-  }
-
-  // "Reviewed by Kezzik, Oct 16. Comes back if attendance drops 5 more points or a raid is missed." (the Worker's rule: WATCH_RETURN_POINTS)
-  function reviewedText(e) {
-    const by = e.reviewed && e.reviewed.by && e.reviewed.by.name ? String(e.reviewed.by.name) : 'an officer';
-    const day = e.reviewed && typeof e.reviewed.at === 'number' ? G.ui.dayInZone(e.reviewed.at, G.ui.guildZone()).replace(/^\S+\s+/, '') : '';
-    return 'Reviewed by ' + by + (day ? ', ' + day : '') + '. Comes back if attendance drops 5 more points or a raid is missed.';
-  }
-
-  // The button of an entry: "Reviewed" on an open one, "Undo" on a reviewed one. Only entries that carry an itemId (the Worker sends it) get one.
-  function watchActionHtml(e) {
-    if (!e.itemId) return '';
-    const reviewed = !!e.reviewed;
-    return '<div class="gs-watch-act">' + G.ui.buttonHtml({
-      label: reviewed ? 'Undo' : 'Reviewed', variant: 'secondary', size: 'sm', ariaLabel: (reviewed ? 'Undo Reviewed for ' : 'Mark Reviewed for ') + String(e.name == null ? '' : e.name),
-      attrs: { 'data-action': reviewed ? 'att-watch-undo' : 'att-watch-review', 'data-item': e.itemId, 'data-key': 'att-watch-' + e.itemId },
-    }) + '</div>';
-  }
-
-  function watchEntryHtml(gid, w, e) {
-    const cls = G.ui.classClass(e.class);
-    const drop = typeof e.drop === 'number' && e.drop > 0 ? Math.round(e.drop) : 0;
-    const was = typeof e.previousPct === 'number' ? '<span class="gs-watch-was">was ' + esc(G.ui.percent(e.previousPct)) + (drop ? ', down ' + esc(plural(drop, 'point', 'points')) : '') + '</span>' : '';
-    const who = e.playerId ? '<a class="gs-char-link' + (cls ? ' ' + cls : '') + '" href="' + esc(G.router.format({ name: 'personatt', gid: gid, pid: e.playerId })) + '">' + esc(e.name) + '</a>' : G.ui.classNameHtml(e.name, e.class);
-    const rowClass = e.reviewed ? 'gs-watch-item is-reviewed' : 'gs-watch-item';
-    return '<li class="' + rowClass + '"><div class="gs-watch-who">' + who +
-      '<span class="gs-char-sub">' + esc(G.ui.statusLabel(e.status)) + '</span></div>' +
-      '<div class="gs-watch-pct"><span class="gs-watch-num">' + esc(G.ui.percent(e.pct)) + '</span>' + was + '</div>' +
-      '<div class="gs-watch-counts">Missed ' + esc(e.missed || 0) + ', with notice ' + esc(e.missedNotice || 0) + (typeof e.counted === 'number' ? '<span class="gs-fine"> of ' + esc(plural(e.counted, 'raid', 'raids')) + '</span>' : '') + '</div>' +
-      '<div class="gs-pills">' + watchReasonChips(w, e.reasons) + '</div>' + watchActionHtml(e) +
-      (e.reviewed ? '<p class="gs-fine gs-watch-reviewed">' + esc(reviewedText(e)) + '</p>' : '') + '</li>';
-  }
-
-  // The card is there only when somebody is on the list; an empty watch list is one phrase in the page's context line ("0 on the watch list"), so the
-  // feature stays visible without taking the first screen (F11). No card and no phrase when watch is null (the viewer cannot review the team).
-  function watchCountText(watch) {
-    if (!watch || typeof watch !== 'object') return '';
-    return (Array.isArray(watch.entries) ? watch.entries.filter(function (e) { return !(e && e.reviewed); }).length : 0) + ' on the watch list';
-  }
-
-  function watchHtml(gid, watch) {
-    if (!watch || typeof watch !== 'object') return '';
-    const entries = Array.isArray(watch.entries) ? watch.entries : [];
-    if (!entries.length) return '';
-    return '<section class="gs-card-sec gs-watch" aria-labelledby="att-watch-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="att-watch-h">Watch list</h2>' +
-      '<span class="gs-fine">' + esc(plural(entries.length, 'person', 'people')) + '</span></div><div class="gs-card-sec-body">' +
-      '<p class="gs-fine">' + esc(watchRuleText(watch)) + '</p>' +
-      '<ul class="gs-watch-list" aria-label="Watch list">' + entries.map(function (e) { return watchEntryHtml(gid, watch, e); }).join('') + '</ul></div></section>';
+    return '<ul class="gs-bullets">' + describePolicy(resolved).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>';
   }
 
   // ── stale raids: recalculate banner ──
@@ -362,26 +270,29 @@
 
   // ── the page ──
   function windowText(w) { return w === 'all' ? 'All time' : (Number(w) > 0 ? 'Last ' + plural(Number(w), 'week', 'weeks') : ''); }
+  function pageOpen() { return '<div class="gs-page gs-list-page gs-forge gs-at-page">'; }
 
-  // T1 header: the title, one context line (team, window, people, the watch list, the flags to review), and the one More menu (Review queue, Backfill).
+  // T1 header: the title, one context line (team, window, people), the one molten button (Review N flags) and the one More menu.
   // The flag count is the Attendance tab's badge (G.shell.attendanceBadge), so the header and the tab can never disagree.
-  function headerOpts(gd, teamId, data, people) {
+  function headOpts(gd, teamId, data, people, flags) {
     const several = G.shell.activeTeams(gd.teams).length > 1;
     const team = teamOf(gd, teamId);
     const canReview = G.shell.allowsTeam(gd.me && gd.me.can, 'attendance.review', teamId);
     const canEdit = G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', teamId);
-    const flags = canReview ? G.shell.attendanceBadge(gd, teamId) : 0;
-    const parts = [several && team ? team.name : gd.guild.name, windowText(data.window), plural(people.length, 'person', 'people'), watchCountText(data.watch)];
-    if (flags > 0) parts.push(plural(flags, 'flag', 'flags') + ' to review');
+    const parts = [several && team ? team.name : gd.guild.name, windowText(data.window), plural(people.length, 'person', 'people')];
     const items = [];
     if (canReview) items.push({ label: 'Review queue' + (flags > 0 ? ' (' + flags + ')' : ''), href: G.router.format({ name: 'review', gid: gd.guild.id }), key: 'mi-att-review' });
     if (canEdit) items.push({ label: 'Backfill from Warcraft Logs', href: G.router.format({ name: 'backfill', gid: gd.guild.id }), key: 'mi-att-backfill' });
-    return { title: 'Attendance', context: parts.filter(Boolean).join(' - '), more: items.length ? { id: 'att-more', key: 'att-more', items: items } : null };
+    items.push({ label: 'How this is counted', data: { action: 'att-how' }, key: 'mi-att-how' });
+    return {
+      title: 'Attendance', context: parts.filter(Boolean).join(' - '), more: { id: 'att-more', key: 'att-more', items: items },
+      primary: flags > 0 ? { label: 'Review ' + plural(flags, 'flag', 'flags'), href: G.router.format({ name: 'review', gid: gd.guild.id }), attrs: { 'data-key': 'att-review-flags' } } : null,
+    };
   }
 
   function noAccessHtml(gd, teamId) {
     const team = teamOf(gd, teamId);
-    return '<div class="gs-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Attendance</h1></div><section class="gs-empty-card"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('attendance', 28) + '</span>' +
+    return pageOpen() + G.ui.pageHeadHtml({ title: 'Attendance' }) + '<section class="gs-empty-card"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('attendance', 28) + '</span>' +
       '<h2 class="gs-h2 gs-h2-lg">Attendance is for the team\'s members</h2><p class="gs-lead gs-lead-sm">Attendance for ' + esc(team ? team.name : 'this team') + ' is visible to the people who have a character on it.</p></section></div>';
   }
 
@@ -392,37 +303,60 @@
       (canEdit ? '<div class="gs-actions"><a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'raidnew', gid: gid })) + '">New raid</a><a class="gs-btn" href="' + esc(G.router.format({ name: 'backfill', gid: gid })) + '">Backfill from Warcraft Logs</a></div>' : '') + '</section>';
   }
 
-  // opts: { guildData, teamId, data (GET /attendance/team) | null, denied, view: { sort, includeInactive }, policy (GET /attendance/policy) | null, progress, alert }
+  // The loading state: the heading and grey blocks where the panels will be.
+  function skeletonHtml() {
+    const sk = function (cls) { return '<span class="gs-hd-sk ' + cls + '"></span>'; };
+    return '<div class="gs-page gs-list-page gs-forge gs-at-page" aria-busy="true"><p class="gs-sr" role="status">Loading attendance</p>' + G.ui.pageHeadHtml({ title: 'Attendance' }) +
+      '<div class="gs-at-top" aria-hidden="true">' + [0, 1].map(function () { return '<div class="gs-hd-panel gs-at-pan">' + sk('is-sm') + sk('is-line') + sk('is-line') + sk('is-line') + '</div>'; }).join('') + '</div>' +
+      '<div class="gs-hd-panel gs-at-band" aria-hidden="true">' + [0, 1, 2, 3, 4, 5].map(function () { return sk('is-line'); }).join('') + '</div></div>';
+  }
+
+  // The load failed: the one region says so, with Try again.
+  function errorHtml(text) {
+    return pageOpen() + G.ui.pageHeadHtml({ title: 'Attendance' }) +
+      G.ui.errorRegionHtml({ title: 'We couldn\'t load attendance.', text: text || 'The server didn\'t answer.', safe: 'Nothing you saved was lost.', retry: { variant: 'primary', size: undefined, attrs: { 'data-action': 'retry', 'data-key': 'att-retry' } } }) + '</div>';
+  }
+
+  // opts: { guildData, teamId, data (GET /attendance/team) | null, denied, review (GET /attendance/review) | null, view: { mode, sort, includeInactive }, progress, alert }
   function attendanceHtml(opts) {
     const gd = opts.guildData;
     const teamId = opts.teamId;
     if (opts.denied) return noAccessHtml(gd, teamId);
     const data = opts.data;
-    const view = Object.assign({ sort: DEFAULT_SORT, includeInactive: false }, opts.view || {});
+    const view = Object.assign({ mode: 'people', sort: DEFAULT_SORT, includeInactive: false }, opts.view || {});
     const people = (Array.isArray(data.people) ? data.people : []).filter(function (p) { return view.includeInactive || p.status !== 'inactive'; });
     const canEdit = G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', teamId);
+    const canReview = G.shell.allowsTeam(gd.me && gd.me.can, 'attendance.review', teamId);
+    const flags = canReview ? G.shell.attendanceBadge(gd, teamId) : 0;
     const hasRaids = (Array.isArray(data.weeks) ? data.weeks : []).some(function (w) { return Array.isArray(w.raids) && w.raids.length; });
-    const sorted = sortPeople(people, view.sort);
     const empty = !hasRaids && !people.some(function (p) { return Array.isArray(p.cells) && p.cells.length; });
-    // The legend is collapsed behind a "Legend" toggle (the letters are on every cell and carry their word in the aria-label), the viewer's own row keeps its sorted place.
-    const body = empty ? emptyHtml(canEdit, gd.guild.id) :
-      '<details class="gs-how gs-legend-box"><summary>Legend</summary>' + legendHtml() + '</details>' +
-      (data.awaitingReview > 0 ? '<p class="gs-fine" id="att-awaiting">' + esc(plural(data.awaitingReview, 'raid', 'raids')) + ' awaiting review. Their pending cells are marked with a question mark and left out of the percentage.</p>' : '') +
-      (sorted.length ? tableHtml(gd.guild.id, data, sorted, view) + cardsHtml(gd.guild.id, sorted, teamId) : '<p class="gs-empty">No one matches these filters.</p>');
-    const bar = empty ? '' : windowSwitchHtml(data) +
-      '<div class="gs-check"><input type="checkbox" id="att-inactive" data-change="att-inactive"' + (view.includeInactive ? ' checked' : '') + '><label for="att-inactive">Include inactive</label></div>';
-    return G.ui.listPageHtml({
-      head: headerOpts(gd, teamId, data, people), pageClass: 'gs-att-page',
-      noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + staleBannerHtml(data.staleRaids || 0, canEdit, opts.progress) + watchHtml(gd.guild.id, data.watch),
-      barHtml: bar, bodyHtml: body + howCountedHtml(opts.policy, teamId),
-    });
+    const notices = G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + staleBannerHtml(data.staleRaids || 0, canEdit, opts.progress);
+    const head = G.ui.pageHeadHtml(headOpts(gd, teamId, data, people, flags));
+    if (empty) return pageOpen() + head + notices + emptyHtml(canEdit, gd.guild.id) + '</div>';
+    const model = { gd: gd, gid: gd.guild.id, teamId: teamId, data: data, people: people, view: view, review: opts.review || null };
+    const body = view.mode === 'grid' ? G.pages.attendanceGrid.gridHtml(model) : G.pages.attendancePeople.peopleHtml(model);
+    return pageOpen() + head + notices + body + '</div>';
   }
 
   // ── data ──
   function attView() {
     const a = attState();
-    if (!a.attUi) a.attUi = { sort: { column: DEFAULT_SORT.column, dir: DEFAULT_SORT.dir }, includeInactive: false, window: null };
+    if (!a.attUi) a.attUi = { sort: { column: DEFAULT_SORT.column, dir: DEFAULT_SORT.dir }, includeInactive: false, window: null, mode: 'people', modeGid: null };
     return a.attUi;
+  }
+
+  // The last view an officer used, per guild, in this browser. Never required: no storage, People.
+  function viewKey(gid) { return 'raidsmith.attendance.view.' + gid; }
+  function storedMode(gid) {
+    try { return localStorage.getItem(viewKey(gid)) === 'grid' ? 'grid' : 'people'; } catch (e) { return 'people'; }
+  }
+  function storeMode(gid, mode) {
+    try { localStorage.setItem(viewKey(gid), mode); } catch (e) { /* remembering the view is a convenience */ }
+  }
+  function viewOf(gid) {
+    const v = attView();
+    if (v.modeGid !== gid) { v.mode = storedMode(gid); v.modeGid = gid; }
+    return v;
   }
 
   function loadPolicy(gid) {
@@ -461,8 +395,15 @@
       if (view.window != null && err && err.status === 400 && err.field === 'window') { view.window = null; return fetchTeam(null); }
       throw err;
     });
-    return Promise.all([teamData, loadPolicy(gid)]).then(function (res) {
-      a.team = { gid: gid, teamId: teamId, data: res[0], denied: false };
+    // The flags awaiting a decision (the Awaiting your call panel); the page works without them.
+    const reviewData = G.api.get(apiBase(gid) + '/attendance/review?team=' + encodeURIComponent(teamId)).catch(function () { return null; });
+    return Promise.all([teamData, loadPolicy(gid), reviewData]).then(function (res) {
+      a.team = { gid: gid, teamId: teamId, data: res[0], denied: false, review: res[2] };
+      return null;
+    }, function (err) {
+      // A sign-in or permission problem is the app's to handle; any other failure is this page's error region with Try again.
+      if (err && (err.status === 401 || err.status === 403 || err.status === 404)) throw err;
+      a.team = { gid: gid, teamId: teamId, data: null, error: (err && err.message) || "The server didn't answer." };
       return null;
     });
   }
@@ -477,10 +418,11 @@
       return G.pages.personAtt.main({ name: 'personatt', gid: gd.guild.id, pid: pid }, gd);
     }
     const t = a.team;
-    if (!t || t.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
+    if (!t || t.gid !== gd.guild.id) return skeletonHtml();
     if (!t.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
     if (t.denied) return attendanceHtml({ guildData: gd, teamId: t.teamId, denied: true });
-    return attendanceHtml({ guildData: gd, teamId: t.teamId, data: t.data, view: attView(), policy: a.policy && a.policy[gd.guild.id], progress: a.recalc, alert: st().pageAlert });
+    if (t.error) return errorHtml(t.error);
+    return attendanceHtml({ guildData: gd, teamId: t.teamId, data: t.data, review: t.review, view: viewOf(gd.guild.id), progress: a.recalc, alert: st().pageAlert });
   }
 
   // ── recalculate stale raids (a request per raid, looped here) ──
@@ -556,6 +498,31 @@
   G.handlers.click['att-watch-review'] = function (el) { return watchCall(el, G.api.attention.dismiss); };
   G.handlers.click['att-watch-undo'] = function (el) { return watchCall(el, G.api.attention.restore); };
 
+  // The view switch (People | Week grid): no new request, and the choice is remembered for this guild in this browser.
+  G.handlers.click['att-view'] = function (el) {
+    const gid = st().currentGid;
+    const mode = el.getAttribute('data-view') === 'grid' ? 'grid' : 'people';
+    const v = attView();
+    v.mode = mode;
+    v.modeGid = gid;
+    storeMode(gid, mode);
+    G.app.render();
+  };
+
+  function openInfoDialog(title, bodyHtml) {
+    G.ui.openDialog(G.ui.dialogHtml({ kind: 'form', formless: true, title: title, bodyHtml: bodyHtml, cancel: { label: 'Close' } }), { labelledBy: 'dlg-title' });
+  }
+
+  G.handlers.click['att-legend'] = function () { openInfoDialog('Legend', legendHtml()); };
+
+  G.handlers.click['att-how'] = function () {
+    const gid = st().currentGid;
+    const gd = gid ? st().guilds[gid] : null;
+    if (!gd) return;
+    const body = howCountedHtml(attState().policy && attState().policy[gid], G.app.teamFor(gd));
+    if (body) openInfoDialog('How this is counted', body);
+  };
+
   G.handlers.click['att-sort'] = function (el) {
     const v = attView();
     v.sort = nextSort(v.sort, el.getAttribute('data-col'));
@@ -572,6 +539,13 @@
     attView().includeInactive = !!el.checked;
     G.app.render();
   };
+
+  // After each render: the Week grid opens scrolled to its newest raids (the right end).
+  function afterRender(r) {
+    if (typeof document === 'undefined' || !r || r.name !== 'section' || r.section !== 'attendance') return;
+    const box = document.querySelector('.gs-at-scroll');
+    if (box) box.scrollLeft = box.scrollWidth;
+  }
 
   G.pages.attendance = {
     OUTCOMES: OUTCOMES,
@@ -598,10 +572,16 @@
     describePolicy: describePolicy,
     howCountedHtml: howCountedHtml,
     staleBannerHtml: staleBannerHtml,
-    watchHtml: watchHtml,
-    watchRuleText: watchRuleText,
-    watchCountText: watchCountText,
     attendanceHtml: attendanceHtml,
+    barHtml: barHtml,
+    nameLinkHtml: nameLinkHtml,
+    lastRaidWeeks: lastRaidWeeks,
+    stripHtml: stripHtml,
+    cellMapOf: cellMapOf,
+    dateOf: dateOf,
+    skeletonHtml: skeletonHtml,
+    errorHtml: errorHtml,
+    afterRender: afterRender,
     apiBase: apiBase,
     attState: attState,
     teamOf: teamOf,
@@ -612,5 +592,6 @@
     recalcTeams: recalcTeams,
     load: load,
     main: main,
+    RELIABLE_AT: RELIABLE_AT,
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

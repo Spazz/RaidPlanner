@@ -238,103 +238,33 @@ function teamData(over) {
 
   function lin(v) { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
   function lum(hex) { const n = parseInt(hex.slice(1), 16); return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255); }
-  function lstar(hex) { const y = lum(hex); return y > 0.008856 ? 116 * Math.cbrt(y) - 16 : 903.3 * y; }
   function contrast(a, b) { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
 
-  await check('outcome colours: every outcome differs in CIE L* by at least 8 and its letter passes 4.5:1', () => {
-    const token = name => { const m = new RegExp('--' + name + ':\\s*(#[0-9a-fA-F]{6})').exec(css); assert(m, 'missing --' + name); return m[1]; };
-    const rows = G.pages.attendance.OUTCOMES.map(o => ({ o, bg: token('gs-out-' + o), ink: token('gs-out-' + o + '-ink') }));
-    for (const r of rows) assert(contrast(r.bg, r.ink) >= 4.5, `${r.o} contrast ${contrast(r.bg, r.ink).toFixed(2)}`);
-    const sorted = rows.map(r => ({ o: r.o, l: lstar(r.bg) })).sort((a, b) => a.l - b.l);
-    for (let i = 1; i < sorted.length; i++) assert(sorted[i].l - sorted[i - 1].l >= 8, `${sorted[i - 1].o} vs ${sorted[i].o}: ${(sorted[i].l - sorted[i - 1].l).toFixed(1)}`);
-    for (const r of rows) assert(css.includes('.gs-out-' + r.o + ' {'), r.o + ' class');
+  // D7 (user exception to the design spec, 2026-10-21): tint + edge + letter colour per outcome, the values of the R2-colours board.
+  const D7 = {
+    present: ['rgba(180, 231, 174, 0.12)', 'rgba(180, 231, 174, 0.4)', '#b4e7ae'], bench: ['rgba(110, 170, 255, 0.15)', 'rgba(110, 170, 255, 0.45)', '#a9cdff'],
+    missed: ['rgba(255, 95, 110, 0.22)', 'rgba(255, 95, 110, 0.6)', '#ffb3b9'], missed_notice: ['transparent', 'rgba(235, 70, 85, 0.85)', '#ff7c88'],
+    late: ['rgba(240, 208, 70, 0.15)', 'rgba(240, 208, 70, 0.45)', '#f5dd72'], left_early: ['rgba(238, 140, 60, 0.16)', 'rgba(238, 140, 60, 0.5)', '#ef8a3a'],
+    late_left: ['rgba(245, 130, 200, 0.16)', 'rgba(245, 130, 200, 0.5)', '#fbbfe3'], fill_in: ['rgba(165, 125, 250, 0.18)', 'rgba(165, 125, 250, 0.5)', '#cbb4ff'],
+    tentative: ['rgba(130, 160, 195, 0.14)', 'rgba(130, 160, 195, 0.45)', '#a9bdd2'], no_signup: ['rgba(255, 255, 255, 0.05)', 'rgba(255, 255, 255, 0.2)', '#aeb3b0'],
+  };
+
+  await check('outcome colours: every outcome has the tint, edge and letter colour of the board; the letter passes 4.5:1 on the panel; pending and blank cells are dashed', () => {
+    const token = name => { const m = new RegExp('--' + name + ':\\s*([^;]+);').exec(css); assert(m, 'missing --' + name); return m[1].trim(); };
+    assert.deepEqual(Object.keys(D7), plain(G.pages.attendance.OUTCOMES));
+    for (const [o, [bg, edge, ink]] of Object.entries(D7)) {
+      assert.equal(token('gs-out-' + o), bg, o + ' tint');
+      assert.equal(token('gs-out-' + o + '-edge'), edge, o + ' edge');
+      assert.equal(token('gs-out-' + o + '-ink'), ink, o + ' letter');
+      assert(contrast(ink, '#191b1d') >= 4.5, `${o} contrast ${contrast(ink, '#191b1d').toFixed(2)}`);
+      assert(css.includes('.gs-out-' + o + ' { background: var(--gs-out-' + o + '); border-color: var(--gs-out-' + o + '-edge); color: var(--gs-out-' + o + '-ink); }'), o + ' class');
+    }
+    assert(/\.gs-cell\.is-pending \{ background: transparent; border: 1px dashed var\(--border-field\); color: var\(--hd-white\); \}/.test(css), 'pending: transparent, dashed, white');
+    assert(/\.gs-cell-blank \{ background: transparent; border: 1px dashed rgba\(255, 255, 255, 0\.18\); \}/.test(css), 'before joining: dashed');
+    assert(!/--gs-out-[a-z_]+-ink:\s*#101213/.test(css), 'the old solid fills are gone');
   });
 
-  // ── team attendance page ───────────────────────────────────────
-  const teamHtml = (data, over) => G.pages.attendance.attendanceHtml(Object.assign({ guildData: gd(OFFICER_CAN), teamId: 't1', data, view: { sort: G.pages.attendance.DEFAULT_SORT, includeInactive: false } }, over || {}));
-
-  await check('team page: header, window switch from the policy, legend, sortable columns with aria-sort, grid grouped by reset week newest right', () => {
-    const out = teamHtml(teamData());
-    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Attendance</h1>') && out.includes('Team KJ - Last 8 weeks - 2 people'));
-    assert(out.includes('<details class="gs-how gs-legend-box"><summary>Legend</summary>') && !/gs-legend-box" open/.test(out), 'the legend is folded behind a Legend toggle');
-    assert(out.includes('gs-att-page') && out.includes('gs-list-page'), 'T1, and the matrix page is not capped at 1200 px (CSS)');
-    assert(out.includes('aria-label="Time window"') && out.includes('>8 weeks<') && out.includes('>12 weeks<') && out.includes('>All time<'));
-    assert(/data-window="8"[^>]*aria-pressed="true"/.test(out) && /data-window="12"[^>]*aria-pressed="false"/.test(out));
-    assert(out.includes('aria-label="Legend"'));
-    assert(out.includes('aria-sort="ascending"') && (out.match(/aria-sort=/g) || []).length === 1, 'player A-Z by default');
-    for (const col of ['player', 'pct', 'all', 'signup', 'streak', 'last']) assert(out.includes('data-col="' + col + '"'), col);
-    const w1 = out.indexOf('Wk 9/29'), w2 = out.indexOf('Wk 10/6');
-    assert(w1 > 0 && w2 > w1, 'older week first, newest week right');
-    assert(/colspan="3" class="gs-att-week">Wk 10\/6/.test(out));
-    const names = [...out.matchAll(/<th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[1]);
-    assert.deepEqual(names, ['Aimersmay', 'Zzaps'], 'inactive hidden, A-Z');
-    assert(out.includes('href="#/g/g1/raids/r/r4"'), 'column header links to the raid');
-    assertNoRawAttrs(out);
-  });
-
-  await check('team page: percent shows one decimal rounded, a dash for null, streak flag text, pending marked, Other-team extra column', () => {
-    const out = teamHtml(teamData());
-    assert(out.includes('>89%<') || out.includes('89%'), 'Zzaps 88.9 -> 89%');
-    assert(out.includes('100%'));
-    const aimers = out.slice(out.indexOf('Aimersmay'));
-    assert(aimers.includes('>-</td>') || aimers.includes('-<'), 'null sign-up rate is a dash');
-    assert(out.includes('raids missed in a row, flagged') && out.includes('gs-streak is-flag'));
-    assert(out.includes('>L?<') && out.includes('1 raid awaiting review') === false && out.includes('awaiting review'));
-    assert(out.includes('>F<') && out.includes('Other-team attendance'), 'extra column for the Other-team cell');
-    assert(out.includes('2 raids awaiting review.'));
-  });
-
-  await check('team page: sorting by every metric, empty values last, ties by name; nextSort directions', () => {
-    const P = G.pages.attendance;
-    const d = teamData();
-    const order = (col, dir) => P.sortPeople(d.people, { column: col, dir }).map(p => p.name);
-    assert.deepEqual(order('player', 'asc'), ['Aimersmay', 'Oldtimer', 'Zzaps']);
-    assert.deepEqual(order('player', 'desc'), ['Zzaps', 'Oldtimer', 'Aimersmay']);
-    assert.deepEqual(order('pct', 'desc'), ['Aimersmay', 'Oldtimer', 'Zzaps'].sort((a, b) => ({ Aimersmay: 100, Oldtimer: 50, Zzaps: 88.9 }[b] - { Aimersmay: 100, Oldtimer: 50, Zzaps: 88.9 }[a])));
-    assert.deepEqual(order('signup', 'asc').slice(-1), ['Aimersmay'], 'null sign-up rate sorts last either way');
-    assert.deepEqual(order('signup', 'desc').slice(-1), ['Aimersmay']);
-    assert.deepEqual(order('streak', 'desc')[0], 'Zzaps');
-    assert.deepEqual(order('last', 'asc').slice(-1), ['Aimersmay'], 'never attended last');
-    assert.deepEqual(plain(P.nextSort({ column: 'player', dir: 'asc' }, 'player')), { column: 'player', dir: 'desc' });
-    assert.deepEqual(plain(P.nextSort({ column: 'player', dir: 'asc' }, 'pct')), { column: 'pct', dir: 'desc' });
-    assert.equal(P.ariaSort({ column: 'pct', dir: 'desc' }, 'pct'), 'descending');
-    const sortedHtml = teamHtml(teamData(), { view: { sort: { column: 'pct', dir: 'desc' }, includeInactive: false } });
-    assert(/aria-sort="descending"><button[^>]*data-col="pct"/.test(sortedHtml));
-  });
-
-  await check('team page: include-inactive shows the inactive person; member view has no review link; denied and empty states', () => {
-    const withInactive = teamHtml(teamData(), { view: { sort: G.pages.attendance.DEFAULT_SORT, includeInactive: true } });
-    assert(withInactive.includes('Oldtimer') && /id="att-inactive"[^>]*checked/.test(withInactive));
-    const flagged = teamHtml(teamData(), { guildData: gd(OFFICER_CAN, { attendanceFlags: { t1: 2 } }) });
-    assert(flagged.includes('Review queue (2)') && flagged.includes('2 flags to review') && flagged.includes('Backfill from Warcraft Logs'), 'the Review queue link says what the Attendance tab says');
-    assert(!teamHtml(teamData()).includes('flags to review') && teamHtml(teamData()).includes('>Review queue<') && teamHtml(teamData()).includes('id="att-more"'), 'Review queue and Backfill are items of the one More menu');
-    const member = teamHtml(teamData(), { guildData: gd(MEMBER_CAN) });
-    assert(!member.includes('Review queue') && !member.includes('Backfill') && !member.includes('att-recalc'));
-    const denied = G.pages.attendance.attendanceHtml({ guildData: gd(MEMBER_CAN), teamId: 't2', denied: true });
-    assert(denied.includes('visible to the people who have a character') && !denied.includes('<table'));
-    const empty = teamHtml(teamData({ weeks: [], people: [], awaitingReview: 0 }));
-    assert(empty.includes('No attendance yet') && empty.includes('New raid') && empty.includes('Backfill from Warcraft Logs'));
-    const emptyMember = teamHtml(teamData({ weeks: [], people: [], awaitingReview: 0 }), { guildData: gd(MEMBER_CAN) });
-    assert(emptyMember.includes('Attendance shows here after the first raid is added.') && !emptyMember.includes('New raid'));
-  });
-
-  await check('team page: stale banner offers Recalculate to editors only; "How this is counted" lists the resolved policy', () => {
-    const stale = teamHtml(teamData({ staleRaids: 3 }));
-    assert(stale.includes('Rules or roster changed under 3 raids') && stale.includes('data-action="att-recalc"') && stale.includes('Recalculate 3 raids'));
-    assert(!teamHtml(teamData({ staleRaids: 3 }), { guildData: gd(MEMBER_CAN) }).includes('att-recalc'));
-    assert(teamHtml(teamData({ staleRaids: 3 }), { progress: { running: true, done: 1, total: 3 } }).includes('Recalculating 1 of 3'));
-    const policy = { defaults: {}, resolved: { t1: { expected: { mode: 'statuses', statuses: ['raider', 'trial'] }, tentative: 'asSignedUp', absence: 'excused', bench: 'excluded', fillIn: 'homeIfNoRaid', window: { defaultWeeks: 12 }, credit: { values: [{ id: 'full', label: 'Full', value: 1 }, { id: 'none', label: 'None', value: 0 }] }, streakFlagAt: 0 } } };
-    const out = teamHtml(teamData(), { policy });
-    assert(out.includes('How this is counted') && out.includes('Raider, Trial is expected') && out.includes('Tentative sign-up counts as signed up') && out.includes('left out of the percentage') && out.includes('last 12 full reset weeks') && out.includes('Full 100%, None 0%'));
-    assert(!out.includes('streak of'), 'streak line off at 0');
-  });
-
-  await check('team page: hostile names are escaped', () => {
-    const d = teamData();
-    d.people[0].name = HOSTILE + QUOTES;
-    assertEscaped(teamHtml(d), 'team page');
-    assertEscaped(teamHtml(d, { guildData: gd(OFFICER_CAN, { teams: [{ id: 't1', name: HOSTILE + QUOTES, size: 25, archived: false }, { id: 't2', name: 'B', size: 25, archived: false }] }) }), 'team name');
-  });
+  // The officer's People and Week grid views are tested in guild-attendance-officer-ui-tests.js.
 
   // ── raids list ─────────────────────────────────────────────────
   const RAIDS = [
@@ -1004,11 +934,12 @@ function teamData(over) {
       return Promise.resolve({ team: { id: 't1', name: 'Team KJ' }, window: 8, people: [], weeks: [], policy: {} });
     };
     A.attState().policy = { g1: {} };
+    const teamCalls = () => calls.filter(u => /attendance\/team/.test(u));
     await A.load({}, gd(OFFICER_CAN));
-    assert(!/window=/.test(calls[0]), 'team change: first request has no window');
+    assert(!/window=/.test(teamCalls()[0]), 'team change: first request has no window');
     A.attState().attUi.window = 99;
     await A.load({}, gd(OFFICER_CAN));
-    assert(/window=99/.test(calls[1]) && !/window=/.test(calls[2]), 'a rejected window retries with the team default');
+    assert(/window=99/.test(teamCalls()[1]) && !/window=/.test(teamCalls()[2]), 'a rejected window retries with the team default');
     assert.equal(A.attState().attUi.window, null);
   });
 

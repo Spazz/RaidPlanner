@@ -1710,20 +1710,20 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(!member.html('gs-main').includes('trial-card-h'));
   });
 
-  await check('Raids and Attendance routes: the Raids header carries Subscribe in your calendar for members too; the team attendance page shows the Watch list card above the grid', async () => {
+  await check('Raids and Attendance routes: the Raids header carries Subscribe in your calendar for members too; the team attendance page shows the Needs a look panel above the bar', async () => {
     const can = Object.assign({}, MEMBER_CAN, { 'raids.view': 'guild', 'attendance.view': ['t1'] });
     const rt = { '/api/guild/g1/raids?team=t1': { status: 200, body: { team: 't1', raids: [], upcoming: [] } } };
     const raids = makeEnv({ url: '/#/g/g1/raids', routes: signedInRoutes(can, rt) });
     await settle();
     assert(raids.html('gs-main').includes('data-action="cal-open"') && raids.html('gs-main').includes('Subscribe in your calendar'));
     const watch = { below: 0.75, dropBy: 0.15, window: 8, previousFrom: '2026-07-21', entries: [{ playerId: 'p1', name: 'Thoren', class: 'PALADIN', status: 'raider', pct: 62, previousPct: 82, drop: 20, counted: 8, missed: 3, missedNotice: 1, reasons: ['below', 'drop'] }] };
-    const team = { team: 't1', window: 8, policy: { switchWeeks: [8, 12] }, weeks: [], people: [], awaitingReview: 0, staleRaids: 0, watch };
+    const team = { team: 't1', window: 8, policy: { switchWeeks: [8, 12] }, weeks: [{ weekStart: '2026-10-13', raids: [{ id: 'r1', raidOn: '2026-10-17', zone: 'BT' }] }], people: [{ id: 'p1', name: 'Thoren', class: 'PALADIN', status: 'raider', pct: 62, pctAll: 70, signupRate: 90, streak: 0, lastAttended: '2026-10-10', cells: [], isMe: false }], awaitingReview: 0, staleRaids: 0, watch };
     const att = makeEnv({ url: '/#/g/g1/attendance', routes: signedInRoutes(HOME_CAN, { '/api/guild/g1/attendance/team?team=t1': { status: 200, body: team }, '/api/guild/g1/attendance/policy': { status: 200, body: { defaults: {}, guild: {}, teams: {}, resolved: {}, versions: { guild: 0, teams: {} }, wcl: { guildId: null, uploaders: {} } } } }) });
     await settle();
-    assert(att.html('gs-main').includes('id="att-watch-h">Watch list</h2>') && att.html('gs-main').includes('href="#/g/g1/attendance/p/p1"') && att.html('gs-main').includes('Below 75% or down 15+ points against the previous 8 weeks'));
+    assert(att.html('gs-main').includes('aria-label="Needs a look"') && att.html('gs-main').includes('href="#/g/g1/attendance/p/p1"') && att.html('gs-main').includes('Below 75% and down 20 points - 62%, was 82%'));
     const none = makeEnv({ url: '/#/g/g1/attendance', routes: signedInRoutes(HOME_CAN, { '/api/guild/g1/attendance/team?team=t1': { status: 200, body: Object.assign({}, team, { watch: null }) }, '/api/guild/g1/attendance/policy': { status: 200, body: { defaults: {}, guild: {}, teams: {}, resolved: {}, versions: { guild: 0, teams: {} }, wcl: { guildId: null, uploaders: {} } } } }) });
     await settle();
-    assert(!none.html('gs-main').includes('att-watch-h'));
+    assert(!none.html('gs-main').includes('Needs a look'));
   });
 
   await check('settings route: the bare address opens the first page on a wide screen and the list of pages alone on a phone; every old tab address still opens its page', async () => {

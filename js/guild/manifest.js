@@ -47,6 +47,8 @@
     '/js/guild/tmb.js',
     '/js/guild/softres.js',
     '/js/guild/pages-attendance.js',
+    '/js/guild/pages-attendance-people.js',
+    '/js/guild/pages-attendance-grid.js',
     '/js/guild/pages-person-attendance.js',
     '/js/guild/pages-ranks.js',
     '/js/guild/pages-loot.js',

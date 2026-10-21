@@ -642,35 +642,35 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 }
 
 /* ── Attendance (Phase 3): outcome tokens, grid cells, raids, review, settings ───── */
-/* Each outcome differs in LIGHTNESS from every other (CIE L* steps of about 9, dark to light) and its letter passes
-   4.5:1 on its background; the letter is always printed, so colour is never the only signal. Dark theme only. */
+/* One outcome = one look on every page (the user's cell-colour exception to the design spec, 2026-10-21): a tint, an edge and a letter colour per outcome.
+   The letter is always printed, so colour is never the only signal. Dark theme only. */
 :root {
-  --gs-out-missed_notice: #2c1515;  --gs-out-missed_notice-ink: #ffffff;
-  --gs-out-no_signup: #2c2f31;      --gs-out-no_signup-ink: #ffffff;
-  --gs-out-tentative: #354358;      --gs-out-tentative-ink: #ffffff;
-  --gs-out-missed: #973632;         --gs-out-missed-ink: #ffffff;
-  --gs-out-fill_in: #845aaf;        --gs-out-fill_in-ink: #ffffff;
-  --gs-out-bench: #4586d1;          --gs-out-bench-ink: #101213;
-  --gs-out-left_early: #ed7d1c;     --gs-out-left_early-ink: #101213;
-  --gs-out-late_left: #ed9bb7;      --gs-out-late_left-ink: #101213;
-  --gs-out-late: #edc85b;           --gs-out-late-ink: #101213;
-  --gs-out-present: #cbeed6;        --gs-out-present-ink: #101213;
+  --gs-out-present: rgba(180, 231, 174, 0.12); --gs-out-present-edge: rgba(180, 231, 174, 0.4); --gs-out-present-ink: #b4e7ae;
+  --gs-out-bench: rgba(110, 170, 255, 0.15); --gs-out-bench-edge: rgba(110, 170, 255, 0.45); --gs-out-bench-ink: #a9cdff;
+  --gs-out-missed: rgba(255, 95, 110, 0.22); --gs-out-missed-edge: rgba(255, 95, 110, 0.6); --gs-out-missed-ink: #ffb3b9;
+  --gs-out-missed_notice: transparent; --gs-out-missed_notice-edge: rgba(235, 70, 85, 0.85); --gs-out-missed_notice-ink: #ff7c88;
+  --gs-out-late: rgba(240, 208, 70, 0.15); --gs-out-late-edge: rgba(240, 208, 70, 0.45); --gs-out-late-ink: #f5dd72;
+  --gs-out-left_early: rgba(238, 140, 60, 0.16); --gs-out-left_early-edge: rgba(238, 140, 60, 0.5); --gs-out-left_early-ink: #ef8a3a;
+  --gs-out-late_left: rgba(245, 130, 200, 0.16); --gs-out-late_left-edge: rgba(245, 130, 200, 0.5); --gs-out-late_left-ink: #fbbfe3;
+  --gs-out-fill_in: rgba(165, 125, 250, 0.18); --gs-out-fill_in-edge: rgba(165, 125, 250, 0.5); --gs-out-fill_in-ink: #cbb4ff;
+  --gs-out-tentative: rgba(130, 160, 195, 0.14); --gs-out-tentative-edge: rgba(130, 160, 195, 0.45); --gs-out-tentative-ink: #a9bdd2;
+  --gs-out-no_signup: rgba(255, 255, 255, 0.05); --gs-out-no_signup-edge: rgba(255, 255, 255, 0.2); --gs-out-no_signup-ink: #aeb3b0;
 }
-.gs-out-missed_notice { background: var(--gs-out-missed_notice); color: var(--gs-out-missed_notice-ink); }
-.gs-out-no_signup { background: var(--gs-out-no_signup); color: var(--gs-out-no_signup-ink); }
-.gs-out-tentative { background: var(--gs-out-tentative); color: var(--gs-out-tentative-ink); }
-.gs-out-missed { background: var(--gs-out-missed); color: var(--gs-out-missed-ink); }
-.gs-out-fill_in { background: var(--gs-out-fill_in); color: var(--gs-out-fill_in-ink); }
-.gs-out-bench { background: var(--gs-out-bench); color: var(--gs-out-bench-ink); }
-.gs-out-left_early { background: var(--gs-out-left_early); color: var(--gs-out-left_early-ink); }
-.gs-out-late_left { background: var(--gs-out-late_left); color: var(--gs-out-late_left-ink); }
-.gs-out-late { background: var(--gs-out-late); color: var(--gs-out-late-ink); }
-.gs-out-present { background: var(--gs-out-present); color: var(--gs-out-present-ink); }
-.gs-out-none { background: var(--bg-card-hover); color: var(--text-secondary); }
+.gs-cell { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 26px; height: 26px; padding: 0 3px; border: 1px solid transparent; font: 600 13px/1 var(--font-body); letter-spacing: 0; }
+.gs-cell.is-pending { background: transparent; border: 1px dashed var(--border-field); color: var(--hd-white); }
+.gs-cell-blank { background: transparent; border: 1px dashed rgba(255, 255, 255, 0.18); }
+.gs-out-present { background: var(--gs-out-present); border-color: var(--gs-out-present-edge); color: var(--gs-out-present-ink); }
+.gs-out-bench { background: var(--gs-out-bench); border-color: var(--gs-out-bench-edge); color: var(--gs-out-bench-ink); }
+.gs-out-missed { background: var(--gs-out-missed); border-color: var(--gs-out-missed-edge); color: var(--gs-out-missed-ink); }
+.gs-out-missed_notice { background: var(--gs-out-missed_notice); border-color: var(--gs-out-missed_notice-edge); color: var(--gs-out-missed_notice-ink); }
+.gs-out-late { background: var(--gs-out-late); border-color: var(--gs-out-late-edge); color: var(--gs-out-late-ink); }
+.gs-out-left_early { background: var(--gs-out-left_early); border-color: var(--gs-out-left_early-edge); color: var(--gs-out-left_early-ink); }
+.gs-out-late_left { background: var(--gs-out-late_left); border-color: var(--gs-out-late_left-edge); color: var(--gs-out-late_left-ink); }
+.gs-out-fill_in { background: var(--gs-out-fill_in); border-color: var(--gs-out-fill_in-edge); color: var(--gs-out-fill_in-ink); }
+.gs-out-tentative { background: var(--gs-out-tentative); border-color: var(--gs-out-tentative-edge); color: var(--gs-out-tentative-ink); }
+.gs-out-no_signup { background: var(--gs-out-no_signup); border-color: var(--gs-out-no_signup-edge); color: var(--gs-out-no_signup-ink); }
+.gs-out-none { background: var(--bg-card-hover); border-color: var(--border-medium); color: var(--text-secondary); }
 
-.gs-cell { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 26px; height: 26px; padding: 0 3px; font: 700 13px/1 var(--font-cond); letter-spacing: 0.02em; }
-.gs-cell.is-pending { outline: 1px dashed var(--border-strong); outline-offset: -3px; }
-.gs-cell-blank { background: transparent; border: 1px dashed var(--border-medium); }
 .gs-outchip { display: inline-flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 15px; }
 .gs-pills { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .gs-pill { display: inline-block; padding: 2px 8px; border: 1px solid var(--border-medium); font: 600 12px/1.4 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; color: var(--text-secondary); }
@@ -682,26 +682,12 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 .gs-chip-src, .gs-chip-signup { text-transform: none; letter-spacing: 0.02em; font-weight: 500; font-size: 13px; }
 .gs-raid-link { font-weight: 600; }
 
-.gs-legend-box, .gs-how { border: 1px solid var(--border-subtle); background: var(--bg-panel); padding: 10px 14px; }
+.gs-how { border: 1px solid var(--border-subtle); background: var(--bg-panel); padding: 10px 14px; }
 .gs-how summary { cursor: pointer; font: 600 15px/1.4 var(--font-cond); letter-spacing: 0.04em; color: var(--text-primary); }
 .gs-how .gs-bullets { margin-top: 10px; }
 .gs-legend-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
 .gs-legend-item { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary); }
-.gs-table-att { min-width: 0; width: auto; }
-.gs-table-att th, .gs-table-att td { padding: 6px 8px; }
-.gs-table-att th[scope="row"] { min-width: 160px; position: sticky; left: 0; background: var(--bg-panel); z-index: 1; }
-.gs-att-week { text-align: center; border-left: 1px solid var(--border-medium); }
-.gs-att-col { text-align: center; padding: 4px 2px; }
-.gs-att-col a, .gs-att-col span { display: inline-flex; flex-direction: column; align-items: center; font: 600 12px/1.2 var(--font-cond); letter-spacing: 0.02em; color: var(--text-muted); text-decoration: none; }
-.gs-att-wd { text-transform: uppercase; }
-.gs-att-cell { text-align: center; padding: 4px 2px; }
-.gs-att-name { display: inline-flex; align-items: center; gap: 8px; }
-.gs-streak { font-weight: 600; color: var(--text-secondary); }
-.gs-streak.is-flag { color: var(--danger-bright); }
-.gs-att-cards, .gs-raids-cards, .gs-pa-cards { display: none; list-style: none; }
-.gs-att-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0; }
-.gs-att-stats dt { font: 600 12px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
-.gs-att-stats dd { margin: 2px 0 0; color: var(--text-primary); }
+.gs-raids-cards, .gs-pa-cards { display: none; list-style: none; }
 .gs-att-strip { display: flex; flex-wrap: wrap; gap: 4px; }
 .gs-att-teamblock { display: flex; flex-direction: column; gap: 12px; }
 .gs-summary { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 0; }
@@ -747,9 +733,8 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 .gs-flip { transform: rotate(180deg); }
 
 @media (max-width: 600px) {
-  .gs-raids-table, .gs-pa-table, .gs-att-table { display: none; }
-  .gs-att-cards, .gs-raids-cards, .gs-pa-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
-  .gs-att-card { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .gs-raids-table, .gs-pa-table { display: none; }
+  .gs-raids-cards, .gs-pa-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
   .gs-bf-table { overflow-x: auto; }
   .gs-review-item { padding: 12px; }
   .gs-credit-row .gs-input { width: 100%; }
@@ -1047,13 +1032,6 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 .gs-audit-cards .gs-audit-when { font-size: 14px; color: var(--text-muted); }
 .gs-audit-cards .gs-audit-who { font-weight: 600; white-space: normal; overflow-wrap: anywhere; }
 
-.gs-watch-list { list-style: none; display: flex; flex-direction: column; }
-.gs-watch-item { display: grid; grid-template-columns: minmax(150px, 1.4fr) minmax(120px, 1fr) minmax(150px, 1.2fr) minmax(0, 1.2fr); align-items: center; gap: var(--sp-2) var(--sp-4); padding: 10px 0; }
-.gs-watch-item + .gs-watch-item { border-top: 1px solid var(--border-subtle); }
-.gs-watch-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.gs-watch-pct { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
-.gs-watch-num { font: 700 22px/1.1 var(--font-cond); color: var(--text-primary); }
-.gs-watch-was, .gs-watch-counts { font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
 
 .gs-trial-card .gs-card-sec-body { gap: var(--sp-4); }
 .gs-trial-dates { margin: 0; font-size: 16px; line-height: 1.4; color: var(--text-primary); }
@@ -1077,7 +1055,6 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
   .gs-audit-filters .gs-field { flex: 1 1 100%; max-width: none; }
   .gs-audit-filter-actions { width: 100%; }
   .gs-audit-filter-actions > .gs-btn { flex: 1 1 0; }
-  .gs-watch-item { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 12px 0; }
   .gs-trial-stats { gap: 12px 20px; }
   .gs-trial-actions .gs-btn { flex: 1 1 auto; }
   .gs-cal-url { flex-direction: column; }
@@ -1672,16 +1649,6 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 /* ══ Design framework (Wave 2): list pages on T1, imports on T5 ═════════════════════════
    Attendance and Loot (the viewer's own row tinted in place, legend folded, the matrix at the page's full width with a sticky name column), the Raids list and the
    Roster on the data table, the import flows (stepper, preview, commit bar), the phone More tab. */
-
-/* Attendance: the matrix is the one page that uses the whole column; the name column stays while the weeks scroll */
-.gs-att-page { max-width: none; }
-.gs-att-page .gs-table-att { width: 100%; min-width: 0; }
-.gs-table-att thead th:first-child { position: sticky; left: 0; z-index: 3; background: var(--bg-frame); }
-.gs-table-att th[scope="row"] { box-shadow: 1px 0 0 var(--border-subtle); }
-.gs-table-att tr.is-you td, .gs-table-att tr.is-you th[scope="row"] { background: var(--you-bg); }
-.gs-table-att tr.is-you th[scope="row"] { box-shadow: inset 3px 0 0 var(--text-primary), 1px 0 0 var(--border-subtle); }
-.gs-att-card.is-you { background: var(--you-bg); box-shadow: inset 3px 0 0 var(--text-primary); }
-.gs-legend-box > summary { min-height: 32px; display: flex; align-items: center; }
 
 /* Loot: the viewer's own row tinted in its sorted place, same tint as Attendance and the data table */
 .gs-table-loot tr.is-you td, .gs-table-loot tr.is-you th[scope="row"] { background: var(--you-bg); }
@@ -3101,11 +3068,100 @@ main#app.gs-forge { background: transparent; border: 0; align-self: flex-start; 
   .save-modal .save-input { min-height: 44px; font-size: 16px; }
 }
 
-/* Watch list: Reviewed / Undo on an entry; a reviewed entry stays listed, muted, with who reviewed it and when it comes back */
-.gs-watch-act { grid-column: 1 / -1; justify-self: start; }
-.gs-watch-reviewed { grid-column: 1 / -1; margin: 0; }
-.gs-watch-item.is-reviewed .gs-watch-num, .gs-watch-item.is-reviewed .gs-watch-was, .gs-watch-item.is-reviewed .gs-watch-counts { color: var(--text-muted); }
-
+/* Attendance (Forge): the officer's People and Week grid views (boards R4, 2026-10-21). T1 page; the panels are .gs-hd-panel, the group heads .gs-fg-gh. */
+.gs-at-page { max-width: none; }
+.gs-cell { border-radius: 4px; }
+.gs-fg-ghx { margin-left: auto; font: 400 13px/1.2 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+.gs-at-pan .gs-fg-gh, .gs-at-band .gs-fg-gh { align-items: center; min-height: 40px; padding: 0 4px; }
+.gs-at-top { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+.gs-at-top.is-solo { grid-template-columns: minmax(0, 1fr); }
+.gs-at-pan { padding: 16px 16px 8px; min-width: 0; container-type: inline-size; }
+.gs-at-pan .gs-hd-sl { margin-bottom: 8px; }
+.gs-at-sl { display: inline-flex; align-items: center; gap: 8px; }
+.gs-at-list, .gs-at-rel { list-style: none; margin: 0; padding: 0; }
+.gs-at-none { padding: 8px 4px 12px; }
+.gs-at-more { padding: 8px 4px 12px; }
+.gs-at-row { display: grid; align-items: center; gap: 16px; border-top: 1px solid var(--hd-hair); }
+.gs-at-list > .gs-at-row:first-child { border-top: 0; }
+.gs-at-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; grid-area: who; }
+.gs-at-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.gs-at-why { font-size: 14px; line-height: 20px; color: var(--text-secondary); }
+.gs-at-note { font-size: 13px; line-height: 18px; color: var(--text-muted); }
+.gs-at-act { display: flex; justify-content: flex-end; grid-area: act; }
+.gs-at-ev { display: inline-flex; align-items: center; gap: 10px; grid-area: ev; font-size: 14px; color: var(--text-secondary); }
+.gs-at-strip { display: flex; flex: none; gap: 10px; grid-area: strip; }
+.gs-at-pair { display: flex; gap: 2px; }
+.gs-at-strip .gs-cell { width: 28px; height: 28px; min-width: 0; padding: 0; font-size: 12px; }
+.gs-at-ev .gs-cell { width: 40px; height: 28px; min-width: 0; padding: 0; font-size: 12px; }
+.gs-at-w { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "who strip act"; min-height: 64px; padding: 8px 0; }
+.gs-at-w.is-reviewed .gs-at-why { color: var(--text-muted); }
+.gs-at-a { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who act" "ev act"; gap: 0 12px; padding: 8px 0; min-height: 48px; }
+.gs-at-band { padding: 12px; }
+.gs-at-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 16px; margin-bottom: 12px; }
+.gs-at-barl { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; }
+.gs-at-chk { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; font-size: 14px; color: var(--text-secondary); }
+.gs-at-chk input { width: 18px; height: 18px; margin: 0; accent-color: #c9ccc8; }
+.gs-at-b { grid-template-columns: 200px 72px 150px auto minmax(0, 1fr); grid-template-areas: "who pct was strip chip"; min-height: 44px; padding: 0 8px; }
+.gs-at-b .gs-at-pct { grid-area: pct; }
+.gs-at-b .gs-at-was { grid-area: was; }
+.gs-at-b .gs-at-chipbox { grid-area: chip; display: flex; }
+.gs-at-b.is-you, .gs-at-rl.is-you { background: var(--you-bg); }
+.gs-at-pct { font: 600 15px/1 var(--font-body); color: var(--hd-white); text-align: right; }
+.gs-at-was { font-size: 14px; color: var(--text-muted); }
+.gs-at-rel { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0 16px; padding: 1px 8px 0; clip-path: inset(1px 0 0 0); }
+.gs-at-rl { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; box-shadow: 0 -1px 0 var(--hd-hair); }
+.gs-at-rl .gs-at-pct { font-weight: 400; font-size: 14px; color: var(--text-secondary); }
+/* Week grid: the Name and % columns stay while the raid days scroll sideways */
+.gs-at-mx { padding: 12px; }
+.gs-at-scroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: #5b5f62 #232527; }
+.gs-at-grid { border-collapse: separate; border-spacing: 0; width: max-content; }
+.gs-at-grid th, .gs-at-grid td { padding: 0; font-weight: inherit; text-align: center; }
+.gs-at-grid tbody th, .gs-at-grid tbody td { height: 44px; border-top: 1px solid var(--hd-hair); }
+.gs-at-grid .gs-at-c-name { position: sticky; left: 0; z-index: 2; width: 176px; min-width: 176px; max-width: 176px; padding-left: 4px; background: var(--bg-frame); text-align: left; }
+.gs-at-grid .gs-at-c-pct { position: sticky; left: 176px; z-index: 2; width: 60px; min-width: 60px; background: var(--bg-frame); box-shadow: 1px 0 0 var(--hd-hair); font: 600 15px/1 var(--font-body); color: var(--hd-white); }
+.gs-at-grid .gs-at-c-streak { width: 76px; min-width: 76px; font: 600 15px/1 var(--font-body); color: var(--hd-white); }
+.gs-at-grid .gs-at-streak { font-weight: 400; color: var(--text-secondary); }
+.gs-at-grid .gs-hd-chip { display: inline-flex; align-self: auto; }
+.gs-at-grid tr.is-you td { background: var(--you-bg); }
+.gs-at-grid tr.is-you .gs-at-c-name, .gs-at-grid tr.is-you .gs-at-c-pct { background: #232527; }
+.gs-at-grid th .gs-sort { min-height: 36px; padding: 0; font: 600 12px/1.1 var(--font-body); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.gs-at-grid th[aria-sort] .gs-sort, .gs-at-grid th .gs-sort:hover { color: var(--text-primary); }
+.gs-at-grid th.gs-at-c-pct .gs-sort, .gs-at-grid th.gs-at-c-streak .gs-sort { justify-content: center; }
+.gs-at-grid thead .gs-at-c-name, .gs-at-grid thead .gs-at-c-pct { z-index: 3; }
+.gs-at-wkh { height: 24px; padding: 0 2px; font: 500 12px/20px var(--font-body); color: var(--text-muted); white-space: nowrap; }
+.gs-at-dh, .gs-at-d { padding: 0 2px; }
+.gs-at-dh.is-wk, .gs-at-d.is-wk { padding-left: 18px; }
+.gs-at-grid a.gs-at-dhl, .gs-at-grid span.gs-at-dhl { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 42px; height: 36px; font: 500 12px/16px var(--font-body); color: var(--text-muted); text-decoration: none; white-space: nowrap; }
+.gs-at-grid a.gs-at-dhl:hover { color: var(--text-primary); }
+.gs-at-wd { text-transform: uppercase; letter-spacing: 0.06em; }
+.gs-at-grid .gs-cell { width: 42px; height: 28px; min-width: 0; padding: 0; }
+@container (max-width: 560px) {
+  .gs-at-w { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who act" "strip strip"; gap: 8px 12px; padding: 12px 0; }
+}
+@media (max-width: 1023px) {
+  .gs-at-top { grid-template-columns: minmax(0, 1fr); }
+}
+@media (width <= 600px) {
+  .gs-at-await { order: -1; }
+  .gs-at-pan { padding: 12px 12px 4px; }
+  .gs-at-w { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who act" "strip strip"; gap: 8px 12px; padding: 12px 0; }
+  .gs-at-b { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "who was pct" "strip strip strip" "chip chip chip"; gap: 4px 12px; padding: 6px 0; }
+  .gs-at-rel { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; padding: 1px 0 0; }
+  .gs-at-rl .gs-at-name { gap: 6px; }
+  .gs-at-band, .gs-at-mx { padding: 12px 8px; }
+  .gs-at-bar, .gs-at-barl { flex-direction: column; align-items: stretch; gap: 8px; }
+  .gs-at-bar .gs-fg-segs { display: flex; width: 100%; }
+  .gs-at-bar .gs-fg-seg { flex: 1; height: 44px; padding: 0 8px; }
+  .gs-at-chk, .gs-at-bar .gs-btn { min-height: 44px; }
+  .gs-at-grid .gs-at-c-name { width: 112px; min-width: 112px; max-width: 112px; }
+  .gs-at-grid .gs-at-c-name .gs-spec-icon { display: none; }
+  .gs-at-grid .gs-at-c-pct { left: 112px; width: 44px; min-width: 44px; }
+  .gs-at-grid .gs-at-c-streak { width: 84px; min-width: 84px; }
+  .gs-at-grid .gs-cell, .gs-at-grid a.gs-at-dhl, .gs-at-grid span.gs-at-dhl { width: 28px; }
+  .gs-at-grid .gs-at-dh.is-wk, .gs-at-grid .gs-at-d.is-wk { padding-left: 8px; }
+  .gs-at-grid th .gs-sort { min-height: 44px; }
+  .gs-at-grid tbody th, .gs-at-grid tbody td { height: 44px; }
+}
 
 /* ── Loot on Forge: the Loot pages (hub, standings, raid night, item, person loot, award, Needs fixing) ──
    Panels, heads, chips and buttons are the shared Forge recipes (.gs-hd-panel, .gs-pr-*, .gs-hd-chip, .gs-fg-*); only the parts below are Loot's own. */

@@ -853,7 +853,7 @@ function assertEscaped(out, label) {
 
   await check('guild.css: every var(--x) is defined in app.css, with no fallback tricks and no new custom properties', () => {
     const defined = new Set([...appCss.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
-    for (const m of css.matchAll(/(--gs-out-[a-z_]+(?:-ink)?)\s*:/g)) defined.add(m[1]); // the attendance outcome colours are guild.css's own
+    for (const m of css.matchAll(/(--gs-out-[a-z_]+(?:-ink|-edge)?)\s*:/g)) defined.add(m[1]); // the attendance outcome colours are guild.css's own
     for (const m of css.matchAll(/(--gs-tone-[a-z]+(?:-bg)?)\s*:/g)) defined.add(m[1]); // so are the Raids tones (sign-up tags, tally, bars)
     for (const name of GuildCss.ownTokenNames(css)) defined.add(name); // and the design framework tokens (the first :root block) and a table row's --mark
     const used = [...css.matchAll(/var\(\s*(--[\w-]+)\s*([,)])/g)];
@@ -872,7 +872,7 @@ function assertEscaped(out, label) {
     assert(/\.gs-btn, \.gs-btn-sm \{ min-height: 44px; \}/.test(phone));
     assert(/\.gs-input, \.gs-input-search \{ height: 44px; \}/.test(phone));
     // The forge (Home round 6 recipes, user-approved mockups: Home and the Roster pages) has its own recipe with small radii; every other rule stays flat.
-    const flatCss = css.slice(0, css.indexOf('Forge: the shared look')) + css.slice(css.indexOf('Watch list: Reviewed')).replace(/\/\* ── Loot on Forge[\s\S]*?(?=\/\* ── Loot page redesign: the award record)/, ''); // the Loot-on-Forge block uses the forge's 8 px panels
+    const flatCss = css.slice(0, css.indexOf('Forge: the shared look')) + css.slice(css.indexOf('/* ── Loot on Forge')).replace(/\/\* ── Loot on Forge[\s\S]*?(?=\/\* ── Loot page redesign: the award record)/, ''); // the Loot-on-Forge block uses the forge's 8 px panels
     const radii = [...flatCss.matchAll(/border-radius:\s*([^;]+);/g)].map(m => m[1].trim());
     assert(radii.length > 0 && radii.every(r => r === '0' || r === '50%'), 'only avatars are round: ' + radii.join(','));
     assert(!/prefers-color-scheme\s*:\s*light/.test(css));

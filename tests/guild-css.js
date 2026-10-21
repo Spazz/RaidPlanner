@@ -2,7 +2,7 @@
 // exactly those:
 //   - the design framework tokens: the first :root block, under the heading "Design framework tokens" (border-field, the type scale, control heights,
 //     the focus ring, the status roles ...);
-//   - the attendance outcome colours (--gs-out-<outcome> and its -ink) and the Raids tones (--gs-tone-<tone> and its -bg / -edge);
+//   - the attendance outcome colours (--gs-out-<outcome> and its -edge and -ink) and the Raids tones (--gs-tone-<tone> and its -bg / -edge);
 //   - --mark, a row's class colour that the data table's phone card reads.
 // ownTokenNames(css) lists every such name; stripOwnTokens(css) is the stylesheet without their declarations.
 const FRAMEWORK_HEADING = 'Design framework tokens';
@@ -18,7 +18,7 @@ function frameworkBlock(css) {
 function ownTokenNames(css) {
   const names = new Set(['--mark']);
   for (const m of frameworkBlock(css).matchAll(/(--[\w-]+)\s*:/g)) names.add(m[1]);
-  for (const m of css.matchAll(/(--gs-out-[a-z_]+(?:-ink)?)\s*:/g)) names.add(m[1]);
+  for (const m of css.matchAll(/(--gs-out-[a-z_]+(?:-ink|-edge)?)\s*:/g)) names.add(m[1]);
   for (const m of css.matchAll(/(--gs-tone-[a-z]+(?:-bg|-edge)?)\s*:/g)) names.add(m[1]);
   return names;
 }
@@ -26,7 +26,7 @@ function ownTokenNames(css) {
 function stripOwnTokens(css) {
   const block = frameworkBlock(css);
   return (block ? css.replace(block, '') : css)
-    .replace(/--gs-out-[a-z_]+(-ink)?\s*:/g, '')
+    .replace(/--gs-out-[a-z_]+(-ink|-edge)?\s*:/g, '')
     .replace(/--gs-tone-[a-z]+(-bg|-edge)?\s*:/g, '')
     .replace(/--mark\s*:/g, '');
 }

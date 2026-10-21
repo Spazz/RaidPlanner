@@ -354,7 +354,7 @@
       const row = (d.people || []).filter(function (p) { return p.playerId === pid; })[0];
       return row ? { raid: d.raid, row: row } : null;
     }
-    const rv = s.review && s.review.data;
+    const rv = where === 'attendance' ? (s.team && s.team.review) : (s.review && s.review.data); // the Attendance page keeps its own read of the open flags
     const g = rv ? (rv.raids || []).filter(function (x) { return x.raid && x.raid.id === rid; })[0] : null;
     const row = g ? (g.items || []).filter(function (i) { return i.playerId === pid; })[0] : null;
     return row ? { raid: g.raid, row: row } : null;
@@ -410,8 +410,9 @@
   // After a successful write: the raid page takes the new detail, the review page reloads its queue.
   function afterWrite(where, gid, res, note) {
     G.app.applyFlags(gid, res);
-    a().note = note || '';
+    a().note = where === 'attendance' ? '' : note || '';
     st().pageAlert = '';
+    if (where === 'attendance') { G.app.routeAll({ force: true }); return; } // the Attendance page reads its team and its flags again
     if (where === 'raid') {
       const detail = res && res.raid && res.raid.raid ? res.raid : res;
       if (detail && detail.raid && a().raid) a().raid.data = detail;
@@ -475,7 +476,7 @@
     const onConflict = function (err) {
       a().note = '';
       st().pageAlert = (err && err.message) || 'This row changed while you were deciding. The page now shows the current state.';
-      if (where === 'raid') { G.pages.raid.reload(); } else { reloadReview(); }
+      if (where === 'raid') { G.pages.raid.reload(); } else if (where === 'attendance') { G.app.routeAll({ force: true }); } else { reloadReview(); }
     };
     G.ui.runDialog(form, asConflict(G.api.post(A().apiBase(gid) + '/raids/' + encodeURIComponent(rid) + '/decisions', body)), function (res) {
       afterWrite(where, gid, res, 'Decision saved.');

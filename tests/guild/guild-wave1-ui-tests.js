@@ -575,58 +575,48 @@ function withState(fn) {
     weeks: [{ weekStart: '2026-10-13', raids: [{ id: 'r1', raidOn: '2026-10-17', zone: 'BT' }] }],
     people: [{ name: 'Thoren', class: 'PALADIN', status: 'raider', pct: 62, pctAll: 70, signupRate: 90, streak: 0, lastAttended: '2026-10-10', cells: [], isMe: false }],
   });
-  const attHtml = (data, can) => G.pages.attendance.attendanceHtml({ guildData: gd(can || OFFICER_CAN), teamId: 't1', data, view: { sort: G.pages.attendance.DEFAULT_SORT, includeInactive: false }, policy: null });
+  const attHtml = (data, can) => G.pages.attendance.attendanceHtml({ guildData: gd(can || OFFICER_CAN), teamId: 't1', data, view: { mode: 'people', sort: G.pages.attendance.DEFAULT_SORT, includeInactive: false }, policy: null });
+  const P = () => G.pages.attendancePeople;
 
-  await check('watch card: sits above the grid with the rule line and one row per person (class-coloured link to their history, %, was / down, counts, reason chips)', () => {
+  await check('Needs a look panel: one row per person (class-coloured link to their history, a reason sentence with the % now and before, Reviewed button), no amber chips', () => {
     const out = attHtml(GRID_DATA(WATCH));
-    assert(out.includes('<h2 class="gs-h2" id="att-watch-h">Watch list</h2>'));
-    assert(out.indexOf('id="att-watch-h"') < out.indexOf('class="gs-listbar"') && out.indexOf('id="att-watch-h"') < out.indexOf('aria-label="Team attendance"'), 'above the grid');
-    assert(out.includes('<p class="gs-fine">Below 75% or down 15+ points against the previous 8 weeks</p>'));
-    assert(out.includes('<span class="gs-fine">2 people</span>'));
+    assert(out.includes('aria-label="Needs a look"') && out.includes('<span class="gs-fg-cnt">2</span>'));
+    assert(out.indexOf('aria-label="Needs a look"') < out.indexOf('class="gs-at-bar"'), 'above the bar');
     assert(out.includes('<a class="gs-char-link gs-class-paladin" href="#/g/g1/attendance/p/p_t">Thoren</a>') && out.includes('<a class="gs-char-link gs-class-rogue" href="#/g/g1/attendance/p/p_k">Kaelith</a>'));
-    assert(out.includes('<span class="gs-watch-num">62%</span><span class="gs-watch-was">was 82%, down 20 points</span>'));
-    assert(out.includes('<span class="gs-watch-num">70%</span></div>'), 'no previous window, no "was"');
-    assert(out.includes('Missed 3, with notice 1<span class="gs-fine"> of 8 raids</span>') && out.includes('Missed 1, with notice 0<span class="gs-fine"> of 5 raids</span>'));
-    assert(out.includes('<span class="gs-chip gs-chip-flag">Below 75%</span><span class="gs-chip gs-chip-flag">Down 15+ points</span>'));
-    assert(out.includes('<span class="gs-char-sub">Trial</span>'));
-    assert(out.includes('<ul class="gs-watch-list" aria-label="Watch list">'));
+    assert(out.includes('<span class="gs-at-why">Below 75% and down 20 points - 62%, was 82%</span>'));
+    assert(out.includes('<span class="gs-at-why">Below 75% - 70%</span>'), 'no previous window, no "was"');
+    assert(!out.includes('gs-chip-flag') && !out.includes('Missed 3, with notice 1'));
     assertNoRawAttrs(out);
   });
 
-  await check('watch card: an empty list is one phrase in the context line ("0 on the watch list"), no card; no watch (null / absent) draws neither', () => {
-    const empty = attHtml(TEAM_DATA({ below: 0.75, dropBy: null, window: 8, previousFrom: null, entries: [] }));
-    assert(!empty.includes('id="att-watch-h"') && !empty.includes('Nobody is on the watch list.') && !empty.includes('gs-watch-list'), 'no card for nobody (F11)');
-    assert(empty.includes('0 on the watch list'), 'the feature stays visible as one phrase');
-    assert(attHtml(GRID_DATA(WATCH)).includes('2 on the watch list') && attHtml(GRID_DATA(WATCH)).includes('id="att-watch-h"'), 'a list with people keeps the card');
-    assert(!attHtml(TEAM_DATA(null)).includes('att-watch-h') && !attHtml(TEAM_DATA(null)).includes('on the watch list'));
+  await check('Needs a look panel: an empty list keeps the panel with one line; no watch (null / absent) draws none; junk draws nothing', () => {
+    const empty = attHtml(GRID_DATA({ below: 0.75, dropBy: null, window: 8, previousFrom: null, entries: [] }));
+    assert(empty.includes('aria-label="Needs a look"') && empty.includes('No one is below the line.'));
+    assert(!attHtml(GRID_DATA(null)).includes('Needs a look'));
     const d = TEAM_DATA(null); delete d.watch;
-    assert(!attHtml(d).includes('att-watch-h'), 'an older Worker without the field');
-    assert.equal(G.pages.attendance.watchHtml('g1', null), '');
-    assert.equal(G.pages.attendance.watchHtml('g1', 'junk'), '');
+    assert(!attHtml(d).includes('Needs a look'), 'an older Worker without the field');
+    assert.equal(P().watchHtml('g1', null), '');
+    assert.equal(P().watchHtml('g1', 'junk'), '');
   });
 
-  await check('watch card: the rule line only names the checks that are on, with the window; 12.5 stays 12.5; "all time" has no previous weeks', () => {
-    const rule = w => G.pages.attendance.watchRuleText(w);
-    assert.equal(rule({ below: 0.75, dropBy: 0.15, window: 8 }), 'Below 75% or down 15+ points against the previous 8 weeks');
-    assert.equal(rule({ below: 0.6, dropBy: null, window: 8 }), 'Below 60%');
-    assert.equal(rule({ below: null, dropBy: 0.1, window: 12 }), 'Down 10+ points against the previous 12 weeks');
-    assert.equal(rule({ below: 0.125, dropBy: 0.15, window: 1 }), 'Below 12.5% or down 15+ points against the previous 1 week');
-    assert.equal(rule({ below: 0.5, dropBy: 0.1, window: 'all' }), 'Below 50% or down 10+ points against the previous period');
-    assert.equal(rule({ below: null, dropBy: null, window: 8 }), 'No watch rule is set');
-    const only = attHtml(TEAM_DATA({ below: null, dropBy: 0.15, window: 8, previousFrom: '2026-07-21', entries: [Object.assign({}, WATCH.entries[0], { reasons: ['drop'] })] }));
-    assert(only.includes('Down 15+ points against the previous 8 weeks') && !only.includes('Below'));
-    assert(only.includes('<span class="gs-chip gs-chip-flag">Down 15+ points</span>') && !only.includes('Below 75%'));
+  await check('Needs a look panel: the reason names only the checks that are on', () => {
+    const entry = (reasons, over) => Object.assign({}, WATCH.entries[0], { reasons }, over || {});
+    assert.equal(P().watchReasonText({ below: 0.75, dropBy: 0.15 }, entry(['below'])), 'Below 75% - 62%, was 82%');
+    assert.equal(P().watchReasonText({ below: null, dropBy: 0.1 }, entry(['drop'])), 'Down 20 points - 62%, was 82%');
+    assert.equal(P().watchReasonText({ below: 0.125, dropBy: 0.15 }, entry(['below'], { previousPct: null })), 'Below 12.5% - 62%', '12.5 stays 12.5');
+    assert.equal(P().watchReasonText({ below: 0.75, dropBy: 0.15 }, entry(['below', 'drop'])), 'Below 75% and down 20 points - 62%, was 82%');
+    const only = attHtml(GRID_DATA({ below: null, dropBy: 0.15, window: 8, previousFrom: '2026-07-21', entries: [Object.assign({}, WATCH.entries[0], { reasons: ['drop'] })] }));
+    assert(only.includes('Down 20 points - 62%, was 82%') && !only.includes('Below'));
   });
 
-  await check('watch card: hostile names, statuses and counts are escaped; a person with no class or %, and an unknown reason, still render', () => {
+  await check('Needs a look panel: hostile names, statuses and counts are escaped; a person with no class or %, and an unknown reason, still render', () => {
     const e = Object.assign({}, WATCH.entries[0], { name: HOSTILE + QUOTES, playerId: HOSTILE, class: HOSTILE, status: HOSTILE, reasons: ['below', HOSTILE] });
-    const out = attHtml(TEAM_DATA(Object.assign({}, WATCH, { entries: [e, { playerId: 'p_z', name: 'Zed', class: null, status: 'raider', pct: null, previousPct: null, drop: null, reasons: [] }] })));
-    assertEscaped(out, 'watch card');
+    const out = attHtml(GRID_DATA(Object.assign({}, WATCH, { entries: [e, { playerId: 'p_z', name: 'Zed', class: null, status: 'raider', pct: null, previousPct: null, drop: null, reasons: [] }] })));
+    assertEscaped(out, 'watch panel');
     assertNoRawAttrs(out);
-    assert(out.includes('<span class="gs-watch-num">-</span>'), 'no % is a dash');
-    const unlinked = attHtml(TEAM_DATA(Object.assign({}, WATCH, { entries: [Object.assign({}, WATCH.entries[0], { playerId: null })] })));
+    assert(out.includes('On the watch list - -'), 'no % is a dash, no known reason is still a sentence');
+    const unlinked = attHtml(GRID_DATA(Object.assign({}, WATCH, { entries: [Object.assign({}, WATCH.entries[0], { playerId: null })] })));
     assert(unlinked.includes('<span class="gs-char-name gs-class-paladin">Thoren</span>') && !unlinked.includes('attendance/p/'), 'no id, no link');
-    assert(!out.includes('Down 15+ points</span><span class="gs-chip gs-chip-flag">' + HOSTILE), 'unknown reasons are dropped');
   });
 
   // ═══ Home (needs attention) ═════════════════════════════════════
@@ -1383,15 +1373,13 @@ function withState(fn) {
     const used = new Set();
     for (const m of markup.matchAll(/class="([^"]*)"/g)) for (const c of m[1].split(/\s+/)) if (/^gs-[a-z0-9_-]+$/.test(c)) used.add(c);
     for (const m of markup.matchAll(/'(gs-[a-z0-9_-]+)(?: [^']*)?'/g)) used.add(m[1]);
-    for (const m of read('js/guild/pages-attendance.js').matchAll(/class="(gs-watch[^"]*)"/g)) for (const c of m[1].split(/\s+/)) used.add(c);
     const defined = new Set([...css.matchAll(/\.(gs-[a-z0-9_-]+)/g)].map(m => m[1]));
     const notClasses = ['gs-page-alert']; // an element id passed to alertHtml as a plain string
     const missing = [...used].filter(c => !defined.has(c) && !notClasses.includes(c));
     assert.deepEqual(missing, [], 'classes with no CSS');
-    for (const c of ['gs-audit-table', 'gs-attn2-item', 'gs-watch-item', 'gs-trial-card', 'gs-cal-url', 'gs-onboard-line']) assert(defined.has(c), c);
+    for (const c of ['gs-audit-table', 'gs-attn2-item', 'gs-trial-card', 'gs-cal-url', 'gs-onboard-line']) assert(defined.has(c), c);
     const phone = css.slice(css.indexOf('@media (max-width: 600px)', css.indexOf('PM wave 1')));
     assert(/\.gs-audit-table \{ display: none; \}/.test(phone), 'the Activity table gives way to the cards on a phone');
-    assert(/\.gs-watch-item \{ grid-template-columns: minmax\(0, 1fr\)/.test(phone));
     const wave = css.slice(css.indexOf('PM wave 1'), css.indexOf('\u2550\u2550 Design framework (Wave 0)')); // the sections up to the design framework's own
     assert(!/(^|[;{\s])--[\w-]+\s*:/.test(wave), 'no custom properties');
     assert(!/border-radius:\s*[^0]/.test(wave), 'flat corners');

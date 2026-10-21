@@ -1028,7 +1028,7 @@
     if (state.loaded) firstRender = false;
     if (section === 'guild' && G.pages.raid && G.pages.raid.afterRender) G.pages.raid.afterRender();
     // Pieces that load their own data once the page they sit on is drawn: the officers' away card and person section, the standing sign-ups card, the roster.
-    if (section === 'guild') ['away', 'standing', 'raidRoster'].forEach(function (k) { if (G.pages[k] && G.pages[k].afterRender) G.pages[k].afterRender(r); });
+    if (section === 'guild') ['away', 'standing', 'raidRoster', 'attendance'].forEach(function (k) { if (G.pages[k] && G.pages[k].afterRender) G.pages[k].afterRender(r); });
   }
 
   // Redraws the nav slots only (sidebar and drawer): a late answer such as the Home count must not rewrite a page the person is typing in.

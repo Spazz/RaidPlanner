@@ -239,9 +239,9 @@ function withState(fn) {
     const out = html(ATTN());
     assert.equal(count(desk(out), /gs-btn-molten/g), 1);
     assert.equal(count(phone(out), /gs-btn-molten/g), 1);
-    const css = read('guild.css').replace(/\/\* ── Planner board on Forge \(T6\), lane 4[\s\S]*?(?=\/\* Watch list: Reviewed)/, ''); // the Planner pool's gold count badge is its own lane
+    const css = read('guild.css').replace(/\/\* ── Planner board on Forge \(T6\), lane 4[\s\S]*?(?=\/\* Attendance \(Forge\))/, ''); // the Planner pool's gold count badge is its own lane
     const block = css.slice(css.indexOf('Officer Home, round 4')).replace(/^\.gs-hd-daydate [^\n]*\n/m, ''); // day dates are gold by the 2026-10-19 group-head decision
-    assert(!/accent-gold|#e0b53d/i.test(block.slice(0, block.indexOf('Watch list: Reviewed'))), 'orange only on the primary and no gold: the badge and logo are the shell\'s');
+    assert(!/accent-gold|#e0b53d/i.test(block.slice(0, block.indexOf('Attendance (Forge)'))), 'orange only on the primary and no gold: the badge and logo are the shell\'s');
     assert(/\.gs-btn-molten[^{]*\{[^}]*var\(--molten\)/.test(block));
   });
 
@@ -453,11 +453,11 @@ function withState(fn) {
   const WATCH = (entries) => ({ below: 0.75, dropBy: 0.15, window: 8, entries });
   const ENTRY = (over) => Object.assign({ playerId: 'p_t', itemId: 'watch:t1:p_t', name: 'Thoren', class: 'PALADIN', status: 'raider', pct: 62, previousPct: 82, drop: 20, missed: 3, missedNotice: 1, counted: 8, reasons: ['below', 'drop'], reviewed: null }, over || {});
   await check('Attendance Watch list: a Reviewed secondary button per open entry; a reviewed entry stays listed (muted) with "Reviewed by X, date. Comes back if attendance drops 5 more points or a raid is missed." and an Undo', () => {
-    const A = G.pages.attendance;
+    const A = G.pages.attendancePeople;
     const out = A.watchHtml('g1', WATCH([ENTRY(), ENTRY({ playerId: 'p_k', itemId: 'watch:t1:p_k', name: 'Kaelith', reviewed: { by: { name: 'Morwen' }, at: Date.UTC(2026, 9, 16, 16, 0) } })]));
-    assert.equal(count(out, /gs-watch-item/g), 2, 'both stay listed');
-    assert(out.includes('<button type="button" class="gs-btn gs-btn-sm" aria-label="Mark Reviewed for Thoren" data-action="att-watch-review" data-item="watch:t1:p_t" data-key="att-watch-watch:t1:p_t"><span>Reviewed</span></button>'));
-    assert(out.includes('class="gs-watch-item is-reviewed"') && out.includes('Reviewed by Morwen, Oct 16. Comes back if attendance drops 5 more points or a raid is missed.'));
+    assert.equal(count(out, /<li class="gs-at-row gs-at-w/g), 2, 'both stay listed');
+    assert(out.includes('<button type="button" class="gs-btn" aria-label="Mark Reviewed for Thoren" data-action="att-watch-review" data-item="watch:t1:p_t" data-key="att-watch-watch:t1:p_t"><span>Reviewed</span></button>'));
+    assert(out.includes('class="gs-at-row gs-at-w is-reviewed"') && out.includes('Reviewed by Morwen, Oct 16. Comes back if attendance drops 5 more points or a raid is missed.'));
     assert(out.includes('aria-label="Undo Reviewed for Kaelith" data-action="att-watch-undo" data-item="watch:t1:p_k"') && out.includes('<span>Undo</span>'));
     assert(!out.includes('att-watch-review" data-item="watch:t1:p_k"'), 'a reviewed entry has no second Reviewed');
     assert(!A.watchHtml('g1', WATCH([ENTRY({ itemId: undefined })])).includes('att-watch-review'), 'no item id, no button');
@@ -484,11 +484,6 @@ function withState(fn) {
     assert.equal(handled, 1); assert.equal(routed, 2, 'a failure does not reload');
     s.restore();
   }));
-
-  await check('Attendance Watch list: the page\'s "N on the watch list" counts the open entries only', () => {
-    const A = G.pages.attendance;
-    assert.equal(A.watchCountText(WATCH([ENTRY(), ENTRY({ itemId: 'watch:t1:p_k', reviewed: { by: { name: 'M' }, at: 1 } })])), '1 on the watch list');
-  });
 
   // ═══ 7. Round 6: raid art, the Roles grid, the reset week ═══
   const P = (name, classId, spec, role, state, extra) => Object.assign({ name, classId, spec, role, state }, extra || {});

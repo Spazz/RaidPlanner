@@ -283,7 +283,7 @@ check('activity log: nobody else gets the tab or the data', async () => {
   }
 });
 
-check('watch list: the Worker\'s watch object draws the card (rule line, names, percent, was, counts, reasons); members and "off" get none', async () => {
+check('watch list: the Worker\'s watch object draws the Needs a look panel (names, reason sentence with percent and was); members and "off" get none', async () => {
   const s = await scenario();
   const G = s.pages.alice;
   const gd = await s.guildData('alice');
@@ -293,11 +293,11 @@ check('watch list: the Worker\'s watch object draws the card (rule line, names, 
   const data = G.app.state.att.team.data;
   assert(data && data.watch && data.watch.entries.length >= 1, 'the Worker sent a watch list');
   const text = stripTags(G.pages.attendance.main(view, gd));
-  assert(/Watch list/.test(text) && /Below 75% or down 15\+ points against the previous 8 weeks/.test(text), text.slice(0, 400));
+  assert(/Needs a look/.test(text), text.slice(0, 400));
   const kael = data.watch.entries.find((e) => e.name === 'Kaelith');
   assert(kael && kael.reasons.includes('below') && kael.reasons.includes('drop'));
-  assert(text.includes('Kaelith') && new RegExp(`${Math.round(kael.pct)}%`).test(text) && /was 100%/.test(text) && /Missed \d+, with notice \d+/.test(text), 'the entry shows its numbers');
-  assert(/Below 75%/.test(text) && /Down 15\+ points/.test(text), 'a chip per reason');
+  assert(text.includes('Kaelith') && new RegExp(`${Math.round(kael.pct)}%`).test(text) && /was 100%/.test(text), 'the entry shows its numbers');
+  assert(/Below 75% and down \d+ points - \d+%, was 100%/.test(text), 'one sentence for the reasons');
   assert(!/undefined|null|NaN/.test(text));
   const href = new RegExp(`href="#/g/${s.gid}/attendance/p/${s.p.Kaelith}"`);
   assert(href.test(G.pages.attendance.main(view, gd)), 'the name links to the person\'s history');
@@ -306,19 +306,19 @@ check('watch list: the Worker\'s watch object draws the card (rule line, names, 
   const carolGd = await s.guildData('carol');
   pageState(s, s.pages.carol, carolGd);
   await s.pages.carol.pages.attendance.load(view, carolGd);
-  assert(/Watch list/.test(stripTags(s.pages.carol.pages.attendance.main(view, carolGd))));
+  assert(/Needs a look/.test(stripTags(s.pages.carol.pages.attendance.main(view, carolGd))));
   const erinGd = await s.guildData('erin');
   pageState(s, s.pages.erin, erinGd);
   await s.pages.erin.pages.attendance.load(view, erinGd);
   assert(!s.pages.erin.app.state.att.team, 'a member never fetches the team page');
-  assert(!/Watch list/.test(stripTags(s.pages.erin.pages.attendance.main(view, erinGd))));
+  assert(!/Needs a look/.test(stripTags(s.pages.erin.pages.attendance.main(view, erinGd))));
 
   // Both thresholds off through the real policy route: no card.
   const policy = await G.api.get(`${s.base}/attendance/policy`);
   await G.api.put(`${s.base}/attendance/policy`, { policy: { watch: { below: null, dropBy: null } }, expectedVersion: policy.versions.guild });
   await G.pages.attendance.load(view, gd);
   assert.equal(G.app.state.att.team.data.watch, null);
-  assert(!/Watch list/.test(stripTags(G.pages.attendance.main(view, gd))));
+  assert(!/Needs a look/.test(stripTags(G.pages.attendance.main(view, gd))));
 });
 
 check('watch list: the Attendance settings fields show the real thresholds as percent and save fractions the Worker accepts', async () => {

@@ -307,7 +307,7 @@ check('Home: the week block draws the strip, the selected day and the Briefing f
   await G.handlers.click['att-watch-review'](stubEl({ 'data-item': entry.itemId }));
   const reviewed = await getTeam();
   assert(reviewed && reviewed.reviewed && reviewed.reviewed.by.name === 'Alice A', 'listed, with who reviewed it');
-  const card = stripTags(A.watchHtml(s.gid, { below: 0.75, dropBy: 0.15, window: 8, entries: [reviewed] }));
+  const card = stripTags(G.pages.attendancePeople.watchHtml(s.gid, { below: 0.75, dropBy: 0.15, window: 8, entries: [reviewed] }));
   assert(card.includes('Reviewed by Alice A,') && card.includes('Comes back if attendance drops 5 more points or a raid is missed.') && card.includes('Undo'), card);
   await G.handlers.click['att-watch-undo'](stubEl({ 'data-item': entry.itemId }));
   assert.equal((await getTeam()).reviewed, null);

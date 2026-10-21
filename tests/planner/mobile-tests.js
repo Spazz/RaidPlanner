@@ -239,7 +239,7 @@ const phoneCss = css.slice(css.lastIndexOf('/* ── Slim phone layout'));
 const phoneBlock = phoneCss.slice(phoneCss.indexOf('@media (max-width: 600px)'));
 
 // The player editor on Forge (lane 5): its rules live in guild.css, between the lane 5 heading and the Watch list rules.
-const editorCss = (() => { const g = read('guild.css').replace(/\r\n/g, '\n'); return g.slice(g.indexOf('Planner board on Forge (T6), lane 5'), g.indexOf('/* Watch list: Reviewed')); })();
+const editorCss = (() => { const g = read('guild.css').replace(/\r\n/g, '\n'); return g.slice(g.indexOf('Planner board on Forge (T6), lane 5'), g.indexOf('/* Attendance (Forge)')); })();
 const editorBase = editorCss.slice(0, editorCss.indexOf('@media'));
 const editorPhone = editorCss.slice(editorCss.indexOf('@media (width <= 600px)'));
 
