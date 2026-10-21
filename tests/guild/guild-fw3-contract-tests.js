@@ -176,7 +176,7 @@ check('the person pages from the real answers: an officer sees Thornwick\'s reco
   assert(lootPage.includes('<span class="gs-hd-chip is-grey">You</span>') && stripTags(lootPage).includes('This is your loot.') && stripTags(lootPage).includes('Main: Warrior'));
   const att = await s.B.api.get(`${s.base}/attendance/person/${s.pid}`);
   const attPage = s.B.pages.personAtt.personAttHtml({ guildData: s.B.guildData, pid: s.pid, data: att });
-  assert(attPage.includes('<span class="gs-you">You</span>') && stripTags(attPage).includes('This is your attendance.'));
+  assert(attPage.includes('<span class="gs-hd-chip is-grey">You</span>') && attPage.includes('gs-pa-figs') && attPage.includes('gs-pa-strip'));
   const others = s.A.pages.personLoot.personLootHtml({ guildData: s.A.guildData, pid: s.pid, data: await s.A.api.get(`${s.base}/loot/person/${s.pid}`) });
   assert(!others.includes('gs-youline'));
 });

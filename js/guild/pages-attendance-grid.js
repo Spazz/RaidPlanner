@@ -70,5 +70,6 @@
     gridHtml: gridHtml,
     tableHtml: tableHtml,
     weekLabel: weekLabel,
+    dayHeadHtml: dayHeadHtml,
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

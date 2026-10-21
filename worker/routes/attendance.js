@@ -783,6 +783,7 @@ export async function getPersonAttendance(ctx) {
           raid: { id: cell.raidId, raidOn: cell.date, zone: raid ? raid.zone : null },
           outcome: cell.outcome,
           letter: cell.letter,
+          weekStart: cell.weekStart,
           credit: cell.credit,
           pending: !!cell.pending,
           preStart: !!cell.preStart,

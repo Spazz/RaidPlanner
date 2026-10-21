@@ -200,18 +200,16 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     for (const id of sectionIds(out)) assert(out.includes('aria-labelledby="' + id + '-h"') && out.includes('id="' + id + '-h"'), id);
   });
 
-  await check('9. the attendance history is the same object page: header with You and the status, the way back to the record, one section per team, the rank beside the select', () => {
+  await check('9. the attendance history (Forge): the head with one chip, the rank beside the select, one block per team', () => {
     const data = JSON.parse(JSON.stringify(ATT));
     data.person.rank = { id: 'core', name: 'Core', set: true }; data.person.rankChoices = [{ id: 'core', name: 'Core' }, { id: 'raider', name: 'Raider' }]; data.person.rankTeamId = 't1';
     const out = G.pages.personAtt.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_x', data });
-    assert(out.includes('gs-object-page') && out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Thoren</h1>') && out.includes('<span class="gs-you">You</span>'));
-    assert(out.includes('href="#/g/g1/roster/p/p_x"') && out.includes('>Roster record<') && stripTags(out).includes('Attendance history') && stripTags(out).includes('Main: Shaman'));
-    assert(stripTags(out).includes('This is your attendance. Your team and your officers can see it.'));
-    assert.deepEqual(sectionIds(out), ['pa-rank-box', 'pa-team-0']);
+    assert(out.includes('gs-forge') && /<h1 class="gs-h1[^"]*" id="page-title" tabindex="-1">Thoren<\/h1>/.test(out) && out.includes('<span class="gs-hd-chip is-grey">You</span>'));
+    assert(stripTags(out).includes('Shaman') && out.includes('gs-back-link') && out.includes('href="#/g/g1/attendance"'));
+    assert.deepEqual(sectionIds(out), ['pa-rank-box']);
     const all = ids(out);
     assert.deepEqual(all.filter((x, i) => all.indexOf(x) !== i), [], 'the rank select and its section do not share an id');
     assert(out.includes('id="pa-rank"') && out.includes('id="pa-rank-box-h"'));
-    assert(!G.pages.personAtt.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_x', data: Object.assign({}, data, { person: Object.assign({}, data.person, { isMe: false }) }) }).includes('gs-youline'));
   });
 
   await check('9. the loot history is the same object page: You line when it is yours, figures first, one panel per night linking to it, the Main\'s class in the header', () => {

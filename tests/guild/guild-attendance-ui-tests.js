@@ -806,7 +806,8 @@ function teamData(over) {
     const P = G.pages.personAtt;
     const out = P.cardHtml({ gid: 'g1', pid: 'p_aa', record: { person: { isMe: true } }, state: { data: PERSON_BIG } });
     assert(out.includes('>8 weeks<') && out.includes('100%') && out.includes('>All time<') && out.includes('96%') && out.includes('>Sign-ups<'));
-    assert((out.match(/class="gs-pr-row gs-pr-raid"/g) || []).length === 8 && (out.match(/is-green">Attended</g) || []).length === 8, 'last 8 raids as rows with a tinted word');
+    assert((out.match(/class="gs-pr-row gs-pr-raid"/g) || []).length === 8 && (out.match(/<span class="gs-cell gs-out-present" aria-hidden="true">A<\/span><span>Attended<\/span>/g) || []).length === 8, 'last 8 raids as rows with the grid cell and the word');
+    assert(!out.includes('gs-hd-chip is-green') && !out.includes('is-rose') && !out.includes('no notice'), 'no tinted chips on the card');
     assert(out.includes('href="#/g/g1/attendance/p/p_aa"') && out.includes('Full history'));
     assert(P.cardHtml({ gid: 'g1', pid: 'p', record: { person: { isMe: true } }, state: null }).includes('Your attendance shows here after the first raid.'));
     assert(P.cardHtml({ gid: 'g1', pid: 'p', record: { person: {} }, state: null }).includes('Attendance shows here after the first raid.'));
@@ -824,21 +825,62 @@ function teamData(over) {
   await check('person history page: per-team block, newest first, via, officer reason column for reviewers only, escaped', () => {
     const P = G.pages.personAtt;
     const out = P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_aa', data: PERSON });
-    assert(out.includes('Aimersmay') && out.includes('Roster record') && out.includes('Attendance history') && out.includes('Team KJ'));
+    assert(out.includes('Aimersmay') && out.includes('gs-forge') && !out.includes('Attendance history') && !out.includes('>Raider<') && !out.includes('Team KJ'), 'one team: no team heading');
     const rows = [...out.matchAll(/<th scope="row" class="gs-dtable-primary"><a[^>]*>([^<]*)</g)].map(m => m[1]);
-    assert.deepEqual(rows, ['Sat Oct 10', 'Wed Oct 7', 'Sat Oct 3']);
-    assert(out.includes('via Weekend team') && out.includes('Officer reason') && out.includes('Told the raid lead') && out.includes('Pending'));
-    assert(out.includes('>Other team<') && out.includes('href="#/g/g1/raids/r/r1"'));
+    assert.deepEqual(rows, ['Oct 10', 'Oct 7', 'Oct 3']);
+    assert(out.includes('Other team (Weekend team)') && out.includes('Officer reason') && out.includes('Told the raid lead') && out.includes('Pending'));
+    assert(out.includes('href="#/g/g1/raids/r/r1"'));
     const member = P.personAttHtml({ guildData: gd(MEMBER_CAN), pid: 'p_aa', data: PERSON });
     assert(!member.includes('Officer reason') && !member.includes('Told the raid lead'));
-    assert(P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p', data: { person: { name: 'X' }, teams: [] } }).includes('Nothing to show'));
+    assert(P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p', data: { person: { name: 'X' }, teams: [] } }).includes('No attendance yet'));
     const bad = JSON.parse(JSON.stringify(PERSON));
     bad.person.name = HOSTILE + QUOTES;
     bad.teams[0].team.name = HOSTILE;
     bad.teams[0].cells[1].reason = HOSTILE + QUOTES;
-    bad.teams[0].cells[2].via = HOSTILE;
+    bad.teams[0].cells[2].via = { id: 't2', name: HOSTILE };
     assertEscaped(P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_aa', data: bad }), 'person history');
     assertNoRawAttrs(out);
+  });
+
+  await check('person page (U2): own record is "Attendance" with figures, a week strip of cells and a capped list; pre-start raids say Before joining and are never counted; no other names', () => {
+    const P = G.pages.personAtt;
+    const data = plain(PERSON_BIG);
+    data.person = { id: 'p_aa', name: 'Aimersmay', class: 'PALADIN', status: 'raider', isMe: true };
+    data.teams[0].metrics = { pct: 88, pctAll: 91, signupRate: 94, streak: 2 };
+    data.teams[0].cells.forEach((c, i) => { c.weekStart = i < 7 ? '2026-09-29' : '2026-10-06'; });
+    data.teams[0].cells.push({ raid: { id: 'rp', raidOn: '2026-09-01', zone: 'BT' }, outcome: 'present', letter: 'A', credit: 1, pending: false, preStart: true, weekStart: '2026-08-31', via: null, reason: null });
+    data.teams[0].cells[4].outcome = 'missed'; data.teams[0].cells[4].letter = 'M'; data.teams[0].cells[4].credit = 0;
+    const out = P.personAttHtml({ guildData: gd(MEMBER_CAN), pid: 'p_aa', data, pcts: { 4: { t1: 70 }, 8: {} }, own: true });
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Attendance</h1>') && out.includes('Paladin') && !out.includes('>Raider<') && !out.includes('gs-hd-chip'), 'h1 Attendance, no Raider chip, no chip at all');
+    const figs = [...out.matchAll(/<span class="gs-pr-cap">([^<]*)<\/span><span class="gs-pr-num">([^<]*)</g)].map(m => m[1] + '=' + m[2]);
+    assert.deepEqual(figs, ['4 weeks=70%', '8 weeks=88%', 'All time=91%', 'Sign-ups=94%', 'Streak=2'], 'the 8-week figure is the window the reply carried');
+    assert(out.includes('class="gs-at-grid gs-at-solo"') && out.includes('Week of Sep 29') && out.includes('Week of Oct 6') && out.includes('Week of Aug 31'));
+    assert((out.match(/<td class="gs-at-d[^"]*"><span class="gs-cell gs-out-present/g) || []).length === 9 && out.includes('gs-out-missed') && out.includes('gs-cell-blank'), 'the strip draws the same cells; the pre-start raid is the empty box');
+    assert((out.match(/<tr class="gs-dtable-row"/g) || []).length === 10 && out.includes('Showing 10 of 11 raids') && out.includes('data-action="pa-showall"'));
+    assert(!out.includes('Before joining'), 'the pre-start raid is the oldest row: past the cap');
+    const S = ctx.Guild.app.state;
+    S.att = S.att || {};
+    S.att.personUi = { win: null, showAll: true };
+    const full = P.personAttHtml({ guildData: gd(MEMBER_CAN), pid: 'p_aa', data, pcts: {}, own: true });
+    S.att.personUi = null;
+    assert((full.match(/<tr class="gs-dtable-row"/g) || []).length === 11 && full.includes('Before joining'));
+    assert(/<span class="gs-pa-grey"><span class="gs-outchip"><span class="gs-cell gs-cell-blank" aria-hidden="true"><\/span><span>Before joining/.test(full), 'greyed, words Before joining');
+    assert(/<span class="gs-pa-grey">-<\/span>/.test(full), 'no credit on a pre-start raid');
+    assert(['4', '8', 'all'].every(w => out.includes('data-action="pa-window" data-window="' + w + '"')));
+    assert(/data-window="8"[^>]*aria-pressed="true"/.test(out));
+    assert(!out.includes('Officer reason') && !out.includes('Team KJ'));
+  });
+
+  await check('person page (U2): someone else\'s record has the name in class colour, a back link, the status chip only for Trial / Reserve / Inactive, and the reason column for reviewers', () => {
+    const P = G.pages.personAtt;
+    const data = plain(PERSON);
+    data.person = { id: 'p_bb', name: 'Brindle', class: 'MAGE', status: 'raider', isMe: false };
+    const out = P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_bb', data, pcts: {} });
+    assert(/<h1 class="gs-h1 [^"]*" id="page-title" tabindex="-1">Brindle<\/h1>/.test(out) && out.includes(G.ui.classClass('MAGE')) && out.includes('gs-back-link'));
+    assert(!out.includes('>Raider<') && !out.includes('gs-hd-chip') && out.includes('Officer reason') && out.includes('Told the raid lead'));
+    data.person.status = 'trial';
+    assert(P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_bb', data, pcts: {} }).includes('gs-hd-chip is-blue">Trial<'));
+    assert(!P.personAttHtml({ guildData: gd(MEMBER_CAN), pid: 'p_bb', data, pcts: {} }).includes('Officer reason'));
   });
 
   // ── guild payload, copy, safety ────────────────────────────────

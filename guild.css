@@ -3430,3 +3430,26 @@ main#app.gs-forge { background: transparent; border: 0; align-self: flex-start; 
   .gs-rpl-trow .gs-btn { flex: 1 1 100%; justify-content: center; }
   .gs-rpl-prios .gs-board-row { padding: 12px 0; }
 }
+
+/* Attendance (Forge): a person's record (member's own page, history page), boards R2-member. Reuses the Week grid table (.gs-at-grid) for the strip. */
+.gs-pa-page { display: flex; flex-direction: column; gap: 16px; }
+.gs-pa-page > * { margin-top: 0; margin-bottom: 0; }
+.gs-pa-team { margin-top: 8px; }
+.gs-pa-figs { padding: 0 16px 16px; }
+.gs-pa-figs .gs-pr-figs { border-top: 0; padding: 16px 0 0; }
+.gs-pa-strip .gs-at-bar { margin-bottom: 8px; }
+.gs-at-solo .gs-at-wkh:first-child { padding-left: 0; }
+.gs-at-solo .gs-at-dh.is-wk:first-child, .gs-at-solo .gs-at-d.is-wk:first-child { padding-left: 2px; }
+.gs-at-solo .gs-cell, .gs-at-solo a.gs-at-dhl, .gs-at-solo span.gs-at-dhl { width: 48px; }
+.gs-at-solo .gs-cell { height: 32px; }
+.gs-at-solo tbody td { height: 48px; }
+.gs-pa-list { padding: 12px; }
+.gs-pa-list .gs-hd-sl { margin-bottom: 8px; }
+.gs-pa-grey, .gs-pa-grey a { color: var(--text-muted); }
+@media (width <= 600px) {
+  .gs-pa-figs .gs-pr-figs.is-five { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  .gs-pa-figs .gs-pr-num { font-size: 22px; }
+  .gs-at-solo .gs-cell { width: 28px; height: 28px; }
+  .gs-at-solo .gs-at-dh a.gs-at-dhl, .gs-at-solo .gs-at-dh span.gs-at-dhl { width: 28px; }
+  .gs-pa-list { padding: 12px 8px; }
+}

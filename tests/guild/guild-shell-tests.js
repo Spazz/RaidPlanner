@@ -549,7 +549,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     await settle();
     assert.equal(own.fetched('/attendance/person/p1'), 1, 'the own record is fetched');
     assert.equal(own.fetched('/attendance/team'), 0, 'the team page is never requested');
-    assert(own.html('gs-main').includes('Thoren'), 'the person history renders');
+    assert(own.html('gs-main').includes('>Attendance</h1>') && own.html('gs-main').includes('No attendance yet'), 'the own record renders under the title Attendance');
     assert(own.html('shell-sidebar').includes('Attendance'), 'the nav label stays Attendance');
     const none = makeEnv({ url: '/#/g/g1/attendance', routes: signedInRoutes(memberCan, { '/api/guild/g1': withMe({}) }) });
     await settle();

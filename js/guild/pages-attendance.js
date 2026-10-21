@@ -44,7 +44,7 @@
   // ── outcome builders ──
   // A small coloured letter box (decorative; the word or aria-label next to it carries the meaning).
   function swatchHtml(outcome, pending) {
-    return '<span class="gs-cell ' + outClass(outcome) + '" aria-hidden="true">' + esc(letterOf(outcome)) + (pending ? '?' : '') + '</span>';
+    return '<span class="gs-cell ' + outClass(outcome) + (pending ? ' is-pending' : '') + '" aria-hidden="true">' + esc(letterOf(outcome)) + (pending ? '?' : '') + '</span>';
   }
 
   // Letter box + word: "A Attended". `pending` adds the question mark and the words "awaiting review".
@@ -415,7 +415,7 @@
       if (!pid) {
         return G.ui.listPageHtml({ head: { title: 'Attendance' }, bodyHtml: G.ui.emptyStateHtml({ kind: 'first', icon: 'roster', title: 'No roster entry yet', text: 'Your attendance shows here once an officer links you to the roster.' }) });
       }
-      return G.pages.personAtt.main({ name: 'personatt', gid: gd.guild.id, pid: pid }, gd);
+      return G.pages.personAtt.mainOwn({ name: 'personatt', gid: gd.guild.id, pid: pid }, gd);
     }
     const t = a.team;
     if (!t || t.gid !== gd.guild.id) return skeletonHtml();
@@ -542,9 +542,8 @@
 
   // After each render: the Week grid opens scrolled to its newest raids (the right end).
   function afterRender(r) {
-    if (typeof document === 'undefined' || !r || r.name !== 'section' || r.section !== 'attendance') return;
-    const box = document.querySelector('.gs-at-scroll');
-    if (box) box.scrollLeft = box.scrollWidth;
+    if (typeof document === 'undefined' || !r || !((r.name === 'section' && r.section === 'attendance') || r.name === 'personatt')) return;
+    Array.prototype.forEach.call(document.querySelectorAll('.gs-at-scroll'), function (box) { box.scrollLeft = box.scrollWidth; });
   }
 
   G.pages.attendance = {
