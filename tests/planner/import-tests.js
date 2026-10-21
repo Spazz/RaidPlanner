@@ -292,4 +292,26 @@ check('diffRaidHelperSignUps + applyRaidHelperSync: a hand-added player (no sign
   assert.equal(again.removed.map(p => p.name).join(","), ['LateJoin'].join(","));
 });
 
+// ── An Absence the guild app now sends with the profile's spec ──
+check('diffRaidHelperSignUps + applyRaidHelperSync: an unplaced, classless Absence gains class and spec from the seed and stays under the unplaced list', () => {
+  resetState('tbc');
+  const alliesha = { uid: nextUid(), name: 'Alliesha', signupStatus: 'absent', class: null, spec: null, role: null };
+  State.groups = [[]];
+  State.bench = [];
+  State.roster = [];
+  State.unplaced = [alliesha];
+  const key = Object.keys(Config.RaidHelperSpecMap).find(k => Config.RaidHelperSpecMap[k].class === 'DRUID' && Config.RaidHelperSpecMap[k].spec === 'Restoration');
+  assert(key, 'a Raid-Helper key for Restoration Druid exists');
+  // The seed before the fix: an Absence with no spec says nothing about class or spec.
+  const before = Import.diffRaidHelperSignUps(JSON.stringify({ signUps: [{ name: 'Alliesha', className: 'Absence', specName: null, id: 1 }] }));
+  assert.equal(before.changed.length, 0);
+  // The seed now: the same Absence row carries her profile's spec key.
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps: [{ name: 'Alliesha', className: 'Absence', specName: key, id: 1 }] }));
+  assert.equal(diff.changed.length, 1, 'the unplaced entry is matched and updated');
+  assert.equal(diff.restatus.length, 0, 'the status is unchanged');
+  Import.applyRaidHelperSync(diff);
+  assert.deepEqual([alliesha.class, alliesha.spec, alliesha.role, alliesha.signupStatus], ['DRUID', 'Restoration', 'healer', 'absent']);
+  assert.deepEqual([State.unplaced.includes(alliesha), State.bench.includes(alliesha), State.roster.includes(alliesha)], [true, false, false], 'still unplaced, not benched or seated');
+});
+
 console.log(`\nImport tests (Raid-Helper class-only sign-ups): ${passed} passed, 0 failed, ${passed} total`);

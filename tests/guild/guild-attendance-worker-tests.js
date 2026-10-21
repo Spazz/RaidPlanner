@@ -2157,7 +2157,7 @@ check('planner seed: an Alt of the signed-up class, else the Main, else the Disc
     signUp(1, DID(1), 'Aldric', 'Warrior', 'Arms'),            // Main is a Warrior: the Main
     signUp(2, DID(2), 'Brindle', 'Mage', 'Fire'),              // one Mage Alt
     signUp(3, DID(3), 'Cassia', 'Mage', 'Frost'),              // two Mage Alts, none named like the nickname: first by name
-    signUp(4, DID(4), 'Dunmar', 'Absence', undefined),         // no class: the Main, kind kept
+    signUp(4, DID(4), 'Dunmar', 'Absence', undefined),         // no class: the Main, kind kept, and the Main's main spec fills the missing one
     signUp(5, DID(5), 'Eliora', 'Bench', undefined),           // no class: the Main
     signUp(6, '299999999999999999', 'Stranger', 'Rogue', 'Combat'), // not on the roster: the Discord nickname
     signUp(7, DID(6), 'ZEDFEN', 'Mage', 'Arcane'),             // two Mage Alts, one named like the nickname (case-insensitive)
@@ -2175,8 +2175,8 @@ check('planner seed: an Alt of the signed-up class, else the Main, else the Disc
     [1, 'Aldric', 'Aldric', 'signed', 'Warrior', 'Arms', 1],
     [2, 'Brindlex', 'Brindle', 'signed', 'Mage', 'Fire', 2],
     [3, 'Aamage', 'Cassia', 'signed', 'Mage', 'Frost', 3],
-    [4, 'Dunmar', 'Dunmar', 'absence', 'Absence', null, 4],
-    [5, 'Eliora', 'Eliora', 'bench', 'Bench', null, 5],
+    [4, 'Dunmar', 'Dunmar', 'absence', 'Absence', 'Arms', 4],
+    [5, 'Eliora', 'Eliora', 'bench', 'Bench', 'Arms', 5],
     [6, 'Stranger', 'Stranger', 'signed', 'Rogue', 'Combat', 6],
     [7, 'Zedfen', 'ZEDFEN', 'signed', 'Mage', 'Arcane', 7],
     [8, 'Brindle', 'Brindle', 'signed', 'Tank', 'Protection', 8],

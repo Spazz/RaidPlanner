@@ -19,7 +19,7 @@ export function teamNoticesStatement(db, guildId, teamId, userId, from, to) {
 // Their characters on the team: the name a person is shown by.
 export function teamCharactersStatement(db, guildId, teamId, from, to) {
   return db.prepare(
-    `SELECT id, player_id, name, class, is_main, team_id FROM characters
+    `SELECT id, player_id, name, class, main_spec, is_main, team_id FROM characters
       WHERE guild_id = ?1 AND team_id = ?2
         AND player_id IN (SELECT player_id FROM away_notices WHERE guild_id = ?1 AND starts_on <= ?4 AND (ends_on IS NULL OR ends_on >= ?3))`,
   ).bind(guildId, teamId, from, to);

@@ -17,11 +17,11 @@ import {
   WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, WCL_RAID_LIMIT, WCL_RAID_WINDOW_MS, enforceRateLimit,
 } from '../ratelimit.js';
 import {
-  allowsSurname, cleanCharacterName, cleanNickname, isRealDate, nameKey, realmKey, SINGLE_LINE_STRIP,
+  RAID_HELPER_CLASS, RAID_HELPER_SPEC, allowsSurname, cleanCharacterName, cleanNickname, isRealDate, isSpecOf, nameKey, ownValue, realmKey, SINGLE_LINE_STRIP,
 } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
 import { reconcileStanding, removeStandingOverRaidHelper } from '../standing.js';
-import { MAX_CLOSE_HOURS, closedReason, closesAtOf, isCloseHours, plannerName } from '../signups-data.js';
+import { MAX_CLOSE_HOURS, closedReason, closesAtOf, isCloseHours, plannerName, raidHelperSpecKey } from '../signups-data.js';
 import { SLOT_TIME_SQL, windowFieldsOf } from '../signup-window.js';
 import {
   fetchRaidHelperEvent, fetchWclPulls, parseRaidHelperSource, parseWclSource, requireWclConfigured,
@@ -798,6 +798,8 @@ export async function deletePlan(ctx) {
 // one gets in the Planner. For those who may edit the raid. The sign-ups are the merged list: a person's Raidsmith sign-up replaces
 // their Raid-Helper one. A Raidsmith row is worded as Raid-Helper words it (the meta class for Late/Bench/Tentative/Absence, the
 // class otherwise, and the spec key), so the Planner's existing Raid-Helper code reads it unchanged; its name is the character chosen.
+// A row of a person that carries no spec of its own (a Raid-Helper Absence, an Away notice's virtual row, a class-only sign-up) takes the main spec of the
+// character it shows, written as the Raid-Helper spec key; the sign-up's own spec always wins, and the meta class (the status) is never changed.
 const META_CLASS = { late: 'Late', bench: 'Bench', tentative: 'Tentative', absence: 'Absence' };
 
 // The guild's note on a sign-up in the seed (js/state.js SignupMarker): { kind, text } with printable ASCII only, at most 60 characters.
@@ -810,6 +812,15 @@ const ALSO_WINDOW_MS = 4 * 60 * 60 * 1000;
 // already started, and earlier than this one.
 const FAIR_RAIDS = 4;
 const RECENT_RAIDS_SQL = `SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND id != ? AND starts_at < ? AND starts_at <= ? ORDER BY starts_at DESC, id DESC LIMIT ${FAIR_RAIDS}`;
+// The spec key a row falls back to: the main spec of the character it shows, as a Raid-Helper spec key; the row's own spec key when it has one that reads.
+// A row whose class is a playable class only takes a character of that class. -> the key; the row own specName (maybe null) when nothing applies.
+function profileSpecKey(row, character) {
+  if (ownValue(RAID_HELPER_SPEC, row.specName)) return row.specName;
+  if (!character || !character.main_spec || !isSpecOf(character.class, character.main_spec)) return row.specName;
+  const rowClass = ownValue(RAID_HELPER_CLASS, row.className);
+  if (rowClass && rowClass !== character.class) return row.specName;
+  return raidHelperSpecKey(character.class, character.main_spec) || row.specName;
+}
 const marker = (kind, text) => ({ kind, text: text.replace(/[^\x20-\x7e]/g, '').trim().slice(0, MARKER_MAX) });
 
 export async function getPlanner(ctx) {
@@ -824,7 +835,7 @@ export async function getPlanner(ctx) {
         WHERE s.raid_id = ? AND ${MERGED_ROWS} ORDER BY s.position, s.source, s.signup_id`,
     ).bind(raid.id),
     ctx.db.prepare(
-      `SELECT id, player_id, name, class, is_main, team_id FROM characters
+      `SELECT id, player_id, name, class, main_spec, is_main, team_id FROM characters
         WHERE guild_id = ? AND player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND player_id IS NOT NULL)`,
     ).bind(guild.id, raid.id),
   ];
@@ -917,18 +928,19 @@ export async function getPlanner(ctx) {
         personId: row.player_id,
         ...(guest ? { guest: true } : {}),
         className: kind === 'signed' || kind === 'standby' ? row.class_name : META_CLASS[kind],
-        specName: row.spec_name,
+        specName: guest ? row.spec_name : profileSpecKey({ className: row.class_name, specName: row.spec_name }, shown),
         kind,
         position: row.position,
       });
     }
+    const name = plannerName(row, characters);
     return withMarker({
       key: row.signup_id,
-      name: plannerName(row, characters),
+      name,
       discordName: row.nickname,
       personId: row.player_id,
       className: row.class_name,
-      specName: row.spec_name,
+      specName: row.player_id ? profileSpecKey({ className: row.class_name, specName: row.spec_name }, (characters || []).find((character) => character.name === name)) : row.spec_name,
       kind: row.kind,
       position: row.position,
     });
@@ -947,7 +959,7 @@ export async function getPlanner(ctx) {
       personId,
       source: 'away',
       className: 'Absence',
-      specName: null,
+      specName: profileSpecKey({ className: 'Absence', specName: null }, shown),
       kind: 'absence',
       position: 1000 + index,
       marker: marker('away', 'Away: notice'),

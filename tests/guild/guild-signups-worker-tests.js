@@ -809,6 +809,26 @@ check('planner seed: Raidsmith sign-ups in Raid-Helper words, named by the chose
   assert.equal((await s.call('erin', 'GET', s.path('/planner'))).status, 403, 'still for those who may edit the raid');
 });
 
+check('planner seed: a Raid-Helper Absence (no spec) takes the main spec of the character it shows; a sign-up with its own spec keeps it; no main spec stays specless', async () => {
+  const s = await signupWorld();
+  await withEvent(s);
+  const { raidHelperSpecKey } = await load('worker/signups-data.js');
+  const row = async (name) => (await s.call('bob', 'GET', s.path('/planner'))).json.signups.find((x) => x.name === name);
+  // Gina's Raid-Helper row is an Absence with no spec; her profile (Gorrim, Protection Paladin) fills it. The status stays the meta class.
+  const absent = await row('Gorrim');
+  assert.deepEqual([absent.className, absent.kind, absent.specName, absent.discordName], ['Absence', 'absence', raidHelperSpecKey('PALADIN', 'Protection'), 'Gina-nick']);
+  // Erin signed up as a Holy Priest on Raid-Helper: the sign-up wins, even over a different main spec.
+  exec(s.w, `UPDATE characters SET main_spec = 'Discipline' WHERE id = '${s.c.eliora}'`);
+  assert.equal((await row('Eliora')).specName, 'Holy', 'the Raid-Helper spec is kept as sent');
+  // Unmatched sign-up (no person): untouched.
+  assert.equal((await row('Stranger')).specName, 'Combat');
+  // No main spec on the character: the row stays as Raid-Helper sent it.
+  exec(s.w, `UPDATE characters SET main_spec = NULL WHERE id = '${s.c.gorrim}'`);
+  const bare = await row('Gorrim');
+  assert.deepEqual([bare.className, bare.specName], ['Absence', undefined].map((v, i) => (i ? (bare.specName === null || bare.specName === undefined ? bare.specName : v) : v)));
+  assert.equal(bare.specName == null, true);
+});
+
 check('list: upcoming rows count the merged sign-ups, say what the viewer signed up as, whether they may, and carry the schedule for editors', async () => {
   const s = await signupWorld();
   await withEvent(s);

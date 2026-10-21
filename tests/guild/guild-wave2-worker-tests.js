@@ -3378,15 +3378,16 @@ check('seed markers: Away, Also in, Late, Leaving and Standby - the strongest on
   const seed = (await s.call('bob', 'GET', s.raid(s.up, '/planner'))).json;
   const by = Object.fromEntries(seed.signups.map((row) => [row.name, row]));
   assert.deepEqual(Object.keys(by).sort(), ['Brindle', 'Cassia', 'Dunmar', 'Eliora', 'Fenwick', 'Gorrim', 'Hestia', 'Nodisc']);
+  const { raidHelperSpecKey } = await load('worker/signups-data.js');
+  // The virtual row has no spec of its own: it takes the main spec of the character it shows, as a Raid-Helper spec key (className stays the meta class).
   assert.deepEqual(by.Eliora, {
-    key: `aw${pid.eliora}`, name: 'Eliora', discordName: null, personId: pid.eliora, source: 'away', className: 'Absence', specName: null, kind: 'absence', position: 1000,
+    key: `aw${pid.eliora}`, name: 'Eliora', discordName: null, personId: pid.eliora, source: 'away', className: 'Absence', specName: raidHelperSpecKey('PRIEST', 'Holy'), kind: 'absence', position: 1000,
     marker: { kind: 'away', text: 'Away: notice' },
   });
   assert.equal(seed.signups[seed.signups.length - 1].name, 'Eliora', 'the virtual rows come after the real ones');
   assert.deepEqual([by.Dunmar.kind, by.Dunmar.className, 'marker' in by.Dunmar], ['tentative', 'Tentative', false], 'a real sign-up: no virtual row, no away marker, and tentative is not "also"');
   assert.deepEqual([by.Gorrim.kind, by.Gorrim.className, by.Gorrim.marker], ['signed', 'Paladin', { kind: 'late', text: 'Late: 21:00' }]);
   assert.deepEqual([by.Hestia.kind, by.Hestia.marker], ['signed', { kind: 'leaving', text: 'Leaves: 22:30' }]);
-  const { raidHelperSpecKey } = await load('worker/signups-data.js');
   assert.deepEqual([by.Cassia.kind, by.Cassia.className, by.Cassia.specName, by.Cassia.marker], ['standby', 'Mage', raidHelperSpecKey('MAGE', 'Frost'), { kind: 'standby', text: 'Standby' }]);
   assert.deepEqual([by.Nodisc.kind, by.Nodisc.className, by.Nodisc.marker], ['standby', 'Rogue', { kind: 'also', text: 'Also in: Bravo raid' }]);
   assert.deepEqual([by.Brindle.kind, by.Brindle.marker], ['signed', { kind: 'also', text: 'Also in: Charlie raid' }]);
