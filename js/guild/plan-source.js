@@ -1,6 +1,6 @@
 // ── PLAN SOURCE (browser) ───────────────────────────────────────
 // Reads a Raidsmith plan out of what an officer pastes and returns only names + groups; the server never sees the
-// plan link or anything else in it. Accepts a long link (...#r=<code>), a bare share code, a PP:2:... share string,
+// plan link or anything else in it. Accepts a bare share code, a PP:2:... share string,
 // or a short live link (/tbc/<7 characters>), which is fetched from /api/share (needs the live site).
 //   G.planSource.read(text, deps) -> Promise<{ ok: true, label, players: [{ name, group }], live? } | { ok: false, error }>
 //   (live: the 7-character id of a pasted short live link; the raid keeps it so the Planner can reopen the plan)
@@ -11,7 +11,6 @@
 
   const MAX_PLAYERS = 80;
   const LABEL_MAX = 80;
-  const LONG_LINK = /#r=([A-Za-z0-9_-]+)/;
   const SHORT_LINK = /\/(?:tbc|classic|forever)\/([0-9A-Za-z]{7})\/?(?:[?#]\S*)?$/;
   const BARE_CODE = /^[A-Za-z0-9_-]{8,}$/;
 
@@ -66,8 +65,6 @@
     const t = String(text == null ? '' : text).trim();
     if (!t) return null;
     if (/^PP:/.test(t)) return { kind: 'string', value: t };
-    const long = LONG_LINK.exec(t);
-    if (long) return { kind: 'code', value: long[1] };
     const short = SHORT_LINK.exec(t);
     if (short) return { kind: 'short', value: short[1] };
     if (BARE_CODE.test(t)) return { kind: 'code', value: t };
@@ -114,7 +111,7 @@
     if (!c) return Promise.resolve(fail('That does not look like a Raidsmith plan link or share code.'));
     if (c.kind === 'string') return Promise.resolve(fromString(c.value, d));
     if (c.kind === 'code') return Promise.resolve(fromCode(c.value, d));
-    if (!d.fetchShare) return Promise.resolve(fail('Short links need the live site. Paste the long link (the one with #r=) instead.'));
+    if (!d.fetchShare) return Promise.resolve(fail('Short links need the live site.'));
     return Promise.resolve().then(function () { return d.fetchShare(c.value); }).then(function (remote) {
       if (!remote) return fail('That share link has expired or does not exist.');
       if (typeof remote.code !== 'string') return fail('The share link answered in a form this page cannot read.');
@@ -122,7 +119,7 @@
       if (result.ok) result.live = c.value;
       return result;
     }, function () {
-      return fail('Could not open that short link from here (it needs the live site). Paste the long link (the one with #r=) instead.');
+      return fail('Could not open that short link from here (it needs the live site).');
     });
   }
 

@@ -210,8 +210,7 @@ return { ${exported.join(', ')} };
   });
 
   await check('the share-link loaders are awaited, not read as booleans', () => {
-    assert(/async function loadFromShareLink\(\)/.test(app.script));
-    assert(/loadFromShareLink\(\)\.then\(opened =>/.test(app.script));
+    assert(!/loadFromShareLink/.test(app.script), 'the frozen #r= loader is retired');
     assert(/if \(!await applyShareCode\(remote\.code\)\) return false;/.test(app.script));
   });
 

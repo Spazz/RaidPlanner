@@ -2,7 +2,7 @@
  * PartyPlanner Web - CSP readiness tests
  * Run: node tests/site/csp-tests.js
  *
- * The policy (vercel.json) forbids inline style attributes (no 'unsafe-inline' in style-src)
+ * The policy (_headers) forbids inline style attributes (no 'unsafe-inline' in style-src)
  * and inline scripts, so the markup and every HTML template string must stay free of them:
  *   - no style="..." and no on*="..." attribute in index.html or in js/*.js
  *   - class colours reach the DOM as classes (cc-<class> / pref-<class>), and app.css defines every one

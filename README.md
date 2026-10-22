@@ -4,11 +4,11 @@
 
 A raid group planner for World of Warcraft Classic Era, TBC Anniversary and WoW Forever. Import a Raid-Helper sign-up list (or paste a roster), let the optimizer lay out the parties for buff and debuff coverage, adjust by drag and drop, then share a link, copy raid chat text, or export an MRT note.
 
-Production: https://raidsmith.vercel.app
+Production: one Cloudflare Worker (`worker/`) serves the static site, the share-link API and the guild tracker at `https://raidsmith.SUBDOMAIN.workers.dev` (placeholder until the first deploy; the Worker is deployed with `wrangler deploy`, see Deploy below).
 
-**When the domain changes**, update these places in `index.html`, `faq.html` and `whats-new.html` (each page has its own `og:url`; all point at `raidsmith.vercel.app`): `og:url`, `og:image` and `twitter:image`. Then update the host the tests pin: `SITE` in `head-tests.js` and `site-pages-tests.js`, and the og-image line in `deploy-tests.js`.
+**When the domain changes**, the host lives in two places. In `index.html`, `faq.html` and `whats-new.html` (each page has its own `og:url`): `og:url`, `og:image` and `twitter:image`. Replace `raidsmith.SUBDOMAIN.workers.dev` in those three files (one find-and-replace). In the tests the host is ONE constant, `SITE_HOST` in `tests/site-host.js`, which `head-tests.js`, `site-pages-tests.js` and `deploy-tests.js` read.
 
-It is a static site with no build step and no npm dependencies: `index.html` (the planner), two static pages (`faq.html`, `whats-new.html`), `app.css` and eighteen plain `<script src>` files (fourteen under `js/`, the four rules data files under `js/rules/`), plus one serverless function (`api/share.js`) for short and live share links.
+It is a static site with no build step and no npm dependencies: `index.html` (the planner), two static pages (`faq.html`, `whats-new.html`), `app.css` and eighteen plain `<script src>` files (fourteen under `js/`, the four rules data files under `js/rules/`), plus the Cloudflare Worker (`worker/`) that serves them and keeps the live share links (`worker/share.js`, D1 table `share_links`).
 
 ## Layout
 
@@ -25,7 +25,7 @@ It is a static site with no build step and no npm dependencies: `index.html` (th
 | `js/changes.js` | The roster change log: who a sign-up sync, a raid size change or a live update benched, seated or moved. |
 | `js/render.js`, `modals.js`, `app.js` | Rendering and wiring. Every plan change goes through `commit()` (reconcile, persist, render). |
 | `js/site-pages.js` | Wiring shared by all three pages: the "New" badge on the header's What's new link, the release list, the footer feedback link and the FAQ's tips reset. |
-| `api/share.js` | Short and live share links on Upstash Redis (REST, plain `fetch`). |
+| `worker/share.js` | Short and live share links (`/api/share`, `/tbc/:id`, `/classic/:id`, `/forever/:id`) on the D1 table `share_links` (migration 0028): 30-day expiry swept by the daily cron, per-IP rate limit in `rate_limits`. |
 | `scenarios.js` | Test rosters. Also fetched by the `?dev` roster picker (open `/?dev`). |
 | `tools/` | `rules-report.js` (prints a version's weights and tuning numbers for review) and `generate-rules-data.js` (a guarded one-shot record that refuses to run). Not deployed. |
 | `icons/` | Self-hosted spec, class, role and buff icons. |
@@ -43,7 +43,7 @@ Everything except short and live links works from any static file server, for ex
 python -m http.server 5173
 ```
 
-Then open http://localhost:5173/. The `/<version>/<id>` link rewrite and `api/share.js` need Vercel's runtime: install the Vercel CLI yourself (it is not a project dependency) and run `vercel dev` with the environment variables below set.
+Then open http://localhost:5173/. The `/<version>/<id>` links and `/api/share` are Worker features, so they do not work on this plain static server: run the Worker instead (see Guild tracker below), where they do.
 
 ## Tests
 
@@ -57,7 +57,7 @@ npm test
 
 `tests/planner/rules-data-tests.js` guards the rules data files in `js/rules/`: it pins the buff and debuff ids per version in `tests/rules-ids-snapshot.json` (a rename or removal is accepted only on purpose, with `node tests/planner/rules-data-tests.js --update`), checks that every version still compiles into the shape the app reads and keeps the vocabulary the code relies on (types, known roles, classes and specs, finite weights, references that exist, spell ids, an icon, abbreviation and CSS class for every buff id, an abbreviation for every debuff id), that each `conventions` block holds exactly the keys of `Rulesets.CONVENTIONS` and that the keys the code reads (`rules.rules.<name>`) and that schema agree, and exercises `Rulesets.compile` on small synthetic data.
 
-GitHub Actions runs `npm test` on every push and pull request (`.github/workflows/test.yml`). Vercel does not run the tests, so a green check on `main` is what to look at before deploying.
+GitHub Actions runs `npm test` on every push and pull request (`.github/workflows/test.yml`). Cloudflare does not run the tests, so a green check on `main` is what to look at before deploying.
 
 ## Editing the rules
 
@@ -136,29 +136,21 @@ Classic and Forever are independent games: their files may differ on purpose and
 
 ## Environment variables
 
-`api/share.js` reads these, set in the Vercel project (Production and Preview):
-
-| Variable | Purpose |
-|---|---|
-| `PP_KV_REST_API_URL` | Upstash Redis REST endpoint. |
-| `PP_KV_REST_API_TOKEN` | Upstash Redis REST token. Never sent to the browser. |
-
-Without both, the function answers 503 "Short links are unavailable" and the planner falls back to long `#r=` links.
+The share links need none: they live in the Worker's D1 database (`DB` binding). The Worker's secrets are listed by name in `.env.example`.
 
 ## Deploy
 
-Vercel deploys from GitHub `main`: **pushing to `main` deploys to production**, other branches get preview deployments. There is no build step (`vercel.json` sets `framework: null` and an empty install command).
+One Cloudflare Worker serves everything (`wrangler.jsonc`): the static files from this folder (`.assetsignore` keeps tests, docs, the Worker source and secrets out), the API routes and the share links. There is no build step. `run_worker_first` sends the API paths and `/tbc/*`, `/classic/*`, `/forever/*` to the Worker, which answers the version paths with the front page (`index.html`) so a live link opens the planner and the page fetches the plan.
 
-`vercel.json` carries:
+`_headers` is the ONLY place a Content-Security-Policy is set (`tests/site/headers-tests.js` fails on a second source). On every route it carries:
 
-- **Rewrite** `/:version(tbc|classic|forever)/:id` to `/index.html`, so a live link opens the planner and the page fetches the plan.
-- **Headers** on every route: an enforced `Content-Security-Policy` (scripts and styles from the site, Google Fonts, connections only to the site, Raid-Helper and Wowhead's tooltip data, no inline scripts or styles; `wow.zamimg.com` is allowed for Wowhead's item tooltip script, stylesheet and icons, which only guild pages that show items load), `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`.
+- **Headers**: an enforced `Content-Security-Policy` (scripts and styles from the site, Google Fonts, connections only to the site, Raid-Helper and Wowhead's tooltip data, no inline scripts or styles; `wow.zamimg.com` is allowed for Wowhead's item tooltip script, stylesheet and icons, which only guild pages that show items load), `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`.
 
-`.vercelignore` keeps tests, CI files and docs out of the deployment; `tests/site/deploy-tests.js` checks it can never exclude something the page loads.
+`tests/site/deploy-tests.js` checks `.assetsignore` can never exclude something the page loads.
 
 ## Guild tracker (local)
 
-The guild tracker (the shell in `js/guild/` and `guild.css`, loaded by `index.html`, `faq.html` and `whats-new.html`; the Worker in `worker/`, D1 migrations in `migrations/`) runs locally on Cloudflare's Wrangler. Nothing here is deployed: Vercel still serves the planner only (`.vercelignore` keeps the Worker files out), and the tracker lives on the `guild/slice-1` branch.
+The guild tracker (the shell in `js/guild/` and `guild.css`, loaded by `index.html`, `faq.html` and `whats-new.html`; the Worker in `worker/`, D1 migrations in `migrations/`) runs on Cloudflare's Wrangler (`wrangler.jsonc` still carries the local D1 id `local-raidsmith` until the first deploy).
 
 **Run it.** Node 22 or newer. Fill `.env` from `.env.example` (names only; `.env` is never committed or served), then:
 
@@ -227,13 +219,13 @@ node tools/roadmap-ideas.js mark <ideaId> <added|declined|done> [--roadmap <item
 
 A local-only switcher so the Guild Master can see every page with another role's rights. Turn it on for one run: `node tools/guild-dev.js dev --var DEV_VIEW_AS:1` (or `DEV_VIEW_AS=1` in a local `.env`; never in `wrangler.jsonc`, a test fails if it is there). It works only when the flag is `1` AND the request host is `127.0.0.1` or `localhost`; otherwise every `/api/dev/*` route answers the plain 404 and the cookie is ignored. Only the REAL Guild Master of a guild sees the bar (`gd.dev` in `GET /api/guild/:gid`) and may use the routes. The bar sets the `__Host-rs_viewas` cookie (`PUT /api/dev/view-as { gid, roleId, teamId? }`, `DELETE` to clear), and `loadGuildContext` then re-resolves `can`, `roles`, `rank` and `isGuildMaster` from ONE stand-in assignment (Officer, Team Lead for a team, Member, or a custom role), so a viewed Officer loses the Guild Master's own powers; a stale role or team falls back to the real rights. Writes follow the stand-in rights and the audit log keeps your real user. "Guest link (preview)" and "Public page (preview)" (`GET /api/dev/guild/:gid/viewer?role=guest|public`, at `#/dev/viewer/<gid>/guest|public`) draw the same read-only views a visitor gets, even while the public page is off. Tests: `guild-viewas-worker-tests.js`, `guild-viewas-ui-tests.js`.
 
-**Limits under `wrangler dev`.** The short links (`/api/share`, `/tbc/:id`, `/classic/:id`, `/forever/:id`) are Vercel features and do not work on `localhost:8787`; use the long `#r=` links there. The planner pages, `/faq`, `/whats-new` and the guild tracker work. The guild tracker is part of the app shell at `/` (guild pages are `/#/g/<id>/roster` and so on); the old `/guild` address redirects to `/#/`.
+**Limits under `wrangler dev`.** The short links (`/api/share`, `/tbc/:id`, `/classic/:id`, `/forever/:id`) are Worker routes and work on `127.0.0.1:8787` too (without Cloudflare's `CF-Connecting-IP` header the rate limit does not apply locally). The planner pages, `/faq`, `/whats-new` and the guild tracker work. The guild tracker is part of the app shell at `/` (guild pages are `/#/g/<id>/roster` and so on); the old `/guild` address redirects to `/#/`.
 
 **What Wrangler 4.146.0 does here (checked 2026-10-14).**
 
 - `main` inside `assets.directory: "."` is accepted with no error or warning.
 - Wrangler does **not** exclude `.env`, `.wrangler/`, `node_modules/` or `worker/` from the assets: without `.assetsignore` every one of them is served. `.assetsignore` hides them, and `guild-config-tests.js` pins its patterns.
-- `_headers` and `.assetsignore` are never served themselves; `_headers` applies to the assets (the CSP matches `vercel.json` plus the Discord CDN for avatars).
+- `_headers` and `.assetsignore` are never served themselves; `_headers` applies to the assets (the only CSP; it allows the Discord CDN for avatars).
 - Default `html_handling` serves `/faq` from `faq.html` (`/faq.html` redirects to `/faq`), so the help pages link to `/faq.html` and `/whats-new.html` and the browser lands on `/faq` and `/whats-new`.
 - `--var KEY:VALUE` overrides a value from `.env`, and `dev --env-file <path>` exists.
 - Local D1, `d1 migrations apply --local` and `dev` run with no Cloudflare login.

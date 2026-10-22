@@ -1,4 +1,4 @@
-# Static-asset headers for the Cloudflare Worker deployment (same as vercel.json, plus the Discord CDN for avatars).
+# Static-asset headers of the Cloudflare Worker deployment: THE ONLY Content-Security-Policy (tests/site/headers-tests.js). The Discord CDN is for avatars.
 # Wowhead's item tooltips (js/guild/ui-kit.js, loaded only on pages that show items): script + stylesheet + icons from wow.zamimg.com, tooltip data from nether.wowhead.com, and ONE inline style value in its tooltip markup (style-src-attr, by hash: display:inline-table; vertical-align:inherit).
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self' https://wow.zamimg.com; style-src 'self' https://fonts.googleapis.com https://wow.zamimg.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://cdn.discordapp.com https://wow.zamimg.com; style-src-attr 'unsafe-hashes' 'sha256-P8KEFiQjXYUW3n8OFx902OxKLCCDvr9cCfMQRT5lRXQ='; connect-src 'self' https://raid-helper.dev https://raid-helper.xyz https://nether.wowhead.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'

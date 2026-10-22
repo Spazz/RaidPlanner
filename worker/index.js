@@ -11,6 +11,7 @@ import { bnetCallback, bnetLogin, createClaims, disconnectBnet, getBnet, withdra
 import { approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
 import { runCron } from './scheduler.js';
+import { SHARE_PATH, handleShare, isSharePagePath, servePlannerPage } from './share.js';
 import { claimGuild, createGuild, getGuild, patchGuild } from './routes/guild.js';
 import { deleteGuild, dismissOnboarding, exportGuild } from './routes/guild-data.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
@@ -320,6 +321,8 @@ export function createApp(deps) {
 
   async function dispatch(request) {
     const url = new URL(request.url);
+    // Live share links answer in their own shape ({error: sentence}), which the Planner shows: worker/share.js.
+    if (url.pathname === SHARE_PATH) return handleShare(base, request);
     const match = router.resolve(request.method, url.pathname);
     if (!match) return errorResponse(404, 'not_found', 'Not found.');
     if (match.allowed) {
@@ -365,6 +368,8 @@ export function createApp(deps) {
 
 export default {
   fetch(request, env) {
+    // /tbc/<id>, /classic/<id>, /forever/<id> are the Planner page (a live share link), not a file.
+    if (env.ASSETS && isSharePagePath(request)) return servePlannerPage(request, env);
     return createApp({ db: env.DB, env }).handle(request);
   },
   // The Cron Triggers (wrangler.jsonc triggers.crons): daily the 30-day rule for Battle.net data, every 15 minutes the Raid-Helper refresh and the Discord

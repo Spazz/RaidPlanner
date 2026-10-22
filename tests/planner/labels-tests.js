@@ -90,7 +90,7 @@ check('MRT and live link copy toasts and statuses say what happens', () => {
   for (const text of [
     'MRT string copied (seated groups only). In MRT: Raid Groups > Import > "From ExRT export string"',
     'Live link copied. Anyone with it can see and edit this plan; it expires 30 days after the last change.',
-    'Live links are down right now, so this is a snapshot link: it will not update when the plan changes.',
+    'Could not make a live link: ',
     "'Live link not saved: ' + this.rejected.reason + '. Your changes are safe on this device.'",
     'Live link not saved yet, retrying. Your changes are safe on this device.',
     'Saving to the live link...',

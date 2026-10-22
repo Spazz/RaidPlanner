@@ -170,12 +170,11 @@ function teamData(over) {
     readPlayers: s => (s === 'PP:2:x' ? { success: true, name: 'BT run', players: [{ name: 'Tank', groupNumber: 1 }, { name: 'Benchy', groupNumber: 0 }] } : { success: false, error: 'Share link is damaged' }),
   }, over || {});
 
-  await check('plan source: long link, bare code and PP:2 string give names + groups only', async () => {
+  await check('plan source: bare code and PP:2 string give names + groups only', async () => {
     const want = { ok: true, label: 'BT run', players: [{ name: 'Tank', group: 1 }, { name: 'Benchy', group: 0 }], skipped: 0, skippedText: '' };
-    assert.deepEqual(plain(await G.planSource.read('https://raidsmith.example/#r=GOODCODE1', fakeDeps())), want);
     assert.deepEqual(plain(await G.planSource.read('  GOODCODE1  ', fakeDeps())), want);
     assert.deepEqual(plain(await G.planSource.read('PP:2:x', fakeDeps())), want);
-    for (const text of ['https://raidsmith.example/#r=GOODCODE1', 'GOODCODE1', 'PP:2:x']) assert.equal((await G.planSource.read(text, fakeDeps())).live, undefined, 'only a live link carries a live id');
+    for (const text of ['GOODCODE1', 'PP:2:x']) assert.equal((await G.planSource.read(text, fakeDeps())).live, undefined, 'only a live link carries a live id');
   });
 
   await check('plan source: a short live link is fetched, and needs the live site when it cannot be', async () => {
@@ -188,7 +187,7 @@ function teamData(over) {
     const gone = await G.planSource.read('/tbc/AbC1234', fakeDeps({ fetchShare: () => Promise.resolve(null) }));
     assert(!gone.ok && /expired/.test(gone.error));
     const down = await G.planSource.read('/tbc/AbC1234', fakeDeps({ fetchShare: () => Promise.reject(new Error('x')) }));
-    assert(!down.ok && /live site/.test(down.error) && /#r=/.test(down.error));
+    assert(!down.ok && /live site/.test(down.error));
     const none = await G.planSource.read('/tbc/AbC1234', Object.assign(fakeDeps(), { fetchShare: null }));
     assert(!none.ok && /live site/.test(none.error));
   });

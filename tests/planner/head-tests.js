@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const app = require('../load-app');
 
-const SITE = 'https://raidsmith.vercel.app';
+const { SITE } = require('../site-host');
 const head = app.html.slice(app.html.indexOf('<head>'), app.html.indexOf('</head>'));
 const metaContent = (attrName, attrValue) => {
   const m = head.match(new RegExp('<meta\\s+' + attrName + '="' + attrValue + '"\\s+content="([^"]*)"'));

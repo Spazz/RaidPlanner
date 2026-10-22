@@ -6,7 +6,6 @@
 /node_modules/
 /worker/
 /migrations/
-/api/
 /wrangler.jsonc
 /package.json
 /tests/
@@ -15,5 +14,3 @@
 /*.md
 /gruul_dps_data.txt
 /.git*
-/.vercelignore
-/vercel.json

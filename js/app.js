@@ -659,22 +659,17 @@ document.getElementById('btn-shared-copy').addEventListener('click', () => Share
 
 // ── SHARE LINK ──────────────────────────────────────────────────
 // Live links (/<version>/<id>): a plan's first Share stores its share code
-// via api/share.js; from then on every change auto-saves to that same link,
+// via the Worker's /api/share (worker/share.js); from then on every change auto-saves to that same link,
 // the address bar shows it while the plan is open, and open pages pull other
 // people's changes. Anyone with the link can edit and the latest save wins.
 // The version segment is a readable label only (the stored code carries the
-// real version and raid). The long #r= link is the fallback when the API is
-// unreachable, and old #r= links keep loading.
+// real version and raid). When the API cannot create a link, Share says so.
 const SHARE_API = '/api/share';
 const SHORT_LINK_PATH = new RegExp(`^/(?:${Object.keys(GameVersions).join('|')})/([0-9A-Za-z]{7})/?$`);
 // Read before the first render, which hands the address bar to syncAddressBar.
 const SHORT_LINK_AT_LOAD = (window.location.pathname.match(SHORT_LINK_PATH) || [])[1] || null;
 const LIVE_SAVE_DELAY_MS = 2000;
 const LIVE_DEFER_POLL_MS = 500;
-
-function siteRoot() {
-  return window.location.origin + '/';
-}
 
 function currentShareCode() {
   return Import.encodeSharePayload(Import.exportShareString());
@@ -711,9 +706,8 @@ function liveLinkPath(id) {
 function syncAddressBar() {
   const link = currentLiveLink();
   const path = link ? liveLinkPath(link.entry.id) : '/';
-  // A pending #r= share link has not been read yet: keep it. So is a guild route (#/...): the shell shows a
-  // guild section on top of the open plan's address.
-  const hash = (window.location.hash.startsWith('#r=') || window.location.hash.startsWith('#/')) ? window.location.hash : '';
+  // A guild route (#/...) is kept: the shell shows a guild section on top of the open plan's address.
+  const hash = window.location.hash.startsWith('#/') ? window.location.hash : '';
   if (window.location.pathname !== path) history.replaceState(null, '', path + window.location.search + hash);
 }
 
@@ -1135,27 +1129,29 @@ const LiveSync = {
   },
 };
 
-// Resolves to {url, live} and never rejects, so Share always has a link.
+// Resolves to {url, live: true}; rejects (with .reason for a refusal the server or the size limit gave) when no live link can be made.
 async function getShareLink() {
   const code = currentShareCode();
-  const fallback = { url: siteRoot() + '#r=' + code, live: false };
   const existing = currentLiveLink();
   if (existing) {
     LiveSync.flush();
     return { url: window.location.origin + liveLinkPath(existing.entry.id), live: true };
   }
   const planKey = LiveLinks.planKey(State);
-  if (!planKey || LiveLinks.rejection(code)) return fallback;
-  try {
-    const { id, updatedAt } = await createLiveLink(code, { timeoutMs: 5000 });
-    bindLiveLink(planKey, id, code, updatedAt);
-    if (!currentLiveLink()) return fallback;
-    syncAddressBar();
-    LiveSync.refreshStatus();
-    return { url: window.location.origin + liveLinkPath(id), live: true };
-  } catch {
-    return fallback;
-  }
+  if (!planKey) throw new Error('share: no plan');
+  const tooLarge = LiveLinks.rejection(code);
+  if (tooLarge) { const err = new Error('share: too large'); err.reason = tooLarge; throw err; }
+  const { id, updatedAt } = await createLiveLink(code, { timeoutMs: 5000 });
+  bindLiveLink(planKey, id, code, updatedAt);
+  if (!currentLiveLink()) throw new Error('share: plan closed');
+  syncAddressBar();
+  LiveSync.refreshStatus();
+  return { url: window.location.origin + liveLinkPath(id), live: true };
+}
+
+function shareFailureText(err) {
+  const why = err && err.reason ? err.reason : (err && err.retryAfterMs ? 'too many requests, wait a moment' : 'the server could not be reached');
+  return 'Could not make a live link: ' + why + '. Your plan is safe on this device.';
 }
 
 // Safari only allows clipboard writes inside the click itself, so the
@@ -1166,15 +1162,6 @@ function copyShareLink(linkPromise) {
   if (!window.ClipboardItem || !navigator.clipboard.write) return writeText();
   const item = new ClipboardItem({ 'text/plain': linkPromise.then(link => new Blob([link.url], { type: 'text/plain' })) });
   return navigator.clipboard.write([item]).catch(writeText);
-}
-
-async function loadFromShareLink() {
-  const hash = window.location.hash || '';
-  if (!hash.startsWith('#r=')) return false;
-
-  // Strip the fragment first, so a refresh (or a declined prompt) never re-fires.
-  history.replaceState(null, '', window.location.origin + window.location.pathname);
-  return await applyShareCode(hash.slice(3));
 }
 
 async function loadFromShortLink() {
@@ -1878,10 +1865,8 @@ document.getElementById('btn-share').addEventListener('click', () => {
   }
   const link = getShareLink();
   Promise.all([link, copyShareLink(link)])
-    .then(([{ live }]) => showToast(live
-      ? 'Live link copied. Anyone with it can see and edit this plan; it expires 30 days after the last change.'
-      : 'Live links are down right now, so this is a snapshot link: it will not update when the plan changes.'))
-    .catch(() => link.then(({ url }) => showManualCopy(url)));
+    .then(() => showToast('Live link copied. Anyone with it can see and edit this plan; it expires 30 days after the last change.'))
+    .catch(() => link.then(({ url }) => showManualCopy(url), err => showToast(shareFailureText(err))));
 });
 
 document.getElementById('btn-copy-mrt').addEventListener('click', () => {
@@ -2731,7 +2716,6 @@ commit();
 // The link may ask before replacing the restored plan, so the page starts on the landing view.
 showView('landing');
 if (hasLoadedWork()) document.querySelector('.import-tab[data-pane="saved"]').click();
-loadFromShareLink().then(opened => { if (opened) showView('app'); });
 // A short link (/<version>/<id>) needs a server round-trip, so it lands on
 // import first and switches to the planner once the layout arrives.
 loadFromShortLink().then(opened => { if (opened) showView('app'); });
@@ -2740,9 +2724,6 @@ LiveSync.start();
 window.addEventListener('pagehide', () => PlanStore.flush());
 document.addEventListener('visibilitychange', () => { if (document.hidden) PlanStore.flush(); });
 window.addEventListener('storage', e => TabWatch.onStorage(e));
-// A share link pasted into the address bar of an already-open page only
-// changes the hash, so honour it there too.
-window.addEventListener('hashchange', () => { loadFromShareLink().then(opened => { if (opened) showView('app'); }); });
 
 // ── SHELL CONTRACT ──────────────────────────────────────────────
 // The page shell (js/guild/) shows the planner and the guild pages in one document. These are the planner's half

@@ -1,5 +1,5 @@
 // The Worker's two Cron Triggers (wrangler.jsonc triggers.crons), one dispatcher. The `scheduled` handler in worker/index.js hands the event's cron string here.
-//   17 4 * * *     daily: the 30-day rule for Battle.net data (worker/bnet-purge.js), then the notification log's 90-day prune.
+//   17 4 * * *     daily: the 30-day rule for Battle.net data (worker/bnet-purge.js), then the notification log's 90-day prune, then the expired share links.
 //   */15 * * * *   every 15 minutes: the Raid-Helper refresh of upcoming raids (worker/event-refresh.js), THEN the Discord posts (worker/notify-run.js), so a
 //                  reminder is built from sign-ups that are at most a refresh old. Each run is bounded (see worker/notify.js) and every message is once-only
 //                  (notification_log), so a run that is repeated, overlapping or retried by Cloudflare sends nothing twice. The Logger's nudge (wave 8: a raid
@@ -10,6 +10,7 @@ import { runScheduled as runBnetPurge } from './bnet-purge.js';
 import { refreshDueEvents } from './event-refresh.js';
 import { runNotifications } from './notify-run.js';
 import { pruneNotificationLog } from './notify-store.js';
+import { sweepShareLinks } from './share.js';
 
 export const DAILY_CRON = '17 4 * * *';
 export const FREQUENT_CRON = '*/15 * * * *';
@@ -21,6 +22,11 @@ export async function runDaily(deps) {
     await pruneNotificationLog(deps.db, deps.now());
   } catch (error) {
     try { deps.log(`notification log prune failed: ${error && error.message}`); } catch { /* logging must not throw */ }
+  }
+  try {
+    await sweepShareLinks(deps.db, deps.now());
+  } catch (error) {
+    try { deps.log(`share link sweep failed: ${error && error.message}`); } catch { /* logging must not throw */ }
   }
   return purged;
 }

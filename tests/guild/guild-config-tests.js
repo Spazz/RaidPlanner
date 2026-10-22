@@ -3,8 +3,8 @@
  * Run: node tests/guild/guild-config-tests.js
  *
  * Pins the files that decide what is served and what is kept out: .assetsignore (secrets and Worker
- * source never reach the static-asset bucket), _headers (same CSP as vercel.json plus the Discord CDN),
- * wrangler.jsonc, .env.example (names only), the .gitignore whitelist, .vercelignore, the pinned
+ * source never reach the static-asset bucket), _headers (the one CSP, with the Discord CDN),
+ * wrangler.jsonc, .env.example (names only), the .gitignore whitelist, the pinned
  * Wrangler version, and the rules the Worker's source files follow.
  */
 const assert = require('node:assert/strict');
@@ -57,27 +57,25 @@ check('.assetsignore hides secrets, Worker source and dev files, but not anythin
   const ignored = (file) => matchers.some((re) => re.test(file));
 
   for (const required of ['/.env*', '/.dev.vars*', '/.wrangler/', '/node_modules/', '/worker/', '/migrations/', '/wrangler.jsonc',
-    '/package.json', '/api/', '/tests/', '/tools/', '/.github/', '/*.md',
-    '/gruul_dps_data.txt', '/.git*', '/.vercelignore', '/vercel.json']) {
+    '/package.json', '/tests/', '/tools/', '/.github/', '/*.md',
+    '/gruul_dps_data.txt', '/.git*']) {
     assert(patterns.includes(required), `.assetsignore must list ${required}`);
   }
   for (const secret of ['.env', '.env.local', '.env.production', '.dev.vars', '.dev.vars.staging', '.wrangler/tmp/x.js',
     '.wrangler/state/v3/d1/db.sqlite', 'node_modules/wrangler/package.json', 'worker/index.js', 'worker/routes/auth.js',
-    'migrations/0001_foundation.sql', 'wrangler.jsonc', 'package.json', 'api/share.js', 'tests/run-all.js', 'tools/guild-dev.js',
+    'migrations/0001_foundation.sql', 'wrangler.jsonc', 'package.json', 'tests/run-all.js', 'tools/guild-dev.js',
     'tests/planner/share-tests.js', 'tests/guild/guild-worker-tests.js', 'tests/planner/tests.js', 'tests/planner/classic-forever-scenarios.js', 'README.md', 'gruul_dps_data.txt',
-    '.git/config', '.gitignore', '.github/workflows/test.yml', '.vercelignore', 'vercel.json']) {
+    '.git/config', '.gitignore', '.github/workflows/test.yml']) {
     assert(ignored(secret), `${secret} must not be served`);
   }
-  const served = ['index.html', 'faq.html', 'whats-new.html', 'buff-priorities.html', 'app.css', 'scenarios.js', 'og-image.png',
+  const served = ['index.html', 'faq.html', 'whats-new.html', 'app.css', 'scenarios.js', 'og-image.png',
     'guild.css', 'js/app.js', 'js/rules/tbc.js', 'js/guild/api.js', 'icons/warrior.jpg'];
   for (const file of served) assert(!ignored(file), `${file} must be served`);
   for (const file of fs.readdirSync(path.join(ROOT, 'js')).filter((f) => f.endsWith('.js'))) assert(!ignored(`js/${file}`), `js/${file}`);
   for (const rule of patterns) assert(!rule.includes('scenarios.js'), 'scenarios.js stays served');
 });
 
-check('_headers carries the vercel.json CSP plus the Discord CDN for avatars, nosniff and Referrer-Policy', () => {
-  const vercel = JSON.parse(read('vercel.json'));
-  const expected = Object.fromEntries(vercel.headers[0].headers.map((header) => [header.key, header.value]));
+check('_headers carries the one CSP (with the Discord CDN for avatars), nosniff and Referrer-Policy', () => {
   const text = read('_headers');
   const block = text.split('\n').filter((line) => line.trim() && !line.trim().startsWith('#'));
   assert.equal(block[0], '/*');
@@ -85,15 +83,11 @@ check('_headers carries the vercel.json CSP plus the Discord CDN for avatars, no
     const index = line.indexOf(':');
     return [line.slice(0, index).trim(), line.slice(index + 1).trim()];
   }));
-  assert.equal(
-    actual['Content-Security-Policy'],
-    expected['Content-Security-Policy'].replace("img-src 'self' data:", "img-src 'self' data: https://cdn.discordapp.com"),
-  );
+  assert(actual['Content-Security-Policy'].includes("img-src 'self' data: https://cdn.discordapp.com https://wow.zamimg.com;"));
   assert(actual['Content-Security-Policy'].includes("connect-src 'self' https://raid-helper.dev https://raid-helper.xyz"));
   assert.equal(actual['X-Content-Type-Options'], 'nosniff');
-  assert.equal(actual['Referrer-Policy'], expected['Referrer-Policy']);
+  assert.equal(actual['Referrer-Policy'], 'strict-origin-when-cross-origin');
   assert.deepEqual(Object.keys(actual).sort(), ['Content-Security-Policy', 'Referrer-Policy', 'X-Content-Type-Options']);
-  assert(!/https:\/\/cdn\.discordapp\.com/.test(expected['Content-Security-Policy']), 'the planner CSP itself is unchanged');
 });
 
 check('wrangler.jsonc: Worker entry, assets, run_worker_first covers every Worker route (and no static file), D1 binding, and no DISCORD_API_BASE or vars', async () => {
@@ -110,11 +104,12 @@ check('wrangler.jsonc: Worker entry, assets, run_worker_first covers every Worke
   // every route path must reach the Worker, every entry must match a route, and no static file may be pulled to the Worker.
   const first = config.assets.run_worker_first;
   const { ROUTES } = await import('../../worker/index.js');
+  const { WORKER_PATHS } = await import('../../worker/share.js');
   const reaches = (globs, path) => globs.some((glob) => workerFirst(glob).test(path));
-  const examples = ROUTES.map((route) => route.path.replace(/:[a-z]+/g, 'x'));
+  const examples = [...ROUTES.map((route) => route.path.replace(/:[a-z]+/g, 'x')), ...WORKER_PATHS];
   for (const path of examples) assert(reaches(first, path), `${path} is a Worker route but is not in run_worker_first (it would be served as a static file, or 404)`);
   for (const glob of first) assert(examples.some((path) => workerFirst(glob).test(path)), `${glob} in run_worker_first matches no Worker route`);
-  for (const page of ['/', '/index.html', '/faq.html', '/whats-new.html', '/app.css', '/guild.css', '/scenarios.js', '/js/app.js', '/js/guild/api.js', '/icons/warrior.jpg', '/tbc/abc']) {
+  for (const page of ['/', '/index.html', '/faq.html', '/whats-new.html', '/app.css', '/guild.css', '/scenarios.js', '/js/app.js', '/js/guild/api.js', '/icons/warrior.jpg', '/buff-priorities.html']) {
     assert(!reaches(first, page), `${page} must stay a static asset (not run_worker_first)`);
   }
   // The matcher itself: dropping a prefix uncovers its routes, and a catch-all is caught.
@@ -140,7 +135,7 @@ check('.env.example lists names only and covers every secret the Worker reads', 
   for (const file of walk('worker')) {
     for (const match of read(file).matchAll(/\benv\.([A-Z][A-Z0-9_]+)/g)) used.add(match[1]);
   }
-  for (const name of used) assert(names.includes(name) || /^(?:DISCORD|RAID_HELPER|WCL|BNET)_API_BASE$/.test(name) || name === 'DB', `${name} is read by the Worker`);
+  for (const name of used) assert(names.includes(name) || /^(?:DISCORD|RAID_HELPER|WCL|BNET)_API_BASE$/.test(name) || name === 'DB' || name === 'ASSETS', `${name} is read by the Worker`);
   assert(used.has('RAID_HELPER_API_BASE') && used.has('WCL_API_BASE') && used.has('BNET_API_BASE') && !names.some((name) => name.endsWith('_API_BASE')), 'the API bases are dev-only vars, not secrets');
 });
 
@@ -165,17 +160,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
     'worker/.dev.vars', 'worker/routes/.dev.vars', 'worker/node_modules/x/index.js', 'tests/node_modules/x/index.js', 'tools/.env', 'migrations/.env'];
   assert.deepEqual(probe(secrets).sort(), secrets.slice().sort(), 'every secret and state path stays ignored');
   assert.deepEqual(probe(['.env.example', 'worker/package.json']), [], '.env.example is a tracked file, not a secret');
-  assert.deepEqual(probe(['scratch.js', 'notes.md', 'tmp.txt', 'buff-priorities.html']), ['scratch.js', 'notes.md', 'tmp.txt', 'buff-priorities.html'], 'a loose file in the root stays ignored until it is listed');
-});
-
-check('.vercelignore keeps the Worker files off Vercel and uses no negation', () => {
-  const entries = lines('.vercelignore');
-  for (const required of ['/worker/', '/migrations/', '/wrangler.jsonc', '/_headers', '/.assetsignore', '/.env.example',
-    '/.env*', '/.dev.vars*', '/.wrangler/']) {
-    assert(entries.includes(required), required);
-  }
-  assert(entries.every((entry) => !entry.startsWith('!')));
-  for (const kept of ['guild.css', 'js/guild']) assert(!entries.some((entry) => entry.replace(/^\//, '').replace(/\/$/, '') === kept), `${kept} is not ignored`);
+  assert.deepEqual(probe(['scratch.js', 'notes.md', 'tmp.txt']), ['scratch.js', 'notes.md', 'tmp.txt'], 'a loose file in the root stays ignored until it is listed');
 });
 
 check('package.json: version and name untouched, guild scripts run tools/guild-dev.js', () => {

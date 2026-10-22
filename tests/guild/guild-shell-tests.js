@@ -394,7 +394,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
   // ── routeAll: sections ─────────────────────────────────────────
   await check('routeAll: section for every address in the spec table', async () => {
     const cases = [
-      ['app', '/', 'planner'], ['app', '/tbc/abc1234', 'planner'], ['app', '/#r=abcdef', 'planner'], ['app', '/#how-it-works', 'planner'], ['app', '/#something', 'planner'],
+      ['app', '/', 'planner'], ['app', '/tbc/abc1234', 'planner'], ['app', '/#how-it-works', 'planner'], ['app', '/#something', 'planner'],
       ['app', '/#/', 'guild'], ['app', '/#/signin?error=denied', 'guild'], ['app', '/tbc/abc1234#/g/g1/roster', 'guild'], ['app', '/#/privacy', 'guild'],
       ['faq', '/faq.html', 'page'], ['whats-new', '/whats-new.html#/x', 'page'],
     ];
@@ -805,7 +805,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
 
   // ── the session question ───────────────────────────────────────
   await check('session: an anonymous planner or help-page visit never reaches the Worker; shell-pending clears at once; signed-out chrome', async () => {
-    for (const [page, url] of [['app', '/'], ['app', '/tbc/abc1234'], ['app', '/#r=xyz'], ['faq', '/faq.html'], ['whats-new', '/whats-new.html']]) {
+    for (const [page, url] of [['app', '/'], ['app', '/tbc/abc1234'], ['faq', '/faq.html'], ['whats-new', '/whats-new.html']]) {
       const env = makeEnv({ page, url });
       await settle();
       assert.deepEqual(env.fetchCalls, [], `${page} ${url}`);

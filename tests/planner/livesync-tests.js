@@ -212,13 +212,7 @@ async function check(name, fn) {
     assert.equal(entryOf(env, planKey).id, NEW_ID);
   });
 
-  await check('Syncing the address bar keeps a pending #r= share link and drops other fragments', async () => {
-    const env = makeEnv();
-    seedLinkedPlan(env);
-    env.location.hash = '#r=abc123';
-    env.api.syncAddressBar();
-    assert.equal(env.location.pathname, '/tbc/aB3dE5g');
-    assert.equal(env.location.hash, '#r=abc123', 'the share link is still there to be read');
+  await check('Syncing the address bar drops other fragments', async () => {
     const other = makeEnv();
     seedLinkedPlan(other);
     other.location.hash = '#something';
@@ -239,7 +233,7 @@ async function check(name, fn) {
     seedLinkedPlan(anchor);
     anchor.location.hash = '#how-it-works';
     anchor.api.syncAddressBar();
-    assert.equal(anchor.location.hash, '', 'only #r= and #/ survive');
+    assert.equal(anchor.location.hash, '', 'only #/ survives');
   });
 
   await check('Poll 200 of an unchanged plan does not PUT or POST', async () => {
@@ -505,22 +499,20 @@ async function check(name, fn) {
     assert.equal(puts(env).length, 1);
   });
 
-  await check('getShareLink skips the POST for an oversized plan and falls back to the long link', async () => {
+  await check('getShareLink skips the POST for an oversized plan and rejects with the reason (no #r= fallback)', async () => {
     const env = makeEnv();
     seedPlan(env);
     env.ctx.currentShareCode = () => 'A'.repeat(env.api.LiveLinks.maxCodeLength + 1);
-    const link = await env.ctx.getShareLink();
-    assert.equal(link.live, false);
-    assert(link.url.startsWith('https://pp.test/#r=AAAA'));
+    await assert.rejects(() => env.ctx.getShareLink(), (err) => /too large/.test(err.reason));
     assert.equal(env.calls.length, 0);
   });
 
-  await check('getShareLink: a 429 on create falls back; a 201 binds the new link', async () => {
+  await check('getShareLink: a 429 on create rejects; a 201 binds the new link', async () => {
     const env = makeEnv();
     seedPlan(env);
     const { State, LiveLinks } = env.api;
     env.route = () => response(429, { error: 'Too many requests' }, { 'Retry-After': '30' });
-    assert.equal((await env.api.getShareLink()).live, false);
+    await assert.rejects(() => env.api.getShareLink(), (err) => err.status === 429);
     env.route = () => response(201, { id: 'newLink', updatedAt: 42 });
     const link = await env.api.getShareLink();
     assert.equal(link.live, true);
@@ -626,7 +618,7 @@ async function check(name, fn) {
 
   await check('LiveLinks helpers: size limit mirrors the server, permanent statuses and Retry-After parsing', async () => {
     const { LiveLinks } = makeEnv().api;
-    assert.equal(LiveLinks.maxCodeLength, require('../../api/share.js').MAX_CODE_LENGTH);
+    assert.equal(LiveLinks.maxCodeLength, (await import(require('node:url').pathToFileURL(require('node:path').join(__dirname, '..', '..', 'worker', 'share.js')).href)).MAX_CODE_LENGTH);
     assert.equal(LiveLinks.rejection('A'.repeat(LiveLinks.maxCodeLength)), null);
     assert.match(LiveLinks.rejection('A'.repeat(LiveLinks.maxCodeLength + 1)), /too large/);
     assert.equal(LiveLinks.rejection(undefined), null);

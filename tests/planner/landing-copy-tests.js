@@ -30,7 +30,7 @@ check('privacy lines say what is true about imports and live links', () => {
   assert(faqHtml.includes('A live link is stored on our server so others can open it'));  // the FAQ now holds this fact (the feature cards are gone)
   assert(!faqHtml.includes('Nothing is stored on a server'));
   assert(faqHtml.includes('anyone with the link can see and edit the plan, and it expires 30 days after its last change'));
-  assert(faqHtml.includes('A long snapshot link (#r=...) carries the plan inside the link itself'));
+  assert(!faqHtml.includes('#r='));
   assert(!faqHtml.includes('Sign-ups are fetched by your browser directly from Raid-Helper and never touch our server'));
 });
 

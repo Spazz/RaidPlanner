@@ -142,7 +142,7 @@ check('Worker variables cover every name the Worker reads from env, so a local .
   const names = new Set();
   const walk = (dir) => { for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { const full = path.join(dir, entry.name); if (entry.isDirectory()) walk(full); else if (full.endsWith('.js')) for (const m of fs.readFileSync(full, 'utf8').matchAll(/\benv\.([A-Z][A-Z0-9_]+)/g)) names.add(m[1]); } };
   walk(path.join(__dirname, '..', '..', 'worker'));
-  names.delete('DB');
+  names.delete('DB'); names.delete('ASSETS');
   const given = new Set(smoke.workerVars(8790, ['discord'], '1').filter((_, index) => index % 2 === 1).map((arg) => arg.slice(0, arg.indexOf(':'))));
   assert.deepEqual([...names].filter((name) => !given.has(name)).sort(), [], 'add these to workerVars in tools/guild-smoke.js');
 });

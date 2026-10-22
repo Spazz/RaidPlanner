@@ -54,7 +54,7 @@ const LiveLinks = {
   shouldApply(entry, remote, pending) {
     return !!entry && !!remote && !pending && remote.updatedAt > entry.updatedAt;
   },
-  // Mirrors MAX_CODE_LENGTH in api/share.js: a larger code is always refused.
+  // Mirrors MAX_CODE_LENGTH in worker/share.js: a larger code is always refused.
   maxCodeLength: 32 * 1024,
   // Why the server would refuse this code (shown instead of retrying), or null.
   rejection(code) {

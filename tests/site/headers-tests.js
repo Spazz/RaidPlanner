@@ -2,7 +2,7 @@
  * PartyPlanner Web - Security header tests
  * Run: node tests/site/headers-tests.js
  *
- * vercel.json must parse and ship the security headers on every route. The CSP
+ * _headers (the Worker's static-asset headers) is the ONLY place a CSP is set (vercel.json is gone) and ships the security headers on every route. The CSP
  * is enforcing (no Report-Only twin): style-src carries no 'unsafe-inline', which
  * csp-tests.js backs by failing on any inline style="..." or on*="..." attribute.
  * This suite also checks the hosts the page really loads from are allowed.
@@ -23,8 +23,10 @@ function check(name, fn) {
   }
 }
 
-const config = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'vercel.json'), 'utf8'));
-const rule = (config.headers || []).find(entry => entry.source === '/(.*)');
+const ROOT = path.join(__dirname, '..', '..');
+// _headers: "/*" then indented "Name: value" lines (comments start with #).
+const headerLines = fs.readFileSync(path.join(ROOT, '_headers'), 'utf8').split(/\r?\n/).filter(line => line.trim() && !line.trim().startsWith('#'));
+const rule = headerLines[0].trim() === '/*' ? { headers: headerLines.slice(1).map(line => ({ key: line.slice(0, line.indexOf(':')).trim(), value: line.slice(line.indexOf(':') + 1).trim() })) } : null;
 const headers = Object.fromEntries(((rule && rule.headers) || []).map(h => [h.key, h.value]));
 const CSP = headers['Content-Security-Policy'];
 
@@ -39,13 +41,18 @@ function parsePolicy(value) {
   return policy;
 }
 
-check('vercel.json parses and still rewrites /<version>/<id> to index.html', () => {
-  assert.deepEqual(config.rewrites, [{ source: '/:version(tbc|classic|forever)/:id', destination: '/index.html' }]);
+check('There is exactly one CSP source: _headers (no vercel.json, no api/, no CSP meta tag, no CSP set by the Worker pages)', () => {
+  assert(!fs.existsSync(path.join(ROOT, 'vercel.json')), 'vercel.json is retired');
+  assert(!fs.existsSync(path.join(ROOT, '.vercelignore')) && !fs.existsSync(path.join(ROOT, 'api')));
+  assert.equal(headerLines.filter(line => /^\s*Content-Security-Policy\s*:/i.test(line)).length, 1, 'one CSP line in _headers');
+  assert.equal(headerLines.filter(line => line.trim() === '/*').length, 1, 'one catch-all rule');
+  for (const page of ['index.html', 'faq.html', 'whats-new.html']) {
+    assert(!/http-equiv=["']Content-Security-Policy/i.test(fs.readFileSync(path.join(ROOT, page), 'utf8')), `${page} has no CSP meta tag`);
+  }
 });
 
-check('A catch-all rule applies the security headers to every route', () => {
-  assert(rule, 'headers rule for /(.*)');
-  assert.equal((config.headers || []).length, 1, 'one rule, so no route is missed or double-set');
+check('The catch-all rule applies the security headers to every route', () => {
+  assert(rule, 'headers rule for /*');
   assert.equal(headers['X-Content-Type-Options'], 'nosniff');
   assert.equal(headers['Referrer-Policy'], 'strict-origin-when-cross-origin');
 });
@@ -71,7 +78,7 @@ check('The CSP carries the expected directives', () => {
   assert.deepEqual(policy['style-src'], ["'self'", 'https://fonts.googleapis.com', 'https://wow.zamimg.com']);
   assert.deepEqual(policy['font-src'], ['https://fonts.gstatic.com']);
   assert.deepEqual(policy['style-src-attr'], ["'unsafe-hashes'", "'sha256-P8KEFiQjXYUW3n8OFx902OxKLCCDvr9cCfMQRT5lRXQ='"], 'one inline style value of the Wowhead tooltip markup, by hash');
-  assert.deepEqual(policy['img-src'], ["'self'", 'data:', 'https://wow.zamimg.com']);
+  assert.deepEqual(policy['img-src'], ["'self'", 'data:', 'https://cdn.discordapp.com', 'https://wow.zamimg.com'], 'the Discord CDN is for the guild app avatars');
   assert.deepEqual(policy['object-src'], ["'none'"]);
   assert.deepEqual(policy['base-uri'], ["'self'"]);
   assert.deepEqual(policy['frame-ancestors'], ["'none'"]);

@@ -7,7 +7,7 @@
  *   - the pages that show items go through it (award rows, the loot board, the public / guest view, the trial card)
  *   - the lazy loader on a fake document: nothing loads without an item link, one async script (never twice, never again after a failure) with the
  *     whTooltips config set from this self-hosted code, and a rescan only when the script is there
- *   - the CSP in vercel.json and _headers allows exactly Wowhead's hosts for it, and nothing else of the policy moved
+ *   - the CSP in _headers (the only one) allows exactly Wowhead's hosts for it, and nothing else of the policy moved
  *   - the privacy page says it, guild.css keeps the item icons tidy, and the Planner pages never carry the script
  */
 const assert = require('node:assert/strict');
@@ -212,12 +212,11 @@ const QUOTES = '"\' onfocus="alert(1)" x=\'';
   }
   // The one inline style attribute Wowhead's tooltip markup carries (the header table of an item with a phase label); every other tooltip style is a class.
   const TOOLTIP_STYLE_HASH = require('node:crypto').createHash('sha256').update('display:inline-table; vertical-align:inherit').digest('base64');
-  const vercel = JSON.parse(read('vercel.json')).headers[0].headers.find(h => h.key === 'Content-Security-Policy').value;
   const headersLine = read('_headers').split('\n').find(l => l.trim().startsWith('Content-Security-Policy:'));
   const cloudflare = headersLine.slice(headersLine.indexOf(':') + 1).trim();
 
-  await check('CSP (vercel.json and _headers): Wowhead\'s script and stylesheet host, icon host and tooltip-data host are allowed, minimal and nothing else', () => {
-    for (const [label, text] of [['vercel.json', vercel], ['_headers', cloudflare]]) {
+  await check('CSP (_headers): Wowhead\'s script and stylesheet host, icon host and tooltip-data host are allowed, minimal and nothing else', () => {
+    for (const [label, text] of [['_headers', cloudflare]]) {
       const p = policyOf(text);
       assert.deepEqual(p['script-src'], ["'self'", 'https://wow.zamimg.com'], label);
       assert.deepEqual(p['style-src'], ["'self'", 'https://fonts.googleapis.com', 'https://wow.zamimg.com'], label);
@@ -231,7 +230,6 @@ const QUOTES = '"\' onfocus="alert(1)" x=\'';
       assert.deepEqual(p['style-src-attr'], ["'unsafe-hashes'", "'sha256-" + TOOLTIP_STYLE_HASH + "'"], label + ': exactly one inline style value, by hash');
       assert(!('script-src-elem' in p) && !('script-src-attr' in p) && !('style-src-elem' in p) && !('frame-src' in p), label + ': no other extra directive');
     }
-    assert.deepEqual(policyOf(vercel)['img-src'], ["'self'", 'data:', 'https://wow.zamimg.com']);
     assert.deepEqual(policyOf(cloudflare)['img-src'], ["'self'", 'data:', 'https://cdn.discordapp.com', 'https://wow.zamimg.com']);
   });
 
@@ -239,7 +237,6 @@ const QUOTES = '"\' onfocus="alert(1)" x=\'';
     const kit = read('js/guild/ui-kit.js');
     const url = (kit.match(/const WOWHEAD_SCRIPT = '([^']+)'/) || [])[1];
     assert.equal(url, 'https://wow.zamimg.com/js/tooltips.js');
-    assert(policyOf(vercel)['script-src'].includes(new URL(url).origin));
     assert(policyOf(cloudflare)['script-src'].includes(new URL(url).origin));
   });
 

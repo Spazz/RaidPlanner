@@ -2,20 +2,17 @@
  * Raidsmith - standalone proof of "guild raid plans in the database" (tasks/open/guild-plans-db-plan.md section 7)
  * Run: node tests/site/guild-plans-standalone-tests.js
  *
- * The Planner on Vercel `main` is the same code as the guild's Planner, and a visitor with no guild must never reach the guild's API. Proves it:
+ * The Planner without a guild is the same code as the guild's Planner, and a visitor with no guild must never reach the guild's API. Proves it:
  *   1  no guild scripts at all (no `Guild`): a roster load, a Raid-Helper import, edits, the save and a share make zero /api/guild requests
  *   2  signed out with the guild scripts present: zero plan-doc and raid-for-event calls (and a signed-in control that does look the raid up)
  *   3  a guild script that threw halfway (`Guild` without its API) and a loader whose scripts fail: the Planner still plans, a raid address
  *      only toasts; a page without plansync.js still opens a raid, on this device, with no plan-doc request
  *   4  static scan: every call site of PlanDb, PlanPoll, PlanDbLinks and PlanAttach outside their own files is guarded with `typeof X`
- *   5  the feature left the Vercel side alone: no commit of it touches api/, vercel.json or _headers (`git diff main` on those paths is not empty on
- *      a guild branch for an older reason: the Wowhead CSP and the Worker's _headers came with guild/slice-1)
  */
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 const realApp = require('../load-app');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -333,14 +330,6 @@ async function standaloneLife(env) {
     }
     assert(sites >= 25, `the scan found the call sites (${sites})`);
     assert.deepEqual(unguarded, [], 'unguarded call sites:\n' + unguarded.join('\n'));
-  });
-
-  await check('the Vercel side is untouched: no commit of this feature changed api/, vercel.json or _headers (git diff main shows only what guild/slice-1 already changed)', () => {
-    let out;
-    try {
-      out = execFileSync('git', ['log', '--format=%h %s', '--grep=^Raid plans in the database', '--', 'api', 'vercel.json', '_headers'], { cwd: ROOT, stdio: 'pipe', windowsHide: true }).toString();
-    } catch { console.log('      (skipped: git is not available here)'); return; }
-    assert.equal(out.trim(), '', ['the feature must not change api/, vercel.json or _headers:', out].join(String.fromCharCode(10)));
   });
 
   console.log(String.fromCharCode(10) + 'Standalone proof: ' + passed + ' passed, ' + failed + ' failed, ' + (passed + failed) + ' total');

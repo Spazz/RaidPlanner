@@ -23,7 +23,7 @@ const SHELL_IDS = ['guild-root', 'shell-rail', 'shell-sidebar', 'shell-topbar', 
 
 const ROOT = app.ROOT;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const SITE = 'https://raidsmith.vercel.app';
+const { SITE } = require('../site-host');
 const PAGES = {
   'faq.html': { title: 'FAQ - Raidsmith', h1: 'Frequently asked questions', scripts: ['/js/util.js', '/js/changelog.js', '/js/storage.js', '/js/site-pages.js', GUILD_LOADER] },
   'whats-new.html': { title: "What's new - Raidsmith", h1: "What's new", scripts: ['/js/util.js', '/js/changelog.js', '/js/site-pages.js', GUILD_LOADER] },
@@ -87,13 +87,13 @@ for (const [file, spec] of Object.entries(PAGES)) {
     assert.deepEqual(guildScriptsOf(html), GUILD_MANIFEST, 'the guild scripts come from the manifest alone');
     assert(!/<style\b/i.test(html) && !/\sstyle\s*=/.test(html) && !/\son[a-z]{3,}\s*=/i.test(html), 'no inline style or handler');
     const ignore = read('.gitignore').split('\n').map(l => l.trim());
-    const vercelIgnore = read('.vercelignore').split('\n').map(l => l.trim());
+    const assetsIgnore = read('.assetsignore').split('\n').map(l => l.trim());
     // js/guild/*.js is whitelisted as a glob, the other files one by one.
     const whitelisted = rel => ignore.includes('!' + rel) || (/^js\/guild\/[\w-]+\.js$/.test(rel) && ignore.includes('!js/guild/*.js'));
     for (const rel of [file, 'planner-forge.css', 'guild.css', ...scripts.map(s => s.slice(1)), 'js/guild/manifest.js', ...GUILD_MANIFEST.map(s => s.slice(1))]) {
       assert(fs.statSync(path.join(ROOT, rel)).size > 0, rel);
       assert(whitelisted(rel), `.gitignore has no "!${rel}" line`);
-      assert(!vercelIgnore.includes('/' + rel), `${rel} must not be excluded from the deploy`);
+      assert(!assetsIgnore.includes('/' + rel), `${rel} must not be excluded from the deploy`);
     }
   });
 }
@@ -177,7 +177,7 @@ check('index.html carries the shell skeleton: every id, in order, with the plann
   assert.equal((indexHtml.match(/<h1 class="gs-pb-h1 plan-only" tabindex="-1">/g) || []).length, 1, 'the plan name is the plan view h1 and can take focus');
 });
 
-check('index.html loads util.js first, site-pages.js after the planner scripts, then the guild tail; vercel.json only rewrites the plan links', () => {
+check('index.html loads util.js first, site-pages.js after the planner scripts, then the guild tail; the Worker serves the plan links', () => {
   assert.equal(app.scripts[0], '/js/util.js');
   assert.equal(app.scripts[app.scripts.length - 1], '/js/guild/app.js');
   const guildAt = app.scripts.indexOf(GUILD_LOADER); // the loader tag stands for the loader, the manifest and the manifest's scripts
@@ -188,9 +188,7 @@ check('index.html loads util.js first, site-pages.js after the planner scripts, 
   assert.equal(app.scripts[app.scripts.indexOf('/js/livesync.js') + 1], '/js/plansync.js');
   assert.deepEqual(app.stylesheets, ['/app.css', '/planner-forge.css', '/guild.css']);
   assert(app.scripts.indexOf('/js/util.js') < app.scripts.indexOf('/js/changelog.js'));
-  const config = JSON.parse(read('vercel.json'));
   const re = /^\/(tbc|classic|forever)\/[^/]+$/;
-  assert.deepEqual(config.rewrites.map(r => r.source), ['/:version(tbc|classic|forever)/:id']);
   assert(!re.test('/faq.html') && !re.test('/whats-new.html'), 'the pages are served as static files');
 });
 

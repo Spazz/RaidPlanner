@@ -36,14 +36,9 @@
 !icons/*.jpg
 !icons/raids/
 !icons/raids/*.webp
-# Vercel config (/<version>/<id> rewrite to index.html) and the short-share-link function
-!vercel.json
-!api/
-!api/share.js
 # Test suites live in tests/planner, tests/guild and tests/site (covered by !tests/** below; `npm test` runs them under Node); scenarios.js stays at the root: it is the ?dev roster picker data
 !scenarios.js
 !README.md
-!.vercelignore
 # Test runner, loader, fakes, fixtures and golden snapshots (everything under tests/), the dev tools (tools/*.js, plus the OG image script) and CI (npm test; GitHub Actions runs it)
 !package.json
 !tests/
