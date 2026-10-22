@@ -37,15 +37,15 @@
       return '<p class="gs-warn" id="discord-status" role="status">' + esc(NOT_SET_UP) + '</p>';
     }
     if (bot.inServer === false) {
-      return '<div class="gs-panel gs-discord-status" id="discord-status" role="status"><p class="gs-discord-line">The Raidsmith bot is not in your Discord server yet.</p>' +
+      return '<div class="gs-panel gs-hd-panel gs-discord-status" id="discord-status" role="status"><p class="gs-discord-line">The Raidsmith bot is not in your Discord server yet.</p>' +
         '<p class="gs-fine">Adding it asks for no permissions and it stays silent: it only reads which roles people have.</p>' +
-        '<div class="gs-actions">' + inviteLinkHtml(bot, 'Add the Raidsmith bot', 'gs-btn gs-btn-molten') + '</div></div>';
+        '<div class="gs-actions">' + inviteLinkHtml(bot, 'Add the Raidsmith bot', 'gs-btn') + '</div></div>';
     }
     if (bot.inServer !== true) {
       const text = Object.prototype.hasOwnProperty.call(PROBLEM_TEXT, bot.problem) ? PROBLEM_TEXT[bot.problem] : 'Discord roles cannot be read right now. Try again in a minute.';
       return '<p class="gs-warn" id="discord-status" role="status">' + esc(text) + '</p>';
     }
-    return '<div class="gs-panel gs-discord-status" id="discord-status" role="status"><p class="gs-discord-line">Connected: ' + esc(G.ui.plural(listOf(d.roles).length, 'Discord role', 'Discord roles')) + '</p>' +
+    return '<div class="gs-panel gs-hd-panel gs-discord-status" id="discord-status" role="status"><p class="gs-discord-line">Connected: ' + esc(G.ui.plural(listOf(d.roles).length, 'Discord role', 'Discord roles')) + '</p>' +
       secondaryLink(bot) + '</div>';
   }
 
@@ -82,7 +82,7 @@
   }
 
   function tableHtml(label, rows) {
-    return '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-dmap" aria-label="' + esc(label) + '"><thead><tr><th scope="col">Discord role</th><th scope="col">Gives</th></tr></thead><tbody>' +
+    return '<div class="gs-table-wrap gs-hd-panel"><table class="gs-table gs-table-stack gs-table-dmap" aria-label="' + esc(label) + '"><thead><tr><th scope="col">Discord role</th><th scope="col">Gives</th></tr></thead><tbody>' +
       rows.join('') + '</tbody></table></div>';
   }
 
@@ -91,7 +91,7 @@
     const d = opts.data;
     let body;
     if (!d) {
-      body = G.pages.signin.loadingHtml();
+      body = G.ui.settingsLoadingHtml();
     } else {
       const bot = d.bot || {};
       const roles = listOf(d.roles);

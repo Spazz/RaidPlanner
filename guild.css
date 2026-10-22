@@ -3281,6 +3281,64 @@ main#app.gs-forge { background: transparent; border: 0; align-self: flex-start; 
   .gs-dialog-settings .gs-btn { min-height: 44px; }
 }
 
+/* ── Settings on Forge (lane 3): Teams row actions, Accounts, Roles, Discord roles, Notifications ──────────────────
+   Same rules as lanes 1-2: neutral ink, one chip per object (roles on Accounts are plain text), at most one molten per screen. */
+.gs-settings-page.gs-forge .gs-table-teams td:last-child { width: 1%; white-space: nowrap; }
+.gs-settings-page.gs-forge .gs-table-teams .gs-row-actions { flex-wrap: nowrap; justify-content: flex-end; gap: 8px; }
+.gs-settings-page.gs-forge .gs-table-teams td, .gs-settings-page.gs-forge .gs-table-teams th[scope="row"] { padding-left: 12px; padding-right: 12px; }
+.gs-settings-page.gs-forge .gs-set-h { margin: 0; font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); }
+
+/* Accounts */
+.gs-settings-page.gs-forge .gs-people-table { overflow-x: auto; }
+.gs-settings-page.gs-forge .gs-people-table .gs-table { min-width: 0; }
+.gs-settings-page.gs-forge .gs-people-table td, .gs-settings-page.gs-forge .gs-people-table th[scope="row"] { padding: 8px 12px; min-height: 52px; }
+.gs-settings-page.gs-forge .gs-people-table th { padding-left: 12px; padding-right: 12px; }
+.gs-settings-page.gs-forge .gs-people-table td:last-child { width: 1%; }
+.gs-settings-page.gs-forge .gs-people-table .gs-row-actions { gap: 8px; }
+.gs-settings-page.gs-forge .gs-person-roles { color: var(--text-secondary); overflow-wrap: anywhere; }
+.gs-settings-page.gs-forge .gs-you { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); color: #aeb3b0; font: 600 12px/1 var(--font-body); letter-spacing: 0.06em; }
+.gs-settings-page.gs-forge .gs-toolbar { gap: 12px; }
+.gs-settings-page.gs-forge .gs-count { font-size: 15px; color: var(--text-secondary); }
+.gs-settings-page.gs-forge .gs-removed-h { margin: 0 0 -8px; }
+.gs-settings-page.gs-forge .gs-removed-item + .gs-removed-item { border-top-color: var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-empty.gs-hd-panel { padding: 20px; }
+
+/* Roles: one panel of rows on hairlines */
+.gs-settings-page.gs-forge .gs-role-list { gap: 0; overflow: hidden; }
+.gs-settings-page.gs-forge .gs-role-card { padding: 16px 20px; background: none; border: 0; border-top: 1px solid var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-role-card:first-child { border-top: 0; }
+.gs-settings-page.gs-forge .gs-role-main { gap: 3px; }
+.gs-settings-page.gs-forge .gs-role-head { gap: 6px 10px; }
+.gs-settings-page.gs-forge .gs-role-name { margin: 0; font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--hd-white); }
+.gs-settings-page.gs-forge .gs-role-source, .gs-settings-page.gs-forge .gs-role-note { margin: 0; font-size: 13px; line-height: 1.4; color: var(--text-muted); }
+.gs-settings-page.gs-forge .gs-role-counts { font-size: 14px; font-variant-numeric: tabular-nums; }
+.gs-settings-page.gs-forge .gs-role-card .gs-row-actions { flex-wrap: nowrap; gap: 8px; }
+.gs-dialog-role .gs-perm-row { border-bottom-color: var(--hd-hair); }
+.gs-dialog-role .gs-legend { font: 600 12px/1.2 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+
+/* Discord roles */
+.gs-settings-page.gs-forge .gs-discord-status { padding: 20px; gap: 8px; }
+.gs-settings-page.gs-forge .gs-dmap-form { gap: 16px; }
+.gs-settings-page.gs-forge .gs-dmap-form .gs-h3 { margin: 0; font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); }
+.gs-settings-page.gs-forge .gs-table-dmap { min-width: 0; }
+.gs-settings-page.gs-forge .gs-table-dmap td, .gs-settings-page.gs-forge .gs-table-dmap th[scope="row"] { padding: 8px 16px; }
+
+/* Notifications: one panel per team, its Save bar is secondary (several can be dirty at once) */
+.gs-settings-page.gs-forge .gs-notify-teams { gap: 24px; }
+.gs-settings-page.gs-forge .gs-notify-team .gs-card-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gs-settings-page.gs-forge .gs-notify-form .gs-pol-field { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.gs-settings-page.gs-forge .gs-notify-form .gs-pol-field > legend { padding: 0; }
+.gs-settings-page.gs-forge .gs-notify-form .gs-actions { gap: 8px; }
+
+@media (max-width: 760px) {
+  .gs-settings-page.gs-forge .gs-person-card, .gs-settings-page.gs-forge .gs-removed-item { background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
+  .gs-settings-page.gs-forge .gs-removed-item + .gs-removed-item { border-top: 1px solid var(--hd-panel-edge); }
+  .gs-settings-page.gs-forge .gs-removed-wrap, .gs-settings-page.gs-forge .gs-panel-flush:has(.gs-removed) { background: none; border: 0; box-shadow: none; }
+  .gs-settings-page.gs-forge .gs-role-card { padding: 16px; }
+  .gs-settings-page.gs-forge .gs-role-card .gs-row-actions { flex-wrap: wrap; }
+  .gs-settings-page.gs-forge .gs-table-dmap td, .gs-settings-page.gs-forge .gs-table-dmap th[scope="row"] { padding: 8px 16px; }
+}
+
 /* ── Loot on Forge: the Loot pages (hub, standings, raid night, item, person loot, award, Needs fixing) ──
    Panels, heads, chips and buttons are the shared Forge recipes (.gs-hd-panel, .gs-pr-*, .gs-hd-chip, .gs-fg-*); only the parts below are Loot's own. */
 .gs-lt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }

@@ -33,6 +33,12 @@
     return '<a class="gs-char-link ' + G.ui.classClass(r.class) + '" href="' + esc(G.router.format({ name: 'person', gid: gid, pid: r.personId })) + '">' + name + '</a>';
   }
 
+  // The roles a person holds as plain text (spec 2.3: a chip is one status word, not a list of roles).
+  function rolesTextHtml(entry, teams) {
+    const labels = G.peopleSort.roleLabels(entry.roles, teams).map(function (r) { return r.label; });
+    return labels.length ? '<span class="gs-person-roles">' + esc(labels.join(', ')) + '</span>' : '<span class="gs-muted">No roles</span>';
+  }
+
   function lastSeenHtml(entry, now) {
     const full = G.ui.formatDateTime(entry.lastSeenAt, G.ui.guildZone());
     return '<span' + (full ? ' title="' + esc(full) + '"' : '') + '>' + esc(G.ui.relativeTime(entry.lastSeenAt, now)) + '</span>';
@@ -44,13 +50,13 @@
     const id = entry.person.id;
     let html = '';
     if (a.editRoles || a.makeGuildMaster) {
-      html += '<button type="button" class="gs-btn gs-btn-sm" data-action="person-edit-roles" data-uid="' + esc(id) + '" data-key="edit-' + esc(id) + '" aria-label="Edit roles for ' + esc(name) + '">Edit roles</button>';
+      html += '<button type="button" class="gs-btn" data-action="person-edit-roles" data-uid="' + esc(id) + '" data-key="edit-' + esc(id) + '" aria-label="Edit roles for ' + esc(name) + '">Edit roles</button>';
     }
     if (a.syncDiscord) {
-      html += '<button type="button" class="gs-btn gs-btn-sm" data-action="person-sync" data-uid="' + esc(id) + '" data-key="sync-' + esc(id) + '" aria-label="Sync Discord roles for ' + esc(name) + '">Sync now</button>';
+      html += '<button type="button" class="gs-btn" data-action="person-sync" data-uid="' + esc(id) + '" data-key="sync-' + esc(id) + '" aria-label="Sync Discord roles for ' + esc(name) + '">Sync now</button>';
     }
     if (a.removeAccess) {
-      html += '<button type="button" class="gs-btn gs-btn-sm gs-btn-danger-text" data-action="person-remove" data-uid="' + esc(id) + '" data-key="remove-' + esc(id) + '" aria-label="Remove access for ' + esc(name) + '">Remove access</button>';
+      html += '<button type="button" class="gs-btn gs-btn-ghost" data-action="person-remove" data-uid="' + esc(id) + '" data-key="remove-' + esc(id) + '" aria-label="Remove access for ' + esc(name) + '">Remove access</button>';
     }
     return html;
   }
@@ -66,18 +72,18 @@
   function tableHtml(opts) {
     const rows = G.peopleSort.sortPeople(G.peopleSort.filterPeople(opts.people, opts.query), opts.sort);
     if (!rows.length) {
-      return '<p class="gs-empty">' + (opts.query ? 'No one matches your search.' : 'No one has signed in yet.') + '</p>';
+      return '<p class="gs-empty gs-hd-panel">' + (opts.query ? 'No one matches your search.' : 'No one has signed in yet.') + '</p>';
     }
     const body = rows.map(function (e) {
-      return '<tr><td>' + nameCellHtml(e) + '</td><td>' + rosterCellHtml(e, opts.gid) + '</td><td><div class="gs-chips">' + G.ui.roleChipsHtml(e.roles, opts.teams) + '</div></td><td class="gs-nowrap">' + lastSeenHtml(e, opts.now) +
+      return '<tr><td>' + nameCellHtml(e) + '</td><td>' + rosterCellHtml(e, opts.gid) + '</td><td>' + rolesTextHtml(e, opts.teams) + '</td><td class="gs-nowrap">' + lastSeenHtml(e, opts.now) +
         '</td><td><div class="gs-row-actions">' + rowActionsHtml(e) + '</div></td></tr>';
     }).join('');
     const cards = rows.map(function (e) {
       return '<li class="gs-person-card">' + G.ui.avatarHtml(e.person, 'gs-avatar-lg') + '<div class="gs-card-body">' + personTextHtml(e.person, e.isMe) +
-        '<span class="gs-card-line">' + rosterCellHtml(e, opts.gid) + '</span><div class="gs-chips">' + G.ui.roleChipsHtml(e.roles, opts.teams) + '</div>' +
+        '<span class="gs-card-line">' + rosterCellHtml(e, opts.gid) + '</span><span class="gs-card-line">' + rolesTextHtml(e, opts.teams) + '</span>' +
         '<span class="gs-card-line gs-muted">Last seen: ' + lastSeenHtml(e, opts.now) + '</span><div class="gs-row-actions">' + rowActionsHtml(e) + '</div></div></li>';
     }).join('');
-    return '<div class="gs-table-wrap gs-people-table"><table class="gs-table" aria-label="Accounts that have signed in"><thead><tr>' +
+    return '<div class="gs-table-wrap gs-hd-panel gs-people-table"><table class="gs-table" aria-label="Accounts that have signed in"><thead><tr>' +
       sortHeaderHtml('person', opts.sort) + sortHeaderHtml('roster', opts.sort) + sortHeaderHtml('roles', opts.sort) + sortHeaderHtml('lastSeen', opts.sort) +
       '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + body + '</tbody></table></div>' +
       '<ul class="gs-person-cards" aria-label="Accounts that have signed in">' + cards + '</ul>';
@@ -86,11 +92,11 @@
   function removedHtml(opts) {
     const removed = Array.isArray(opts.removed) ? opts.removed : [];
     if (!removed.length) return '';
-    return '<h2 class="gs-h2" id="removed-heading">Access removed (' + removed.length + ')</h2><div class="gs-panel gs-panel-flush"><ul class="gs-removed" aria-labelledby="removed-heading">' + removed.map(function (r) {
+    return '<h2 class="gs-h2 gs-fg-ght gs-removed-h" id="removed-heading">Access removed (' + removed.length + ')</h2><div class="gs-panel gs-hd-panel gs-panel-flush"><ul class="gs-removed" aria-labelledby="removed-heading">' + removed.map(function (r) {
       const by = r.removedBy && r.removedBy.displayName ? 'Removed by ' + r.removedBy.displayName + ' on ' + G.ui.formatDate(r.removedAt) : 'Removed on ' + G.ui.formatDate(r.removedAt);
       const text = by + (r.reason ? ' - ' + r.reason : '');
       const restore = r.actions && r.actions.restoreAccess
-        ? '<button type="button" class="gs-btn gs-btn-sm" data-action="person-restore" data-uid="' + esc(r.person.id) + '" data-key="restore-access-' + esc(r.person.id) + '" aria-label="Restore access for ' + esc(r.person.displayName) + '">Restore access</button>'
+        ? '<button type="button" class="gs-btn" data-action="person-restore" data-uid="' + esc(r.person.id) + '" data-key="restore-access-' + esc(r.person.id) + '" aria-label="Restore access for ' + esc(r.person.displayName) + '">Restore access</button>'
         : '';
       return '<li class="gs-removed-item"><span class="gs-person gs-person-dim">' + G.ui.avatarHtml(r.person, 'gs-avatar-md') + personTextHtml(r.person, false) + '</span>' +
         '<span class="gs-removed-text">' + esc(text) + '</span>' + restore + '</li>';
@@ -112,7 +118,7 @@
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span><button type="button" class="gs-linkbtn" data-action="dismiss-notice" data-key="dismiss-notice">Dismiss</button></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       '<div class="gs-toolbar"><p class="gs-count">' + esc(countText(data.signedInCount != null ? data.signedInCount : (data.people || []).length)) + '</p>' +
-      (canSyncAll ? '<button type="button" class="gs-btn gs-btn-sm" data-action="people-sync-all" data-key="sync-all">Sync everyone who signed in</button>' : '') +
+      (canSyncAll ? '<button type="button" class="gs-btn" data-action="people-sync-all" data-key="sync-all">Sync everyone who signed in</button>' : '') +
       G.pages.attention.inviteButtonHtml({ key: 'copy-invite-accounts' }) + '<p class="gs-sr" id="invite-status" role="status"></p>' +
       '<div class="gs-search"><label class="gs-sr" for="people-search">Search accounts</label>' + G.icons.icon('search', 18) +
       '<input class="gs-input gs-input-search" type="search" id="people-search" placeholder="Search accounts" data-input="people-search" autocomplete="off" value="' + esc(opts.query || '') + '"></div>' +
@@ -176,27 +182,27 @@
       ? '<div class="gs-gm"><h3 class="gs-legend">Guild Master</h3>' +
         '<button type="button" class="gs-btn" id="dlg-gm-ask" data-action="gm-ask">Make Guild Master</button>' +
         '<div id="dlg-gm-confirm" hidden><p class="gs-fine">Make ' + esc(name) + ' the Guild Master of ' + esc(guildName) + '? You become an Officer.</p>' +
-        '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="gm-cancel">Cancel</button>' +
+        '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="gm-cancel">Cancel</button>' +
         '<button type="button" class="gs-btn gs-btn-molten" data-action="gm-confirm">Make Guild Master</button></div></div></div>'
       : '';
-    return '<form class="gs-dialog-form" data-submit="roles-form" data-uid="' + esc(entry.person.id) + '"' + (custom.length ? ' data-custom="1"' : '') + ' novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="roles-form" data-uid="' + esc(entry.person.id) + '"' + (custom.length ? ' data-custom="1"' : '') + ' novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Edit roles for ' + esc(name) + '</h2>' +
       '<fieldset class="gs-fieldset"' + (canEdit ? '' : ' disabled') + '><legend class="gs-legend">Roles</legend>' + checks + '</fieldset>' + others + discordLine +
       '<p class="gs-fine" id="dlg-help">Officers manage the whole guild. Team Leads manage their team\'s roster, raids and attendance, including officer notes.</p>' +
       gm +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions" id="dlg-roles-footer"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button>' +
+      '<div class="gs-dialog-actions" id="dlg-roles-footer"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Cancel</button>' +
       (canEdit ? '<button type="submit" class="gs-btn gs-btn-molten">Save</button>' : '') + '</div></form>';
   }
 
   function removeDialogHtml(entry, guildName) {
     const name = entry.person.displayName;
-    return '<form class="gs-dialog-form" data-submit="remove-form" data-uid="' + esc(entry.person.id) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="remove-form" data-uid="' + esc(entry.person.id) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Remove ' + esc(name) + '\'s access?</h2>' +
       '<p class="gs-lead gs-lead-sm" id="dlg-text">' + esc(name) + ' can\'t open ' + esc(guildName) + '\'s pages until an officer restores access. Their roster entry and attendance stay.</p>' +
       '<div class="gs-field"><label class="gs-label" for="dlg-reason">Reason (optional)</label><input class="gs-input" type="text" id="dlg-reason" name="reason" maxlength="200" autocomplete="off"></div>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Remove access</button></div></form>';
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Remove access</button></div></form>';
   }
 
   // ── behaviour ──

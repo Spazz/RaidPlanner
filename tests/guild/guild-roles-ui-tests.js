@@ -688,7 +688,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert(!/DISCORD|TOKEN|env|\.env/.test(text(none)), 'no environment names in the words');
     const out = page({ inServer: false, problem: 'bot_missing' }, { roles: [] });
     assert(text(out).includes('The Raidsmith bot is not in your Discord server yet') && text(out).includes('asks for no permissions') && text(out).includes('stays silent'));
-    assert(/<a class="gs-btn gs-btn-molten" href="https:\/\/discord\.com\/oauth2\/authorize[^"]*" target="_blank" rel="noopener noreferrer">Add the Raidsmith bot<\/a>/.test(out));
+    assert(/<a class="gs-btn" href="https:\/\/discord\.com\/oauth2\/authorize[^"]*" target="_blank" rel="noopener noreferrer">Add the Raidsmith bot<\/a>/.test(out));
     assert(!page({ inServer: false, inviteUrl: null }, { roles: [] }).includes('Add the Raidsmith bot'), 'no link to show');
     assert(!page({ inServer: false, inviteUrl: 'javascript:alert(1)' }, { roles: [] }).includes('Add the Raidsmith bot') && !page({ inviteUrl: 'javascript:alert(1)' }).includes('Invite link'), 'only an http(s) address becomes a link');
     for (const [problem, words] of [['bad_token', 'did not accept the bot'], ['unavailable', 'Discord did not answer'], ['rate_limited', 'Discord is busy']]) {
@@ -1287,7 +1287,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     const out = peopleHtml(data);
     const names = [...out.matchAll(/<td><span class="gs-person"><span class="gs-avatar[^>]*>[^<]*<\/span><span class="gs-person-text"><span class="gs-person-line"><span class="gs-person-name">([^<]*)</g)].map(m => m[1]);
     assert.deepEqual(names, ['Cy C', 'Bea B', 'Ann A', 'Zed Z']);
-    assert(out.includes('gs-chip gs-chip-custom">Loot council<') && out.includes('Team Lead: Alpha (Discord)') && out.includes('Raid leader - Bravo'));
+    assert(out.includes('<span class="gs-person-roles">Loot council</span>') && !out.includes('gs-chips') && out.includes('Team Lead: Alpha (Discord)') && out.includes('Raid leader - Bravo'));
   });
 
   await check('Edit roles dialog: the old three-argument call is unchanged; the boxes show what was set by hand and Discord-only roles are listed apart', () => {

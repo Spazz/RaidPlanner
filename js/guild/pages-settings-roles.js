@@ -24,13 +24,16 @@
     return !!role.fixed || (role.kind === 'builtin' && !(data && data.canEditBuiltin));
   }
 
-  function roleBadgesHtml(role) {
-    const out = [];
-    if (role.kind === 'custom') out.push('Custom');
-    else out.push('Built-in');
-    if (role.fixed) out.push('Fixed');
-    if (role.customized) out.push('Edited');
-    return out.map(function (b) { return '<span class="gs-badge">' + esc(b) + '</span>'; }).join('');
+  // One status chip per role (spec 2.3), priority Fixed > Edited > Custom; a plain built-in role has none.
+  function roleChipHtml(role) {
+    const word = role.fixed ? 'Fixed' : (role.customized ? 'Edited' : (role.kind === 'custom' ? 'Custom' : ''));
+    return word ? '<span class="gs-hd-chip is-grey">' + esc(word) + '</span>' : '';
+  }
+
+  // The muted line under the name: where the role comes from, and "Given for one team".
+  function roleSourceText(role) {
+    const source = role.kind === 'custom' ? 'Made by your guild' : 'Built-in role';
+    return role.needsTeam ? source + ' - Given for one team' : source;
   }
 
   // "3 people - 1 Discord mapping - 0 guest links": the counts that apply to the role, plus any that are not zero.
@@ -48,15 +51,15 @@
   function roleCardHtml(role, data) {
     const readOnly = isReadOnly(role, data);
     const counts = countsText(role);
-    const edit = '<button type="button" class="gs-btn gs-btn-sm" data-action="role-edit" data-role="' + esc(role.id) + '" data-key="role-edit-' + esc(role.id) + '" aria-label="' +
+    const edit = '<button type="button" class="gs-btn" data-action="role-edit" data-role="' + esc(role.id) + '" data-key="role-edit-' + esc(role.id) + '" aria-label="' +
       (readOnly ? 'View ' : 'Edit ') + esc(role.name) + '">' + (readOnly ? 'View' : 'Edit') + '</button>';
     const del = role.kind === 'custom'
-      ? '<button type="button" class="gs-btn gs-btn-sm gs-btn-danger-text" data-action="role-delete" data-role="' + esc(role.id) + '" data-key="role-delete-' + esc(role.id) + '" aria-label="Delete ' + esc(role.name) + '">Delete</button>'
+      ? '<button type="button" class="gs-btn gs-btn-ghost" data-action="role-delete" data-role="' + esc(role.id) + '" data-key="role-delete-' + esc(role.id) + '" aria-label="Delete ' + esc(role.name) + '">Delete</button>'
       : '';
-    return '<li class="gs-role-card"><div class="gs-role-main"><div class="gs-role-head"><h3 class="gs-h3 gs-role-name">' + esc(role.name) + '</h3>' + roleBadgesHtml(role) + '</div>' +
+    return '<li class="gs-role-card"><div class="gs-role-main"><div class="gs-role-head"><h3 class="gs-h3 gs-role-name">' + esc(role.name) + '</h3>' + roleChipHtml(role) + '</div>' +
+      '<p class="gs-fine gs-role-source">' + esc(roleSourceText(role)) + '</p>' +
       (role.note ? '<p class="gs-fine gs-role-note">' + esc(role.note) + '</p>' : '') +
       (counts ? '<p class="gs-role-counts">' + esc(counts) + '</p>' : '') +
-      (role.needsTeam ? '<p class="gs-fine">Given for one team</p>' : '') +
       '</div><div class="gs-row-actions">' + edit + del + '</div></li>';
   }
 
@@ -66,7 +69,7 @@
     let body;
     let head = '';
     if (!d) {
-      body = G.pages.signin.loadingHtml();
+      body = G.ui.settingsLoadingHtml();
     } else {
       const own = customRoles(d).length;
       const limit = d.limits && d.limits.customRoles ? d.limits.customRoles : 0;
@@ -76,7 +79,7 @@
         : '<button type="button" class="gs-btn gs-btn-molten" data-action="role-new" data-key="role-new">New role</button>';
       body = '<p class="gs-fine" id="roles-intro">A role is a set of things a person may do. Everyone in the guild is a Member; Officers, Team Leads and the roles you make here add to that.' +
         (d.canEditBuiltin ? '' : ' Only the Guild Master can change the built-in roles.') + '</p>' +
-        '<ul class="gs-role-list" aria-label="Roles">' + rolesOf(d).map(function (r) { return roleCardHtml(r, d); }).join('') + '</ul>';
+        '<ul class="gs-role-list gs-hd-panel" aria-label="Roles">' + rolesOf(d).map(function (r) { return roleCardHtml(r, d); }).join('') + '</ul>';
     }
     return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions">' + head + '</div>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
@@ -141,10 +144,10 @@
   function roleDialogHtml(role, data) {
     const d = data || {};
     if (role && role.fixed) {
-      return '<div class="gs-dialog-form gs-dialog-role">' +
+      return '<div class="gs-dialog-form gs-forge gs-dialog-settings gs-dialog-role">' +
         '<h2 class="gs-dialog-title" id="dlg-title">' + esc(role.name) + '</h2>' +
         '<p class="gs-fine" id="dlg-help">' + esc(FIXED_TEXT) + '</p>' +
-        '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Close</button></div></div>';
+        '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Close</button></div></div>';
     }
     const isNew = !role;
     const custom = isNew || role.kind === 'custom';
@@ -167,29 +170,29 @@
     const reset = canReset
       ? '<div class="gs-role-reset"><button type="button" class="gs-btn" id="dlg-reset-ask" data-action="role-reset-ask">Reset to defaults</button>' +
         '<div id="dlg-reset-confirm" hidden><p class="gs-fine">Reset ' + esc(role.name) + ' to its defaults? What was changed for this guild is lost.</p>' +
-        '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="role-reset-cancel">Cancel</button>' +
+        '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="role-reset-cancel">Cancel</button>' +
         '<button type="button" class="gs-btn gs-btn-danger" data-action="role-reset-confirm">Reset to defaults</button></div></div></div>'
       : '';
-    return '<form class="gs-dialog-form gs-dialog-role" data-submit="role-form" data-mode="' + (isNew ? 'new' : 'edit') + '"' + (isNew ? '' : ' data-role="' + esc(role.id) + '"') + ' novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings gs-dialog-role" data-submit="role-form" data-mode="' + (isNew ? 'new' : 'edit') + '"' + (isNew ? '' : ' data-role="' + esc(role.id) + '"') + ' novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">' + title + '</h2>' +
       '<p class="gs-fine" id="dlg-help">' + esc(help) + '</p>' + notes + nameField +
       '<div class="gs-perm-grid">' + gridHtml(role, d, readOnly) + '</div>' +
       '<p class="gs-field-error" id="dlg-err-permissions" role="alert" hidden></p>' +
       reset +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions" id="dlg-role-footer"><button type="button" class="gs-btn" data-action="dialog-cancel">' + (readOnly ? 'Close' : 'Cancel') + '</button>' +
+      '<div class="gs-dialog-actions" id="dlg-role-footer"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">' + (readOnly ? 'Close' : 'Cancel') + '</button>' +
       (canDelete ? '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="role-delete" data-role="' + esc(role.id) + '">Delete role</button>' : '') +
       (readOnly ? '' : '<button type="submit" class="gs-btn gs-btn-molten">' + (isNew ? 'Create role' : 'Save') + '</button>') + '</div></form>';
   }
 
   function deleteDialogHtml(role) {
     const r = role || {};
-    return '<form class="gs-dialog-form" data-submit="role-delete-form" data-role="' + esc(r.id) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="role-delete-form" data-role="' + esc(r.id) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Delete ' + esc(r.name) + '?</h2>' +
       '<p class="gs-lead gs-lead-sm" id="dlg-text">Deleting <strong>' + esc(r.name) + '</strong> takes it away from ' + esc(plural(r.holders, 'person', 'people')) + ', removes ' +
       esc(plural(r.mapped, 'Discord mapping', 'Discord mappings')) + ' and turns off ' + esc(plural(r.links, 'guest link', 'guest links')) + '. This cannot be undone.</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Delete role</button></div></form>';
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Delete role</button></div></form>';
   }
 
   function load(gid) {

@@ -54,8 +54,8 @@
 
   function teamHtml(team) {
     const w = team.webhook || {};
-    return '<section class="gs-card-sec gs-notify-team" aria-labelledby="' + esc(idOf(team, 'h')) + '"><div class="gs-card-sec-head"><h3 class="gs-h2" id="' + esc(idOf(team, 'h')) + '">' + esc(team.name) + '</h3>' +
-      (w.set ? '<span class="gs-pill ' + (w.state === 'disabled' ? 'gs-pill-warn' : 'gs-pill-ok') + '">' + (w.state === 'disabled' ? 'Switched off' : 'Webhook set') + '</span>' : '<span class="gs-pill gs-pill-muted">No webhook</span>') + '</div>' +
+    return '<section class="gs-card-sec gs-hd-panel gs-notify-team" aria-labelledby="' + esc(idOf(team, 'h')) + '"><div class="gs-card-sec-head"><h3 class="gs-h2" id="' + esc(idOf(team, 'h')) + '">' + esc(team.name) + '</h3>' +
+      (w.set ? '<span class="gs-hd-chip ' + (w.state === 'disabled' ? 'is-rose' : 'is-green') + '">' + (w.state === 'disabled' ? 'Switched off' : 'Webhook set') + '</span>' : '<span class="gs-hd-chip is-grey">No webhook</span>') + '</div>' +
       '<form class="gs-card-sec-body gs-notify-form" id="notify-form-' + esc(team.id) + '" data-submit="notify-save" data-team="' + esc(team.id) + '" novalidate' + G.ui.dirtyFormAttrs() + '>' +
       webhookStatusHtml(team) +
       '<div class="gs-field"><label class="gs-label" for="' + esc(idOf(team, 'url')) + '">' + (w.set ? 'New webhook address' : 'Webhook address') + '</label>' +
@@ -70,14 +70,14 @@
       (w.set && w.state !== 'disabled' ? '<button type="button" class="gs-btn" data-action="notify-test" data-team="' + esc(team.id) + '" data-key="notify-test-' + esc(team.id) + '" aria-describedby="' + esc(idOf(team, 'test-help')) + '">Send a test post</button>' : '') +
       (w.set ? '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="notify-remove" data-team="' + esc(team.id) + '" data-key="notify-remove-' + esc(team.id) + '">Remove webhook</button>' : '') + '</div>' +
       (w.set && w.state !== 'disabled' ? '<p class="gs-fine" id="' + esc(idOf(team, 'test-help')) + '">' + esc(TEST_HELP) + '</p>' : '') +
-      '<p class="gs-fine gs-notify-test" id="' + esc(idOf(team, 'test')) + '" role="status"></p>' + G.ui.saveBarHtml({ saveLabel: 'Save ' + team.name }) + '</form></section>';
+      '<p class="gs-fine gs-notify-test" id="' + esc(idOf(team, 'test')) + '" role="status"></p>' + G.ui.saveBarHtml({ saveLabel: 'Save ' + team.name, saveVariant: 'secondary' }) + '</form></section>';
   }
 
   // opts: { guildData, data (GET /notifications or null), alert, notice }
   function settingsHtml(opts) {
     const d = opts.data;
     let body;
-    if (!d) body = G.pages.signin.loadingHtml();
+    if (!d) body = G.ui.settingsLoadingHtml();
     else if (!d.teams || !d.teams.length) body = '<p class="gs-empty">This guild has no active teams.</p>';
     else body = '<div class="gs-notify-teams">' + d.teams.map(teamHtml).join('') + '</div>';
     return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions"></div>' +

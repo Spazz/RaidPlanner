@@ -365,7 +365,7 @@
   // Markup: put the bar inside the <form> (the Save button submits it) and give the form ui.dirtyFormAttrs(); the delegated listeners keep it current.
   ui.dirtyFormAttrs = function () { return ' data-dirty-form data-input="dirty-form" data-change="dirty-form"'; };
 
-  // opts: { text, saveLabel, discardLabel, busy, busyLabel } for a form whose values are read from its controls (ui.dirtyFormAttrs). A page that keeps a
+  // opts: { text, saveLabel, saveVariant ('secondary' when several bars can show at once; default primary), discardLabel, busy, busyLabel } for a form whose values are read from its controls (ui.dirtyFormAttrs). A page that keeps a
   // DRAFT in state and draws itself again after every change passes { count } (how many things differ from what is saved: 0 hides the bar) and
   // { discardAttrs } (the data-action that puts the draft back); ui.saveBar.sync then keeps the leave guard in step after each draw.
   ui.saveBarHtml = function (opts) {
@@ -375,7 +375,7 @@
     const discardAttrs = Object.assign({ 'data-action': 'savebar-discard', 'data-key': 'savebar-discard' }, o.discardAttrs || {});
     return '<div class="gs-savebar" role="region" aria-label="Unsaved changes" data-savebar' + (stateful ? ' data-savebar-count="' + n + '"' : '') + (stateful && n > 0 ? '' : ' hidden') + '><span class="gs-savebar-text" role="status" data-savebar-text>' + esc(stateful ? ui.saveBar.text(n || 1) : (o.text || '1 unsaved change')) + '</span>' +
       '<span class="gs-savebar-actions">' + ui.buttonHtml({ label: o.discardLabel || 'Discard', variant: 'ghost', attrs: discardAttrs }) +
-      ui.buttonHtml({ label: o.saveLabel || 'Save changes', variant: 'primary', type: 'submit', busy: !!o.busy, busyLabel: o.busyLabel || 'Saving...', attrs: { 'data-key': 'savebar-save' } }) + '</span></div>';
+      ui.buttonHtml({ label: o.saveLabel || 'Save changes', variant: o.saveVariant === 'secondary' ? 'secondary' : 'primary', type: 'submit', busy: !!o.busy, busyLabel: o.busyLabel || 'Saving...', attrs: { 'data-key': 'savebar-save' } }) + '</span></div>';
   };
 
   // The save status in the page head: "Saved at 8:14 PM ET" (success ink) or "Unsaved changes" (warning ink).
