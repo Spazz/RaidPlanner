@@ -271,7 +271,7 @@ function withState(fn) {
     assert((out.match(/<details class="gs-audit-details">/g) || []).length === 2, 'one toggle in the table, one in the card');
     assert(out.includes('<pre class="gs-audit-json">Before\n{\n  &quot;status&quot;: &quot;raider&quot;\n}\n\nAfter\n{\n  &quot;status&quot;: &quot;reserve&quot;\n}</pre>'), out.slice(out.indexOf('<pre'), out.indexOf('</pre>') + 6));
     assert(out.includes('Action: person.update'));
-    assert(out.includes('<table class="gs-table gs-table-audit" aria-label="Activity log">') && out.includes('<ul class="gs-roster-cards gs-audit-cards" aria-label="Activity log">') && out.includes('<li class="gs-roster-card">'));
+    assert(out.includes('<table class="gs-table gs-table-audit" aria-label="Activity log">') && out.includes('<ul class="gs-roster-cards gs-audit-cards gs-hd-panel" aria-label="Activity log">') && out.includes('<li class="gs-roster-card">'));
     assert(out.includes('<th scope="col">When</th><th scope="col">Who</th><th scope="col">What</th>'));
     assert(out.includes('Showing 1 entry, newest first.'));
     assert(!out.includes('data-action="audit-older"'));
@@ -310,9 +310,9 @@ function withState(fn) {
     assert(actHtml(actState({ rows: [auditRow({ actor: null })] })).includes('>Former member<'));
     assert.equal(G.pages.settingsActivity.whoText(auditRow({ actor: { id: 'u9', displayName: '' } })), 'Former member');
     const unfiltered = actHtml(actState({ rows: [] }));
-    assert(unfiltered.includes('<p class="gs-empty">Nothing has been logged yet.</p>') && !unfiltered.includes('<table'));
+    assert(unfiltered.includes('<p class="gs-empty gs-hd-panel">Nothing has been logged yet.</p>') && !unfiltered.includes('<table'));
     const filtered = actHtml(actState({ rows: [], filters: { type: 'loot', actor: '', from: '', to: '' } }));
-    assert(filtered.includes('<p class="gs-empty">No activity matches these filters.</p>'));
+    assert(filtered.includes('<p class="gs-empty gs-hd-panel">No activity matches these filters.</p>'));
     const loading = actHtml(actState({ loading: true }));
     assert(loading.includes('>Loading...<') && !loading.includes('<table'));
     const err = actHtml(actState({ error: 'Something went wrong.' }));

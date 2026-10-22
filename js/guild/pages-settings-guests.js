@@ -9,7 +9,7 @@
   const EXPIRY_LABELS = { '1d': '1 day', '7d': '7 days', '30d': '30 days', never: 'Never' };
   const DEFAULT_EXPIRY = '7d';
   const LABEL_LENGTH = 40;
-  const STATUS = { active: { text: 'Active', cls: 'gs-pill-ok' }, expired: { text: 'Expired', cls: 'gs-pill-warn' }, revoked: { text: 'Turned off', cls: 'gs-pill-muted' } };
+  const STATUS = { active: { text: 'Active', cls: 'is-green' }, expired: { text: 'Expired', cls: 'is-rose' }, revoked: { text: 'Turned off', cls: 'is-grey' } };
   const INTRO = 'A guest link lets someone without an account read part of the guild. It never lets them change anything.';
 
   function st() { return G.app.state; }
@@ -23,8 +23,8 @@
   }
 
   function statusPillHtml(link) {
-    const s = Object.prototype.hasOwnProperty.call(STATUS, link.status) ? STATUS[link.status] : { text: String(link.status), cls: 'gs-pill-muted' };
-    return '<span class="gs-pill ' + s.cls + '">' + esc(s.text) + '</span>';
+    const s = Object.prototype.hasOwnProperty.call(STATUS, link.status) ? STATUS[link.status] : { text: String(link.status), cls: 'is-grey' };
+    return '<span class="gs-hd-chip ' + s.cls + '">' + esc(s.text) + '</span>';
   }
 
   function usedText(link) {
@@ -53,7 +53,7 @@
 
   function offButtonHtml(link) {
     if (link.status !== 'active') return '';
-    return '<button type="button" class="gs-btn gs-btn-sm gs-btn-danger-text" data-action="guest-revoke" data-link="' + esc(link.id) + '" data-key="guest-off-' + esc(link.id) + '" aria-label="Turn off guest link ' + esc(titleOf(link)) + '">Turn off</button>';
+    return '<button type="button" class="gs-btn gs-btn-ghost" data-action="guest-revoke" data-link="' + esc(link.id) + '" data-key="guest-off-' + esc(link.id) + '" aria-label="Turn off guest link ' + esc(titleOf(link)) + '">Turn off</button>';
   }
 
   function linkRowHtml(link) {
@@ -73,15 +73,15 @@
     let body;
     let head = '';
     if (!d) {
-      body = G.pages.signin.loadingHtml();
+      body = G.ui.settingsLoadingHtml();
     } else {
       head = '<button type="button" class="gs-btn gs-btn-molten" data-action="guest-new" data-key="guest-new">New guest link</button>';
       const links = linksOf(d);
       body = '<p class="gs-fine" id="guests-intro">' + esc(INTRO) + ' The address is shown once, when you make it. Turn a link off at any time and it stops working at once.</p>' +
         (links.length
-          ? '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-guests" aria-label="Guest links"><thead><tr><th scope="col">Link</th><th scope="col">Shows</th><th scope="col">Status</th><th scope="col">Used</th><th scope="col">Ends</th>' +
+          ? '<div class="gs-table-wrap gs-hd-panel"><table class="gs-table gs-table-stack gs-table-guests" aria-label="Guest links"><thead><tr><th scope="col">Link</th><th scope="col">Shows</th><th scope="col">Status</th><th scope="col">Used</th><th scope="col">Ends</th>' +
             '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + links.map(linkRowHtml).join('') + '</tbody></table></div>'
-          : '<p class="gs-empty" id="guests-empty">No guest links yet.</p>');
+          : '<p class="gs-empty gs-hd-panel" id="guests-empty">No guest links yet.</p>');
     }
     return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions">' + head + '</div>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
@@ -100,7 +100,7 @@
     const expiries = listOf(d.expiries).length ? d.expiries : Object.keys(EXPIRY_LABELS);
     const expiryItems = expiries.map(function (e) { return { value: e, label: Object.prototype.hasOwnProperty.call(EXPIRY_LABELS, e) ? EXPIRY_LABELS[e] : String(e) }; });
     const teamItems = [{ value: '', label: 'Whole guild' }].concat(G.shell.activeTeams(guildData && guildData.teams).map(function (t) { return { value: t.id, label: t.name }; }));
-    return '<form class="gs-dialog-form" data-submit="guest-form" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="guest-form" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">New guest link</h2>' +
       '<p class="gs-fine" id="dlg-help">' + esc(INTRO) + ' The address is shown once, right after you make it.</p>' +
       '<div class="gs-field"><label class="gs-label" for="dlg-guest-role">Role</label><select class="gs-input" id="dlg-guest-role" name="roleId" data-field="roleId">' +
@@ -112,28 +112,28 @@
       '<div class="gs-field"><label class="gs-label" for="dlg-guest-label">Label (optional)</label><input class="gs-input" type="text" id="dlg-guest-label" name="label" maxlength="' + LABEL_LENGTH + '" autocomplete="off" data-field="label">' +
       '<p class="gs-fine">Only officers see it. For example: Recruits, or Visitors from the other guild.</p>' + fieldErrorHtml('label') + '</div>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Make link</button></div></form>';
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Make link</button></div></form>';
   }
 
   // url: the full address (origin + the path the Worker sent). It is the only place the token is ever drawn.
   function createdDialogHtml(url) {
-    return '<div class="gs-dialog-form">' +
+    return '<div class="gs-dialog-form gs-forge gs-dialog-settings">' +
       '<h2 class="gs-dialog-title" id="dlg-title">Guest link made</h2>' +
       '<p class="gs-lead gs-lead-sm" id="dlg-help">Copy it now. It is shown only once.</p>' +
       '<div class="gs-field"><label class="gs-label" for="guest-url">Guest link</label>' +
       '<input class="gs-input gs-code" type="text" id="guest-url" readonly autocomplete="off" spellcheck="false" value="' + esc(url) + '">' +
       '<p class="gs-fine" id="guest-copy-status" role="status"></p></div>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="guest-copy" data-key="guest-copy">Copy link</button>' +
-      '<button type="button" class="gs-btn" data-action="dialog-cancel">Done</button></div></div>';
+      '<button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Done</button></div></div>';
   }
 
   function revokeDialogHtml(link) {
     const l = link || {};
-    return '<form class="gs-dialog-form" data-submit="guest-revoke-form" data-link="' + esc(l.id) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="guest-revoke-form" data-link="' + esc(l.id) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Turn off this guest link?</h2>' +
       '<p class="gs-lead gs-lead-sm" id="dlg-text">Anyone using <strong>' + esc(titleOf(l)) + '</strong> loses access at once. It cannot be turned back on: make a new link instead.</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Keep it on</button><button type="submit" class="gs-btn gs-btn-danger">Turn off</button></div></form>';
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Keep it on</button><button type="submit" class="gs-btn gs-btn-danger">Turn off</button></div></form>';
   }
 
   function load(gid) {

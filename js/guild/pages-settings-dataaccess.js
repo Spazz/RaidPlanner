@@ -16,7 +16,7 @@
     loot: 'Who got which item, by date.',
     raids: 'Raid dates, zones, bosses killed and who came.',
   };
-  const STATUS = { active: { text: 'Active', cls: 'gs-pill-ok' }, expired: { text: 'Expired', cls: 'gs-pill-warn' }, revoked: { text: 'Turned off', cls: 'gs-pill-muted' } };
+  const STATUS = { active: { text: 'Active', cls: 'is-green' }, expired: { text: 'Expired', cls: 'is-rose' }, revoked: { text: 'Turned off', cls: 'is-grey' } };
   const INTRO = 'A data key opens read-only links to your roster, attendance, loot and raids, for a spreadsheet or a script. It reads what a member can see: no officer notes, no Discord or account data.';
 
   function st() { return G.app.state; }
@@ -30,8 +30,8 @@
   }
 
   function statusPillHtml(key) {
-    const s = Object.prototype.hasOwnProperty.call(STATUS, key.status) ? STATUS[key.status] : { text: String(key.status), cls: 'gs-pill-muted' };
-    return '<span class="gs-pill ' + s.cls + '">' + esc(s.text) + '</span>';
+    const s = Object.prototype.hasOwnProperty.call(STATUS, key.status) ? STATUS[key.status] : { text: String(key.status), cls: 'is-grey' };
+    return '<span class="gs-hd-chip ' + s.cls + '">' + esc(s.text) + '</span>';
   }
 
   function usedText(key) {
@@ -52,7 +52,7 @@
 
   function offButtonHtml(key) {
     if (key.status !== 'active') return '';
-    return '<button type="button" class="gs-btn gs-btn-sm gs-btn-danger-text" data-action="dkey-revoke" data-key-id="' + esc(key.id) + '" data-key="dkey-off-' + esc(key.id) + '" aria-label="Turn off key ' + esc(key.name) + '">Turn off</button>';
+    return '<button type="button" class="gs-btn gs-btn-ghost" data-action="dkey-revoke" data-key-id="' + esc(key.id) + '" data-key="dkey-off-' + esc(key.id) + '" aria-label="Turn off key ' + esc(key.name) + '">Turn off</button>';
   }
 
   function keyRowHtml(key) {
@@ -70,7 +70,7 @@
     let body;
     let head = '';
     if (!d) {
-      body = G.pages.signin.loadingHtml();
+      body = G.ui.settingsLoadingHtml();
     } else {
       head = '<button type="button" class="gs-btn gs-btn-molten" data-action="dkey-new" data-key="dkey-new">New key</button>';
       const keys = keysOf(d);
@@ -78,9 +78,9 @@
       body = '<p class="gs-fine" id="dkeys-intro">' + esc(INTRO) + ' The key is shown once, when you make it. Turn a key off at any time and it stops working at once.' +
         (limits.perHour ? ' Each key can be used ' + esc(String(limits.perHour)) + ' times an hour.' : '') + '</p>' +
         (keys.length
-          ? '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-guests" aria-label="Data keys"><thead><tr><th scope="col">Key</th><th scope="col">Reads</th><th scope="col">Status</th><th scope="col">Used</th><th scope="col">Ends</th>' +
+          ? '<div class="gs-table-wrap gs-hd-panel"><table class="gs-table gs-table-stack gs-table-guests" aria-label="Data keys"><thead><tr><th scope="col">Key</th><th scope="col">Reads</th><th scope="col">Status</th><th scope="col">Used</th><th scope="col">Ends</th>' +
             '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + keys.map(keyRowHtml).join('') + '</tbody></table></div>'
-          : '<p class="gs-empty" id="dkeys-empty">No data keys yet.</p>');
+          : '<p class="gs-empty gs-hd-panel" id="dkeys-empty">No data keys yet.</p>');
     }
     return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions">' + head + '</div>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
@@ -103,7 +103,7 @@
       return '<div class="gs-check"><input type="checkbox" id="' + id + '" name="datasets" value="' + esc(ds.id) + '"' + (ds.available ? ' checked' : ' disabled') + ' data-key="' + id + '">' +
         '<label for="' + id + '">' + esc(ds.label || DATASET_LABELS[ds.id] || ds.id) + '</label><p class="gs-fine gs-public-why">' + esc(help) + '</p></div>';
     }).join('');
-    return '<form class="gs-dialog-form" data-submit="dkey-form" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="dkey-form" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">New data key</h2>' +
       '<p class="gs-fine" id="dlg-help">' + esc(INTRO) + ' The key is shown once, right after you make it.</p>' +
       '<div class="gs-field"><label class="gs-label" for="dlg-dkey-name">Name</label><input class="gs-input" type="text" id="dlg-dkey-name" name="name" maxlength="' + NAME_LENGTH + '" autocomplete="off" data-field="name">' +
@@ -113,7 +113,7 @@
       '<div class="gs-field"><label class="gs-label" for="dlg-dkey-expiry">Works for</label><select class="gs-input" id="dlg-dkey-expiry" name="expiresIn" data-field="expiresIn">' +
       G.ui.optionsHtml(expiryItems, expiries.indexOf(DEFAULT_EXPIRY) >= 0 ? DEFAULT_EXPIRY : expiries[0]) + '</select>' + fieldErrorHtml('expiresIn') + '</div>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Make key</button></div></form>';
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Make key</button></div></form>';
   }
 
   // The links built from the key, for each dataset it reads: the CSV address (Google Sheets: =IMPORTDATA("...")) and the JSON address (send the key as a header).
@@ -129,14 +129,14 @@
     const rows = links.map(function (l, i) {
       return '<div class="gs-field"><label class="gs-label" for="dkey-csv-' + i + '">' + esc(l.label) + ' (CSV link for Google Sheets)</label>' +
         '<div class="gs-copy-row"><input class="gs-input gs-code" type="text" id="dkey-csv-' + i + '" readonly autocomplete="off" spellcheck="false" value="' + esc(l.csv) + '">' +
-        '<button type="button" class="gs-btn gs-btn-sm" data-action="dkey-copy" data-target="dkey-csv-' + i + '" data-key="dkey-copy-csv-' + i + '">Copy link</button></div>' +
+        '<button type="button" class="gs-btn" data-action="dkey-copy" data-target="dkey-csv-' + i + '" data-key="dkey-copy-csv-' + i + '">Copy link</button></div>' +
         '<p class="gs-fine">In a sheet: <code>=IMPORTDATA("link")</code>. JSON: <code>' + esc(l.json) + '</code> with the header <code>Authorization: Bearer key</code>.</p></div>';
     }).join('');
-    return '<div class="gs-dialog-form">' +
+    return '<div class="gs-dialog-form gs-forge gs-dialog-settings">' +
       '<h2 class="gs-dialog-title" id="dlg-title">Data key made</h2>' +
       '<p class="gs-lead gs-lead-sm" id="dlg-help">Copy it now. It is shown only once.</p>' +
       '<div class="gs-field"><label class="gs-label" for="dkey-token">Key</label><div class="gs-copy-row"><input class="gs-input gs-code" type="text" id="dkey-token" readonly autocomplete="off" spellcheck="false" value="' + esc(token) + '">' +
-      '<button type="button" class="gs-btn gs-btn-sm" data-action="dkey-copy" data-target="dkey-token" data-key="dkey-copy-token">Copy key</button></div>' +
+      '<button type="button" class="gs-btn" data-action="dkey-copy" data-target="dkey-token" data-key="dkey-copy-token">Copy key</button></div>' +
       '<p class="gs-fine" id="dkey-copy-status" role="status"></p></div>' + rows +
       '<p class="gs-fine">Keep the links private: anyone with a link can read this data until you turn the key off.</p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="dialog-cancel">Done</button></div></div>';
@@ -144,11 +144,11 @@
 
   function revokeDialogHtml(key) {
     const k = key || {};
-    return '<form class="gs-dialog-form" data-submit="dkey-revoke-form" data-key-id="' + esc(k.id) + '" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="dkey-revoke-form" data-key-id="' + esc(k.id) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Turn off this key?</h2>' +
       '<p class="gs-lead gs-lead-sm" id="dlg-text">Every sheet or script using <strong>' + esc(k.name) + '</strong> stops getting data at once. It cannot be turned back on: make a new key instead.</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Keep it on</button><button type="submit" class="gs-btn gs-btn-danger">Turn off</button></div></form>';
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Keep it on</button><button type="submit" class="gs-btn gs-btn-danger">Turn off</button></div></form>';
   }
 
   function load(gid) {

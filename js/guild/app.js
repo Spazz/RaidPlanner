@@ -809,7 +809,7 @@
         return P.import.wclHtml({ guildData: gd, wcl: imp, people: people });
       }
       case 'settings': {
-        if (!gd) return P.signin.loadingHtml();
+        if (!gd) return G.ui.settingsLoadingHtml();
         const tab = r.tab;
         if (!tab) return G.shell.settingsListHtml(ctx);
         if (tab === 'general') return P.settingsGeneral.main(r, gd, ctx);
@@ -818,7 +818,7 @@
         if (tab === 'loot') return P.settingsLoot.main(r, gd, ctx);
         if (tab === 'battlenet') {
           const x = state.bnetSettings;
-          if (!x || x.gid !== gd.guild.id) return P.signin.loadingHtml();
+          if (!x || x.gid !== gd.guild.id) return G.ui.settingsLoadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'battlenet', P.settingsBnet.settingsHtml({ guildData: gd, data: x.data, alert: state.pageAlert, notice: x.notice }));
         }
         if (tab === 'schedule') return P.settingsSchedule.main(r, gd, ctx);
@@ -827,14 +827,14 @@
         if (tab === 'data') return P.settingsData.main(r, gd, ctx);
         if (Object.prototype.hasOwnProperty.call(ROLE_TABS, tab)) {
           const x = state[ROLE_TABS[tab].state];
-          if (!x || x.gid !== gd.guild.id) return P.signin.loadingHtml();
+          if (!x || x.gid !== gd.guild.id) return G.ui.settingsLoadingHtml();
           return G.shell.settingsFrameHtml(ctx, tab, P[ROLE_TABS[tab].page].settingsHtml({ guildData: gd, data: x.data, alert: state.pageAlert, notice: x.notice }));
         }
         if (tab === 'people') {
-          if (!state.people[gd.guild.id]) return P.signin.loadingHtml();
+          if (!state.people[gd.guild.id]) return G.ui.settingsLoadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'people', P.people.peopleHtml({ guildData: gd, data: state.people[gd.guild.id], sort: state.peopleSort, query: state.peopleQuery, notice: state.notice, alert: state.pageAlert, now: Date.now() }));
         }
-        return P.signin.loadingHtml();
+        return G.ui.settingsLoadingHtml();
       }
       default:
         return P.signin.messageHtml('Page not found', 'That address does not match a Raidsmith guild page.', {});

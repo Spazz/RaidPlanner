@@ -63,7 +63,7 @@
 
   function questionHtml(q, i) {
     const n = i + 1;
-    return '<li class="gs-q-row"><div class="gs-q-head"><h3 class="gs-h3">Question ' + n + '</h3><button type="button" class="gs-btn gs-btn-sm" data-action="applyq-remove" data-index="' + i + '" data-key="aq-remove-' + i + '" aria-label="Remove question ' + n + '">Remove</button></div>' +
+    return '<li class="gs-q-row"><div class="gs-q-head"><h3 class="gs-h3">Question ' + n + '</h3><button type="button" class="gs-btn gs-btn-ghost" data-action="applyq-remove" data-index="' + i + '" data-key="aq-remove-' + i + '" aria-label="Remove question ' + n + '">Remove</button></div>' +
       '<div class="gs-field"><label class="gs-label" for="aq-label-' + i + '">Question</label><input class="gs-input" type="text" id="aq-label-' + i + '" name="label-' + i + '" maxlength="' + LABEL_MAX + '" autocomplete="off" value="' + esc(q.label) + '"></div>' +
       '<div class="gs-field"><label class="gs-label" for="aq-type-' + i + '">Answer</label><select class="gs-input" id="aq-type-' + i + '" name="type-' + i + '" data-change="applyq-type" data-index="' + i + '">' +
       G.ui.optionsHtml(TYPES.map(function (t) { return { value: t[0], label: t[1] }; }), q.type) + '</select></div>' +
@@ -73,7 +73,7 @@
 
   function addressHtml(d, origin) {
     const url = origin + (typeof d.path === 'string' ? d.path : '');
-    return '<div class="gs-panel gs-public-url"><label class="gs-label" for="apply-url">Apply address</label>' +
+    return '<div class="gs-panel gs-hd-panel gs-set-body gs-public-url"><label class="gs-label" for="apply-url">Apply address</label>' +
       '<div class="gs-copy-row"><input class="gs-input gs-code" type="text" id="apply-url" readonly autocomplete="off" spellcheck="false" value="' + esc(url) + '">' +
       '<button type="button" class="gs-btn" data-action="apply-copy" data-key="apply-copy">Copy link</button></div>' +
       '<p class="gs-fine" id="apply-copy-status" role="status"></p></div>';
@@ -91,11 +91,11 @@
       (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '') +
       (d.enabled ? addressHtml(d, opts.origin == null ? G.ui.pageOrigin() : opts.origin) : '') +
       '<form class="gs-apply-settings" id="apply-form" data-submit="apply-settings-form" data-input="apply-dirty" data-change="apply-dirty" novalidate>' +
-      '<div class="gs-check"><input type="checkbox" id="apply-enabled" name="enabled"' + (draft.enabled ? ' checked' : '') + '><label for="apply-enabled">Take applications</label></div>' +
-      '<h3 class="gs-h3">Your questions (' + draft.questions.length + ' of ' + MAX_QUESTIONS + ')</h3>' +
-      '<p class="gs-fine">Every application asks for the character name, class and spec, the realm and the team. These are on top of that.</p>' +
-      (draft.questions.length ? '<ol class="gs-q-list">' + draft.questions.map(questionHtml).join('') + '</ol>' : '<p class="gs-empty">No questions yet.</p>') +
-      '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="applyq-add" data-key="aq-add"' + (full ? ' disabled' : '') + '>Add a question</button></div>' +
+      '<div class="gs-hd-panel gs-set-body"><div class="gs-check"><input type="checkbox" id="apply-enabled" name="enabled"' + (draft.enabled ? ' checked' : '') + '><label for="apply-enabled">Take applications</label></div></div>' +
+      '<section class="gs-hd-panel gs-q-panel" aria-labelledby="apply-q-h"><div class="gs-q-panel-head"><h3 class="gs-h3 gs-set-h" id="apply-q-h">Your questions (' + draft.questions.length + ' of ' + MAX_QUESTIONS + ')</h3>' +
+      '<p class="gs-fine">Every application asks for the character name, class and spec, the realm and the team. These are on top of that.</p></div>' +
+      (draft.questions.length ? '<ol class="gs-q-list">' + draft.questions.map(questionHtml).join('') + '</ol>' : '<p class="gs-empty gs-q-empty">No questions yet.</p>') +
+      '<div class="gs-row-actions gs-q-add"><button type="button" class="gs-btn" data-action="applyq-add" data-key="aq-add"' + (full ? ' disabled' : '') + '>Add a question</button></div></section>' +
       '<p class="gs-alert" id="apply-error" role="alert"' + (x.error ? '' : ' hidden') + '>' + esc(x.error || '') + '</p>' +
       G.ui.saveBarHtml({ count: changeCount(x), busy: x.busy, discardAttrs: { 'data-action': 'apply-discard', 'data-key': 'apply-discard' } }) + '</form>' +
       (counts.new || counts.reviewing ? '<p class="gs-fine">' + esc((counts.new || 0) + ' new and ' + (counts.reviewing || 0) + ' being reviewed') + ' in <a href="' + esc(G.router.format({ name: 'applications', gid: opts.guildData.guild.id })) + '">the inbox</a>.</p>' : '') + '</section>';
@@ -103,7 +103,7 @@
 
   function main(r, gd, ctx) {
     const x = a().settingsApply;
-    if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
+    if (!x || x.gid !== gd.guild.id) return G.ui.settingsLoadingHtml();
     return G.shell.settingsFrameHtml(ctx, 'applications', settingsHtml({ guildData: gd, state: x, alert: st().pageAlert }));
   }
 

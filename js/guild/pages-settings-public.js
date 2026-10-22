@@ -30,7 +30,7 @@
 
   function addressHtml(d, origin) {
     const url = origin + (typeof d.path === 'string' ? d.path : '');
-    return '<div class="gs-panel gs-public-url"><label class="gs-label" for="public-url">Public address</label>' +
+    return '<div class="gs-panel gs-hd-panel gs-set-body gs-public-url"><label class="gs-label" for="public-url">Public address</label>' +
       '<div class="gs-copy-row"><input class="gs-input gs-code" type="text" id="public-url" readonly autocomplete="off" spellcheck="false" value="' + esc(url) + '">' +
       '<button type="button" class="gs-btn" data-action="public-copy" data-key="public-copy">Copy link</button></div>' +
       '<p class="gs-fine" id="public-copy-status" role="status"></p></div>';
@@ -41,16 +41,17 @@
     const d = opts.data;
     let body;
     if (!d) {
-      body = G.pages.signin.loadingHtml();
+      body = G.ui.settingsLoadingHtml();
     } else {
       const origin = typeof opts.origin === 'string' ? opts.origin : G.ui.pageOrigin();
       body = '<p class="gs-fine" id="public-intro">' + esc(INTRO) + '</p>' +
         '<form class="gs-form gs-public-form" id="public-form" data-submit="public-settings" novalidate' + G.ui.dirtyFormAttrs() + '>' +
+        '<section class="gs-card-sec gs-hd-panel"><div class="gs-card-sec-body gs-public-body">' +
         '<div class="gs-check"><input type="checkbox" id="public-enabled" name="enabled"' + (d.enabled ? ' checked' : '') + '><label for="public-enabled">Show a public page</label></div>' +
         '<fieldset class="gs-pol-field"><legend class="gs-label">What it shows</legend>' +
         SECTION_ITEMS.map(function (item) { return sectionHtml(item, d); }).join('') + '</fieldset>' +
         '<p class="gs-fine" id="public-never">' + esc(NEVER) + '</p>' +
-        '<p class="gs-alert" id="public-form-error" role="alert" hidden></p>' +
+        '<p class="gs-alert" id="public-form-error" role="alert" hidden></p></div></section>' +
         G.ui.saveBarHtml({}) + '</form>' +
         (d.enabled ? addressHtml(d, origin) : '');
     }

@@ -102,7 +102,7 @@
 
   function main(r, gd, ctx) {
     const s = a().settingsLoot;
-    if (!s || s.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
+    if (!s || s.gid !== gd.guild.id) return G.ui.settingsLoadingHtml();
     return G.shell.settingsFrameHtml(ctx, 'loot', settingsHtml({ guildData: gd, s: s, alert: st().pageAlert, notice: a().lootPolNotice }));
   }
 

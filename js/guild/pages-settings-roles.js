@@ -33,7 +33,8 @@
   // The muted line under the name: where the role comes from, and "Given for one team".
   function roleSourceText(role) {
     const source = role.kind === 'custom' ? 'Made by your guild' : 'Built-in role';
-    return role.needsTeam ? source + ' - Given for one team' : source;
+    const said = /given for one team/i.test(role.note || '');
+    return role.needsTeam && !said ? source + ' - Given for one team' : source;
   }
 
   // "3 people - 1 Discord mapping - 0 guest links": the counts that apply to the role, plus any that are not zero.

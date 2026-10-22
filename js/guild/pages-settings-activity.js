@@ -52,17 +52,17 @@
   }
 
   function listHtml(rows, zone, now) {
-    return '<div class="gs-table-wrap gs-audit-table"><table class="gs-table gs-table-audit" aria-label="Activity log"><thead><tr><th scope="col">When</th><th scope="col">Who</th>' +
+    return '<div class="gs-table-wrap gs-hd-panel gs-audit-table"><table class="gs-table gs-table-audit" aria-label="Activity log"><thead><tr><th scope="col">When</th><th scope="col">Who</th>' +
       '<th scope="col">What</th><th scope="col"><span class="gs-sr">Details</span></th></tr></thead><tbody>' +
       rows.map(function (r) { return rowHtml(r, zone, now); }).join('') + '</tbody></table></div>' +
-      '<ul class="gs-roster-cards gs-audit-cards" aria-label="Activity log">' + rows.map(function (r) { return cardHtml(r, zone, now); }).join('') + '</ul>';
+      '<ul class="gs-roster-cards gs-audit-cards gs-hd-panel" aria-label="Activity log">' + rows.map(function (r) { return cardHtml(r, zone, now); }).join('') + '</ul>';
   }
 
   function filterBarHtml(gid, s) {
     const f = s.filters;
     const types = [{ value: '', label: 'All activity' }].concat((s.types || []).map(function (t) { return { value: t.id, label: t.label }; }));
     const actors = [{ value: '', label: 'Everyone' }].concat((s.actors || []).map(function (p) { return { value: p.id, label: p.displayName }; }));
-    return '<div class="gs-audit-filters" role="group" aria-label="Filter activity">' +
+    return '<div class="gs-audit-filters gs-hd-panel" role="group" aria-label="Filter activity">' +
       '<div class="gs-field"><label class="gs-label" for="act-type">Type</label><select class="gs-input" id="act-type" data-change="audit-filter" data-filter="type" data-key="act-type">' + G.ui.optionsHtml(types, f.type) + '</select></div>' +
       '<div class="gs-field"><label class="gs-label" for="act-actor">Person</label><select class="gs-input" id="act-actor" data-change="audit-filter" data-filter="actor" data-key="act-actor">' + G.ui.optionsHtml(actors, f.actor) + '</select></div>' +
       '<div class="gs-field"><label class="gs-label" for="act-from">From</label><input class="gs-input" type="date" id="act-from" data-change="audit-filter" data-filter="from" data-key="act-from" value="' + esc(f.from) + '"></div>' +
@@ -86,7 +86,7 @@
       body = listHtml(rows, s.timeZone, opts.now) +
         (s.next ? '<div class="gs-actions"><button type="button" class="gs-btn" data-action="audit-older" data-key="audit-older"' + (s.olderLoading ? ' disabled' : '') + '>' + (s.olderLoading ? 'Loading...' : 'Older') + '</button></div>' : '');
     } else {
-      body = '<p class="gs-empty">' + (hasFilters(s.filters) ? 'No activity matches these filters.' : 'Nothing has been logged yet.') + '</p>';
+      body = '<p class="gs-empty gs-hd-panel">' + (hasFilters(s.filters) ? 'No activity matches these filters.' : 'Nothing has been logged yet.') + '</p>';
     }
     return '<div class="gs-audit"><p class="gs-fine">What people changed in ' + esc(gd.guild.name) + '. Times are in the guild\'s time zone' + (s.timeZone ? ' (' + esc(s.timeZone) + ')' : '') + '.</p>' +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + filterBarHtml(gd.guild.id, s) +
@@ -124,7 +124,7 @@
 
   function main(r, gd, ctx) {
     const s = a().settingsActivity;
-    if (!s || s.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
+    if (!s || s.gid !== gd.guild.id) return G.ui.settingsLoadingHtml();
     return G.shell.settingsFrameHtml(ctx, 'activity', activityHtml({ guildData: gd, s: s, alert: st().pageAlert, now: Date.now() }));
   }
 
