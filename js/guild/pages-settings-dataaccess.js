@@ -16,7 +16,7 @@
     loot: 'Who got which item, by date.',
     raids: 'Raid dates, zones, bosses killed and who came.',
   };
-  const STATUS = { active: { text: 'Active', cls: 'is-green' }, expired: { text: 'Expired', cls: 'is-rose' }, revoked: { text: 'Turned off', cls: 'is-grey' } };
+  const STATUS = { expired: { text: 'Expired', cls: 'is-rose' }, revoked: { text: 'Turned off', cls: 'is-grey' } };
   const INTRO = 'A data key opens read-only links to your roster, attendance, loot and raids, for a spreadsheet or a script. It reads what a member can see: no officer notes, no Discord or account data.';
 
   function st() { return G.app.state; }
@@ -30,6 +30,7 @@
   }
 
   function statusPillHtml(key) {
+    if (key.status === 'active') return ''; // spec 2.3: the default state shows nothing
     const s = Object.prototype.hasOwnProperty.call(STATUS, key.status) ? STATUS[key.status] : { text: String(key.status), cls: 'is-grey' };
     return '<span class="gs-hd-chip ' + s.cls + '">' + esc(s.text) + '</span>';
   }

@@ -138,7 +138,7 @@ function keyData(extra) {
     const out = S.settingsHtml({ guildData: guildData(), data: keyData(), notice: 'Data key made.', alert: '' });
     const t = text(out);
     assert(t.includes('Loot sheet') && t.includes('Whole guild') && t.includes('Roster, Loot') && t.includes('Used 3 times') && t.includes('Never used'), t);
-    assert(t.includes('Alpha') && t.includes('Attendance') && t.includes('Expired') && t.includes('Turned off') && t.includes('Active'), t);
+    assert(t.includes('Alpha') && t.includes('Attendance') && t.includes('Expired') && t.includes('Turned off') && !t.includes('Active'), t); // an active key shows no status word (spec 2.3)
     assert(t.includes('Expires ') && t.includes('Expired ') && t.includes('Turned off Oct'), t);
     assert(text(S.settingsHtml({ guildData: guildData(), data: keyData({ keys: [Object.assign({}, keyData().keys[0], { expiresAt: null })] }) })).includes('Never expires'));
     assert(t.includes('Data key made.') && t.includes('60 times an hour'), t);

@@ -1,6 +1,6 @@
 // ── PAGE: GUILD SETTINGS > LOOT (who sees loot, how the balance counts) ──
 // The same model as Settings > Attendance: a stored policy is an OVERRIDE object (only the keys set at that level); the
-// page edits one level at a time ("Guild default" or one team) as a draft, shows "Inherited" / "Overridden" per key in a
+// page edits one level at a time ("Guild default" or one team) as a draft, says "Guild default" / "Changed for this team" (+ Reset) per key in a
 // team scope, and saves with PUT /loot/policy { teamId | null, override, version }. GET /loot/policy answers with
 // { defaults, guild, teams, resolved, versions }. The path helpers come from pages-settings-attendance.js.
 (function (G) {
@@ -32,10 +32,12 @@
   function clone(x) { return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); }
 
   // ── view ──
+  // Where the value comes from, as muted text (no chip): the guild's, or changed for this team with its Reset (the same lpol-reset action).
   function chipsOf(scope, eff, field) {
     if (scope === 'guild') return '';
-    return '<span class="gs-chip ' + (eff.overridden ? 'gs-chip-main' : 'gs-chip-plain') + '">' + (eff.overridden ? 'Overridden' : 'Inherited') + '</span>' +
-      (eff.overridden ? '<button type="button" class="gs-linkbtn" data-action="lpol-reset" data-path="' + esc(field.path) + '" data-key="lpol-reset-' + esc(fid(field.path)) + '">Reset</button>' : '');
+    if (!eff.overridden) return '<span class="gs-pol-src">Guild default</span>';
+    return '<span class="gs-pol-src is-over">Changed for this team</span>' +
+      '<button type="button" class="gs-btn gs-btn-ghost gs-btn-sm gs-pol-reset" data-action="lpol-reset" data-path="' + esc(field.path) + '" data-key="lpol-reset-' + esc(fid(field.path)) + '">Reset</button>';
   }
 
   function fieldHtml(field, scope, draft, view) {
@@ -59,8 +61,8 @@
   }
 
   function groupHtml(g, scope, draft, view) {
-    return '<section class="gs-card-sec" aria-labelledby="lpg-' + g.id + '"><div class="gs-card-sec-head"><h2 class="gs-h2" id="lpg-' + g.id + '">' + esc(g.title) + '</h2></div><div class="gs-card-sec-body">' +
-      (g.intro ? '<p class="gs-fine">' + esc(g.intro) + '</p>' : '') + g.fields.map(function (f) { return fieldHtml(f, scope, draft, view); }).join('') + '</div></section>';
+    return '<section class="gs-att-section" aria-labelledby="lpg-' + g.id + '"><h2 class="gs-hd-sl" id="lpg-' + g.id + '">' + esc(g.title) + '</h2>' +
+      (g.intro ? '<p class="gs-fine">' + esc(g.intro) + '</p>' : '') + '<div class="gs-hd-panel"><div class="gs-att-grp">' + g.fields.map(function (f) { return fieldHtml(f, scope, draft, view); }).join('') + '</div></div></section>';
   }
 
   // How many settings differ from what is saved at this level (the Save bar's count). The guild default stores only what differs from the built-in rules.
@@ -76,7 +78,7 @@
     const scopeField = '<div class="gs-roster-status"><label class="gs-label" for="lpol-scope">Applies to</label><select class="gs-input" id="lpol-scope" data-change="lpol-scope" data-key="lpol-scope">' + G.ui.optionsHtml(scopeOpts, s.scope) + '</select></div>';
     const scopeNote = s.scope === 'guild'
       ? '<p class="gs-fine">These rules apply to every team unless a team has its own override.</p>'
-      : '<p class="gs-fine">Only the keys marked Overridden differ from the guild default. Everything else follows it.</p>';
+      : '<p class="gs-fine">Only the rules marked "Changed for this team" differ from the guild default. Everything else follows it.</p>';
     return '<div class="gs-settings-att gs-settings-loot">' + scopeField + scopeNote + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
       '<form class="gs-pol-form" data-submit="lpol-form" novalidate>' + GROUPS.map(function (g) { return groupHtml(g, s.scope, s.draft, s.view); }).join('') +

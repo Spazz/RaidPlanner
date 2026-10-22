@@ -1116,7 +1116,7 @@ function withState(fn) {
   const LOOT_VIEW = { defaults: LOOT_DEFAULTS, guild: { balance: { countTags: ['MS', 'OS'] } }, teams: { t1: { visibility: { members: 'own' } } }, resolved: {}, versions: { guild: 2, teams: { t1: 5 } } };
   const S0 = (over) => Object.assign({ gid: 'g1', view: LOOT_VIEW, scope: 'guild', draft: { balance: { countTags: ['MS', 'OS'] } } }, over || {});
 
-  await check('settings form: guild scope shows effective values with radios and tag boxes; the team scope marks Inherited / Overridden with Reset', () => {
+  await check('settings form: guild scope shows effective values with radios and tag boxes; the team scope says Guild default / Changed for this team with Reset', () => {
     const S = G.pages.settingsLoot;
     const out = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0() });
     assert(out.includes('Who sees loot') && out.includes('Balance') && out.includes('Members see') && out.includes('Tags that count'));
@@ -1124,12 +1124,12 @@ function withState(fn) {
     assert(/id="lp-balance-mode-0"[^>]*value="perRaid" checked/.test(out));
     assert(/value="MS" checked/.test(out) && /value="OS" checked/.test(out));
     assert(out.includes('data-change="lpol-change" data-type="radio" data-path="visibility.members"') && out.includes('data-type="checks" data-path="balance.countTags"'));
-    assert(!out.includes('Inherited') && !out.includes('Overridden'), 'no markers in the guild scope');
+    assert(!out.includes('Guild default</span>') && !out.includes('Changed for this team') && !out.includes('gs-chip'), 'no markers in the guild scope');
     assert(out.includes('<option value="guild" selected>Guild default</option>') && out.includes('Team KJ override'));
     assert(out.includes('Reset to defaults') && out.includes('data-submit="lpol-form"'));
     const team = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0({ scope: 't1', draft: { visibility: { members: 'own' } } }) });
-    assert(/id="lpf-visibility-members"[\s\S]*?Overridden[\s\S]*?data-action="lpol-reset" data-path="visibility.members"/.test(team));
-    assert(/id="lpf-balance-countTags"[\s\S]*?Inherited/.test(team), 'inherits the guild tags');
+    assert(/id="lpf-visibility-members"[\s\S]*?Changed for this team[\s\S]*?data-action="lpol-reset" data-path="visibility.members"/.test(team));
+    assert(/id="lpf-balance-countTags"[\s\S]*?Guild default<\/span>/.test(team) && !team.includes('Inherited') && !team.includes('Overridden'), 'inherits the guild tags');
     assert(/value="OS" checked/.test(team), 'the inherited value shows');
     assert(team.includes('Remove the team override') && !team.includes('data-path="balance.countTags" data-key="lpol-reset'));
     assertNoRawAttrs(out);
@@ -1137,7 +1137,7 @@ function withState(fn) {
     assert(S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0(), alert: 'Nope.', notice: 'Loot rules saved.' }).includes('Loot rules saved.'));
   });
 
-  await check('settings: What members see has two switches (standings, item look-up), off by default, guild default and team override with Inherited / Overridden', () => {
+  await check('settings: What members see has two switches (standings, item look-up), off by default, guild default and team override with Guild default / Changed for this team', () => {
     const S = G.pages.settingsLoot;
     const out = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0() });
     assert(out.includes('What members see') && out.includes('Members always see the latest raid nights and their own loot by raid day. These two are extra.'));
@@ -1148,8 +1148,8 @@ function withState(fn) {
     const guildOn = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0({ draft: { visibility: { standings: true } } }) });
     assert(/id="lp-visibility-standings"[^>]*checked/.test(guildOn) && !/id="lp-visibility-itemLookup"[^>]*checked/.test(guildOn));
     const team = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0({ scope: 't1', view: Object.assign({}, LOOT_VIEW, { guild: { visibility: { itemLookup: true } } }), draft: { visibility: { standings: true } } }) });
-    assert(/id="lpf-visibility-standings"[\s\S]*?Overridden[\s\S]*?data-path="visibility.standings" data-key="lpol-reset/.test(team));
-    assert(/id="lpf-visibility-itemLookup"[\s\S]*?Inherited/.test(team) && /id="lp-visibility-itemLookup"[^>]*checked/.test(team), 'the guild default shows through');
+    assert(/id="lpf-visibility-standings"[\s\S]*?Changed for this team[\s\S]*?data-path="visibility.standings" data-key="lpol-reset/.test(team));
+    assert(/id="lpf-visibility-itemLookup"[\s\S]*?Guild default<\/span>/.test(team) && /id="lp-visibility-itemLookup"[^>]*checked/.test(team), 'the guild default shows through');
     assertNoRawAttrs(out);
   });
 

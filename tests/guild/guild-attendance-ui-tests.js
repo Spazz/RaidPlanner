@@ -644,20 +644,20 @@ function teamData(over) {
     assert.equal(S.versionFor(POLICY_VIEW, 't2'), 0);
   });
 
-  await check('settings form: guild scope shows effective values; team scope marks Inherited / Overridden with Reset; resetDay is guild-only', () => {
+  await check('settings form: guild scope shows effective values; team scope says Guild default / Changed for this team (plain text, no chips) with Reset; resetDay is guild-only', () => {
     const S = G.pages.settingsAtt;
     const guild = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: { view: POLICY_VIEW, scope: 'guild', draft: S.overrideFor(POLICY_VIEW, 'guild'), stale: 0 } });
     for (const t of ['Who is expected', 'Sign-up handling', 'Late and left early', 'Credit values', 'Fill-ins', 'Windows', 'Reset day', 'Warcraft Logs']) assert(guild.includes('>' + t + '<'), t);
     assert(guild.indexOf('Who is expected') < guild.indexOf('Sign-up handling') && guild.indexOf('Fill-ins') < guild.indexOf('Windows') && guild.indexOf('Windows') < guild.indexOf('Reset day'));
     assert(/value="asSignedUp" checked/.test(guild) && /value="signedUp" checked/.test(guild));
-    assert(!guild.includes('Inherited') && !guild.includes('Overridden'));
+    assert(!guild.includes('Inherited') && !guild.includes('Overridden') && !guild.includes('Changed for this team') && !guild.includes('gs-pol-src'), 'no markers in the guild scope');
     assert(!guild.includes('id="pf-expected-statuses"'), 'statuses only in statuses mode');
     assert(guild.includes('From the guild&#39;s region (Tuesday)') && guild.includes('Reset to defaults') && guild.includes('Look it up by name') === false);
     assert(guild.includes('<option value="1">Monday</option>') && guild.includes('value="8, 12"'));
     assert(guild.includes('id="pol-scope"') && guild.includes('>Guild default<') && guild.includes('>Team KJ override<'));
     const team = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: { view: POLICY_VIEW, scope: 't1', draft: S.overrideFor(POLICY_VIEW, 't1'), stale: 0 } });
     assert(/value="asSignedUp" checked/.test(team), 'inherits the guild override');
-    assert(team.includes('Overridden') && team.includes('data-path="window.defaultWeeks"') && team.includes('Inherited'));
+    assert(team.includes('Changed for this team') && team.includes('data-path="window.defaultWeeks"') && team.includes('Guild default</span>') && !team.includes('Inherited') && !team.includes('Overridden') && !team.includes('gs-chip'));
     assert((team.match(/data-action="pol-reset"/g) || []).length === 1, 'one overridden key, one Reset');
     assert(team.includes('Set for the whole guild') && team.includes('Remove the team override'));
     const weeks = team.match(/id="p-window-defaultWeeks"[^>]*value="(\d+)"/);

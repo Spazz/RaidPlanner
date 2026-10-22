@@ -1,6 +1,6 @@
 // ── PAGE: GUILD SETTINGS > ATTENDANCE (the policy form) ─────────
 // A stored policy is an OVERRIDE object: only the keys set at that level. This page edits one level at a time
-// ("Guild default" or one team) as a draft override, shows "Inherited" / "Overridden" per key in a team scope, and
+// ("Guild default" or one team) as a draft override, says "Guild default" / "Changed for this team" (+ Reset) per key in a team scope, and
 // saves with PUT /attendance/policy { teamId | null, policy, expectedVersion }. A Warcraft Logs card saves the guild ID
 // and each team's uploader names with PUT /attendance/wcl. GET /attendance/policy feeds both.
 // The Watch list group edits `watch: { below, dropBy }`: fractions 0..1 in the policy, typed as percent (blank = that check is off, stored as null).
@@ -183,10 +183,12 @@
   }
 
   // ── view ──
+  // Where the value comes from, as muted text (no chip): the guild's, or changed for this team with its Reset (the same pol-reset action).
   function chipsOf(scope, eff, field) {
     if (scope === 'guild' || field.guildOnly) return '';
-    return '<span class="gs-chip ' + (eff.overridden ? 'gs-chip-main' : 'gs-chip-plain') + '">' + (eff.overridden ? 'Overridden' : 'Inherited') + '</span>' +
-      (eff.overridden ? '<button type="button" class="gs-linkbtn" data-action="pol-reset" data-path="' + esc(field.path) + '" data-key="pol-reset-' + esc(fid(field.path)) + '">Reset</button>' : '');
+    if (!eff.overridden) return '<span class="gs-pol-src">Guild default</span>';
+    return '<span class="gs-pol-src is-over">Changed for this team</span>' +
+      '<button type="button" class="gs-btn gs-btn-ghost gs-btn-sm gs-pol-reset" data-action="pol-reset" data-path="' + esc(field.path) + '" data-key="pol-reset-' + esc(fid(field.path)) + '">Reset</button>';
   }
 
   function fieldShellHtml(field, scope, eff, inner) {
@@ -320,14 +322,14 @@
 
   function groupHtml(g, view, scope, draft) {
     const fields = g.fields.map(function (f) { return fieldHtml(f, view, scope, draft); }).join('');
-    return '<section class="gs-card-sec" aria-labelledby="pg-' + g.id + '"><div class="gs-card-sec-head"><h3 class="gs-h2" id="pg-' + g.id + '">' + esc(g.title) + '</h3></div><div class="gs-card-sec-body">' + fields + '</div></section>';
+    return '<section class="gs-att-grp" aria-labelledby="pg-' + g.id + '"><h3 class="gs-att-gh" id="pg-' + g.id + '">' + esc(g.title) + '</h3>' + fields + '</section>';
   }
 
   // One headed section of the page: its blurb, then the group cards that belong to it (the section is a jump target of "On this page").
   function sectionHtml(sec, view, scope, draft) {
     const cards = GROUPS.filter(function (g) { return g.section === sec.id; }).map(function (g) { return groupHtml(g, view, scope, draft); }).join('');
-    return '<section class="gs-osection gs-att-section" id="' + sec.id + '" tabindex="-1" aria-labelledby="' + sec.id + '-h"><div class="gs-osection-head"><h2 class="gs-h2" id="' + sec.id + '-h">' + esc(sec.title) + '</h2></div>' +
-      '<div class="gs-osection-body"><p class="gs-fine">' + esc(sec.blurb) + '</p>' + cards + '</div></section>';
+    return '<section class="gs-att-section" id="' + sec.id + '" tabindex="-1" aria-labelledby="' + sec.id + '-h"><h2 class="gs-hd-sl" id="' + sec.id + '-h">' + esc(sec.title) + '</h2>' +
+      '<p class="gs-fine">' + esc(sec.blurb) + '</p><div class="gs-hd-panel">' + cards + '</div></section>';
   }
 
   // "On this page": one jump link per section (and the Warcraft Logs card below the form).
@@ -350,8 +352,8 @@
       const val = wclUi && wclUi.uploaders && has(wclUi.uploaders, t.id) ? wclUi.uploaders[t.id] : uploadersText(view, t.id);
       return '<div class="gs-field"><label class="gs-label" for="wcl-up-' + esc(t.id) + '">Uploaders for ' + esc(t.name) + '</label><textarea class="gs-input gs-textarea" id="wcl-up-' + esc(t.id) + '" data-tid="' + esc(t.id) + '" rows="2" aria-describedby="wcl-up-help">' + esc(val) + '</textarea></div>';
     }).join('');
-    return '<section class="gs-card-sec" id="att-wcl" tabindex="-1" aria-labelledby="pg-wcl"><div class="gs-card-sec-head"><h2 class="gs-h2" id="pg-wcl">Warcraft Logs</h2></div>' +
-      '<form class="gs-card-sec-body" data-submit="wcl-form" novalidate>' +
+    return '<section class="gs-att-section gs-att-wcl" id="att-wcl" tabindex="-1" aria-labelledby="pg-wcl"><h2 class="gs-hd-sl" id="pg-wcl">Warcraft Logs</h2>' +
+      '<form class="gs-hd-panel gs-att-grp gs-wcl-form" data-submit="wcl-form" novalidate>' +
       '<div class="gs-field"><label class="gs-label" for="wcl-guild">Warcraft Logs guild ID (optional)</label><input class="gs-input gs-input-short" type="text" inputmode="numeric" id="wcl-guild" value="' + esc(wclUi && wclUi.guildId != null ? wclUi.guildId : gid) + '" aria-describedby="wcl-guild-help">' +
       '<p class="gs-fine" id="wcl-guild-help">Leave it empty to look the guild up by its name and realm.</p></div>' + fields +
       '<p class="gs-fine" id="wcl-up-help">One character name per line, at most ' + UPLOADERS_MAX + ' per team. The backfill list can filter to reports these people uploaded.</p>' +
@@ -373,7 +375,7 @@
     const scopeField = '<div class="gs-roster-status"><label class="gs-label" for="pol-scope">Applies to</label><select class="gs-input" id="pol-scope" data-change="pol-scope" data-key="pol-scope">' + G.ui.optionsHtml(scopeOpts, s.scope) + '</select></div>';
     const scopeNote = s.scope === 'guild'
       ? '<p class="gs-fine">These rules apply to every team unless a team has its own override.</p>'
-      : '<p class="gs-fine">Only the keys marked Overridden differ from the guild default. Everything else follows it.</p>';
+      : '<p class="gs-fine">Only the rules marked "Changed for this team" differ from the guild default. Everything else follows it.</p>';
     return '<div class="gs-settings-att">' + scopeField + scopeNote + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
       (s.stale > 0 || (opts.progress && opts.progress.running)

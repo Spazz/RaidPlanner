@@ -858,11 +858,11 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     const rows = out.split('<tr>').filter(r => r.includes('<th scope="row"'));
     assert.equal(rows.length, 3);
     const rt = rows.map(text);
-    assert(rt[0].includes('Recruits') && rt[0].includes('Guest') && rt[0].includes('Whole guild') && rt[0].includes('Shows: Roster, Raids') && rt[0].includes('Active') && rt[0].includes('Opened 3 times') && rt[0].includes('Last opened') && rt[0].includes('Expires Oct 24, 2026'));
+    assert(rt[0].includes('Recruits') && rt[0].includes('Guest') && rt[0].includes('Whole guild') && rt[0].includes('Shows: Roster, Raids') && !rt[0].includes('Active') && rt[0].includes('Opened 3 times') && rt[0].includes('Last opened') && rt[0].includes('Expires Oct 24, 2026'));
     assert(rt[0].includes('Made Oct 15, 2026 by Gale G'));
     assert(rt[1].includes('Untitled') && rt[1].includes('Loot council') && rt[1].includes('Alpha only') && rt[1].includes('Shows: Loot') && rt[1].includes('Expired') && rt[1].includes('Expired Oct 16, 2026') && rt[1].includes('Opened 1 time') && !rt[1].includes('Last opened'));
     assert(rt[2].includes('Old link') && rt[2].includes('Turned off') && rt[2].includes('Turned off Oct 16, 2026') && rt[2].includes('Never opened'));
-    assert(rows[0].includes('class="gs-hd-chip is-green"') && rows[1].includes('class="gs-hd-chip is-rose"') && rows[2].includes('class="gs-hd-chip is-grey"'));
+    assert(!rows[0].includes('gs-hd-chip') && rows[1].includes('class="gs-hd-chip is-rose"') && rows[2].includes('class="gs-hd-chip is-grey"'));
     assert(rows[0].includes('data-action="guest-revoke"') && rows[0].includes('data-link="gl_1"') && rows[0].includes('aria-label="Turn off guest link Recruits"'));
     assert(!rows[1].includes('guest-revoke') && !rows[2].includes('guest-revoke'));
     assert(text(G.pages.settingsGuests.settingsHtml({ guildData: guildData(), data: guestData({ links: [link('gl_9', { expiresAt: null })] }) })).includes('Never expires'));

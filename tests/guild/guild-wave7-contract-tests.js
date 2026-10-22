@@ -195,7 +195,7 @@ check('Data access: an officer makes a key through the real dialog, the link in 
   // The list now has the key (and the use).
   await A.pages.settingsDataKeys.load(s.gid);
   const listed = stripTags(A.pages.settingsDataKeys.settingsHtml({ guildData: A.guildData, data: S.dataKeySettings.data }));
-  assert(listed.includes('Roster sheet') && listed.includes('Whole guild') && listed.includes('Roster, Attendance') && listed.includes('Used 1 time') && listed.includes('Active'), listed);
+  assert(listed.includes('Roster sheet') && listed.includes('Whole guild') && listed.includes('Roster, Attendance') && listed.includes('Used 1 time') && !listed.includes('Active'), listed); // an active key shows no status word (spec 2.3)
   assert(!listed.includes(token));
   // A member sees nothing of it.
   await assert.rejects(E.api.dataKeys.list(s.gid), (error) => error.status === 403);

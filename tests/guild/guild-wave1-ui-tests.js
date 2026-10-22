@@ -472,7 +472,7 @@ function withState(fn) {
 
   await check('watch policy: the Watch list group edits two percent fields; stored fractions show as percent, null shows blank (off)', () => {
     const out = polHtml(polState(polView()));
-    assert(out.includes('<h3 class="gs-h2" id="pg-watch">Watch list</h3>'));
+    assert(out.includes('<h3 class="gs-att-gh" id="pg-watch">Watch list</h3>'));
     assert(out.indexOf('id="pg-windows"') < out.indexOf('id="pg-watch"') && out.indexOf('id="pg-watch"') < out.indexOf('id="pg-reset"'), 'between Windows and Reset day');
     const below = watchInput(out, 'below');
     assert(below.includes('type="number"') && below.includes('min="0"') && below.includes('max="100"') && below.includes('value="75"') && below.includes('data-type="percent"') && below.includes('data-path="watch.below"') && below.includes('placeholder="Off"'), below);
@@ -490,13 +490,13 @@ function withState(fn) {
     assert.equal(G.pages.settingsAtt.percentOf(undefined), '');
   });
 
-  await check('watch policy: a team scope marks each field Inherited or Overridden, with Reset on the overridden one; the guild value shows through', () => {
+  await check('watch policy: a team scope marks each field Guild default or Changed for this team, with Reset on the overridden one; the guild value shows through', () => {
     const view = polView({ guild: { watch: { below: 0.8 } }, teams: { t1: { watch: { dropBy: null } } }, resolved: { t1: {} } });
     const out = polHtml(polState(view, 't1'));
     const below = out.slice(out.indexOf('id="pf-watch-below"'), out.indexOf('id="pf-watch-dropBy"'));
     const drop = out.slice(out.indexOf('id="pf-watch-dropBy"'), out.indexOf('id="pf-resetDay"') > 0 ? out.indexOf('id="pf-resetDay"') : undefined);
-    assert(below.includes('Inherited') && !below.includes('data-action="pol-reset"') && below.includes('value="80"'), 'inherits the guild 80');
-    assert(drop.includes('Overridden') && drop.includes('data-action="pol-reset" data-path="watch.dropBy"') && drop.includes('value=""'), 'an explicit null is an override that turns the check off');
+    assert(below.includes('Guild default') && !below.includes('Changed for this team') && !below.includes('data-action="pol-reset"') && below.includes('value="80"'), 'inherits the guild 80');
+    assert(drop.includes('Changed for this team') && drop.includes('data-action="pol-reset" data-path="watch.dropBy"') && drop.includes('value=""'), 'an explicit null is an override that turns the check off');
   });
 
   await check('watch policy: typing percent stores a fraction without float noise; blank stores null (off); Reset removes the key', withState(async (S) => {

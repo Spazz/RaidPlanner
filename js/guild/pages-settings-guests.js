@@ -9,7 +9,7 @@
   const EXPIRY_LABELS = { '1d': '1 day', '7d': '7 days', '30d': '30 days', never: 'Never' };
   const DEFAULT_EXPIRY = '7d';
   const LABEL_LENGTH = 40;
-  const STATUS = { active: { text: 'Active', cls: 'is-green' }, expired: { text: 'Expired', cls: 'is-rose' }, revoked: { text: 'Turned off', cls: 'is-grey' } };
+  const STATUS = { expired: { text: 'Expired', cls: 'is-rose' }, revoked: { text: 'Turned off', cls: 'is-grey' } };
   const INTRO = 'A guest link lets someone without an account read part of the guild. It never lets them change anything.';
 
   function st() { return G.app.state; }
@@ -23,6 +23,7 @@
   }
 
   function statusPillHtml(link) {
+    if (link.status === 'active') return ''; // spec 2.3: the default state shows nothing
     const s = Object.prototype.hasOwnProperty.call(STATUS, link.status) ? STATUS[link.status] : { text: String(link.status), cls: 'is-grey' };
     return '<span class="gs-hd-chip ' + s.cls + '">' + esc(s.text) + '</span>';
   }

@@ -374,7 +374,7 @@ check('loot policy: GET / PUT /loot/policy round-trip through the settings page 
   try { await G.api.loot.savePolicy(s.gid, null, { balance: { countTags: [] } }, 1); } catch (e) { error = e; }
   assert(error && error.status === 400 && error.field === 'balance.countTags', 'an empty tag list names its field');
   const html = G.pages.settingsLoot.settingsHtml({ guildData: s.guildData, s: { view: team, scope: s.teamId, draft: Sa.overrideFor(team, s.teamId) } });
-  assert(/Overridden/.test(html) && /Inherited/.test(html), 'the team scope marks overridden and inherited keys');
+  assert(/Changed for this team/.test(html) && /Guild default<\/span>/.test(html), 'the team scope marks changed and guild-default keys');
 });
 
 check('review queue: loot winners nobody matches arrive as lootUnmatched; Link / Add as new person / Mark as guest act on them and the raid loot follows', async () => {

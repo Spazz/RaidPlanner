@@ -3394,6 +3394,45 @@ main#app.gs-forge { background: transparent; border: 0; align-self: flex-start; 
   .gs-settings-page.gs-forge .gs-audit-details summary { display: inline-flex; align-items: center; min-height: 44px; }
 }
 
+/* ── Settings on Forge (lane 5): Attendance and Loot rules ──────────────────────────────────────────────────────────────
+   Board 3 of the settings mockup. A section = .gs-hd-sl label + one .gs-hd-panel; the groups inside are hairline-separated .gs-att-grp blocks headed by .gs-att-gh;
+   a rule says where its value comes from as muted text (.gs-pol-src: "Guild default" / "Changed for this team") and, when changed for the team, a ghost Reset (same pol-reset action).
+   Never a chip per rule (spec 2.3). */
+.gs-settings-page.gs-forge .gs-settings-att { gap: 16px; }
+.gs-settings-page.gs-forge .gs-settings-att .gs-roster-status { align-items: center; }
+.gs-settings-page.gs-forge .gs-pol-form { gap: 24px; }
+.gs-settings-page.gs-forge .gs-att-section { display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 16px; }
+.gs-settings-page.gs-forge .gs-att-section:focus { outline: none; }
+.gs-settings-page.gs-forge .gs-att-section > .gs-fine { margin: 0; }
+.gs-settings-page.gs-forge .gs-att-grp { display: flex; flex-direction: column; gap: 0; padding: 20px; border-top: 1px solid var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-hd-panel > .gs-att-grp:first-child, .gs-settings-page.gs-forge .gs-hd-panel > .gs-att-grp.gs-wcl-form { border-top: 0; }
+.gs-settings-page.gs-forge .gs-wcl-form { gap: 16px; }
+.gs-settings-page.gs-forge .gs-att-gh { margin: 0 0 12px; font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); }
+.gs-settings-page.gs-forge .gs-att-grp > .gs-pol-field { padding: 10px 0; gap: 6px; }
+.gs-settings-page.gs-forge .gs-att-grp > .gs-pol-field + .gs-pol-field { border-top: 1px solid var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-pol-field > .gs-legend { margin: 0; font: 500 15px/1.3 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--text-primary); }
+.gs-settings-page.gs-forge .gs-pol-markers { gap: 4px 12px; margin-bottom: 2px; }
+.gs-settings-page.gs-forge .gs-pol-src { font-size: 13px; line-height: 1.3; color: var(--text-muted); }
+.gs-settings-page.gs-forge .gs-pol-src.is-over { color: var(--text-secondary); }
+.gs-settings-page.gs-forge .gs-pol-reset { min-height: 36px; padding: 0 12px; }
+.gs-settings-page.gs-forge .gs-pol-field .gs-check label { font-size: 15px; color: var(--text-secondary); }
+.gs-settings-page.gs-forge .gs-pol-field .gs-check input:checked + label { color: var(--text-primary); }
+.gs-settings-page.gs-forge .gs-pol-field .gs-fine { margin: 4px 0 0; }
+.gs-settings-page.gs-forge .gs-onpage a { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+.gs-settings-page.gs-forge .gs-onpage a:hover { color: var(--text-primary); }
+.gs-settings-page.gs-forge .gs-credit-row .gs-input, .gs-settings-page.gs-forge .gs-rank-head .gs-input { background: #131416; }
+.gs-settings-page.gs-forge .gs-rank-list { gap: 0; }
+.gs-settings-page.gs-forge .gs-rank-row { padding: 12px 0; background: none; border: 0; border-top: 1px solid var(--hd-hair); border-radius: 0; }
+.gs-settings-page.gs-forge .gs-rank-row:first-child { border-top: 0; }
+.gs-settings-page.gs-forge .gs-stale-banner { align-items: center; }
+
+@media (max-width: 760px) {
+  .gs-settings-page.gs-forge .gs-att-grp { padding: 16px; }
+  .gs-settings-page.gs-forge .gs-pol-reset { min-height: 44px; }
+  .gs-settings-page.gs-forge .gs-pol-field .gs-check { min-height: 44px; }
+  .gs-settings-page.gs-forge .gs-onpage a { min-height: 44px; }
+}
+
 /* ── Loot on Forge: the Loot pages (hub, standings, raid night, item, person loot, award, Needs fixing) ──
    Panels, heads, chips and buttons are the shared Forge recipes (.gs-hd-panel, .gs-pr-*, .gs-hd-chip, .gs-fg-*); only the parts below are Loot's own. */
 .gs-lt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
