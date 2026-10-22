@@ -34,7 +34,7 @@ async function check(name, fn) {
 
 const ROOT = require('path').join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const css = read('guild.css');
+const css = (read('planner-forge.css') + '\n' + read('guild.css'));
 function loadGuild() {
   const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, RegExp, setTimeout, clearTimeout };
   vm.createContext(sandbox);
@@ -358,7 +358,7 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     assert.equal(rules['ap-q-q1']('Because'), '');
     assert.equal(G.pages.apply.fieldId('answers.q1'), 'ap-q-q1');
     assert(G.pages.apply.applyHtml({ state: { gid: 'g1', status: 'ok', data: FORM(), draft: {}, busy: false, error: '', done: true } }).includes('gs-banner-success'));
-    assert(/@media \(max-width: 600px\)[\s\S]*?\.gs-input, \.gs-input-search \{ height: 44px; \}/.test(css), 'the fields are 44 px on a phone');
+    assert(/@media \(max-width: 600px\)[\s\S]*?\.gs-input \{ height: 44px; \}/.test(css) && /@media \(max-width: 600px\)[\s\S]*?\.gs-input-search \{ height: 44px; \}/.test(css), 'the fields are 44 px on a phone');
   });
 
   await check('11. the guest sign-up writes the raid\'s start in the GUILD\'s zone, not the visitor\'s, in the header and in the thanks', () => {

@@ -27,7 +27,7 @@ async function check(name, fn) {
 const ROOT = require('path').join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const { GUILD_SCRIPTS } = require('../guild-scripts');
-const css = read('guild.css');
+const css = (read('planner-forge.css') + '\n' + read('guild.css'));
 const scriptSrcs = GUILD_SCRIPTS;
 
 function loadGuild() {
@@ -250,7 +250,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   });
 
   await check('group heads and labels (design spec 2.1): CSS of .gs-fg-gh/.gs-fg-ght/.gs-fg-ghn/.gs-fg-lbl, no `.gs-fg-gh b`, every head over rows is title + count, every tile/step/field word is a label', () => {
-    const css = read('guild.css');
+    const css = (read('planner-forge.css') + '\n' + read('guild.css'));
     assert(css.includes('.gs-fg-gh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 0; }'));
     assert(css.includes('.guild-page .gs-fg-ght, .gs-forge .gs-fg-ght { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }'));
     assert(css.includes('text-decoration: underline; text-underline-offset: 3px;') && css.includes('a.gs-lt-link:hover .gs-fg-ght'));

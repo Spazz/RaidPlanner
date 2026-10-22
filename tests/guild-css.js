@@ -6,13 +6,23 @@
 //   - --mark, a row's class colour that the data table's phone card reads.
 // ownTokenNames(css) lists every such name; stripOwnTokens(css) is the stylesheet without their declarations.
 const FRAMEWORK_HEADING = 'Design framework tokens';
+// The Planner's Forge tokens moved to planner-forge.css (shared with the public main branch); the suites pass both files joined, planner-forge.css first.
+const PLANNER_HEADING = 'Forge tokens used by the Planner';
+
+function tokenBlocks(css) {
+  const blocks = [];
+  for (const heading of [PLANNER_HEADING, FRAMEWORK_HEADING]) {
+    const at = css.indexOf(heading);
+    if (at < 0) continue;
+    const open = css.indexOf(':root {', at);
+    const close = css.indexOf('\n}', open);
+    if (open >= 0 && close >= 0) blocks.push(css.slice(open, close + 2));
+  }
+  return blocks;
+}
 
 function frameworkBlock(css) {
-  const at = css.indexOf(FRAMEWORK_HEADING);
-  if (at < 0) return '';
-  const open = css.indexOf(':root {', at);
-  const close = css.indexOf('\n}', open);
-  return open < 0 || close < 0 ? '' : css.slice(open, close + 2);
+  return tokenBlocks(css).join('\n');
 }
 
 function ownTokenNames(css) {
@@ -24,8 +34,7 @@ function ownTokenNames(css) {
 }
 
 function stripOwnTokens(css) {
-  const block = frameworkBlock(css);
-  return (block ? css.replace(block, '') : css)
+  return tokenBlocks(css).reduce((out, block) => out.replace(block, ''), css)
     .replace(/--gs-out-[a-z_]+(-ink|-edge)?\s*:/g, '')
     .replace(/--gs-tone-[a-z]+(-bg|-edge)?\s*:/g, '')
     .replace(/--mark\s*:/g, '');

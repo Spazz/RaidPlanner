@@ -1046,7 +1046,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
 
   // ── the stylesheet ─────────────────────────────────────────────
   await check('guild.css: page-wide rules are scoped to .gs-scope; nothing styles planner markup; slots are layout-transparent', () => {
-    const css = read('guild.css');
+    const css = (read('planner-forge.css') + '\n' + read('guild.css'));
     for (const bare of [/(^|\n)\.guild-page a\s*[,{:]/, /(^|\n)\.guild-page a:hover/, /\.guild-page (button|input|select|textarea|\[tabindex\]):focus-visible/, /\.guild-page \.gs-h1:focus/, /\.guild-page input::placeholder/]) {
       assert(!bare.test(css), 'page-wide rule left: ' + bare);
     }
@@ -1062,11 +1062,11 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
   });
 
   await check('guild.css: no plain rule sets color on .gs-classbadge, .gs-char-sub or .gs-dtable-primary a (a class colour must win)', () => {
-    assert.deepEqual(GuildCss.classColourOverrides(read('guild.css')), []);
+    assert.deepEqual(GuildCss.classColourOverrides((read('planner-forge.css') + '\n' + read('guild.css'))), []);
   });
 
   await check('guild.css: phone A2 - menu button 44px on every page, drawer for everyone, tabs only with a guild, signed-out sign-in shortens', () => {
-    const css = read('guild.css');
+    const css = (read('planner-forge.css') + '\n' + read('guild.css'));
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
     assert(/\.gs-menu-btn \{ display: inline-flex; \}/.test(phone));
     assert(/\.gs-menu-btn \{[^}]*width: 44px; height: 44px;/.test(css));

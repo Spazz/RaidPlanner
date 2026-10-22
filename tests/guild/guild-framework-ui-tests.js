@@ -28,7 +28,7 @@ async function check(name, fn) {
 
 const ROOT = require('path').join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const css = read('guild.css');
+const css = (read('planner-forge.css') + '\n' + read('guild.css'));
 const appCss = read('app.css');
 
 function loadGuild(extra) {
@@ -90,11 +90,11 @@ function assertNoRawAttrs(out) {
     const phone = css.slice(css.lastIndexOf('@media (max-width: 600px)'));
     assert(/\.gs-icon-btn, \.gs-banner-x \{ width: var\(--control-h-phone\); height: var\(--control-h-phone\); \}/.test(phone));
     assert(/\.guild-page a\.gs-char-link, \.guild-page a\.gs-raid-link \{[^}]*min-height: var\(--control-h-phone\)/.test(phone), 'roster names and raid dates are 44 px targets');
-    assert(/\.gs-dialog \{ width: 100%;[^}]*margin: auto 0 0/.test(phone) && /\.gs-dialog-actions \{ flex-direction: column-reverse;/.test(phone), 'dialogs are bottom sheets, primary on top');
+    assert(/\.gs-dialog \{ width: 100%;[^}]*margin: auto 0 0/.test(css) && /\.gs-dialog-actions \{ flex-direction: column-reverse;/.test(phone), 'dialogs are bottom sheets, primary on top');
     assert(/\.gs-btn \{[^}]*min-height: var\(--control-h\)/.test(css) && /\.gs-btn-lg \{ min-height: var\(--control-h-lg\)/.test(css));
     assert(/\.gs-savebar, \.gs-commitbar \{ bottom: 64px;/.test(phone), 'the Save and commit bars sit above the phone tab bar');
     assert(/\.gs-pagehead-actions \{ display: contents; \}/.test(phone) && /\.gs-pagehead-actions > \.gs-btn-molten \{ order: 3; flex: 1 1 100%; min-height: var\(--control-h-lg\)/.test(phone), 'the primary moves under the context line as a full-width L button');
-    assert(/\.gs-menu-trigger\.has-phone-icon \{ width: var\(--control-h-phone\)/.test(phone), 'More is a 44 px dots button');
+    assert(/\.gs-menu-trigger\.has-phone-icon \{ width: var\(--control-h-phone\)/.test(css), 'More is a 44 px dots button');
   });
 
   await check('tokens: the table cards, and the settings panes switch below 760 px; the skip link is off-screen until focused', () => {

@@ -452,8 +452,8 @@ check('strip styles: tokens only, 36px icon buttons, one neutral edge between th
 check('the old board chrome rules left app.css: summary bar, banner chips, right rail, phone sheet, Manual changes box', () => {
   const appOnly = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'app.css'), 'utf8');
   assert.doesNotMatch(appOnly, /\.summary-(bar|chip|main|divider|missing)|\.readiness-banner|\.rb-(row|chips|toggle|bar|arrow|note)\b|\.buff-sidebar|\.sidebar-|\.coverage-sheet|\.manual-changes-section|\.buff-row|\.insight-btn|\.swap-legend|\.cov-toggle|\.balance-warning/);
-  assert.doesNotMatch(appOnly, /[.](result-line|rb-failed|sync-banner)/, 'the next-step bar rules live in guild.css (lane 3b)');
-  assert.match(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'guild.css'), 'utf8'), /[.]gs-pb-notices [.]result-line/);
+  assert.doesNotMatch(appOnly, /[.](result-line|rb-failed|sync-banner)/, 'the next-step bar rules live in planner-forge.css (lane 3b)');
+  assert.match(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'planner-forge.css'), 'utf8'), /[.]gs-pb-notices [.]result-line/);
 });
 
 check('phone toast: top, under the 40px header and safe area, 13px, above the player editor sheet', () => {
@@ -464,7 +464,7 @@ check('phone toast: top, under the 40px header and safe area, 13px, above the pl
   assert.match(rule[1], /font-size: 13px/);
   assert.match(rule[1], /left: 12px; right: 12px/);
   const z = Number(rule[1].match(/z-index: (\d+)/)[1]);
-  const sheet = Number(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'guild.css'), 'utf8').match(/\.player-editor \{[^}]*z-index: (\d+)/)[1]);
+  const sheet = Number(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'planner-forge.css'), 'utf8').match(/\.player-editor \{[^}]*z-index: (\d+)/)[1]);
   assert(z > sheet, `toast z-index ${z} is above the sheet ${sheet}`);
   assert.match(cssText, /\.toast \{\n {2}position: fixed; bottom: 24px; right: 24px;/, 'desktop keeps the bottom-right toast');
 });

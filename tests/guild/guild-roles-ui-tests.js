@@ -28,7 +28,7 @@ async function check(name, fn) {
 const ROOT = require('path').join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const { GUILD_SCRIPTS, guildScriptsOf } = require('../guild-scripts');
-const css = read('guild.css');
+const css = (read('planner-forge.css') + '\n' + read('guild.css'));
 const NEW_FILES = ['pages-settings-roles', 'pages-settings-discord', 'pages-settings-guests', 'pages-settings-public', 'pages-view'];
 
 function loadGuild(extra) {

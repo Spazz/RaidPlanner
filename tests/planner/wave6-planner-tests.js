@@ -272,7 +272,7 @@ check('bench reasons: the Bench tray shows the reason under the spec, escaped, a
   Fairness.clear();
   const none = SignupTray.slotHTML(entry, 'bench');
   assert(!none.includes('bench-reason') && !none.includes('Benched:'));
-  assert(/\.gs-pb-pool \.bench-reason\b/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'guild.css'), 'utf8')), 'guild.css styles it in the pool');
+  assert(/\.gs-pb-pool \.bench-reason\b/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'planner-forge.css'), 'utf8')), 'planner-forge.css styles it in the pool');
 });
 
 console.log(`\nWave 6 Planner tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

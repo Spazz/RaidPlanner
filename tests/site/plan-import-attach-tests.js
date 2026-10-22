@@ -381,7 +381,7 @@ const lookupUrl = (gid = 'g1', event = EVENT) => `/api/guild/${gid}/raid-for-eve
     assert.match(banner, /gs-btn-ghost" id="btn-attach-skip">Skip, keep it on this device</);
     assert(!/molten/.test(banner), 'molten is Optimize only');
     assert.match(banner, /<select id="attach-team">/);
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'guild.css'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'planner-forge.css'), 'utf8');
     const phone = css.slice(css.indexOf('lane 3b: the next-step bar'));
     assert.match(phone, /\.gs-pb-attach-team \{[^}]*flex-direction: column/, 'the team pick stacks on a phone');
   });

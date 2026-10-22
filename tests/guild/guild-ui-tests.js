@@ -28,7 +28,7 @@ const ROOT = require('path').join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const { GUILD_SCRIPTS } = require('../guild-scripts');
 const GuildCss = require('../guild-css');
-const css = read('guild.css');
+const css = (read('planner-forge.css') + '\n' + read('guild.css'));
 const appCss = read('app.css');
 
 // The guild scripts in load order (the pages load them after their own scripts).
@@ -870,7 +870,7 @@ function assertEscaped(out, label) {
     assert(/outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\)/.test(css) && /--focus-ring: 2px solid var\(--text-primary\)/.test(css));
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
     assert(/\.gs-btn, \.gs-btn-sm \{ min-height: 44px; \}/.test(phone));
-    assert(/\.gs-input, \.gs-input-search \{ height: 44px; \}/.test(phone));
+    assert(/\.gs-input \{ height: 44px; \}/.test(phone) && /\.gs-input-search \{ height: 44px; \}/.test(phone));
     // The forge (Home round 6 recipes, user-approved mockups: Home and the Roster pages) has its own recipe with small radii; every other rule stays flat.
     const flatCss = css.slice(0, css.indexOf('Forge: the shared look')) + css.slice(css.indexOf('/* ── Loot on Forge')).replace(/\/\* ── Loot on Forge[\s\S]*?(?=\/\* ── Loot page redesign: the award record)/, ''); // the Loot-on-Forge block uses the forge's 8 px panels
     const radii = [...flatCss.matchAll(/border-radius:\s*([^;]+);/g)].map(m => m[1].trim());
@@ -1029,7 +1029,7 @@ function assertEscaped(out, label) {
     assert(header.includes('id="gs-team-select-phone"') && header.includes('data-change="team-pick"'), 'team picker');
     assert(header.includes('data-action="toggle-menu"'), 'avatar menu');
     assert(!header.includes('gs-phone-brand'), 'the logo no longer sits in the phone header');
-    assert(!read('guild.css').includes('gs-phone-brand') && !read('guild.css').includes('gs-public-head'));
+    assert(!(read('planner-forge.css') + '\n' + read('guild.css')).includes('gs-phone-brand') && !(read('planner-forge.css') + '\n' + read('guild.css')).includes('gs-public-head'));
     const tabs = out.slice(out.indexOf('<nav class="gs-tabs"'), out.indexOf('</nav>', out.indexOf('<nav class="gs-tabs"')));
     assert(tabs.includes('data-action="open-drawer"') && tabs.includes('aria-controls="gs-drawer"') && tabs.includes('>More<'), 'the last tab is More: it opens the same drawer as the menu button');
     // a guild without an active team shows its name instead of a picker
@@ -1048,7 +1048,7 @@ function assertEscaped(out, label) {
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
     assert(/\.gs-people-table, \.gs-teams-table \{ display: none; \}/.test(phone));
     assert(/\.gs-team-cards \{ display: flex;/.test(phone));
-    assert(/\.gs-team-cards \{ display: none; \}/.test(css.slice(0, css.indexOf('@media (max-width: 600px)'))), 'cards start hidden');
+    assert(/\.gs-team-cards \{ display: none; \}/.test(css.slice(0, css.indexOf('@media (max-width: 600px)', css.indexOf('RAIDSMITH GUILD')))), 'cards start hidden');
     const readOnly = G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.access': 'guild' }) });
     assert(!readOnly.slice(readOnly.indexOf('gs-team-cards')).includes('team-rename'));
     assertEscaped(G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.teams': 'guild' }, { teams: [{ id: 't"x', name: HOSTILE + QUOTES, size: 25, archived: false, players: 1, leads: [] }] }) }), 'team card');

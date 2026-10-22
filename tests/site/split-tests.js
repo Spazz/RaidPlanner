@@ -44,8 +44,8 @@ check('index.html carries no inline <script> or <style>', () => {
   assert.ok(![...html.matchAll(/<script\b([^>]*)>/gi)].some(m => !/\bsrc\s*=/.test(m[1])), 'inline <script> found');
 });
 
-check('the page links /app.css and /guild.css and loads every js file as a plain classic script', () => {
-  assert.deepEqual(app.stylesheets, ['/app.css', '/guild.css']);
+check('the page links /app.css, /planner-forge.css and /guild.css (in that order) and loads every js file as a plain classic script', () => {
+  assert.deepEqual(app.stylesheets, ['/app.css', '/planner-forge.css', '/guild.css']);
   assert.ok(app.scripts.length >= 6, `${app.scripts.length} script files`);
   for (const src of app.scripts) assert.match(src, /^\/js\/(?:rules\/|guild\/)?[a-z0-9-]+\.js$/, `${src} must be root-absolute under /js/ (the rules data files under /js/rules/, the guild shell under /js/guild/)`);
   assert.equal(new Set(app.scripts).size, app.scripts.length, 'a script is loaded twice');

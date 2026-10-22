@@ -1368,7 +1368,7 @@ function withState(fn) {
   });
 
   await check('guild.css: every gs- class the new pages use has a rule; the phone hides the Activity table; no custom properties, round corners or inline-style tricks were added', () => {
-    const css = read('guild.css');
+    const css = (read('planner-forge.css') + '\n' + read('guild.css'));
     const markup = NEW_PAGES.map(f => read('js/guild/' + f)).join('\n');
     const used = new Set();
     for (const m of markup.matchAll(/class="([^"]*)"/g)) for (const c of m[1].split(/\s+/)) if (/^gs-[a-z0-9_-]+$/.test(c)) used.add(c);

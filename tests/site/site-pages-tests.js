@@ -57,7 +57,7 @@ for (const [file, spec] of Object.entries(PAGES)) {
     assert.equal(meta(html, 'name', 'twitter:image'), `${SITE}/og-image.png`);
     assert.equal(meta(html, 'property', 'og:site_name'), 'Raidsmith');
     assert.equal(meta(html, 'property', 'og:image:alt'), meta(indexHtml, 'property', 'og:image:alt'));
-    assert(html.includes('<link rel="stylesheet" href="/app.css">\n<link rel="stylesheet" href="/guild.css">'));
+    assert(html.includes('<link rel="stylesheet" href="/app.css">\n<link rel="stylesheet" href="/planner-forge.css">\n<link rel="stylesheet" href="/guild.css">'));
     assert(/<link href="https:\/\/fonts\.googleapis\.com\/css2\?family=Barlow:[^"]+" rel="stylesheet">/.test(html));
     assert(html.includes('<link rel="icon" href="data:image/svg+xml,'));
     assert(html.indexOf('rel="preconnect"') < html.indexOf('fonts.googleapis.com/css2'));
@@ -90,7 +90,7 @@ for (const [file, spec] of Object.entries(PAGES)) {
     const vercelIgnore = read('.vercelignore').split('\n').map(l => l.trim());
     // js/guild/*.js is whitelisted as a glob, the other files one by one.
     const whitelisted = rel => ignore.includes('!' + rel) || (/^js\/guild\/[\w-]+\.js$/.test(rel) && ignore.includes('!js/guild/*.js'));
-    for (const rel of [file, 'guild.css', ...scripts.map(s => s.slice(1)), 'js/guild/manifest.js', ...GUILD_MANIFEST.map(s => s.slice(1))]) {
+    for (const rel of [file, 'planner-forge.css', 'guild.css', ...scripts.map(s => s.slice(1)), 'js/guild/manifest.js', ...GUILD_MANIFEST.map(s => s.slice(1))]) {
       assert(fs.statSync(path.join(ROOT, rel)).size > 0, rel);
       assert(whitelisted(rel), `.gitignore has no "!${rel}" line`);
       assert(!vercelIgnore.includes('/' + rel), `${rel} must not be excluded from the deploy`);
@@ -186,7 +186,7 @@ check('index.html loads util.js first, site-pages.js after the planner scripts, 
   assert.equal(app.scripts[guildAt - 1], '/js/site-pages.js');
   assert.equal(guildAt, 19, 'the 19 planner scripts (18 plus js/plansync.js after livesync.js), in page order');
   assert.equal(app.scripts[app.scripts.indexOf('/js/livesync.js') + 1], '/js/plansync.js');
-  assert.deepEqual(app.stylesheets, ['/app.css', '/guild.css']);
+  assert.deepEqual(app.stylesheets, ['/app.css', '/planner-forge.css', '/guild.css']);
   assert(app.scripts.indexOf('/js/util.js') < app.scripts.indexOf('/js/changelog.js'));
   const config = JSON.parse(read('vercel.json'));
   const re = /^\/(tbc|classic|forever)\/[^/]+$/;

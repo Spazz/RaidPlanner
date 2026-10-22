@@ -67,6 +67,7 @@
 !worker/package.json
 !migrations/
 !migrations/*.sql
+!planner-forge.css
 !guild.css
 
 # Never trackable, even where the globs above reach (tests/**, worker/**): secrets, Wrangler state, installed packages

@@ -37,7 +37,7 @@ function between(src, start, end) {
 
 // ── Phone head and bottom bar (Planner board on Forge, lane 3a) ─────────────────────────────
 
-const lane3a = (() => { const g = read('guild.css'); return g.slice(g.indexOf('Planner board on Forge (T6), lane 3a'), g.indexOf('Planner board on Forge (T6), lane 3b')); })();
+const lane3a = (() => { const g = (read('planner-forge.css') + '\n' + read('guild.css')); return g.slice(g.indexOf('Planner board on Forge (T6), lane 3a'), g.indexOf('Planner board on Forge (T6), lane 3b')); })();
 const lane3aPhone = lane3a.slice(lane3a.lastIndexOf('@media (width <= 600px)'));
 
 check('the phone context row is gone from the page and the code: no summary toggle, no Edit body, no relocation slots for it', () => {
@@ -88,7 +88,7 @@ check('the phone readiness link, the readiness banner and the summary bar are go
 
 // ── Raid check strip + Coverage dialog (phones) ──
 
-const guildCss = read('guild.css');
+const guildCss = (read('planner-forge.css') + '\n' + read('guild.css'));
 const stripCss = guildCss.slice(guildCss.indexOf('Planner board on Forge (T6), lane 2'), guildCss.indexOf('Planner board on Forge (T6), lane 3a'));
 const stripPhoneCss = stripCss.slice(stripCss.lastIndexOf('@media (width <= 600px)'));
 
@@ -239,7 +239,7 @@ const phoneCss = css.slice(css.lastIndexOf('/* ── Slim phone layout'));
 const phoneBlock = phoneCss.slice(phoneCss.indexOf('@media (max-width: 600px)'));
 
 // The player editor on Forge (lane 5): its rules live in guild.css, between the lane 5 heading and the Watch list rules.
-const editorCss = (() => { const g = read('guild.css').replace(/\r\n/g, '\n'); return g.slice(g.indexOf('Planner board on Forge (T6), lane 5'), g.indexOf('/* Attendance (Forge)')); })();
+const editorCss = (() => { const g = read('planner-forge.css').replace(/\r\n/g, '\n'); return g.slice(g.indexOf('Planner board on Forge (T6), lane 5')); })();
 const editorBase = editorCss.slice(0, editorCss.indexOf('@media'));
 const editorPhone = editorCss.slice(editorCss.indexOf('@media (width <= 600px)'));
 
@@ -270,7 +270,7 @@ const rule = (sel, src = phoneBlock) => {
 };
 
 check('phone notices stack their actions full width at 44px; notice text is 15px / 1.4 (lane 3b next-step bar)', () => {
-  const g = read('guild.css');
+  const g = (read('planner-forge.css') + '\n' + read('guild.css'));
   const lane3b = g.slice(g.indexOf('Planner board on Forge (T6), lane 3b'), g.indexOf('Planner board on Forge (T6), lane 4'));
   const phone = lane3b.slice(lane3b.lastIndexOf('@media (width <= 600px)'));
   assert.match(phone, new RegExp('gs-pb-notices .sync-banner-actions [{][^}]*flex-direction: column[^}]*width: 100%'));
@@ -310,7 +310,7 @@ check('the phone hit areas add up to 44px and do not overlap their neighbours', 
 });
 
 check('the buff icon fallback label stays visible (12px floor) where the image is missing; an icon with an image hides it', () => {
-  const board = read('guild.css');
+  const board = (read('planner-forge.css') + '\n' + read('guild.css'));
   const r = board.match(/\.gs-pb-board \.buff-icon \.buff-label \{([^}]*)\}/);
   assert(r, 'board rule for the label');
   assert.match(r[1], /font-size: 12px/);
@@ -335,7 +335,7 @@ check('opening the reference comp on a phone moves focus to Back to my raid', ()
 });
 
 check('the pool is a 300px panel left of the board from 1100px, a panel above it below, and a pane behind the switch on phones', () => {
-  const g = read('guild.css');
+  const g = (read('planner-forge.css') + '\n' + read('guild.css'));
   const lane4 = g.slice(g.indexOf('Planner board on Forge (T6), lane 4'), g.indexOf('Planner board on Forge (T6), lane 5'));
   assert.match(lane4, /@media \(min-width: 1100px\) \{\s*\.gs-pb-pool \{[^}]*width: 300px/);
   assert.match(lane4, /@media \(width < 1100px\) \{\s*#app \.app-body \{ flex-direction: column/);
@@ -347,7 +347,7 @@ check('the pool is a 300px panel left of the board from 1100px, a panel above it
 });
 
 check('pool gold: only the count badge (the group heads are gs-fg-ght); no orange, no hex colour', () => {
-  const g = read('guild.css');
+  const g = (read('planner-forge.css') + '\n' + read('guild.css'));
   const lane4 = g.slice(g.indexOf('Planner board on Forge (T6), lane 4'), g.indexOf('Planner board on Forge (T6), lane 5'));
   const gold = lane4.split('\n').filter(l => /accent-gold/.test(l));
   assert.equal(gold.length, 1);
@@ -356,7 +356,7 @@ check('pool gold: only the count badge (the group heads are gs-fg-ght); no orang
 });
 
 check('the pool pills wrap instead of scrolling sideways', () => {
-  assert.match(read('guild.css'), /\.gs-pb-pool \.gs-fg-pills \{ flex-wrap: wrap;/);
+  assert.match((read('planner-forge.css') + '\n' + read('guild.css')), /\.gs-pb-pool \.gs-fg-pills \{ flex-wrap: wrap;/);
 });
 
 check('the viewport covers the safe area; the bottom bar and frame pad for the inset', () => {

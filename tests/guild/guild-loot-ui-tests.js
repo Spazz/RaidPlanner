@@ -264,13 +264,13 @@ function withState(fn) {
   });
 
   await check('look: the column-head style never reaches the row-header cells (item names), and a head icon keeps the name beside it', () => {
-    const css = read('guild.css');
+    const css = (read('planner-forge.css') + '\n' + read('guild.css'));
     assert(css.includes('.gs-loot-page .gs-dtable thead th {') && !css.includes('.gs-loot-page .gs-dtable th {'), 'the Loot column-head rule is scoped to thead th (a row-header th is an item name)');
     assert(css.includes('.gs-pagehead-icon + .gs-pagehead-title { flex: 1 1 auto; }'), 'the title grows next to its icon on every width');
   });
 
   await check('look: an open row menu is never cut off by its panel, and opens on screen on both widths', () => {
-    const css = read('guild.css');
+    const css = (read('planner-forge.css') + '\n' + read('guild.css'));
     assert(css.includes('.gs-hd-panel:has([data-menu] [aria-expanded="true"]) { overflow: visible; }'), 'a clipping panel lets an open menu out');
     const phone = css.slice(css.indexOf('@media (max-width: 760px) {'));
     assert(phone.includes('.gs-dtable td .gs-menu-list { left: 0; right: auto; }'), 'on a phone card the More sits at the left edge, so its menu opens rightward');
@@ -280,13 +280,13 @@ function withState(fn) {
     const src = read('js/guild/pages-loot-hub.js') + read('js/guild/pages-loot-night.js');
     assert(!/<strong>' \+ esc\(dayText\(/.test(src) && !/gs-lt-date|gs-lt-dayhead/.test(src), 'no date in <strong>, no old date classes');
     assert((src.match(/class="gs-fg-ght">' \+ esc\(dayText\(/g) || []).length === 3 && src.includes('<h3 class="gs-fg-gh"><a class="gs-fg-ght" href='));
-    const css = read('guild.css');
+    const css = (read('planner-forge.css') + '\n' + read('guild.css'));
     assert(css.includes('.guild-page .gs-fg-ght, .gs-forge .gs-fg-ght { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }'));
     assert(!css.includes('gs-lt-date') && !css.includes('gs-lt-dayhead'));
   });
 
   await check('quality colours: each passes 4.5:1 on the panel, card and hover backgrounds', () => {
-    const css = read('guild.css');
+    const css = (read('planner-forge.css') + '\n' + read('guild.css'));
     const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
     const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
     for (let q = 0; q <= 7; q++) {

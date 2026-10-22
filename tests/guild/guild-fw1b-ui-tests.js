@@ -596,7 +596,7 @@ function withState(fn) {
   }));
 
   await check('guild.css: every gs- class the new Home and Planner landing markup uses has a rule', () => {
-    const css = read('guild.css');
+    const css = (read('planner-forge.css') + '\n' + read('guild.css'));
     const markup = ['js/guild/pages-home-member.js', 'js/guild/pages-planner-landing.js', 'js/guild/pages-attention.js'].map(f => read(f)).join('\n');
     const used = new Set();
     for (const m of markup.matchAll(/class="([^"]*)"/g)) for (const c of m[1].split(/\s+/)) if (/^gs-[a-z0-9_-]+$/.test(c)) used.add(c);

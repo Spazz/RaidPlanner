@@ -1,6 +1,6 @@
 /* ========================================
    RAIDSMITH GUILD - roster, attendance and settings pages
-   Loaded after app.css; uses only its :root tokens. Flat (radius 0 except avatars), dark only.
+   Loaded after app.css and planner-forge.css (the shared Forge components, tokens and the Planner board live there); uses only their :root tokens. Flat (radius 0 except avatars), dark only.
    Draws the app shell (rail, sidebar, top bar pieces, phone tabs and drawer) and the guild pages inside index.html,
    faq.html and whats-new.html. Page-wide rules apply only inside the shell's own slots (.gs-scope); nothing here styles
    the planner's markup. Phone breakpoint: max-width 600px (menu button + drawer, guild tabs).
@@ -11,37 +11,17 @@
    greys; these add what the design spec (tasks/design-spec.md) names on top. Molten orange is for the one primary button only; gold is
    for count badges only (design spec section 2.2). */
 :root {
-  --border-field: #6b6f72;                 /* input, select, checkbox edges: 3.4:1 on the field fill */
   --sp-12: 48px;                           /* centred card top margin */
-  --danger-text: #e98479;                  /* danger ink on dark (6.2:1); --danger stays for fills and edges */
-  --class-shaman-text: #4a9bff;            /* Shaman as TEXT (6.1:1); --class-shaman (#0070DD) stays a bar / dot colour */
   --t-display: 36px; --t-h1: 28px; --t-h1-phone: 24px; --t-title: 24px; --t-h2: 20px; --t-body: 16px; --t-meta: 14px; --t-micro: 12px;
-  --control-h: 40px; --control-h-phone: 44px; --control-h-sm: 34px; --control-h-lg: 48px;
-  --focus-ring: 2px solid var(--text-primary);
-  --focus-offset: 2px;
+  --control-h-lg: 48px;
   --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.45);
   --shadow-bar: 0 -8px 24px rgba(0, 0, 0, 0.35);
   --backdrop: rgba(0, 0, 0, 0.7);
-  /* Status roles: ink on a tinted fill with an edge; always shown as icon + word + tint, never colour alone (ui.chipHtml). */
+  /* Status roles: ink on a tinted fill with an edge; always shown as icon + word + tint, never colour alone (ui.chipHtml). The neutral, info, danger and warning roles are in planner-forge.css. */
   --status-success-ink: #b4e7ae; --status-success-bg: #1c2a1b; --status-success-edge: #2e4a2c;
-  --status-warning-ink: #ffb86b; --status-warning-bg: #2e2414; --status-warning-edge: #5a4421;
-  --status-danger-ink: #e98479;  --status-danger-bg: #2e1c1a;  --status-danger-edge: #5a2f2b;
-  --status-info-ink: #9ec6ee;    --status-info-bg: #18232e;    --status-info-edge: #2c4660;
-  --status-neutral-ink: #aeb3b0; --status-neutral-bg: #262a2d; --status-neutral-edge: #3c4043;
   --status-none-ink: #8d918e;    --status-none-bg: #202325;    --status-none-edge: #34383a;
-  --next-bg: rgba(255, 255, 255, 0.06);    /* the current stage tile and the next-step bar (neutral raised fill) */
-  --seg-on-bg: rgba(255, 255, 255, 0.12);  /* selected segment / step (neutral) */
   --nav-on-bg: rgba(255, 255, 255, 0.07);  /* active nav item fill */
   --you-bg: rgba(255, 255, 255, 0.04);     /* your own row / line */
-  /* Officer Home (Week and Briefing): the one panel recipe and the one raised recipe (menus, toast) */
-  --hd-panel: linear-gradient(#1d1f21, #191b1d);
-  --hd-panel-edge: rgba(255, 255, 255, 0.08);
-  --hd-panel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), inset 0 -2px 8px rgba(0, 0, 0, 0.25);
-  --hd-raised: linear-gradient(#272a2c, #212426);
-  --hd-raised-edge: rgba(255, 255, 255, 0.14);
-  --hd-raised-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --hd-hair: rgba(255, 255, 255, 0.07);
-  --hd-white: #fff;
 }
 
 /* ── Page frame ─────────────────────────────────────────────── */
@@ -90,24 +70,9 @@ body.guild-page {
 .gs-logo-anvil { fill: var(--accent-gold); }
 .gs-icon { flex: none; }
 
-/* ── Buttons ────────────────────────────────────────────────── */
-.gs-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
-  box-sizing: border-box; min-height: var(--control-h); margin: 0; padding: 0 var(--sp-4);
-  background: var(--btn-secondary-bg); border: 1px solid var(--border-medium); border-radius: 0;
-  color: var(--text-primary); font: 600 16px/1 var(--font-cond); letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
-  cursor: pointer; white-space: nowrap;
-}
-.guild-page a.gs-btn { color: var(--text-primary); }
-.gs-btn:hover { background: var(--btn-secondary-hover); }
-.gs-btn-molten, .guild-page a.gs-btn-molten { background: var(--molten); border-color: var(--molten); color: var(--text-on-molten); font-weight: 700; }
-.gs-btn-molten:hover, .guild-page a.gs-btn-molten:hover { background: var(--molten-hover); border-color: var(--molten-hover); color: var(--text-on-molten); }
 .gs-btn-block { width: 100%; min-height: 48px; font-size: 18px; margin-top: 28px; }
-.gs-btn-sm { min-height: var(--control-h-sm); padding: 0 14px; font-size: 14px; }
 .gs-btn-danger { background: var(--danger); border-color: var(--danger); color: var(--text-on-accent); font-weight: 700; }
 .gs-btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
-.gs-btn-danger-outline { border-color: var(--danger); color: var(--danger-text); font-weight: 700; }
-.gs-btn-danger-outline:hover { background: var(--bg-card-hover); }
 .gs-btn-danger-text { border-color: transparent; color: var(--danger-text); padding: 0 10px; }
 .gs-linkbtn { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; color: var(--text-secondary); font: inherit; text-decoration: underline; cursor: pointer; }
 .gs-linkbtn:hover { color: var(--text-primary); }
@@ -203,7 +168,6 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 .gs-avatar-btn { display: inline-flex; align-items: center; gap: var(--sp-1); margin: 0; padding: 0; background: none; border: 0; border-radius: 0; color: var(--text-muted); cursor: pointer; }
 .gs-avatar-btn[aria-expanded="true"] { color: var(--text-primary); }
 .gs-avatar-btn[aria-expanded="true"] .gs-avatar { box-shadow: 0 0 0 2px var(--text-primary); }
-.gs-menu { position: absolute; right: 0; top: calc(100% + var(--sp-2)); z-index: 30; width: 280px; max-width: calc(100vw - 24px); box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-medium); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
 .gs-menu-head { display: flex; align-items: center; gap: 12px; padding: var(--sp-4); }
 .gs-menu-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .gs-menu-name { font-weight: 600; font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
@@ -273,10 +237,6 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 .gs-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .gs-field[hidden] { display: none; }
 .gs-label { display: block; font: 600 14px/1.3 var(--font-body); color: var(--text-secondary); }
-.gs-input { width: 100%; height: 40px; box-sizing: border-box; padding: 0 12px; background: var(--bg-input); border: 1px solid var(--border-field); border-radius: 0; color: var(--text-primary); font: 400 16px/1 var(--font-body); color-scheme: dark; }
-.gs-input:focus { border-color: var(--text-primary); }
-.gs-input[aria-invalid="true"] { border-color: var(--danger); }
-.gs-input[readonly], .gs-input[readonly]:focus { background: var(--bg-frame); border-style: dashed; border-color: var(--border-field); color: var(--text-secondary); }
 .gs-input-search { height: var(--control-h); padding-left: 38px; font-size: 16px; -webkit-appearance: none; appearance: none; }
 .gs-field-error { margin: 0; font-size: 14px; line-height: 1.4; color: var(--danger-bright); }
 .gs-field-error .gs-icon, .gs-field-ok .gs-icon { vertical-align: -2px; margin-right: 6px; }
@@ -346,9 +306,6 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 .gs-removed-item .gs-btn, .gs-archived-item .gs-btn { margin-left: auto; }
 .gs-archived-item .gs-cell-strong { flex: 0 1 auto; overflow-wrap: anywhere; }
 
-/* ── Dialogs ────────────────────────────────────────────────── */
-.gs-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); box-sizing: border-box; margin: auto; padding: 0; background: var(--bg-frame); border: 1px solid var(--border-medium); color: var(--text-primary); overflow-y: auto; }
-.gs-dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
 .gs-dialog-form { padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-5); }
 .gs-dialog-title { margin: 0; font: 700 24px/1.15 var(--font-cond); letter-spacing: 0.02em; color: var(--text-primary); overflow-wrap: anywhere; }
 .gs-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
@@ -428,7 +385,6 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
   .gs-phone-guild { display: block; font-weight: 600; font-size: 16px; line-height: 1.15; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gs-crumbs-wrap { display: none; }
   .gs-avatar-btn { min-width: 44px; min-height: 44px; justify-content: center; }
-
   .gs-tabs { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: 64px; box-sizing: border-box; background: var(--bg-frame); border-top: 1px solid var(--border-subtle); padding-bottom: env(safe-area-inset-bottom, 0px); }
   .gs-tabs-list { list-style: none; height: 100%; display: flex; }
   .gs-tabs-list li { flex: 1 1 0; display: flex; min-width: 0; }
@@ -436,17 +392,14 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
   .guild-page a.gs-tab, .gs-tab { color: var(--text-secondary); }
   .guild-page a.gs-tab.is-active, .guild-page button.gs-tab.is-active { background: var(--nav-on-bg); color: var(--text-primary); }
   .gs-tab.is-active::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--text-primary); }
-
   .gs-nav-link { height: 44px; }
   .gs-menu-item { height: 44px; }
-  .gs-btn, .gs-btn-sm { min-height: 44px; }
-  .gs-input, .gs-input-search { height: 44px; }
+  .gs-input-search { height: 44px; }
   .gs-team-select { height: 44px; }
   .gs-check { min-height: 44px; }
   .gs-linkbtn { min-height: 44px; }
   .gs-card { padding: 28px 20px; }
   .gs-panel { padding: 16px; }
-
   .gs-people-table, .gs-teams-table { display: none; }
   .gs-team-cards { display: flex; flex-direction: column; gap: var(--sp-2); list-style: none; }
   .gs-team-card { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px; display: flex; flex-direction: column; gap: 4px; }
@@ -456,7 +409,8 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
   .gs-archived-item, .gs-archived-item + .gs-archived-item { box-sizing: border-box; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-subtle); }
   .gs-archived-name { font-weight: 600; font-size: 17px; line-height: 1.2; }
   .gs-team-card .gs-row-actions { justify-content: flex-start; margin-top: var(--sp-2); }
-  .gs-team-card .gs-menu-list { left: 0; right: auto; } /* the card's More sits at its left edge: the menu opens rightward */
+  .gs-team-card .gs-menu-list { left: 0; right: auto; }
+  /* the card's More sits at its left edge: the menu opens rightward */
   .gs-person-card .gs-you { align-self: flex-start; }
   .gs-phone-sort { display: flex; flex-direction: column; gap: 6px; flex: 1 1 100%; }
   .gs-search { flex: 1 1 100%; }
@@ -482,7 +436,6 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 .gs-class-rogue, .guild-page a.gs-class-rogue { color: var(--class-rogue); }
 .gs-class-priest, .guild-page a.gs-class-priest { color: var(--class-priest); }
 .gs-class-shaman, .guild-page a.gs-class-shaman { color: var(--class-shaman-text); }
-.cc-shaman { color: var(--class-shaman-text); } /* the Planner's Shaman names too: #0070DD is 3.6:1 on the board, #4a9bff 6.1:1 */
 .gs-class-mage, .guild-page a.gs-class-mage { color: var(--class-mage); }
 .gs-class-warlock, .guild-page a.gs-class-warlock { color: var(--class-warlock); }
 .gs-class-druid, .guild-page a.gs-class-druid { color: var(--class-druid); }
@@ -756,14 +709,6 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 
 /* One menu button + list (ui.menuHtml). */
 .gs-menu-wrap { position: relative; display: inline-flex; }
-.gs-menu-trigger { gap: var(--sp-2); }
-.gs-menu-trigger[aria-expanded="true"] { background: var(--bg-card-hover); border-color: var(--border-strong); }
-.gs-menu-trigger.is-icon { width: 34px; padding: 0; }
-.gs-menu-list { width: 240px; padding: 4px 0; }
-.gs-menu-list[hidden] { display: none; }
-.gs-menu-list.is-left { left: 0; right: auto; }
-/* A panel that clips its rows to its rounded corners (overflow: hidden) lets an open menu out instead of cutting it off. */
-.gs-hd-panel:has([data-menu] [aria-expanded="true"]) { overflow: visible; }
 .gs-menu-sep { margin: 4px 0; }
 .guild-page .gs-menu-item.is-danger { color: var(--danger-bright); }
 .gs-btn-eq { min-width: 128px; }
@@ -794,8 +739,6 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
   .gs-raidhead .gs-menu-wrap, .gs-raids-actions .gs-menu-wrap { flex: 1 1 0; }
   .gs-raidhead .gs-menu-trigger, .gs-raids-actions .gs-menu-trigger { width: 100%; }
   .gs-raids-actions > .gs-btn-eq { flex: 1 1 0; min-width: 0; }
-  .gs-menu-trigger.is-icon { width: 44px; }
-  .gs-menu-list { width: min(260px, calc(100vw - 32px)); }
   .gs-iconbtn { width: 44px; height: 44px; }
   .gs-stack { gap: 8px; }
 }
@@ -1266,22 +1209,9 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
   .gs-duty-row { grid-template-columns: 1fr; }
 }
 
-/* ══ Design framework (Wave 0): components and templates ═════════════════════════════
-   Built by js/guild/ui-kit.js and ui-templates.js. Tokens are at the top of this file; the rules are in tasks/design-spec.md (the page look is
-   the Forge section below).
-   Radius 0 everywhere; status is icon + word + tint; the molten orange is for the one primary button only; the gold carries titles, links,
-   the active marker, count badges and the focus ring. Text never goes under 12 px. Phone: every control 44 px, tables become cards. */
 
-/* Buttons */
-.gs-btn-ghost { border-color: transparent; color: var(--text-secondary); }
-.guild-page a.gs-btn-ghost { color: var(--text-secondary); }
-.gs-btn-ghost:hover { border-color: transparent; color: var(--text-primary); }
 .gs-btn-lg { min-height: var(--control-h-lg); padding: 0 20px; font-size: 18px; }
 .gs-btn-wide { width: 100%; }
-.gs-btn.is-busy { cursor: progress; }
-.gs-btn[disabled], .gs-btn[aria-disabled="true"], .guild-page a.gs-btn[aria-disabled="true"] { cursor: not-allowed; opacity: 1; background: transparent; border-style: dashed; border-color: var(--border-medium); color: var(--text-muted); }
-.gs-btn-molten[disabled], .gs-btn-molten[aria-disabled="true"], .guild-page a.gs-btn-molten[aria-disabled="true"] { background: var(--bg-card-hover); border-style: solid; border-color: var(--border-medium); color: var(--text-muted); }
-.gs-btn-ghost[disabled] { border-style: solid; border-color: transparent; }
 .gs-linkbtn { min-height: var(--control-h); }
 .gs-back-link { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 32px; font-size: 15px; line-height: 1.3; text-decoration: none; }
 .gs-back-link .gs-icon { transform: rotate(180deg); }
@@ -1630,19 +1560,18 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-savebar, .gs-commitbar { bottom: 64px; padding: 10px 12px; }
   .gs-savebar-actions, .gs-commitbar-actions { width: 100%; }
   .gs-savebar-actions .gs-btn, .gs-commitbar-actions .gs-btn { flex: 1 1 auto; }
-  .gs-menu-trigger.has-phone-icon { width: var(--control-h-phone); padding: 0; border-color: transparent; }
   .gs-menu-trigger.has-phone-icon .gs-menu-text, .gs-menu-trigger.has-phone-icon .gs-menu-chev { display: none; }
   .gs-menu-trigger.has-phone-icon .gs-menu-dots { display: inline-flex; }
   .gs-pagehead-row { flex-wrap: wrap; align-items: center; gap: 4px 8px; }
   .gs-pagehead-title { flex: 1 1 0; }
   .gs-pagehead-actions { display: contents; }
   .gs-pagehead-actions > .gs-btn-molten { order: 3; flex: 1 1 100%; min-height: var(--control-h-lg); margin-top: 8px; font-size: 18px; }
-  .gs-dialog { width: 100%; max-width: 100%; margin: auto 0 0; max-height: 90vh; border-left: 0; border-right: 0; border-bottom: 0; }
   .gs-dialog-actions { flex-direction: column-reverse; align-items: stretch; }
   .gs-dialog-actions .gs-btn { width: 100%; min-height: var(--control-h-lg); font-size: 18px; }
   .guild-page a.gs-char-link, .guild-page a.gs-raid-link { display: inline-flex; align-items: center; min-height: var(--control-h-phone); }
   .gs-loot-card { position: relative; }
-  .guild-page .gs-loot-card a.gs-char-link::after { content: ""; position: absolute; inset: 0; } /* a row is one tap target: the person's link covers the Loot card */
+  .guild-page .gs-loot-card a.gs-char-link::after { content: ""; position: absolute; inset: 0; }
+  /* a row is one tap target: the person's link covers the Loot card */
   .gs-step + .gs-step::before { width: 12px; }
   .gs-skel-row { grid-template-columns: 70px minmax(0, 1fr) 50px; }
 }
@@ -1706,29 +1635,8 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 /* An away notice row (the officers' card and the person page) keeps its text and its two buttons on one line when there is room */
 .gs-an-item .gs-row-actions { flex: none; }
 
-/* ── Forge: the shared look of Home and the Roster pages (Home round 6 recipes) ─────────────────────
-   One page scope class, .gs-forge. The recipes that every page shares live here and are named gs-hd-*: .gs-hd-panel (the one panel), .gs-hd-sl (section
-   label with a rule on both sides), .gs-hd-chip (status chip: tint + word), .gs-hd-sk (skeleton). The raised recipe (menus, dialogs) is --hd-raised.
-   Rules: orange only on the one primary button; gold only on count badges; class colour on character names only; no row edges, no role dots; chips only for
-   an exception; 12 px text floor; 44 px phone targets. Home keeps its own button sizes (it styles .gs-hd-desk / .gs-hd-phone), so the page-wide button
-   recipe below skips .gs-home (its setup checklist keeps its own look). */
-.gs-hd-panel { box-sizing: border-box; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
 
-/* Section label: small caps with a rule on both sides */
-.gs-hd-sl { display: flex; align-items: center; gap: 12px; margin: 0; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
-.gs-hd-sl::before, .gs-hd-sl::after { content: ""; flex: 1; height: 1px; background: var(--hd-panel-edge); }
 
-/* Status chip: tint + word. Tints: rose = attention, blue = Trial, green = Full, grey = Reserve, Inactive, New, You. */
-.gs-hd-chip { display: inline-flex; align-items: center; justify-content: center; align-self: flex-start; flex: none; height: 24px; padding: 0 8px; border: 1px solid; border-radius: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
-.gs-hd-chip.is-done { background: transparent; border-color: var(--border-subtle); color: var(--text-muted); }
-.gs-hd-chip.is-todo { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.24); color: var(--text-primary); }
-.gs-hd-chip.is-short { background: rgba(244, 63, 94, 0.14); border-color: rgba(244, 63, 94, 0.4); color: #fda4af; }
-.gs-hd-chip.is-ready { background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.4); color: #86efac; }
-.gs-hd-chip.is-open { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); color: var(--text-secondary); }
-.gs-hd-chip.is-rose { background: rgba(242, 113, 138, 0.12); border-color: rgba(242, 113, 138, 0.4); color: #fda4af; }
-.gs-hd-chip.is-blue { background: rgba(158, 198, 238, 0.12); border-color: rgba(158, 198, 238, 0.4); color: #9ec6ee; }
-.gs-hd-chip.is-green { background: rgba(180, 231, 174, 0.12); border-color: rgba(180, 231, 174, 0.4); color: #b4e7ae; }
-.gs-hd-chip.is-grey { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); color: #aeb3b0; }
 
 /* Loading skeleton */
 .gs-hd-sk { display: block; border-radius: 4px; background: linear-gradient(90deg, #1f2224 0, #2a2d2f 50%, #1f2224 100%); background-size: 200% 100%; animation: gs-hd-sweep 1.4s linear infinite; }
@@ -1741,19 +1649,6 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 @keyframes gs-hd-sweep { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .gs-hd-sk { animation: none; } }
 
-/* Buttons: Barlow, sentence case, 4 px radius, 36 px; the one primary is the 44 px molten button */
-.gs-forge:not(.gs-home) .gs-btn { font: 600 13px/1 var(--font-body); letter-spacing: 0; text-transform: none; border-radius: 4px; border-color: var(--border-medium); background: rgba(255, 255, 255, 0.04); color: var(--text-primary); min-height: 36px; padding: 0 14px; }
-.gs-forge:not(.gs-home) .gs-btn:hover { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); }
-.gs-forge:not(.gs-home) .gs-btn-ghost { background: transparent; border-color: transparent; color: var(--text-secondary); padding: 0 10px; }
-.gs-forge:not(.gs-home) .gs-btn-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: transparent; }
-.gs-forge:not(.gs-home) .gs-menu-trigger[aria-expanded="true"] { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); }
-.gs-forge:not(.gs-home) .gs-btn-molten, .gs-forge:not(.gs-home) a.gs-btn-molten { min-height: 44px; padding: 0 28px; border-radius: 6px; border-color: var(--molten); background: var(--molten); color: var(--text-on-molten); font: 700 15px/1 var(--font-body); }
-.gs-forge:not(.gs-home) .gs-btn-molten:hover { background: var(--molten-hover); border-color: var(--molten-hover); }
-.gs-forge:not(.gs-home) .gs-btn[disabled], .gs-forge:not(.gs-home) .gs-btn[aria-disabled="true"] { background: transparent; border-style: dashed; border-color: var(--border-medium); color: var(--text-muted); }
-.gs-forge:not(.gs-home) .gs-btn-molten[disabled] { background: var(--bg-card-hover); border-style: solid; }
-.guild-page .gs-forge:not(.gs-home) a.gs-btn-molten { color: var(--text-on-molten); }
-.guild-page .gs-forge:not(.gs-home) a.gs-btn:not(.gs-btn-molten) { color: var(--text-primary); }
-.guild-page .gs-forge:not(.gs-home) a.gs-btn-ghost { color: var(--text-secondary); }
 
 /* Head, context line and the tab strip */
 .gs-forge .gs-pagehead { gap: 16px; }
@@ -1771,26 +1666,10 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-fg-mut { margin: 0; font-size: 13px; color: var(--text-muted); }
 .gs-forge a.gs-fg-u, .gs-fg-u { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
 .gs-forge a.gs-fg-u:hover { color: var(--text-primary); }
-/* Group head (design spec 2.1): the head over a group of rows. Title gold condensed caps, count beside it muted. */
-.gs-fg-gh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 0; }
-.guild-page .gs-fg-ght, .gs-forge .gs-fg-ght { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }
-.guild-page a.gs-fg-ght:hover, .gs-forge a.gs-fg-ght:hover, .guild-page a.gs-lt-link:hover .gs-fg-ght { text-decoration: underline; text-underline-offset: 3px; }
-.gs-fg-ghn { font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-/* Label (design spec 2.1): a word naming a tile, strip, step or field. */
-.gs-fg-lbl { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.guild-page a.gs-lt-link:hover .gs-fg-ght { text-decoration: underline; text-underline-offset: 3px; }
 .gs-fg-linkbtn { display: inline-flex; align-items: center; min-height: 36px; padding: 0 2px; background: none; border: 0; color: var(--text-secondary); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .gs-fg-linkbtn:hover { color: var(--text-primary); }
 .gs-spec-icon { display: block; flex: none; border-radius: 3px; }
-/* Segments: a selected one is the neutral fill; a count beside it is muted until selected */
-.gs-fg-segs { display: inline-flex; border: 1px solid var(--border-medium); border-radius: 4px; overflow: hidden; }
-.gs-fg-seg { display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 38px; margin: 0; padding: 0 16px; background: transparent; border: 0; border-left: 1px solid var(--border-medium); color: var(--text-secondary); font: 600 14px/1 var(--font-body); cursor: pointer; }
-.gs-fg-seg:first-child { border-left: 0; }
-.gs-fg-seg[aria-pressed="true"] { background: var(--seg-on-bg); color: var(--hd-white); }
-.gs-fg-segn { font-variant-numeric: tabular-nums; color: var(--text-muted); }
-.gs-fg-seg[aria-pressed="true"] .gs-fg-segn, .gs-fg-pill[aria-pressed="true"] .gs-fg-segn { color: var(--hd-white); }
-.gs-fg-pills { display: flex; gap: 8px; }
-.gs-fg-pill { display: inline-flex; align-items: center; gap: 8px; flex: none; box-sizing: border-box; min-height: 44px; margin: 0; padding: 0 16px; background: transparent; border: 1px solid var(--border-medium); border-radius: 6px; color: var(--text-secondary); font: 600 15px/1 var(--font-body); white-space: nowrap; cursor: pointer; }
-.gs-fg-pill[aria-pressed="true"] { background: var(--seg-on-bg); border-color: var(--border-field); color: var(--hd-white); }
 .gs-fg-selw { position: relative; }
 .gs-fg-selw .gs-icon { position: absolute; right: 12px; top: 50%; margin-top: -7px; pointer-events: none; color: var(--text-secondary); }
 .gs-fg-selw .gs-input { padding-right: 34px; -webkit-appearance: none; appearance: none; }
@@ -2087,8 +1966,6 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-forge .gs-pagehead-context { font-size: 14px; }
   .gs-forge .gs-subtab { font-size: 16px; }
   .gs-forge .gs-subtabs { gap: 0 24px; }
-  .gs-forge:not(.gs-home) .gs-btn { min-height: 44px; font-size: 14px; }
-  .gs-forge:not(.gs-home) .gs-btn-ghost { min-width: 56px; justify-content: center; }
   .gs-rs-shape, .gs-rs-needs, .gs-rs-you, .gs-rs-desk, .gs-rs-dsegs { display: none; }
   .gs-rs-phone { display: block; }
   .gs-rs-bar { flex-direction: column; align-items: stretch; gap: 16px; }
@@ -2242,7 +2119,6 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-hd-strip.is-loading { opacity: 0.6; }
 .gs-home .gs-hd-muted { color: var(--text-muted); font-size: 13px; }
 .gs-home .gs-hd-center { text-align: center; padding: 8px 0; margin: 0; }
-.gs-forge a:focus-visible, .gs-forge button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 
 .gs-hd-desk { display: flex; flex-direction: column; gap: 32px; }
 .gs-hd-weeksec { display: flex; flex-direction: column; gap: 8px; }
@@ -2265,8 +2141,6 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-home :is(.gs-hd-desk, .gs-hd-phone) .gs-btn-molten:hover { background: var(--molten-hover); border-color: var(--molten-hover); }
 .guild-page .gs-home a.gs-btn-molten { color: var(--text-on-molten); }
 
-/* Menus and the toast: the one raised recipe */
-.gs-forge .gs-menu-list { min-width: 220px; padding: 6px; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
 .gs-forge .gs-menu-list .gs-menu-item { height: auto; min-height: 44px; padding: 6px 12px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; border-radius: 4px; font: 600 14px/1.2 var(--font-body); }
 .gs-forge .gs-menu-note { font-size: 12px; font-weight: 500; color: var(--text-muted); }
 
@@ -2446,628 +2320,29 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-hd-toast-x { min-height: 44px; min-width: 44px; }
 }
 
-/* ── Planner board on Forge (T6): the group panels (planner redesign, lane 1). Prefix gs-pb-. ─────────────────────────────────────
-   Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop groups, R3-details group head, R3-phone). One group = one .gs-hd-panel with a 44 px head
-   (gold group name, muted role word, drum icon button, muted 5/5), 44 px rows (20 px spec icon, class-coloured name over muted spec, then exceptions only)
-   and a Buffs foot. Hook classes of the old board (group-card, player-slot, buff-icon, preferred-slot, stack-*) stay on the same elements; this block restyles them.
-   Sizes are real pixels (the planner frame does not zoom since lane 3a). */
-.gs-pb-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px; align-items: stretch; }
-.gs-pb-board.groups-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.gs-pb-board.groups-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-/* Five groups: three on top, two centred below (6-column grid). */
-.gs-pb-board.groups-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.gs-pb-board.groups-5 .group-card:nth-child(1), .gs-pb-board.groups-5 .group-card:nth-child(2), .gs-pb-board.groups-5 .group-card:nth-child(3) { grid-column: span 2; }
-.gs-pb-board.groups-5 .group-card:nth-child(4) { grid-column: 2 / span 2; }
-.gs-pb-board.groups-5 .group-card:nth-child(5) { grid-column: 4 / span 2; }
-@media (width <= 900px) {
-  .gs-pb-board, .gs-pb-board.groups-2, .gs-pb-board.groups-4, .gs-pb-board.groups-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .gs-pb-board.groups-5 .group-card:nth-child(n) { grid-column: auto; }
-}
-@media (width <= 600px) {
-  .gs-pb-board, .gs-pb-board.groups-2, .gs-pb-board.groups-4, .gs-pb-board.groups-5 { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px 16px; }
-}
 
-.gs-pb-group { display: flex; flex-direction: column; min-width: 0; overflow: clip; }
-.gs-pb-group.drag-over { border-color: var(--text-primary); }
-.gs-pb-head { display: flex; align-items: center; gap: 10px; box-sizing: border-box; height: 44px; padding: 0 16px; }
-.gs-pb-head .gs-fg-gh { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; align-items: baseline; gap: 0 8px; }
-.gs-pb-role { font-weight: 500; }
-.gs-pb-fill { margin-left: auto; flex: none; font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-/* The drum icon button: 24 px beside the group name, only when the group has a tagged drummer. */
-.gs-pb-drum { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--text-primary); font: 700 12px/1 var(--font-body); cursor: pointer; }
-.gs-pb-drum img { display: block; width: 24px; height: 24px; border-radius: 3px; object-fit: cover; }
 
-/* Rows: 44 px, no coloured edge, no role dot. */
-:is(.gs-pb-board, .gs-pb-pool) .player-list { padding: 0; }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot { box-sizing: border-box; min-height: 44px; padding: 0 16px; gap: 10px; border-left: 0; }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot + .player-slot { border-top: 1px solid var(--hd-hair); }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); border-left-color: transparent; }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.drag-target { background: color-mix(in srgb, var(--text-primary) 8%, transparent); border-left-color: transparent; box-shadow: inset 0 0 0 2px var(--text-primary); }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.editing { outline-color: var(--text-primary); }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.needs-review { background: none; }
-:is(.gs-pb-board, .gs-pb-pool) .role-icon { width: 20px; height: 20px; border-radius: 3px; background: none; box-shadow: none; }
-:is(.gs-pb-board, .gs-pb-pool) .role-icon img { border-radius: 3px; }
-:is(.gs-pb-board, .gs-pb-pool) .spec-icon img, .gs-pb-board .player-slot:hover .spec-icon img { filter: none; }
-:is(.gs-pb-board, .gs-pb-pool) .spec-icon::after { content: none; }
-:is(.gs-pb-board, .gs-pb-pool) .role-icon-empty { opacity: 0.5; font-size: 14px; color: var(--text-muted); }
-:is(.gs-pb-board, .gs-pb-pool) .player-info { gap: 1px; }
-:is(.gs-pb-board, .gs-pb-pool) .player-name { font-size: 15px; font-weight: 600; line-height: 1.2; text-shadow: none; }
-:is(.gs-pb-board, .gs-pb-pool) .player-spec { font-size: 12px; line-height: 1.2; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:is(.gs-pb-board, .gs-pb-pool) .empty-slot { cursor: pointer; }
-:is(.gs-pb-board, .gs-pb-pool) .empty-slot .player-name { color: var(--text-muted); font-weight: 500; }
-:is(.gs-pb-board, .gs-pb-pool) .lock-badge, .gs-pb-board .constraint-badge { font-size: 14px; line-height: 1; }
 
-/* Exceptions are chips: the same 24 px, 12 px caps recipe as .gs-hd-chip, tinted with the status roles. */
-:is(.gs-pb-board, .gs-pb-pool) :is(.status-tag, .marker-tag, .changed-tag, .review-badge, .backup-badge) { display: inline-flex; align-items: center; flex: none; box-sizing: border-box; height: 24px; padding: 0 8px; border: 1px solid var(--status-neutral-edge); border-radius: 4px; background: var(--status-neutral-bg); color: var(--status-neutral-ink); font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
-:is(.gs-pb-board, .gs-pb-pool) .marker-tag { flex: 0 1 auto; min-width: 0; max-width: 11em; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 22px; }
-:is(.gs-pb-board, .gs-pb-pool) .status-late, .gs-pb-board .marker-also { border-color: var(--status-info-edge); background: var(--status-info-bg); color: var(--status-info-ink); }
-:is(.gs-pb-board, .gs-pb-pool) .status-absent, .gs-pb-board .marker-away, .gs-pb-board .review-badge { border-color: var(--status-danger-edge); background: var(--status-danger-bg); color: var(--status-danger-ink); }
-:is(.gs-pb-board, .gs-pb-pool) .marker-late, .gs-pb-board .marker-leaving { border-color: var(--status-warning-edge); background: var(--status-warning-bg); color: var(--status-warning-ink); }
-:is(.gs-pb-board, .gs-pb-pool) .changed-tag { border-color: currentColor; background: none; color: var(--hd-white); }
-/* Unseen change: the raised neutral fill of the next-step bar plus the change tag (user pick D 2026-10-21, canvas
-   2gENk76tuyuenj8MAxcnwL; no ring, never gold or orange). A drop target keeps its own fill and ring. */
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed:not(.drag-target) { background: var(--next-bg); opacity: 1; }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed:not(.drag-target):hover { background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
-:is(.gs-pb-board, .gs-pb-pool) .player-slot.changed.dragging { opacity: 0.3; }
-:is(.gs-pb-board, .gs-pb-pool) .gs-hd-chip { align-self: center; }
 
-/* Open slots (requested / suggested) and the runner-up stack. */
-.gs-pb-board .preferred-slot { cursor: pointer; }
-.gs-pb-board .preferred-slot .player-name, .gs-pb-board .stack-card .player-name { color: var(--preferred-color, var(--text-primary)); }
-.gs-pb-board .preferred-slot .player-spec { font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gs-pb-board .preferred-slot img { opacity: 0.7; }
-.gs-pb-board .player-slot.preferred-stack { position: relative; display: block; min-height: 0; padding: 4px 14px 10px 8px; cursor: default; }
-.gs-pb-board .preferred-stack .stack-card { appearance: none; position: relative; display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 0 12px; font: inherit; color: inherit; text-align: left; cursor: pointer; border: 1px solid var(--hd-panel-edge); border-radius: 4px; background: var(--bg-panel); }
-.gs-pb-board .preferred-stack .stack-card:hover { background: color-mix(in srgb, var(--preferred-color, var(--text-primary)) 10%, var(--bg-panel)); }
-.gs-pb-board .preferred-stack .stack-peek { position: absolute; inset: 4px 14px 10px 8px; border: 1px solid var(--border-medium); border-radius: 4px; background: color-mix(in srgb, var(--preferred-color, var(--text-primary)) 14%, var(--bg-card)); box-shadow: 0 1px 2px var(--bg-deepest); pointer-events: none; }
-.gs-pb-board .preferred-stack .stack-peek-1 { transform: translate(3px, 3px); }
-.gs-pb-board .preferred-stack .stack-peek-2 { transform: translate(6px, 6px); }
-.gs-pb-board .preferred-stack.preferred-fan { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px 8px; }
-.gs-pb-board .stack-gap { flex: none; color: var(--text-secondary); font-size: 13px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.gs-pb-board .preferred-fan .stack-other { appearance: none; align-self: flex-start; min-height: 36px; margin: 0; padding: 0 4px; background: none; border: 0; color: var(--text-secondary); font: 600 13px/1 var(--font-body); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.gs-pb-board .preferred-fan .stack-other:hover { color: var(--text-primary); }
 
-/* Foot: the Buffs label and the icon row. A swappable buff stays a button; a small chevron replaces the old gold corner. */
-.gs-pb-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: auto; padding: 10px 16px; border-top: 1px solid var(--hd-hair); }
-.gs-pb-buffs-label { margin-right: 6px; }
-.gs-pb-board .no-buffs { font-size: 12px; color: var(--text-muted); }
-.gs-pb-board .buff-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; width: 30px; height: 30px; padding: 0; border: 1px solid var(--hd-panel-edge); border-radius: 4px; cursor: default; }
-.gs-pb-board .buff-icon.has-icon { background: var(--bg-frame); }
-.gs-pb-board .buff-icon img { display: block; width: 26px; height: 26px; border-radius: 3px; object-fit: cover; }
-.gs-pb-board .buff-icon .buff-label { display: inline; font-size: 12px; font-weight: 700; letter-spacing: 0; }
-.gs-pb-board .buff-icon.has-icon .buff-label { display: none; }
-.gs-pb-board .buff-icon:hover { border-color: var(--border-field); }
-.gs-pb-board .buff-icon.swappable { border-color: var(--border-field); cursor: pointer; }
-.gs-pb-board .buff-icon.swappable:hover { border-color: var(--text-secondary); }
-.gs-pb-board .buff-icon.swappable:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
-.gs-pb-board .buff-icon.overridden { outline: 1px solid var(--text-secondary); outline-offset: 1px; }
-.gs-pb-chev { position: absolute; right: -4px; bottom: -4px; display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1px solid var(--bg-frame); border-radius: 7px; background: var(--border-strong); color: var(--text-primary); }
-.gs-pb-chev svg { display: block; }
-/* Fingers: a 30 px icon gets an invisible 44 px hit area, the gap is widened so neighbours do not overlap. */
-@media (hover: none) and (pointer: coarse) {
-  .gs-pb-foot { gap: 14px; }
-  .gs-pb-board .buff-icon { -webkit-touch-callout: none; }
-  .gs-pb-board .buff-icon::before, .gs-pb-drum::before { content: ''; position: absolute; inset: -7px; }
-  .gs-pb-drum::before { inset: -10px; }
-}
-@media (width <= 600px) {
-  .gs-pb-board .preferred-fan .stack-other { min-height: 44px; }
-}
 
-/* ── Planner board on Forge (T6), lane 2: the Raid check strip, the Groups line, the Manual changes panel and the Coverage dialog. ──
-   Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop strip, R3-details tooltips + Coverage list, R3-phone counts line).
-   The strip is one .gs-hd-panel: role tiles (Tanks, Healers with the muted floor, Melee, Ranged), two labelled icon groups (Fix now, Needs a recruit;
-   one neutral edge, the label splits them, never colour), and the "N covered" button that opens the dialog. Like the board, the strip, the Groups line
-   and the Manual changes panel use real pixels (the planner frame does not zoom since lane 3a). */
-.gs-pb-check { display: flex; align-items: center; gap: 24px; min-height: 76px; margin: 16px 16px 0; padding: 10px 16px; }
-.gs-pb-check[hidden], .gs-pb-manual[hidden] { display: none; }
-.gs-pb-tiles { display: flex; align-items: center; gap: 22px; flex: none; }
-.gs-pb-tiles:empty { display: none; }
-.gs-pb-tile { display: flex; flex-direction: column; gap: 1px; min-width: 70px; }
-.gs-pb-fig { display: flex; align-items: baseline; gap: 6px; }
-.gs-pb-fig b { font-size: 20px; font-weight: 700; line-height: 1.2; color: var(--hd-white); font-variant-numeric: tabular-nums; }
-.gs-pb-floor { font-size: 12px; color: var(--text-muted); }
-.gs-pb-gaps { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 0; padding-left: 24px; border-left: 1px solid var(--hd-hair); }
-.gs-pb-tiles:empty + .gs-pb-gaps { padding-left: 0; border-left: 0; }
-.gs-pb-gapgroup { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.gs-pb-gapgroup + .gs-pb-gapgroup { margin-left: 28px; padding-left: 28px; border-left: 1px solid var(--hd-hair); }
-.gs-pb-icons { display: flex; flex-wrap: wrap; gap: 6px; }
-.gs-pb-gap { display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; width: 36px; height: 36px; padding: 0; border: 1px solid var(--border-field); border-radius: 4px; background: var(--bg-frame); color: var(--text-primary); font: 700 12px/1 var(--font-body); cursor: help; }
-.gs-pb-gap img { display: block; width: 24px; height: 24px; border-radius: 3px; object-fit: cover; }
-.gs-pb-gap:hover { border-color: var(--text-secondary); }
-.gs-pb-quiet { align-self: center; font-size: 14px; color: var(--text-secondary); }
-.gs-pb-covered { flex: none; margin-left: auto; }
-.gs-pb-covered[hidden] { display: none; }
-.gs-pb-tiles .gs-hd-chip { align-self: center; }
 
-.gs-pb-groupsline { margin: 16px 16px 0; }
-.gs-pb-groupsline .gs-hd-sl::before { display: none; }
-.gs-pb-groupsline .gs-hd-sl::after { order: 1; }
-.gs-pb-seated { order: 2; font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 13px; font-variant-numeric: tabular-nums; }
-.gs-pb-seated.is-over { color: var(--danger-text); }
-.gs-pb-seated:empty { display: none; }
-/* The board below brings its own 16 px of padding, so the line sits flush on it. */
-.gs-pb-groupsline + .gs-pb-board { padding-top: 12px; }
 
-/* Manual changes: a panel under the strip while there are any, the same list in the dialog. */
-.gs-pb-manual { margin: 16px 16px 0; padding: 12px 16px; }
-:is(.gs-pb-manual, .gs-pb-cov-sec) ul { margin: 6px 0 0; padding: 0; list-style: none; }
-:is(.gs-pb-manual, .gs-pb-cov-sec) li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 44px; padding: 4px 0; border-top: 1px solid var(--hd-hair); font-size: 14px; color: var(--text-secondary); }
-:is(.gs-pb-manual, .gs-pb-cov-sec) .change-player { font-weight: 600; }
-:is(.gs-pb-manual, .gs-pb-cov-sec) .change-buff { color: var(--text-primary); font-weight: 600; }
-:is(.gs-pb-manual, .gs-pb-cov-sec) .change-arrow { color: var(--text-muted); }
-:is(.gs-pb-manual, .gs-pb-cov-sec) .change-remove { display: inline-flex; align-items: center; justify-content: center; flex: none; margin-left: auto; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--text-muted); font-size: 18px; line-height: 1; cursor: pointer; }
-:is(.gs-pb-manual, .gs-pb-cov-sec) .change-remove:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
 
-/* The Coverage dialog: a raised surface, 640 px wide; a full-height sheet on phones. */
-.gs-pb-cov { box-sizing: border-box; width: min(640px, calc(100vw - 32px)); max-width: none; max-height: min(780px, calc(100dvh - 48px)); margin: auto; padding: 0; overflow: hidden; background: var(--hd-raised); color: var(--text-primary); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); font-family: var(--font-body); color-scheme: dark; }
-.gs-pb-cov[open] { display: flex; flex-direction: column; }
-.gs-pb-cov::backdrop { background: color-mix(in srgb, var(--bg-page) 85%, transparent); }
-.gs-pb-cov-head { display: flex; align-items: center; gap: 12px; flex: none; padding: 12px 16px; border-bottom: 1px solid var(--hd-hair); }
-.gs-pb-cov-title { margin: 0; font: 700 20px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); }
-.gs-pb-cov-title:focus { outline: none; }
-.gs-pb-cov-sum { margin-left: auto; font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.gs-pb-cov-body { display: flex; flex-direction: column; gap: 20px; flex: 1; min-height: 0; padding: 16px; overflow-y: auto; }
-.gs-pb-cov-sec:empty, .gs-pb-cov-sec[hidden] { display: none; }
-.gs-pb-cov-sec .gs-fg-gh { margin-bottom: 4px; }
-.gs-pb-cov .buff-row-list { display: flex; flex-direction: column; }
-.gs-pb-cov .buff-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 0; border-top: 1px solid var(--hd-hair); }
-.gs-pb-cov .buff-row-icon { flex: none; width: 28px; height: 28px; overflow: hidden; border: 1px solid var(--border-field); border-radius: 4px; background: var(--bg-frame); cursor: help; }
-.gs-pb-cov .buff-row-icon img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.gs-pb-cov .buff-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; color: var(--hd-white); }
-.gs-pb-cov .buff-row-source { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-muted); }
-.gs-pb-cov .buff-row-warn { flex: none; font-size: 14px; color: var(--text-muted); cursor: help; }
-.gs-pb-cov .tag-deb { flex: none; padding: 0 6px; border: 1px solid var(--hd-panel-edge); border-radius: 4px; font-size: 12px; font-weight: 600; line-height: 18px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); }
-.gs-pb-cov .buff-row-insight { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 0 6px 38px; font-size: 13px; color: var(--text-secondary); }
-.gs-pb-cov .buff-row-insight .insight-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gs-pb-cov .buff-row-insight .insight-who { font-weight: 600; }
-.gs-pb-cov .buff-row-insight.none .insight-text { color: var(--text-muted); font-style: italic; }
-.gs-pb-cov .insight-btn { flex: none; margin-left: auto; }
-.gs-pb-cov .rec-item { border-top: 1px solid var(--hd-hair); }
-.gs-pb-cov .rec-line { padding: 10px 0; font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
-.gs-pb-cov .rec-spec { font-weight: 600; color: var(--text-primary); }
-.gs-pb-cov .rec-name { white-space: nowrap; }
-.gs-pb-cov .rec-item .buff-row-insight { padding-left: 0; }
-.gs-pb-cov .gs-pb-sub { margin: 10px 0 2px; }
-.gs-pb-cov .balance-warning-row { padding: 10px 0; border-top: 1px solid var(--hd-hair); font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
-.gs-pb-cov .swap-legend { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
-.gs-pb-cov .swap-legend i { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 14px; height: 14px; border: 1px solid var(--bg-frame); border-radius: 7px; background: var(--border-strong); color: var(--text-primary); }
-.gs-pb-cov .swap-legend svg { display: block; }
-.gs-pb-cov .gs-pb-quiet { margin: 0; align-self: auto; }
 
-/* Fingers: 44 px icons and targets, one column; the dialog is a full-height sheet. */
-@media (width <= 600px) {
-  .gs-pb-check { flex-direction: column; align-items: stretch; gap: 12px; min-height: 0; margin: 12px 16px 0; padding: 12px; }
-  .gs-pb-tiles { flex-wrap: wrap; gap: 4px 18px; }
-  .gs-pb-tile { flex-direction: row; align-items: baseline; gap: 6px; min-width: 0; }
-  .gs-pb-fig b { font-size: 16px; }
-  .gs-pb-floor { display: none; }
-  .gs-pb-gaps { flex-direction: column; gap: 12px; padding: 0; border-left: 0; }
-  .gs-pb-gapgroup + .gs-pb-gapgroup { margin: 0; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--hd-hair); }
-  .gs-pb-icons { gap: 8px; }
-  .gs-pb-gap { width: 44px; height: 44px; }
-  .gs-pb-covered { width: 100%; margin-left: 0; min-height: 44px; }
-  .gs-pb-groupsline { margin: 12px 16px 0; }
-  .gs-pb-manual { margin: 12px 16px 0; }
-  :is(.gs-pb-manual, .gs-pb-cov-sec) .change-remove { width: 44px; height: 44px; }
-  .gs-pb-cov { width: 100vw; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; }
-  .gs-pb-cov .insight-btn { min-height: 44px; }
-  .gs-pb-cov .gs-btn { min-height: 44px; }
-}
 
-/* ── Planner board on Forge (T6): the frame. The board sits on the page colour like the Raid page: no fill, no edge, left-aligned (its own max
-   width kept), 32 px from the top bar to the back link and 32 px from the column edge. The planner root pads 16 px at the sides above 1100 px
-   and the head pads 16 px inside, so above 1100 px the 32 px is that pair; from 601 to 1100 px the board adds the 16 px itself. Scoped to the
-   board's own id plus gs-forge, so the shared frame class keeps its look for every other use. Phone (<= 600 px) is unchanged. */
-main#app.gs-forge { background: transparent; border: 0; align-self: flex-start; }
-@media (min-width: 601px) {
-  main#app.gs-forge .gs-pb-planhead { padding-top: 32px; }
-}
-@media (min-width: 601px) and (max-width: 1100px) {
-  main#app.gs-forge { margin-left: 16px; width: min(1620px, calc(100% - 16px)); }
-}
 
-/* ── Planner board on Forge (T6), lane 3a: the head, the More and Share menus, Raid settings, the Raid notes panel, the phone bottom bar. ──
-   Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop and R3-phone head + bottom bar) and round 4 (R4-phone-more). The planner frame no
-   longer zooms (lane 3a retired it with the title bar and the lane 1-2 counter-zooms), so every size here is a real pixel (nothing in main#app is zoomed). */
-.gs-pb-planhead { display: flex; flex-direction: column; gap: 6px; padding: 16px 16px 0; }
-.gs-pb-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: var(--text-secondary); font: 500 14px/1.3 var(--font-body); cursor: pointer; }
-.gs-pb-back:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
-.gs-pb-headrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
-.gs-pb-id { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.gs-pb-titleline { display: flex; align-items: center; gap: 4px 14px; margin: -7px 0; } /* the 44 px name button overhangs its text, so the title-to-context gap reads like the Raid page's */
-.gs-pb-h1 { min-width: 0; margin: 0; font: 700 28px/1.1 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-primary); } /* the same recipe as .gs-h1, the Raid page title */
-.gs-pb-h1:focus { outline: none; }
-.gs-pb-name { display: flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; margin: 0; padding: 0; background: none; border: 0; border-radius: 4px; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
-.gs-pb-name:hover { text-decoration: underline; text-underline-offset: 4px; }
-.gs-pb-name svg { flex: none; opacity: 0.6; }
-#roster-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gs-pb-titleline .gs-hd-chip { align-self: center; }
-.gs-pb-titleline .gs-hd-chip[hidden] { display: none; }
-.gs-pb-ctxrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
-.gs-pb-context { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 0; font-size: 15px; line-height: 1.4; color: var(--text-secondary); }
-.gs-pb-lastrun { font-size: 13px; color: var(--text-muted); }
-.gs-pb-lastrun:empty { display: none; }
-.gs-pb-actions { display: flex; align-items: center; flex: none; gap: 8px; }
-.gs-pb-icon { width: 36px; padding: 0; }
-.gs-pb-icon .btn-label { display: none; }
-.gs-pb-actions .gs-btn svg { flex: none; }
-.gs-pb-phonemore { display: none; }
-.gs-pb-reason { max-width: 240px; font-size: 13px; line-height: 1.3; text-align: right; color: var(--text-muted); }
-.gs-pb-reason[hidden] { display: none; }
-.menu-wrap { position: relative; display: flex; }
-#btn-optimize .btn-label { white-space: nowrap; }
+  
 
-/* Share and More: the raised Forge menu. Menu (render.js) places it with fixed left/top; the items keep the ids, kbd and aria-keyshortcuts of the old menus. */
-.gs-pb-menu { position: fixed; z-index: 60; display: flex; flex-direction: column; box-sizing: border-box; width: auto; min-width: 240px; max-width: min(320px, calc(100vw - 16px)); padding: 6px; overflow-y: auto; overscroll-behavior: contain; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
-.gs-pb-menu[hidden] { display: none; }
-.menu-heading { padding: 8px 12px 4px; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.menu-sep { height: 1px; margin: 6px 0; background: var(--hd-hair); }
-:is(.gs-pb-menu, .mobile-sheet-group) .menu-item { display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 6px 12px; background: none; border: 0; border-radius: 4px; color: var(--text-primary); font: 600 14px/1.2 var(--font-body); text-align: left; text-transform: none; letter-spacing: 0; cursor: pointer; }
-:is(.gs-pb-menu, .mobile-sheet-group) .menu-item:not(:disabled):hover, :is(.gs-pb-menu, .mobile-sheet-group) .menu-item:focus-visible { background: rgba(255, 255, 255, 0.08); }
-:is(.gs-pb-menu, .mobile-sheet-group) .menu-item[hidden] { display: none; }
-:is(.gs-pb-menu, .mobile-sheet-group) .menu-item:has(> small) { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
-:is(.gs-pb-menu, .mobile-sheet-group) .menu-item small { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); }
-:is(.gs-pb-menu, .mobile-sheet-group) .menu-item small:empty { display: none; }
-.menu-item:disabled { opacity: .5; cursor: default; }
-.menu-item-danger { color: var(--danger-text); }
-.menu-kbd { margin-left: auto; padding: 1px 6px; border: 1px solid var(--border-medium); border-bottom-width: 2px; border-radius: 4px; font: 600 12px/1.3 var(--font-body); letter-spacing: 0; color: var(--text-secondary); }
-.raid-notes-badge { color: var(--hd-white); font-size: 12px; }
 
-/* The More sheet (phone): the same items as buttons, plus Redo as an icon button with its label. */
-.mobile-sheet-group .gs-btn { justify-content: flex-start; width: 100%; min-height: 44px; padding: 0 12px; text-align: left; }
-.mobile-sheet-group .gs-pb-icon .btn-label { display: inline; }
-.mobile-sheet-group .gs-pb-icon { width: 100%; }
-.mobile-sheet-header .gs-btn { min-height: 44px; }
 
-/* Raid notes: a panel under the strip while open; its summary is the head and closes it. */
-.gs-pb-notes { margin: 16px 16px 0; overflow: hidden; }
-.gs-pb-notes:not([open]) { display: none; }
-.gs-pb-notes > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; list-style: none; cursor: pointer; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.gs-pb-notes > summary::-webkit-details-marker { display: none; }
-.gs-pb-notes > summary::after { content: "Close"; margin-left: auto; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-secondary); }
-.gs-pb-notes .raid-notes-textarea { display: block; box-sizing: border-box; width: 100%; min-height: 96px; max-height: 260px; margin: 0; padding: 12px 16px; resize: vertical; background: var(--bg-input); border: 0; border-top: 1px solid var(--hd-hair); border-radius: 0; color: var(--text-primary); font: 400 14px/1.5 var(--font-body); }
-.gs-pb-notes .raid-notes-textarea:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
-.gs-pb-notes .raid-notes-textarea::placeholder { color: var(--text-muted); }
-.gs-pb-notes .raid-notes-caption { margin: 0; padding: 8px 16px; border-top: 1px solid var(--hd-hair); font-size: 13px; line-height: 1.4; color: var(--text-muted); }
 
-/* Raid settings dialog: size and version segments, then two facts. */
-.gs-pb-rs { width: min(480px, calc(100vw - 32px)); }
-.gs-pb-rs .gs-pb-cov-body { flex: 0 1 auto; gap: 20px; }
-.gs-pb-rs-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.gs-pb-rs-facts { display: flex; flex-direction: column; gap: 12px; margin: 0; }
-.gs-pb-rs-facts > div { display: flex; flex-direction: column; gap: 2px; }
-.gs-pb-rs-facts dd { margin: 0; font-size: 14px; color: var(--text-secondary); }
 
-@media (width <= 900px) {
-  .gs-pb-headrow { flex-wrap: wrap; }
-}
-/* Phone: the head's action row is the fixed bottom bar. Undo 44, Optimize 48 and widest, then Share and More. Redo is in the More sheet. */
-@media (width <= 600px) {
-  .gs-pb-planhead { gap: 2px; padding: 8px 16px 0; }
-  .gs-pb-back { min-height: 44px; }
-  .gs-pb-headrow { display: block; }
-  .gs-pb-titleline { min-height: 0; }
-  .gs-pb-context { font-size: 14px; }
-  .gs-pb-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; box-sizing: border-box; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--bg-frame); border-top: 1px solid var(--hd-panel-edge); box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.4); }
-  .gs-pb-actions > :is(#btn-undo, #btn-redo) { order: 1; flex: none; width: 44px; min-height: 44px; }
-  .gs-pb-actions > #btn-optimize { order: 2; flex: 2 1 0; min-width: 0; min-height: 48px; padding: 0 12px; font-size: 16px; }
-  .gs-pb-actions > .gs-pb-sharewrap { order: 3; flex: 1 1 0; min-width: 0; }
-  .gs-pb-actions > .gs-pb-phonemore { order: 4; display: inline-flex; flex: 1 1 0; min-width: 0; min-height: 44px; }
-  .gs-pb-actions > .gs-pb-morewrap, .gs-pb-actions > .gs-pb-reason { display: none; }
-  .gs-pb-sharewrap > .gs-btn { width: 100%; min-height: 44px; }
-  .gs-pb-phonemore .changes-count { margin-left: 2px; }
-  .gs-pb-notes { margin: 12px 16px 0; }
-  .gs-pb-notes .raid-notes-textarea { font-size: 16px; }
-  .gs-pb-rs { width: 100vw; max-width: none; max-height: 85dvh; height: fit-content; margin: auto 0 0; border: 0; border-top: 1px solid var(--hd-raised-edge); border-radius: 8px 8px 0 0; }
-  .gs-pb-rs .gs-fg-segs { align-self: stretch; }
-  .gs-pb-rs .gs-fg-seg { flex: 1 1 0; height: 44px; }
-  .gs-pb-rs .gs-btn { min-height: 44px; }
-}
 
-/* ── Planner board on Forge (T6), lane 3b: the next-step bar (notice queue). Frames: R3-desktop and R3-phone (one notice + "N more"). ──
-   #notice-slot holds every banner in priority order; NoticeQueue (js/modals.js) marks the first visible one (.nq-first) and the rest
-   (.nq-rest, shown while .is-open), and hides the bar when nothing is visible. Real pixels, tokens only, no molten. */
-.gs-pb-notices { display: none; }
-.gs-pb-notices.has-notice { display: flex; flex-wrap: wrap; align-items: stretch; box-sizing: border-box; margin: 16px 16px 0; background: var(--next-bg); border: 1px solid var(--border-subtle); border-left: 3px solid var(--text-primary); }
-.gs-pb-notices .gs-pb-notice, .gs-pb-notices .result-line { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-height: 56px; margin: 0; padding: 8px 16px; font: 400 15px/1.4 var(--font-body); color: var(--text-primary); }
-.gs-pb-notices .gs-pb-notice strong { color: var(--text-primary); }
-.gs-pb-notices .gs-pb-notice[hidden], .gs-pb-notices .result-line[hidden], .gs-pb-notices .result-line.nq-off, .gs-pb-notices .gs-pb-notice-more[hidden] { display: none; }
-.gs-pb-notices .gs-pb-notice.nq-first, .gs-pb-notices .result-line { order: 0; flex: 1 1 0; min-width: 0; }
-.gs-pb-notices .gs-pb-notice.nq-rest { display: none; order: 2; flex: 0 0 100%; border-top: 1px solid var(--border-subtle); }
-.gs-pb-notices.is-open .gs-pb-notice.nq-rest { display: flex; }
-.gs-pb-notices .result-line { flex-wrap: nowrap; color: var(--text-secondary); }
-.gs-pb-notices .gs-pb-notice > span:not(.raid-context-main) { flex: 1 1 240px; min-width: 0; }
-.gs-pb-notices .sync-banner-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.gs-pb-notices .gs-pb-notice-more { order: 1; align-self: center; flex: none; margin: 0 8px; }
-.gs-pb-notices .raid-context-main { display: flex; flex: 1 1 240px; flex-direction: column; gap: 2px; min-width: 0; }
-.gs-pb-notices .raid-context-status { color: var(--text-secondary); }
-.gs-pb-notices .raid-context-status:empty { display: none; }
-.gs-pb-notices .raid-context-status.error { color: var(--danger-text); }
-.gs-pb-notices .rb-failed .chip { padding: 0; border: 0; background: none; color: var(--danger-text); font: 600 15px/1.4 var(--font-body); text-transform: none; white-space: normal; }
-.gs-pb-notices .result-line-dismiss { flex: none; min-width: 32px; min-height: 32px; margin: 0; padding: 0; background: none; border: 0; color: var(--text-secondary); font-size: 18px; line-height: 1; cursor: pointer; }
-.gs-pb-notices .result-line-dismiss:hover { color: var(--text-primary); }
-/* The import offer "Create a raid for this event?" (PlanAttach): the team pick sits with the buttons. */
-.gs-pb-notices .gs-pb-attach-team { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.gs-pb-notices .gs-pb-attach-team[hidden] { display: none; }
-.gs-pb-notices .gs-pb-attach-team select { box-sizing: border-box; min-width: 0; max-width: 100%; min-height: var(--control-h-sm); padding: 0 10px; background: var(--bg-input); border: 1px solid var(--border-medium); border-radius: 0; color: var(--text-primary); font: 400 14px/1.2 var(--font-body); color-scheme: dark; }
-.gs-pb-notices .result-line-dismiss:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
-@media (width <= 600px) {
-  .gs-pb-notices .gs-pb-attach-team { flex-direction: column; align-items: stretch; gap: 4px; width: 100%; }
-  .gs-pb-notices .gs-pb-attach-team select { width: 100%; min-height: 44px; }
-  .gs-pb-notices.has-notice { margin: 12px 16px 0; }
-  .gs-pb-notices .gs-pb-notice.nq-first, .gs-pb-notices .result-line { flex: 0 0 100%; }
-  .gs-pb-notices .gs-pb-notice { padding: 12px; }
-  .gs-pb-notices .gs-pb-notice > span:not(.raid-context-main), .gs-pb-notices .raid-context-main { flex: 0 0 100%; }
-  .gs-pb-notices .sync-banner-actions { flex-direction: column; align-items: stretch; width: 100%; }
-  .gs-pb-notices .sync-banner-actions .gs-btn, .gs-pb-notices .gs-pb-notice-more { width: 100%; min-height: 44px; }
-  .gs-pb-notices .gs-pb-notice-more { flex: 0 0 auto; margin: 0; }
-  .gs-pb-notices .result-line { flex-wrap: nowrap; padding: 8px 0 8px 12px; }
-  .gs-pb-notices .result-line-dismiss { min-width: 44px; min-height: 44px; }
-}
 
-/* ── Planner board on Forge (T6), lane 4: the left pool "Not in a group". ──
-   Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop pool, R3-phone switch) and round 4 (R4-phone-pool). One .gs-hd-panel, 300 px, left of the Groups
-   line and the board from 1100 px; a panel above the groups below that; a Groups | Not in a group switch (one pane at a time) on phones.
-   Rows reuse the board row recipe (the :is() selectors above); gold is only the group heads and the count badge. */
-#app .app-body { align-items: flex-start; }
-#app .main-column { flex: 1; min-width: 0; }
-.gs-pb-switch { display: none; }
-.gs-pb-pool { display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; overflow: clip; }
-.gs-pb-pool.drag-over { border-color: var(--text-primary); }
-.gs-pb-pooltitle { flex: none; padding: 14px 16px 0; }
-.gs-pb-pooltitle::before { display: none; }
-.gs-pb-pooltitle::after { order: 1; }
-.gs-pb-poolcount { order: 2; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 24px; height: 22px; padding: 0 7px; border: 1px solid color-mix(in srgb, var(--accent-gold) 50%, transparent); border-radius: 4px; color: var(--accent-gold); font: 700 13px/1 var(--font-body); letter-spacing: 0; font-variant-numeric: tabular-nums; }
-.gs-pb-poolctl { display: flex; flex-direction: column; gap: 10px; flex: none; padding: 12px 16px; }
-.gs-pb-search { height: 36px; border-radius: 4px; }
-.gs-pb-pool .gs-fg-pills { flex-wrap: wrap; gap: 6px; }
-.gs-pb-pool .gs-fg-pill { gap: 6px; min-height: 32px; padding: 0 10px; font-size: 13px; }
-.gs-pb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-primary); flex: none; }
-.gs-pb-poolbody { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.gs-pb-pgroup { border-top: 1px solid var(--hd-hair); }
-.gs-pb-pgh { padding: 10px 16px 4px; }
-.gs-pb-pool .bench-slot, .gs-pb-pool .unplaced-slot { opacity: 1; }
-.gs-pb-pool .unplaced-icon { font-size: 14px; color: var(--text-muted); }
-.gs-pb-pool .bench-reason { font-size: 12px; line-height: 1.25; color: var(--text-muted); overflow-wrap: anywhere; }
-.gs-pb-poolempty { margin: 0; padding: 12px 16px; font-size: 14px; line-height: 1.4; color: var(--text-muted); }
-.gs-pb-poolfoot { flex: none; margin: 0; padding: 10px 16px; border-top: 1px solid var(--hd-hair); font-size: 13px; line-height: 1.4; color: var(--text-muted); }
-.gs-pb-foot-phone { display: none; }
-@media (min-width: 1100px) {
-  .gs-pb-pool { flex: none; width: 300px; margin: 16px 0 16px 16px; position: sticky; top: 16px; max-height: calc(100dvh - 32px); }
-}
-@media (width < 1100px) {
-  #app .app-body { flex-direction: column; align-items: stretch; }
-  .gs-pb-pool { margin: 16px 16px 0; }
-  .gs-pb-poolbody { max-height: 360px; }
-}
-@media (width <= 600px) {
-  .gs-pb-switch { display: flex; align-self: stretch; margin: 12px 16px 0; }
-  .gs-pb-switch .gs-fg-seg { flex: 1; height: 44px; font-size: 15px; }
-  #app .app-body[data-pane="pool"] .main-column, #app .app-body:not([data-pane="pool"]) .gs-pb-pool { display: none; }
-  .gs-pb-pool { margin: 12px 16px 0; }
-  .gs-pb-poolbody { max-height: none; overflow: visible; }
-  .gs-pb-pool .gs-fg-pill { min-height: 44px; padding: 0 14px; font-size: 14px; }
-  .gs-pb-search { height: 44px; }
-  .gs-pb-foot-wide { display: none; }
-  .gs-pb-foot-phone { display: inline; }
-}
 
-/* ── Planner board on Forge (T6), lane 5: the player editor. Frames: A-editor (drawer, 440 px) and A-phone-editor (bottom sheet). ──
-   A raised surface (--hd-raised*): no gold, no orange, no molten (Optimize is the page's only primary). Save is the strongest of the
-   editor's buttons by weight and edge, not by colour. Real pixels (the editor is outside the zoomed frame). Prefix pe- (hook classes kept). */
-.player-editor-overlay { position: fixed; inset: 0; z-index: 99; background: transparent; }
-.player-editor {
-  position: fixed; top: 0; right: 0; bottom: 0;
-  display: flex; flex-direction: column;
-  width: 440px; max-width: 100vw; box-sizing: border-box; overflow: hidden;
-  background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-right: 0; border-radius: 8px 0 0 8px; box-shadow: var(--hd-raised-shadow);
-  z-index: 200; font: 400 14px/1.4 var(--font-body); color: var(--text-primary);
-}
-.player-editor :is(button, input, select):focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.player-editor [hidden] { display: none !important; }
-.pe-phone-only, .pe-sheet-handle, .pe-sheet-header { display: none; }
-.pe-drawer-head { display: flex; align-items: center; gap: 12px; padding: 20px 20px 12px; }
-.pe-icon { display: block; flex: none; width: 28px; height: 28px; }
-.pe-icon .role-icon { width: 28px; height: 28px; border-radius: 3px; background: none; box-shadow: none; }
-.pe-icon .role-icon img, .pe-icon .spec-icon::after { border-radius: 3px; }
-.pe-drawer-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.pe-drawer-kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.pe-drawer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 24px/1.15 var(--font-cond); }
-.pe-drawer-sub { font-size: 13px; color: var(--text-muted); }
-.player-editor .pe-drawer-close { flex: none; width: 36px; min-height: 36px; padding: 0; color: var(--text-secondary); }
-.pe-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 4px 20px 16px; }
-.pe-body > * { margin: 0; flex: none; }
-.pe-section-title { margin: 0; }
-.pe-move-section { display: flex; flex-direction: column; gap: 8px; }
-.pe-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
-.pe-chip {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; align-content: center; column-gap: 4px;
-  box-sizing: border-box; min-height: 48px; padding: 4px 6px; line-height: 1.2;
-  background: transparent; color: var(--text-primary); border: 1px solid var(--border-medium); border-radius: 4px; font: inherit; cursor: pointer;
-}
-.pe-chip b, .pe-chip-count { font-size: 14px; font-weight: 600; }
-.pe-chip small { flex-basis: 100%; text-align: center; font-size: 12px; color: var(--text-muted); }
-.pe-chip:hover:not(:disabled):not(.pe-chip-pick) { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); }
-.pe-chip-current { background: var(--seg-on-bg); border-color: var(--border-field); cursor: default; }
-.pe-chip-current small { color: var(--text-secondary); }
-.pe-chip-pick, .pe-chip-pick:hover { background: var(--seg-on-bg); border-color: var(--hd-white); color: var(--hd-white); }
-.pe-chip-pick small { color: var(--hd-white); }
-.pe-move-hint { margin: 0; font-size: 12px; line-height: 1.4; color: var(--text-muted); }
-.pe-move-detail:empty { display: none; }
-.pe-swap { display: flex; flex-direction: column; margin-top: 8px; border: 1px solid var(--border-medium); border-radius: 6px; overflow: hidden; }
-.pe-swap-prompt { margin: 0; padding: 8px 12px; font-size: 13px; color: var(--text-secondary); background: rgba(255, 255, 255, 0.04); border-bottom: 1px solid var(--hd-hair); }
-.pe-swap-row { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; background: transparent; color: var(--text-primary); border: 0; border-top: 1px solid var(--hd-hair); font: inherit; text-align: left; cursor: pointer; }
-.pe-swap-prompt + .pe-swap-row { border-top: 0; }
-.pe-swap-row:hover { background: rgba(255, 255, 255, 0.06); }
-.pe-swap-row small { font-size: 12px; color: var(--text-muted); }
-.pe-swap-row em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
-.pe-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
-.pe-field-name { grid-column: 1 / -1; }
-.player-editor-field { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 0; }
-.player-editor-field > span, .player-move > label:not(.pe-inline-label) { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.pe-input { width: 100%; min-width: 0; height: 40px; box-sizing: border-box; padding: 0 12px; background: var(--bg-input); border: 1px solid var(--border-field); border-radius: 4px; color: var(--text-primary); font: 400 14px/1 var(--font-body); color-scheme: dark; }
-.pe-input:focus { border-color: var(--hd-white); }
-.player-editor-role { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
-.player-editor-review-notice { padding: 8px 12px; border: 1px solid var(--border-medium); border-left: 3px solid var(--border-field); border-radius: 4px; font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
-.player-move { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; }
-.player-move > label, .player-move > select:last-child { grid-column: 1 / -1; }
-.player-move.pe-backup-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
-.pe-backup-row > span { flex: 1; min-width: 0; }
-.pe-backup-row b { color: var(--text-primary); }
-.pe-inline-label { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; color: var(--text-primary); }
-.pe-inline-label input { width: 20px; height: 20px; margin: 0; accent-color: var(--hd-white); color-scheme: dark; }
-.pe-more-row { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; min-height: 36px; padding: 0; background: none; border: 0; border-radius: 4px; color: var(--text-secondary); font: 600 14px/1.3 var(--font-body); text-align: left; cursor: pointer; }
-.pe-more-row:hover { color: var(--text-primary); }
-.pe-more-hint { display: none; }
-.pe-more-chev { flex: none; transition: transform 0.12s; }
-.pe-more-row[aria-expanded="true"] .pe-more-chev { transform: rotate(180deg); }
-.pe-more-group { display: flex; flex-direction: column; gap: 16px; }
-.player-editor:not(.pe-more-open) .pe-more-group { display: none; }
-.player-constraints { display: flex; flex-direction: column; gap: 12px; }
-.player-constraints-list { display: flex; flex-direction: column; gap: 6px; }
-.constraint-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 0 12px; border: 1px solid var(--border-medium); border-radius: 4px; font-size: 14px; color: var(--text-secondary); }
-.constraint-row .gs-btn { flex: none; width: 44px; min-height: 44px; padding: 0; font-size: 18px; }
-.player-why-here { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
-.player-why-here h4 { margin: 0; }
-.player-why-here ul { margin: 0; padding-left: 18px; }
-.player-why-here li { margin: 0 0 4px; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
-.why-here-empty { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
-.preferred-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.preferred-actions p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
-.player-editor-error { display: none; margin: 0; padding: 8px 20px 0; font-size: 13px; line-height: 1.3; color: var(--danger-text); }
-.player-editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 20px 20px; border-top: 1px solid var(--hd-hair); }
-.pe-actions-right { display: flex; gap: 8px; }
-.player-editor .gs-btn.pe-strong { background: rgba(255, 255, 255, 0.16); border-color: var(--border-field); font-weight: 700; color: var(--hd-white); }
-.player-editor .gs-btn.pe-strong:hover { background: rgba(255, 255, 255, 0.22); border-color: var(--hd-white); }
-/* The card being edited: an outline, not a box-shadow, so it does not fight .changed. Neutral, like the focus ring. */
-.player-slot.editing, .bench-slot.editing { outline: 2px solid var(--text-primary); outline-offset: -2px; }
-@media (width <= 600px) {
-  .player-editor-overlay { background: rgba(0, 0, 0, 0.45); }
-  .player-editor {
-    position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0; width: auto !important; max-height: 85dvh; overflow-y: auto;
-    gap: 12px; padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px)); border: 0; border-top: 1px solid var(--hd-raised-edge); border-radius: 12px 12px 0 0;
-  }
-  .player-editor > *, .pe-body > * { margin: 0; flex-shrink: 0; }
-  .pe-body { display: contents; }
-  .pe-phone-only, .pe-sheet-handle { display: block; }
-  .pe-desktop-only { display: none; }
-  .pe-sheet-handle { width: 36px; height: 4px; align-self: center; border-radius: 2px; background: var(--border-field); }
-  .pe-sheet-header { display: flex; align-items: center; gap: 12px; }
-  .pe-sheet-heading { flex: 1; min-width: 0; }
-  .pe-sheet-name { font: 700 20px/1.2 var(--font-cond); }
-  .pe-sheet-sub { font-size: 13px; color: var(--text-muted); }
-  .player-editor .pe-sheet-back { flex: none; width: 44px; min-height: 44px; padding: 0; font-size: 22px; }
-  .player-editor-title { padding: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-  .pe-move-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-  .pe-move-note { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 12px; }
-  .pe-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .pe-chip { flex: 1 1 44px; flex-direction: column; flex-wrap: nowrap; row-gap: 0; height: 44px; min-height: 44px; padding: 0 2px; }
-  .pe-chip-sep, .pe-chip small { display: none; }
-  .pe-chip-count { font-size: 12px; font-weight: 400; color: var(--text-muted); }
-  .pe-chip-pick .pe-chip-count { color: var(--hd-white); }
-  .pe-swap-row { min-height: 44px; font-size: 15px; }
-  .pe-fields { gap: 12px 8px; }
-  .pe-input { height: 44px; font-size: 16px; }
-  .player-move .gs-btn, .pe-more-row { min-height: 44px; }
-  .pe-more-row { justify-content: space-between; padding: 0 2px; border-top: 1px solid var(--hd-hair); border-bottom: 1px solid var(--hd-hair); border-radius: 0; color: var(--text-primary); }
-  .pe-more-hint { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; color: var(--text-muted); text-align: right; }
-  .pe-more-chev { display: none; }
-  .player-move.pe-backup-row { border: 1px solid var(--hd-hair); border-radius: 6px; padding: 6px 10px; }
-  .player-editor-error { padding: 0; }
-  .player-editor-actions { gap: 8px; padding: 0; border-top: 0; }
-  .pe-actions-right { display: contents; }
-  .player-editor-actions .gs-btn { min-height: 44px; flex: 1 1 0; }
-  .player-editor-actions #pe-remove { flex: 0 0 auto; }
-  .player-editor-actions > span:empty { display: none; }
-  .player-editor:not(.pe-more-open) .pe-more-only { display: none; }
-  .player-editor.pe-more-open .pe-short-only, .player-editor.pe-more-open .pe-fields, .player-editor.pe-more-open #pe-remove { display: none; }
-}
 
-/* ── Planner board on Forge (T6), lane 6: the Changes panel, the Campfire panel (Forever) and the Save / Templates modal. ──
-   Forge panels at real pixels: gs-hd-panel, gs-fg-lbl labels, gs-btn buttons. Neutral ink only (no gold, no orange). */
-.gs-pb-changes, .gs-pb-camp { margin: 16px 16px 0; }
-.gs-pb-changes { display: flex; flex-direction: column; }
-.gs-pb-changes .changes-log-header { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid var(--hd-hair); }
-.gs-pb-changes .changes-log-heading { flex: 1; min-width: 0; margin: 0; }
-.gs-pb-changes .changes-log-list { display: flex; flex-direction: column; padding: 0 16px; }
-.gs-pb-changes .changes-log-entry { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
-.gs-pb-changes .changes-log-entry + .changes-log-entry { border-top: 1px solid var(--hd-hair); }
-.gs-pb-changes .changes-log-meta { margin: 0; font: 600 12px/1.3 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.gs-pb-changes .changes-log-entry.is-unseen .changes-log-meta { color: var(--hd-white); }
-.gs-pb-changes .changes-log-time { font-weight: 400; letter-spacing: 0; text-transform: none; }
-.gs-pb-changes .changes-log-items { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.gs-pb-changes .changes-log-item { font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
-.gs-pb-changes .changes-log-item strong { font-weight: 600; color: var(--text-primary); }
-.gs-pb-changes .changes-log-kind { font-weight: 600; color: var(--hd-white); }
-.gs-pb-changes .changes-log-kind-dropped { color: var(--status-danger-ink); }
-.gs-pb-changes .changes-log-more { align-self: flex-start; min-height: 32px; padding: 0; background: none; border: 0; font: 500 14px/1.3 var(--font-body); color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.gs-pb-changes .changes-log-more:hover { color: var(--text-primary); }
 
-.gs-pb-camp { padding: 16px; }
-.gs-pb-camp .camp-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.gs-pb-camp .camp-heading h2 { margin: 2px 0 0; font: 700 24px/1.15 var(--font-body); color: var(--hd-white); }
-.gs-pb-camp .camp-rules, .gs-pb-camp details p, .gs-pb-camp .camp-note { margin: 12px 0; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
-.gs-pb-camp .camp-note { color: var(--text-muted); }
-.gs-pb-camp details { margin: 12px 0; padding: 0 12px; border: 1px solid var(--hd-hair); border-radius: 8px; }
-.gs-pb-camp summary { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; font: 600 14px/1.3 var(--font-body); color: var(--text-primary); }
-.gs-pb-camp summary span { margin: 0; font-size: 13px; font-weight: 400; color: var(--text-muted); }
-.gs-pb-camp .camp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
-.gs-pb-camp .camp-card { min-width: 0; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--hd-hair); border-radius: 8px; }
-.gs-pb-camp label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.gs-pb-camp input, .gs-pb-camp select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 40px; padding: 0 10px; background: var(--bg-input); border: 1px solid var(--border-medium); border-radius: 0; color: var(--text-primary); font: 400 14px/1.2 var(--font-body); letter-spacing: 0; text-transform: none; }
-.gs-pb-camp :is(input, select):focus-visible { outline: var(--focus-ring); outline-offset: -2px; }
-.gs-pb-camp .camp-card-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-.gs-pb-camp .camp-card-heading label { flex: 1; }
-.gs-pb-camp .camp-capacity { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 12px; }
-.gs-pb-camp .camp-capacity label { flex: 1; }
-.gs-pb-camp .camp-capacity strong { font-size: 18px; font-variant-numeric: tabular-nums; color: var(--hd-white); }
-.gs-pb-camp .camp-assets { margin: 12px 0; padding: 0; list-style: none; }
-.gs-pb-camp .camp-assets li { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-top: 1px solid var(--hd-hair); }
-.gs-pb-camp .camp-assets a { font-size: 14px; font-weight: 600; color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
-.gs-pb-camp .camp-assets p { margin: 4px 0; font-size: 14px; }
-.gs-pb-camp .camp-owner { display: block; margin-top: 4px; font-size: 12px; color: var(--text-muted); }
-.gs-pb-camp .camp-assets small { font-size: 12px; color: var(--text-muted); }
-.gs-pb-camp .camp-empty { padding: 12px 0; font-size: 14px; color: var(--text-muted); }
-.gs-pb-camp .camp-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
-.gs-pb-camp .camp-form label { flex: 1 1 120px; }
-.gs-pb-camp .camp-form label:last-of-type { flex: 0 1 90px; }
-.gs-pb-camp .camp-professions > div { display: flex; align-items: center; gap: 12px; padding: 4px 0; font-size: 14px; }
-.gs-pb-camp .camp-professions span { flex: 1; color: var(--text-secondary); }
-
-/* Save a copy / Comp templates: a raised dialog on the Forge surface. */
-.save-modal { box-sizing: border-box; width: min(440px, calc(100vw - 32px)); max-height: min(80dvh, 640px); overflow-y: auto; padding: 20px; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); font: 400 14px/1.4 var(--font-body); color: var(--text-primary); }
-.save-modal h3, .save-modal h4 { margin: 0 0 12px; }
-.save-modal h4 { margin-top: 16px; }
-.save-modal .save-input { box-sizing: border-box; min-height: 40px; margin-bottom: 12px; padding: 0 10px; background: var(--bg-input); border: 1px solid var(--border-medium); border-radius: 0; font: 400 14px/1.2 var(--font-body); color: var(--text-primary); }
-.save-modal .save-input:focus-visible { outline: var(--focus-ring); outline-offset: -2px; }
-.save-modal .modal-note, .save-modal .modal-empty-note { font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
-.save-modal .import-buttons { flex-wrap: wrap; align-items: center; justify-content: flex-end; }
-.save-modal .import-buttons .save-input { flex: 1 1 160px; width: auto; margin: 0; }
-.save-modal .saved-roster-list { max-height: 240px; margin-bottom: 12px; overflow-y: auto; }
-.save-modal .saved-roster-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; margin-bottom: 4px; padding: 6px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--hd-hair); border-radius: 4px; cursor: pointer; }
-.save-modal .saved-roster-item:hover { background: rgba(255, 255, 255, 0.08); }
-.save-modal .roster-item-name { font-size: 14px; color: var(--text-primary); }
-.save-modal .roster-item-meta { font-size: 12px; color: var(--text-muted); }
-.save-modal .roster-item-delete { min-width: 36px; min-height: 36px; background: none; border: 0; font-size: 18px; color: var(--text-muted); cursor: pointer; }
-.save-modal .roster-item-delete:hover { color: var(--danger-text); }
-.gs-btn-strong { border-color: var(--hd-white); color: var(--hd-white); font-weight: 700; }
-.gs-btn-strong:hover { background: rgba(255, 255, 255, 0.16); }
-@media (width <= 600px) {
-  .gs-pb-changes, .gs-pb-camp { margin: 12px 16px 0; }
-  .gs-pb-changes .changes-log-header { padding: 0 12px 0 16px; }
-  .gs-pb-changes .gs-btn { min-height: 44px; }
-  .gs-pb-changes .changes-log-more { min-height: 44px; }
-  .gs-pb-camp { padding: 12px; }
-  .gs-pb-camp .camp-heading h2 { font-size: 22px; }
-  .gs-pb-camp .camp-grid { grid-template-columns: 1fr; }
-  .gs-pb-camp .gs-btn { min-height: 44px; }
-  .gs-pb-camp :is(input, select) { min-height: 44px; font-size: 16px; }
-  .save-modal { width: calc(100vw - 24px); max-height: 85dvh; }
-  .save-modal .gs-btn { min-height: 44px; }
-  .save-modal .save-input { min-height: 44px; font-size: 16px; }
-}
 
 /* Attendance (Forge): the officer's People and Week grid views (boards R4, 2026-10-21). T1 page; the panels are .gs-hd-panel, the group heads .gs-fg-gh. */
 .gs-at-page { max-width: none; }
