@@ -38,7 +38,7 @@ check('the header says the file is shared with public main and must not depend o
 
 check('every page that loads guild.css loads planner-forge.css right before it, after app.css', () => {
   for (const page of ['index.html', 'faq.html', 'whats-new.html']) {
-    assert(read(page).includes('<link rel="stylesheet" href="/app.css">\n<link rel="stylesheet" href="/planner-forge.css">\n<link rel="stylesheet" href="/guild.css">'), page);
+    assert(read(page).replace(/\r\n/g, '\n').includes('<link rel="stylesheet" href="/app.css">\n<link rel="stylesheet" href="/planner-forge.css">\n<link rel="stylesheet" href="/guild.css">'), page);
   }
 });
 
