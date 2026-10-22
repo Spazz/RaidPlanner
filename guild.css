@@ -3218,6 +3218,69 @@ main#app.gs-forge { background: transparent; border: 0; align-self: flex-start; 
   :is(.gs-settings-page, .gs-dialog-form).gs-forge textarea.gs-input { height: auto; }
 }
 
+/* ── Settings on Forge (lane 2): head colours, General, Teams, Raid schedule, Battle.net, Guild data ──────────────
+   Spec 2.2: orange only on the one molten button, gold only on count badges and group heads; everything else is neutral ink.
+   Helpers for lanes 3-5: .gs-set-body (padding + gap inside a .gs-hd-panel), .gs-dialog-settings (raised surface for a settings dialog). */
+.gs-settings-page.gs-forge .gs-shead .gs-sub, .gs-settings-page.gs-forge .gs-sdetail-head .gs-sub { color: var(--text-secondary); }
+.gs-settings-page.gs-forge .gs-req, .gs-settings-page.gs-forge .gs-fine { color: var(--text-muted); }
+.gs-settings-page.gs-forge .gs-saved-status.is-saved { color: var(--text-muted); }
+.gs-settings-page.gs-forge .gs-saved-status.is-unsaved { color: var(--text-primary); }
+.gs-settings-page.gs-forge .gs-warn { padding: 12px 16px; background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.4); border-radius: 8px; color: var(--text-primary); }
+.gs-settings-page.gs-forge .gs-set-body { display: flex; flex-direction: column; gap: 16px; padding: 20px; }
+.gs-settings-page.gs-forge .gs-set-body > .gs-field, .gs-settings-page.gs-forge .gs-set-body > .gs-fine, .gs-settings-page.gs-forge .gs-set-body > .gs-check { margin: 0; }
+.gs-dialog:has(.gs-dialog-settings) { width: min(560px, calc(100vw - 32px)); background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
+.gs-dialog-settings { padding: 28px; gap: 16px; }
+.gs-dialog-settings .gs-dialog-title { font: 700 26px/1.1 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--hd-white); }
+.gs-dialog-settings .gs-dialog-actions { padding-top: 8px; border-top: 1px solid var(--hd-panel-edge); }
+.gs-dialog-settings .gs-field-error { font-size: 13px; }
+
+/* General: the read-only values */
+.gs-settings-page.gs-forge .gs-ro-list { gap: 0; padding: 4px 20px 8px; }
+.gs-settings-page.gs-forge .gs-ro-row { padding: 12px 0; border-top: 1px solid var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-ro-row:first-child { border-top: 0; }
+.gs-settings-page.gs-forge .gs-ro-label { font: 600 12px/1.2 var(--font-body); letter-spacing: 0.08em; color: var(--text-muted); }
+.gs-settings-page.gs-forge .gs-ro-value { color: var(--text-primary); }
+.gs-settings-page.gs-forge .gs-card-sec > .gs-fine { margin: 0; padding: 0 20px 16px; }
+
+/* Teams: the table is the panel; archived teams are a group head over a panel of rows */
+.gs-settings-page.gs-forge .gs-teams-table { overflow-x: auto; }
+.gs-settings-page.gs-forge .gs-table-teams { min-width: 0; }
+.gs-settings-page.gs-forge .gs-table-teams td:nth-child(2) { white-space: nowrap; }
+.gs-settings-page.gs-forge .gs-table-teams .gs-row-actions { gap: 6px; }
+.gs-settings-page.gs-forge .gs-table th { background: transparent; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.1em; border-bottom: 1px solid var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-table td, .gs-settings-page.gs-forge .gs-table th[scope="row"] { border-bottom-color: var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-table-teams td, .gs-settings-page.gs-forge .gs-table-teams th[scope="row"] { padding: 8px var(--sp-4); height: 52px; }
+.gs-settings-page.gs-forge .gs-archived-h { margin: 0 0 -8px; }
+.gs-settings-page.gs-forge .gs-archived-item + .gs-archived-item { border-top-color: var(--hd-hair); }
+
+/* Raid schedule: slot rows on hairlines inside the panel */
+.gs-settings-page.gs-forge .gs-sched { max-width: none; gap: 24px; }
+.gs-settings-page.gs-forge .gs-sched-form { gap: 24px; }
+.gs-settings-page.gs-forge .gs-sched-slots { gap: 0; }
+.gs-settings-page.gs-forge .gs-sched-row { padding: 16px 0; background: none; border: 0; border-top: 1px solid var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-sched-row:first-child { border-top: 0; padding-top: 0; }
+.gs-settings-page.gs-forge .gs-sched-panel > .gs-empty { border: 0; box-shadow: none; background: none; padding: 0; }
+
+/* Battle.net: ranks in a quiet fieldset */
+.gs-settings-page.gs-forge .gs-bnet-form { max-width: none; margin: 0; gap: 24px; }
+.gs-settings-page.gs-forge .gs-bnet-form .gs-pol-field { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+
+/* Guild data: two panels */
+.gs-settings-page.gs-forge .gs-gdata-card { max-width: none; padding: 20px; gap: 12px; }
+.gs-settings-page.gs-forge .gs-gdata-card .gs-h3 { margin: 0; font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); }
+.gs-settings-page.gs-forge .gs-gdata-danger { border-color: var(--hd-panel-edge); }
+
+@media (max-width: 760px) {
+  .gs-settings-page.gs-forge .gs-sdetail-body .gs-btn { min-height: 44px; }
+  .gs-settings-page.gs-forge .gs-set-body { padding: 16px; }
+  .gs-settings-page.gs-forge .gs-team-card, .gs-settings-page.gs-forge .gs-archived-item, .gs-settings-page.gs-forge .gs-archived-item + .gs-archived-item { background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
+  .gs-settings-page.gs-forge .gs-archived-wrap { background: none; border: 0; box-shadow: none; }
+  .gs-settings-page.gs-forge .gs-gdata-card { padding: 16px; }
+  .gs-dialog-settings { padding: 8px 16px 16px; gap: 12px; }
+  .gs-dialog:has(.gs-dialog-settings) { width: 100%; border-radius: 12px 12px 0 0; }
+  .gs-dialog-settings .gs-btn { min-height: 44px; }
+}
+
 /* ── Loot on Forge: the Loot pages (hub, standings, raid night, item, person loot, award, Needs fixing) ──
    Panels, heads, chips and buttons are the shared Forge recipes (.gs-hd-panel, .gs-pr-*, .gs-hd-chip, .gs-fg-*); only the parts below are Loot's own. */
 .gs-lt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }

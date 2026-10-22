@@ -389,13 +389,13 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const g = generalFixture();
     const out = G.pages.settingsGeneral.generalHtml({ guildData: g });
     assert(out.includes('<form class="gs-general-form" id="general-form" data-submit="general-form" novalidate data-dirty-form data-input="dirty-form" data-change="dirty-form">'));
-    assert(/id="general-name" name="name"[^>]*required[^>]*value="Ravens"/.test(out) && out.includes('Shown in the sidebar, in Discord posts and on the public page.'));
+    assert(/id="general-name" name="name"[^>]*required[^>]*value="Ravens"/.test(out) && out.includes('Shown in the sidebar and on the public page.'));
     assert(/id="general-realm" name="realm"[^>]*list="general-realm-list"[^>]*value="Firemaw"/.test(out) && out.includes('<option value="Dreamscythe">'));
     assert(/<select class="gs-input" id="general-zone" name="timeZone"/.test(out) && out.includes('<option value="America/Chicago" selected>America/Chicago (CT)</option>'));
     assert(stripTags(out).includes('Changing it changes how times read ("8:00 PM ET" becomes "8:00 PM CT").'));
     assert(out.includes('data-savebar hidden') && out.includes('>Save changes<'));
     assert(out.includes('Set when the guild was created') && out.includes('<dt class="gs-ro-label">Game version</dt><dd class="gs-ro-value">TBC Anniversary</dd>') && out.includes('The buff and comp rules differ per version. To change it, create a new guild.'));
-    assert(out.includes('<dt class="gs-ro-label">Region</dt><dd class="gs-ro-value">US</dd>') && out.includes('<dt class="gs-ro-label">Discord server</dt><dd class="gs-ro-value">ID 900000000000000001</dd>') && out.includes('Members sign in through this server.'));
+    assert(out.includes('<dt class="gs-ro-label">Region</dt><dd class="gs-ro-value">US</dd>') && out.includes('<dt class="gs-ro-label">Linked Discord server</dt><dd class="gs-ro-value">ID 900000000000000001</dd>') && out.includes('Members sign in through this server.'));
     assert(!out.includes('Ruleset'), 'a realm guild has no ruleset row');
     assert.equal(count(out, /<h2 class="gs-h2"/g), 2, 'two headed cards: Guild and the fixed values');
     const frame = G.shell.settingsFrameHtml({ guildData: g }, 'general', out);
@@ -411,7 +411,7 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const officer = generalFixture({ discordServerId: undefined }, OFFICER_CAN, [{ role: 'officer' }]);
     const text = G.pages.settingsGeneral.generalHtml({ guildData: officer });
     assert(!text.includes('<form') && !text.includes('data-savebar') && text.includes('Only the Guild Master can change the name, realm or time zone.'));
-    assert(text.includes('<dd class="gs-ro-value">Ravens</dd>') && text.includes('America/Chicago (CT)') && text.includes('The server you chose when you created the guild'), 'the officer reads the same values; the server id is the Guild Master\'s');
+    assert(text.includes('<dd class="gs-ro-value">Ravens</dd>') && text.includes('America/Chicago (CT)') && !text.includes('Linked Discord server'), 'the officer reads the same values; a guild with no linked server shows no Discord row; the server id is the Guild Master\'s');
   });
 
   const fakeForm = (values) => {

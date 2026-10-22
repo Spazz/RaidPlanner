@@ -17,7 +17,7 @@
     const d = opts.data;
     let body;
     if (!d) {
-      body = G.pages.signin.loadingHtml();
+      body = G.ui.settingsLoadingHtml();
     } else {
       const status = !d.configured
         ? '<p class="gs-warn" id="bnet-set-not-configured" role="status">Battle.net isn\'t set up on this server, so the guild roster import cannot run yet.</p>'
@@ -30,7 +30,7 @@
       }).join('');
       body = status +
         '<form class="gs-form gs-bnet-form" id="bnet-form" data-submit="bnet-settings" novalidate' + (d.canEdit ? G.ui.dirtyFormAttrs() : '') + '>' +
-        '<div class="gs-field"><label class="gs-label" for="bnet-guild-name">In-game guild name</label>' +
+        '<div class="gs-hd-panel gs-set-body"><div class="gs-field"><label class="gs-label" for="bnet-guild-name">In-game guild name</label>' +
         '<input class="gs-input" type="text" id="bnet-guild-name" name="guildName" maxlength="32" autocomplete="off" placeholder="' + esc(gd.guild.name) + '" value="' + esc(d.guildName || '') + '"' + (d.canEdit ? '' : ' disabled') + ' data-field="guildName">' +
         '<p class="gs-fine">Leave empty to use the Raidsmith guild name (' + esc(gd.guild.name) + ').</p><p class="gs-field-error" id="bnet-err-guildName" role="alert" hidden></p></div>' +
         (ruleset
@@ -39,7 +39,7 @@
             '<p class="gs-fine">A WoW Forever guild has no realm of its own in Raidsmith. Battle.net looks guilds up by realm, so type the realm\'s name or its URL form.</p><p class="gs-field-error" id="bnet-err-realmSlug" role="alert" hidden></p></div>'
           : '<p class="gs-fine" id="bnet-realm-line">Realm: ' + esc(gd.guild.realm) + ' (' + esc(gd.guild.region) + ')' + (d.realmSlug ? ', Battle.net name <code class="gs-code">' + esc(d.realmSlug) + '</code>' : '') + '.</p>') +
         '<fieldset class="gs-pol-field"><legend class="gs-label">Rank names</legend><p class="gs-fine">' + esc(NOTE) + '</p><div class="gs-bnet-ranks">' + labels + '</div>' +
-        '<p class="gs-field-error" id="bnet-err-rankLabels" role="alert" hidden></p></fieldset>' +
+        '<p class="gs-field-error" id="bnet-err-rankLabels" role="alert" hidden></p></fieldset></div>' +
         '<p class="gs-alert" id="bnet-form-error" role="alert" hidden></p>' +
         (d.canEdit ? G.ui.saveBarHtml({}) : '<p class="gs-fine">Only people who can edit teams can change these.</p>') +
         '</form>';

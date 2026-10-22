@@ -24,10 +24,10 @@
     if (!isGuildMaster(gd)) {
       body = '<p class="gs-fine" id="gdata-gm-only">Only the Guild Master can export or delete the guild.</p>';
     } else {
-      body = '<div class="gs-panel gs-gdata-card" aria-labelledby="gdata-export-h"><h3 class="gs-h3" id="gdata-export-h">Export guild data</h3>' +
+      body = '<div class="gs-panel gs-hd-panel gs-gdata-card" aria-labelledby="gdata-export-h"><h3 class="gs-h3" id="gdata-export-h">Export guild data</h3>' +
         '<p>' + esc(EXPORT_TEXT) + '</p><p class="gs-fine">' + esc(EXPORT_LEAVES_OUT) + '</p>' +
         '<div class="gs-actions"><a class="gs-btn gs-btn-molten" href="' + esc(G.api.guildData.exportUrl(gid)) + '" download data-key="gdata-export">Download guild data</a></div></div>' +
-        '<div class="gs-panel gs-gdata-card gs-gdata-danger" aria-labelledby="gdata-delete-h"><h3 class="gs-h3" id="gdata-delete-h">Delete this guild</h3>' +
+        '<div class="gs-panel gs-hd-panel gs-gdata-card gs-gdata-danger" aria-labelledby="gdata-delete-h"><h3 class="gs-h3" id="gdata-delete-h">Delete this guild</h3>' +
         '<p>' + esc(DELETE_TEXT) + '</p><p class="gs-fine">Download the data first if you want a copy.</p>' +
         '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-danger-outline" data-action="guild-delete-open" data-key="guild-delete">Delete ' + esc(gd.guild.name) + '...</button></div></div>';
     }
@@ -36,14 +36,14 @@
   }
 
   function deleteDialogHtml(guildName) {
-    return '<form class="gs-dialog-form" data-submit="guild-delete-form" novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="guild-delete-form" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Delete ' + esc(guildName) + '?</h2>' +
       '<p class="gs-fine" id="dlg-help">' + esc(DELETE_TEXT) + ' Type the guild name to confirm.</p>' +
       '<div class="gs-field"><label class="gs-label" for="dlg-confirm">Guild name</label>' +
       '<input class="gs-input" type="text" id="dlg-confirm" name="confirmName" data-field="confirmName" autocomplete="off" spellcheck="false" aria-describedby="dlg-help dlg-err-confirmName">' +
       '<p class="gs-field-error" id="dlg-err-confirmName" role="alert" hidden></p></div>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button>' +
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Cancel</button>' +
       '<button type="submit" class="gs-btn gs-btn-danger">Delete guild</button></div></form>';
   }
 

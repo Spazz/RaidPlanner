@@ -74,16 +74,16 @@
     const active = teams.filter(function (t) { return !t.archived; });
     const archived = teams.filter(function (t) { return t.archived; });
     return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions">' +
-      (canEdit ? '<button type="button" class="gs-btn" data-action="team-add" data-key="team-add">Add team</button>' : '') + '</div>' +
+      (canEdit ? '<button type="button" class="gs-btn gs-btn-molten" data-action="team-add" data-key="team-add">Add team</button>' : '') + '</div>' +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       (active.length
-        ? '<div class="gs-table-wrap gs-teams-table"><table class="gs-table gs-table-teams" aria-label="Teams"><thead><tr><th scope="col">Team</th><th scope="col">Size</th><th scope="col">Players</th><th scope="col">Team Lead</th><th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' +
+        ? '<div class="gs-table-wrap gs-hd-panel gs-teams-table"><table class="gs-table gs-table-teams" aria-label="Teams"><thead><tr><th scope="col">Team</th><th scope="col">Size</th><th scope="col">Players</th><th scope="col">Team Lead</th><th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' +
           active.map(function (t) { return activeRow(t, canEdit); }).join('') + '</tbody></table></div>' +
           '<ul class="gs-team-cards" aria-label="Teams">' + active.map(function (t) { return activeCard(t, canEdit); }).join('') + '</ul>'
         : '<p class="gs-empty">No active teams.' + (canEdit ? ' Add a team to get started.' : '') + '</p>') +
       '<p class="gs-fine">' + esc(NOTE) + '</p>' +
       (archived.length
-        ? '<h2 class="gs-h2" id="archived-heading">Archived teams (' + archived.length + ')</h2><div class="gs-panel gs-panel-flush gs-archived-wrap"><ul class="gs-archived" aria-labelledby="archived-heading">' + archived.map(function (t) { return archivedRow(t, canEdit, gd.guild.id); }).join('') + '</ul></div>'
+        ? '<h2 class="gs-h2 gs-fg-ght gs-archived-h" id="archived-heading">Archived teams (' + archived.length + ')</h2><div class="gs-panel gs-hd-panel gs-panel-flush gs-archived-wrap"><ul class="gs-archived" aria-labelledby="archived-heading">' + archived.map(function (t) { return archivedRow(t, canEdit, gd.guild.id); }).join('') + '</ul></div>'
         : '') +
       '</section>';
   }
@@ -112,7 +112,7 @@
     const size = mode === 'size';
     const trial = mode === 'trial';
     const add = !rename && !size && !trial;
-    return '<form class="gs-dialog-form" data-submit="team-form" data-mode="' + (rename ? 'rename' : size ? 'size' : trial ? 'trial' : 'add') + '" data-gid="' + esc(gid) + '"' + (add ? '' : ' data-team="' + esc(team.id) + '"') + ' novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="team-form" data-mode="' + (rename ? 'rename' : size ? 'size' : trial ? 'trial' : 'add') + '" data-gid="' + esc(gid) + '"' + (add ? '' : ' data-team="' + esc(team.id) + '"') + ' novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">' + (rename ? 'Rename ' + esc(team.name) : size ? 'Raid size of ' + esc(team.name) : trial ? 'Trial length of ' + esc(team.name) : 'Add team') + '</h2>' +
       (trial ? trialFieldHtml(trialDaysOf(team)) : '') +
       (size || trial ? '' : '<div class="gs-field"><label class="gs-label" for="dlg-team-name">Team name</label>' +
@@ -120,7 +120,7 @@
         '<p class="gs-field-error" id="dlg-team-name-error" role="alert" hidden></p></div>') +
       (rename || trial ? '' : sizeFieldHtml(add ? G.ui.defaultTeamSize(gameVersion) : team.size)) +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">' + (add ? 'Add team' : 'Save') + '</button></div></form>';
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn gs-btn-ghost" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">' + (add ? 'Add team' : 'Save') + '</button></div></form>';
   }
 
   function currentGuildData() {

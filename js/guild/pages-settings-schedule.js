@@ -88,12 +88,12 @@
       '<p class="gs-fine">The days this team raids each week, in the guild\'s time (' + esc(s.data.timeZone) + '). Create upcoming raids makes a raid for each of those days in the next weeks, skipping days that already have one, so it is safe to press again.</p>' +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (s.note ? '<div class="gs-notice" role="status"><span>' + esc(s.note) + '</span></div>' : '') +
       '<form class="gs-sched-form" id="sched-form" data-submit="sched-form" novalidate>' +
-      '<div class="gs-sched-slots">' + rows + '</div>' +
-      '<div class="gs-row-actions"><button type="button" class="gs-btn" data-action="sched-add" data-key="sched-add"' + (slots.length >= MAX_SLOTS ? ' disabled' : '') + '>Add a slot</button></div>' +
-      '<div class="gs-field"><label class="gs-label" for="sched-weeks">Create raids for the next</label><select class="gs-input gs-sched-weeks" id="sched-weeks" data-change="sched-weeks" data-key="sched-weeks">' +
+      '<div class="gs-hd-panel gs-set-body gs-sched-panel"><div class="gs-sched-slots">' + rows + '</div>' +
+      '<div class="gs-row-actions"><button type="button" class="gs-btn" data-action="sched-add" data-key="sched-add"' + (slots.length >= MAX_SLOTS ? ' disabled' : '') + '>Add a slot</button></div></div>' +
+      '<div class="gs-hd-panel gs-set-body"><div class="gs-field"><label class="gs-label" for="sched-weeks">Create raids for the next</label><select class="gs-input gs-sched-weeks" id="sched-weeks" data-change="sched-weeks" data-key="sched-weeks">' +
       G.ui.optionsHtml(WEEK_CHOICES.map(function (n) { return { value: n, label: plural(n, 'week', 'weeks') }; }), s.draft.weeks) + '</select></div>' +
       '<div class="gs-check"><input type="checkbox" id="sched-auto" data-change="sched-auto" data-key="sched-auto"' + (s.draft.auto ? ' checked' : '') + '><label for="sched-auto">Create them by themselves when an officer opens Raids</label></div>' +
-      closeFieldHtml(s) +
+      closeFieldHtml(s) + '</div>' +
       '<p class="gs-alert" id="sched-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p>' +
       '<div class="gs-actions"><button type="button" class="gs-btn" data-action="sched-fill" data-key="sched-fill"' + (s.busy || !s.data.slots.length ? ' disabled' : '') + '>Create upcoming raids now</button></div>' +
       '<p class="gs-fine">Create upcoming raids uses the saved schedule.</p>' +
@@ -122,7 +122,7 @@
 
   function main(r, gd, ctx) {
     const s = a().settingsSchedule;
-    if (!s || s.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
+    if (!s || s.gid !== gd.guild.id) return G.ui.settingsLoadingHtml();
     return G.shell.settingsFrameHtml(ctx, 'schedule', scheduleHtml({ guildData: gd, s: s, alert: st().pageAlert }));
   }
 

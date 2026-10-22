@@ -43,16 +43,16 @@
       readOnlyRowHtml('Region', guild.region, 'Battle.net looks guilds up by region and realm. To change it, create a new guild.'),
     ];
     if (ruleset) rows.push(readOnlyRowHtml('Ruleset', guild.realm, 'A WoW Forever guild lives on a ruleset, chosen when the guild was created. To change it, create a new guild.'));
-    rows.push(readOnlyRowHtml('Discord server', guild.discordServerId ? 'ID ' + guild.discordServerId : 'The server you chose when you created the guild',
+    if (guild.discordServerId) rows.push(readOnlyRowHtml('Linked Discord server', 'ID ' + guild.discordServerId,
       'Members sign in through this server. The roles it gives are on the Discord roles page.'));
-    return '<section class="gs-card-sec gs-card-fixed" aria-labelledby="general-fixed-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="general-fixed-h">Set when the guild was created</h2></div>' +
+    return '<section class="gs-card-sec gs-hd-panel gs-card-fixed" aria-labelledby="general-fixed-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="general-fixed-h">Set when the guild was created</h2></div>' +
       '<dl class="gs-ro-list">' + rows.join('') + '</dl></section>';
   }
 
   // The people who may not edit see the three values as text.
   function readOnlyCardHtml(guild) {
     const rows = [readOnlyRowHtml('Guild name', guild.name, ''), guild.realmKind === 'ruleset' ? '' : readOnlyRowHtml('Realm', guild.realm, ''), readOnlyRowHtml('Time zone', guild.timeZone + ' (' + G.ui.zoneLabel(guild.timeZone, Date.now()) + ')', '')];
-    return '<section class="gs-card-sec" aria-labelledby="general-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="general-h">Guild</h2></div><dl class="gs-ro-list">' + rows.join('') + '</dl>' +
+    return '<section class="gs-card-sec gs-hd-panel" aria-labelledby="general-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="general-h">Guild</h2></div><dl class="gs-ro-list">' + rows.join('') + '</dl>' +
       '<p class="gs-fine" id="general-only-master">' + esc(ONLY_MASTER) + '</p></section>';
   }
 
@@ -70,10 +70,10 @@
         attrs: suggestions.length ? { list: 'general-realm-list' } : null }) +
       (suggestions.length ? '<datalist id="general-realm-list">' + suggestions.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist>' : '');
     const form = '<form class="gs-general-form" id="general-form" data-submit="general-form" novalidate' + G.ui.dirtyFormAttrs() + '>' +
-      '<section class="gs-card-sec" aria-labelledby="general-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="general-h">Guild</h2></div><div class="gs-card-sec-body">' +
+      '<section class="gs-card-sec gs-hd-panel" aria-labelledby="general-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="general-h">Guild</h2></div><div class="gs-card-sec-body">' +
       '<div data-error-summary-slot></div>' +
       G.ui.fieldHtml({ id: 'general-name', name: 'name', label: 'Guild name', kind: 'text', value: v.name, maxlength: NAME_MAX, autocomplete: 'off', required: true,
-        help: 'Shown in the sidebar, in Discord posts and on the public page.', error: errors['general-name'] }) +
+        help: 'Shown in the sidebar and on the public page.', error: errors['general-name'] }) +
       realmField +
       G.ui.fieldHtml({ id: 'general-zone', name: 'timeZone', label: 'Time zone', kind: 'select', options: zoneOptions(guild.timeZone), selected: v.timeZone, required: true,
         help: ZONE_HELP, error: errors['general-zone'] }) +
