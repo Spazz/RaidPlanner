@@ -456,6 +456,7 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
   .gs-archived-item, .gs-archived-item + .gs-archived-item { box-sizing: border-box; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-subtle); }
   .gs-archived-name { font-weight: 600; font-size: 17px; line-height: 1.2; }
   .gs-team-card .gs-row-actions { justify-content: flex-start; margin-top: var(--sp-2); }
+  .gs-team-card .gs-menu-list { left: 0; right: auto; } /* the card's More sits at its left edge: the menu opens rightward */
   .gs-person-card .gs-you { align-self: flex-start; }
   .gs-phone-sort { display: flex; flex-direction: column; gap: 6px; flex: 1 1 100%; }
   .gs-search { flex: 1 1 100%; }
@@ -3244,6 +3245,7 @@ main#app.gs-forge { background: transparent; border: 0; align-self: flex-start; 
 
 /* Teams: the table is the panel; archived teams are a group head over a panel of rows */
 .gs-settings-page.gs-forge .gs-teams-table { overflow-x: auto; }
+.gs-settings-page.gs-forge .gs-teams-table:has([data-menu] [aria-expanded="true"]) { overflow: visible; } /* the open More menu is not clipped by the table wrap */
 .gs-settings-page.gs-forge .gs-table-teams { min-width: 0; }
 .gs-settings-page.gs-forge .gs-table-teams td:nth-child(2) { white-space: nowrap; }
 .gs-settings-page.gs-forge .gs-table-teams .gs-row-actions { gap: 6px; }
@@ -3283,9 +3285,9 @@ main#app.gs-forge { background: transparent; border: 0; align-self: flex-start; 
 
 /* ── Settings on Forge (lane 3): Teams row actions, Accounts, Roles, Discord roles, Notifications ──────────────────
    Same rules as lanes 1-2: neutral ink, one chip per object (roles on Accounts are plain text), at most one molten per screen. */
-.gs-settings-page.gs-forge .gs-table-teams td:last-child { width: 1%; white-space: nowrap; }
-.gs-settings-page.gs-forge .gs-table-teams .gs-row-actions { flex-wrap: nowrap; justify-content: flex-end; gap: 8px; }
-.gs-settings-page.gs-forge .gs-table-teams td, .gs-settings-page.gs-forge .gs-table-teams th[scope="row"] { padding-left: 12px; padding-right: 12px; }
+.gs-settings-page.gs-forge .gs-table-teams td:last-child { width: 1%; }
+.gs-settings-page.gs-forge .gs-table-teams td, .gs-settings-page.gs-forge .gs-table-teams th { padding-left: 10px; padding-right: 10px; }
+.gs-settings-page.gs-forge .gs-table-teams th { white-space: normal; } /* the headers may wrap, so the table fits a narrow column without a sideways scroll */
 .gs-settings-page.gs-forge .gs-set-h { margin: 0; font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); }
 
 /* Accounts */

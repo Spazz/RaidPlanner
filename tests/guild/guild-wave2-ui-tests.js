@@ -165,7 +165,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     const out = G.pages.teams.teamsHtml({ guildData: gd(OFFICER_CAN), alert: '' });
     assert(out.includes('<td>20-man</td>') && out.includes('<td>40-man</td>'), 'the table');
     assert(out.includes('20-man - 3 players') && out.includes('40-man - 1 player'), 'the cards');
-    assert(/data-action="team-size" data-team="t1" data-key="size-t1" aria-label="Change the raid size of Team KJ">Size<\/button>/.test(out));
+    assert(/data-action="team-size" data-team="t1" data-key="size-t1"[^>]*>Size<\/button>/.test(out));
     assert.equal(out.split('data-action="team-size"').length - 1, 4, 'two teams, a table row and a card each');
     const member = G.pages.teams.teamsHtml({ guildData: gd({ 'guild.access': 'guild' }), alert: '' });
     assert(member.includes('20-man') && !member.includes('team-size') && !member.includes('team-rename'));

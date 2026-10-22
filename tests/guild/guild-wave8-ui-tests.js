@@ -515,7 +515,7 @@ check('Guild settings > Teams: a launch toggle for a team of a guild that is not
   const tbc = gd(OFFICER, 'tbc', [Object.assign({}, TEAMS[0], { launchTeam: true })]);
   S.guilds.g1 = tbc; S.currentGid = 'g1';
   const html = G.pages.teams.teamActionsHtml(tbc.teams[0], true);
-  assert(html.includes('data-action="team-launch"') && html.includes('aria-pressed="true"') && text(html).includes('Launch on'));
+  assert(html.includes('data-action="team-launch"') && text(html).includes('Launch on'));
   assert(G.pages.teams.teamActionsHtml(Object.assign({}, TEAMS[0]), true).includes('Launch off'));
   S.guilds.g1 = gd(OFFICER, 'forever');
   assert(!G.pages.teams.teamActionsHtml(TEAMS[0], true).includes('team-launch'));

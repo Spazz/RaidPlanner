@@ -372,7 +372,7 @@ function assertEscaped(out, label) {
     const activePart = out.slice(0, out.indexOf('Archived teams ('));
     assert(activePart.includes('Team A') && activePart.includes('Team B') && !activePart.includes('Old Team'));
     assert(out.slice(out.indexOf('Archived teams (')).includes('Old Team'));
-    assert(out.includes('aria-label="Archive Team A"') && out.includes('aria-label="Rename Team B"') && out.includes('aria-label="Restore Old Team"'));
+    assert(out.includes('aria-label="More for Team A"') && out.includes('aria-label="More for Team B"') && out.includes('aria-label="Restore Old Team"'));
   });
 
   await check('visibility: person row actions come only from the server actions flags', () => {

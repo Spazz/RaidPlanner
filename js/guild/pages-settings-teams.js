@@ -25,22 +25,28 @@
       '</td><td><div class="gs-row-actions">' + actions + '</div></td></tr>';
   }
 
-  function teamActionsHtml(team, canEdit) {
+  function teamActionsHtml(team, canEdit, idPrefix) {
     if (!canEdit) return '';
-    return '<button type="button" class="gs-btn gs-btn-sm" data-action="team-rename" data-team="' + esc(team.id) + '" data-key="rename-' + esc(team.id) + '" aria-label="Rename ' + esc(team.name) + '">Rename</button>' +
-      '<button type="button" class="gs-btn gs-btn-sm" data-action="team-size" data-team="' + esc(team.id) + '" data-key="size-' + esc(team.id) + '" aria-label="Change the raid size of ' + esc(team.name) + '">Size</button>' +
-      '<button type="button" class="gs-btn gs-btn-sm" data-action="team-trial" data-team="' + esc(team.id) + '" data-key="trial-' + esc(team.id) + '" aria-label="Change the trial length of ' + esc(team.name) + ' (now ' + esc(trialDaysOf(team)) + ' days)">Trial length</button>' +
-      launchToggleHtml(team) +
-      '<button type="button" class="gs-btn gs-btn-sm" data-action="team-archive" data-team="' + esc(team.id) + '" data-key="archive-' + esc(team.id) + '" aria-label="Archive ' + esc(team.name) + '">Archive</button>';
+    const id = team.id;
+    const item = function (label, action, key, extra) { return Object.assign({ label: label, data: { action: action, team: id }, key: key + '-' + id }, extra || {}); };
+    return G.ui.menuHtml({
+      id: (idPrefix || 'team-more-') + id, key: (idPrefix || 'team-more-') + id, label: 'More', ariaLabel: 'More for ' + team.name, triggerClass: 'gs-btn gs-btn-sm',
+      items: [
+        item('Rename', 'team-rename', 'rename'),
+        item('Size', 'team-size', 'size'),
+        item('Trial length (' + trialDaysOf(team) + ' days)', 'team-trial', 'trial'),
+        launchToggleItem(team),
+        { separator: true },
+        item('Archive', 'team-archive', 'archive', { danger: true }),
+      ],
+    });
   }
 
   // PM wave 8: the Roster's Launch tab is on for every team of a WoW Forever guild; any other guild turns it on per team ("launch team").
-  function launchToggleHtml(team) {
+  function launchToggleItem(team) {
     const gd = currentGuildData();
-    if (!gd || !gd.guild || gd.guild.gameVersion === 'forever') return '';
-    const on = team.launchTeam === true;
-    return '<button type="button" class="gs-btn gs-btn-sm" data-action="team-launch" data-team="' + esc(team.id) + '" data-key="launch-' + esc(team.id) + '" aria-pressed="' + (on ? 'true' : 'false') +
-      '" aria-label="' + esc('Launch funnel for ' + team.name + ': ' + (on ? 'on' : 'off')) + '">Launch ' + (on ? 'on' : 'off') + '</button>';
+    if (!gd || !gd.guild || gd.guild.gameVersion === 'forever') return null;
+    return { label: 'Launch ' + (team.launchTeam === true ? 'on' : 'off'), data: { action: 'team-launch', team: team.id }, key: 'launch-' + team.id };
   }
 
   // Phone layout (600 px and below): one card per team, like the People cards.
@@ -49,7 +55,7 @@
     return '<li class="gs-team-card"><span class="gs-team-name">' + esc(team.name) + '</span>' +
       '<span class="gs-card-line gs-muted">' + esc(team.size) + '-man - ' + esc(n) + (n === 1 ? ' player' : ' players') + '</span>' +
       '<span class="gs-card-line">' + leadsText(team) + '</span>' +
-      '<div class="gs-row-actions">' + teamActionsHtml(team, canEdit) + '</div></li>';
+      '<div class="gs-row-actions">' + teamActionsHtml(team, canEdit, 'team-cardmore-') + '</div></li>';
   }
 
   // Every archived team keeps a way (players counts non-inactive people only, so it can be 0 with characters left) to its roster: the roster page opens it with ?team= in the hash.
