@@ -617,7 +617,7 @@ function assertNoRawAttrs(out) {
   await check('T3 settings: five-group list beside a 760 detail; the active page is aria-current; on a phone one pane shows with a Back link; the head carries the save status and the bar sits below', () => {
     const groups = [{ label: 'Guild', items: [{ key: 'general', label: 'General', href: '#/g/g1/settings/general', isNew: true }, { key: 'teams', label: 'Teams', href: '#/g/g1/settings/teams' }] }, { label: 'People and access', items: [{ key: 'people', label: 'Accounts', href: '#/g/g1/settings/people' }] }];
     const detail = ui.settingsPageHtml({ groups, activeKey: 'general', view: 'detail', listHref: '#/g/g1/settings', title: 'General', purpose: 'The basics of the guild.', savedHtml: ui.savedStatusHtml('Saved at 8:14 PM ET'), bodyHtml: '<p>fields</p>', saveBarHtml: ui.saveBarHtml() });
-    assert(detail.startsWith('<div class="gs-page gs-settings-page is-view-detail">') && detail.includes('<nav class="gs-slist" aria-label="Guild settings sections">'));
+    assert(detail.startsWith('<div class="gs-page gs-settings-page gs-forge is-view-detail">') && detail.includes('<nav class="gs-slist" aria-label="Guild settings sections">'));
     assert(detail.includes('<h2 class="gs-sgroup-h" id="sg-0">Guild</h2>') && detail.includes('<h2 class="gs-sgroup-h" id="sg-1">People and access</h2>'));
     assert(detail.includes('class="gs-sitem is-active" href="#/g/g1/settings/general" aria-current="page">General<span class="gs-nbadge">New</span>'));
     assert.equal(count(detail, /aria-current="page"/g), 1);

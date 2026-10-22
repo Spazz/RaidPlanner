@@ -8,6 +8,7 @@
 //   ui.listPageHtml({ head, barHtml, bodyHtml, footHtml })                                  T1 list page: head, segment / filter bar, table, footer line
 //   ui.objectPageHtml({ head, nextStep, youHtml, sections })                        T2 object page: head, next-step bar, You line, sections
 //   ui.formPageHtml({ head, noticesHtml, bodyHtml, pageClass })  /  ui.docPageHtml(...)             T3 form page (one form, 760 wide) and the reading page
+//   ui.settingsLoadingHtml()   skeleton for a settings tab while it loads
 //   ui.settingsPageHtml({ groups, activeKey, view, listHref, title, purpose, savedHtml, bodyHtml, saveBarHtml })   T3 settings: group list + detail
 //   ui.homePageHtml({ head, noticesHtml, attention, cards, pageClass })  /  ui.attentionRowsHtml(items)   T4 home: needs-attention list first, then cards
 //   ui.flowPageHtml({ head, steps, current, bodyHtml, commitBarHtml })  /  ui.stepperHtml / ui.commitBarHtml     T5 flow: paste -> preview -> commit
@@ -89,6 +90,11 @@
     return '<div class="gs-page gs-doc-page gs-page-narrow' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + (o.bodyHtml || '') + '</div>';
   };
 
+  // Loading state for a settings page (Forge skeleton + a screen-reader status line). Use it in place of G.pages.signin.loadingHtml() on a settings tab.
+  ui.settingsLoadingHtml = function () {
+    return '<div class="gs-hd-panel gs-set-loading" aria-busy="true"><span class="gs-hd-sk is-wide"></span><span class="gs-hd-sk is-line"></span><span class="gs-hd-sk is-line"></span><span class="gs-sr" role="status">Loading...</span></div>';
+  };
+
   // T3 - settings: a grouped list of pages on the left and one page at a time (760 wide) beside it. On a phone the list is the first screen and the page
   // opens with a Back link; the Save bar sits above the tab bar. Every page has a heading and a one-line purpose, and the save status in its head.
   //   groups   [{ label, items: [{ key, label, href, isNew }] }]      activeKey  the open page
@@ -105,7 +111,7 @@
     }).join('');
     const view = o.view === 'list' ? 'list' : 'detail';
     const head = o.heading ? '<header class="gs-shead"><h1 class="gs-h1" id="page-title" tabindex="-1">' + esc(o.heading) + '</h1>' + (o.subline ? '<p class="gs-sub">' + esc(o.subline) + '</p>' : '') + '</header>' : '';
-    return '<div class="gs-page gs-settings-page is-view-' + view + '">' + head + '<div class="gs-sgrid"><nav class="gs-slist" aria-label="Guild settings sections">' + groups + '</nav>' +
+    return '<div class="gs-page gs-settings-page gs-forge is-view-' + view + '">' + head + '<div class="gs-sgrid"><nav class="gs-slist" aria-label="Guild settings sections">' + groups + '</nav>' +
       '<div class="gs-sdetail">' + (o.listHref ? '<a class="gs-back-link gs-sback" href="' + esc(o.listHref) + '">' + icon('arrow', 16) + '<span>Settings</span></a>' : '') +
       '<header class="gs-sdetail-head"><div><h2 class="gs-h1 gs-sdetail-h" id="settings-title" tabindex="-1">' + esc(o.title) + '</h2>' + (o.purpose ? '<p class="gs-sub">' + esc(o.purpose) + '</p>' : '') + '</div>' +
       (o.savedHtml || ui.savedStatusHtml('')) + '</header><div class="gs-sdetail-body">' + (o.bodyHtml || '') + '</div>' + (o.saveBarHtml || '') + '</div></div></div>';
