@@ -66,9 +66,10 @@ export function roleGroup(classId, spec) {
 // The role group a sign-up row was signed with ('tank' | 'healer' | 'melee' | 'ranged' | null): a Raid-Helper "Tank" is a tank; otherwise the class and
 // spec the row names (a Raidsmith row names its class by class_name only).
 export function signUpRole(row) {
-  if (row.source === 'raid_helper' && row.class_name === 'Tank') return 'tank';
+  const imported = row.source === 'raid_helper' || (row.guest === 1 && row.rh_signup_id != null);
+  if (imported && row.class_name === 'Tank') return 'tank';
   const spec = ownValue(RAID_HELPER_SPEC, row.spec_name);
-  const classId = row.source === 'raidsmith' ? (ownValue(RAID_HELPER_CLASS, row.class_name) || null) : (spec ? spec.class : (ownValue(RAID_HELPER_CLASS, row.class_name) || null));
+  const classId = row.source === 'raidsmith' && !imported ? (ownValue(RAID_HELPER_CLASS, row.class_name) || null) : (spec ? spec.class : (ownValue(RAID_HELPER_CLASS, row.class_name) || null));
   return roleGroup(classId, spec ? spec.spec : null);
 }
 

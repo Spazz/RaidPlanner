@@ -185,7 +185,7 @@ check('Guest / Pug dialog submits a character name and refreshes the raid with o
   const { A } = s;
   await s.world.db.prepare(`INSERT INTO raid_signups
     (raid_id, guild_id, source, signup_id, nickname, kind, class_name, spec_name, position)
-    VALUES (?, ?, 'raid_helper', 77, 'DiscordNick', 'signed', 'Rogue', 'Combat', 1)`).bind(s.rid, s.gid).run();
+    VALUES (?, ?, 'raid_helper', 77, 'DiscordNick', 'signed', 'Tank', 'Protection1', 1)`).bind(s.rid, s.gid).run();
   const page = await openRaid(s, A);
   assert(page().includes('data-action="sul-guest"'));
   A.handlers.click['sul-guest'](el({ 'data-sid': '77' }));
@@ -195,13 +195,18 @@ check('Guest / Pug dialog submits a character name and refreshes the raid with o
   assert.deepEqual(saved, [{ nickname: 'Visitor', rh_signup_id: 77, guest: 1 }]);
   const html = page();
   assert(html.includes('Visitor') && html.includes('Guest'));
+  const tanks = /<section class="gs-rb-col" aria-label="Tanks">[\s\S]*?<\/section>/.exec(html);
+  assert(tanks && tanks[0].includes('Visitor') && tanks[0].includes('Guest'), 'imported Tank retains its role after guest resolution');
+  assert(!html.includes('No role yet'));
   assert(!html.includes('id="s-signups-unmatched"'));
   s.world.clock.now = Date.parse('2026-10-25T16:00:00Z');
   const pastPage = await openRaid(s, A);
   const past = pastPage();
-  const visibleGuest = /<section[^>]*id="s-guest-signups"[\s\S]*?<\/section>/.exec(past);
-  assert(visibleGuest && visibleGuest[0].includes('Visitor'), 'past raids must show the saved guest outside collapsed Show sign-ups');
-  assert(past.indexOf('id="s-guest-signups"') < past.indexOf('<summary>Show sign-ups</summary>'));
+  const attendance = past.slice(past.indexOf('id="raid-people"'), past.indexOf('<summary>Show sign-ups</summary>'));
+  const pastTanks = /<section class="gs-rb-col" aria-label="Tanks">[\s\S]*?<\/section>/.exec(attendance);
+  assert(pastTanks && pastTanks[0].includes('Visitor') && pastTanks[0].includes('Guest'), 'guest stays in the shared Tanks column after the raid starts');
+  assert(!past.includes('s-guest-signups'), 'no separate guest panel');
+  assert(!pastTanks[0].includes('data-action="decide-open"'), 'a guest has no guild attendance decision');
 });
 
 check('member: the raid page offers four buttons; Sign up, Late, a change of character and spec, a note, and Remove my sign-up are real requests the Worker accepts', async () => {

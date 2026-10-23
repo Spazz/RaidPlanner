@@ -289,8 +289,7 @@
   function mainAfter(gd, data, opts, model) {
     const signups = signupsPanelHtml(gd, data, opts.signups);
     const record = signups ? '<details class="gs-srow-more gs-rpg-record" id="s-signups" tabindex="-1"><summary>Show sign-ups</summary><div class="gs-srow-body">' + signups + '</div></details>' : '';
-    const guests = G.pages.raidSignups ? G.pages.raidSignups.guestPanelHtml(opts.signups) : '';
-    return flowsHtml(data, opts, model) + attendanceHtml(gd, data, opts) + guests + record + bareSection('s-board', prioListHtml(gd, data, opts));
+    return flowsHtml(data, opts, model) + attendanceHtml(gd, data, opts) + record + bareSection('s-board', prioListHtml(gd, data, opts));
   }
 
   // The side column. Desktop order: Raid facts, then after the raid Bosses and Loot, then the Loot prios summary. Each side panel carries a phone order class

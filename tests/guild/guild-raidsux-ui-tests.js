@@ -636,6 +636,23 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert(link.includes('data-submit="sul-link-form"') && link.includes('name="personId"') && link.includes('Link swift to a person') && link.includes('gs-dialog-form gs-forge'));
   });
 
+  await check('guests share attendance role columns with members, sorted by name and tagged without guild attendance credit', () => {
+    const entry = { guest: true, name: 'Aardvark', classId: 'PALADIN', spec: 'Protection', role: 'tank', kind: 'signed', signupId: 91 };
+    const signups = { status: 'ok', data: { can: { edit: true, seeList: true }, entries: [entry] } };
+    const html = G.pages.raidAttendance.panelHtml({ guildData: gd(OFFICER_CAN), data: detail(), signups, filter: 'all' });
+    const tanks = /<section class="gs-rb-col" aria-label="Tanks">[\s\S]*?<\/section>/.exec(html)[0];
+    assert(tanks.includes('Aardvark') && tanks.includes('Alliesha'));
+    assert(tanks.indexOf('Aardvark') < tanks.indexOf('Alliesha'));
+    assert(tanks.includes('>Guest<') && tanks.includes('data-action="su-guest-open"'));
+    assert(html.includes('2 <span class="gs-rb-of">attended'), 'only the two recorded member attendees count as attended');
+    assert(!html.includes('Guest / Pug sign-ups'));
+    signups.data.entries = [{ ...entry, kind: 'tentative' }];
+    const tentative = G.pages.raidAttendance.panelHtml({ guildData: gd(OFFICER_CAN), data: detail(), signups, filter: 'all' });
+    assert(tentative.includes('>Tentative<') && tentative.includes('>Guest<'));
+    signups.data.can.edit = false;
+    assert(!G.pages.raidAttendance.panelHtml({ guildData: gd(OFFICER_CAN), data: detail(), signups, filter: 'all' }).includes('su-guest-open'));
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })();

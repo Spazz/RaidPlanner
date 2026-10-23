@@ -197,7 +197,7 @@
     const away = entry.source === 'away' ? ' <span class="gs-rb-mut">(away notice)</span>' : '';
     return '<li>' + (act
       ? '<button type="button" class="gs-rb-btn gs-rb-lbtn" data-action="' + act.action + '"' + act.attrs + ' aria-label="' + esc(act.label + (entry.name || 'this player')) + '">' + name + '</button>'
-      : name + away) + (entry.isMe ? '<span class="gs-you">You</span>' : '') + '</li>';
+      : name + away) + (entry.guest ? ' ' + greyChip('Guest') : '') + (entry.isMe ? '<span class="gs-you">You</span>' : '') + '</li>';
   }
 
   function lineHtml(title, entries, edit) {
@@ -236,17 +236,6 @@
       return list.length ? lineHtml(g[1], list, edit) : '';
     }).join('');
     return '<div class="gs-rb-cols">' + cols + '</div>' + lines + notices + classLineHtml(view);
-  }
-
-  // Guests have no guild attendance row. Keep their sign-up record visible after the raid starts.
-  function guestPanelHtml(state) {
-    const view = state && state.status === 'ok' ? state.data : null;
-    if (!view || !view.can.seeList) return '';
-    const guests = (view.entries || []).filter(function (e) { return e.guest; }).sort(byName);
-    if (!guests.length) return '';
-    return '<section class="gs-hd-panel gs-rb" id="s-guest-signups" aria-labelledby="guest-signups-h"><div class="gs-rb-ph"><h2 class="gs-pr-h" id="guest-signups-h">Guest / Pug sign-ups</h2>' +
-      '<span class="gs-rb-mut">' + guests.length + '</span></div><div class="gs-rb-pb"><ul class="gs-rb-list">' +
-      guests.map(function (e) { return rowHtml(e, !!view.can.edit, true); }).join('') + '</ul></div></section>';
   }
 
   function headButtonsHtml(view) {
@@ -573,7 +562,8 @@
     closedText: closedText,
     viewOf: function (state) { return state && state.status === 'ok' && state.data ? state.data : null; },
     boardHtml: boardHtml,
-    guestPanelHtml: guestPanelHtml,
+    entryRowHtml: rowHtml,
+    entryLineNameHtml: lineNameHtml,
     groupHeadHtml: groupHeadHtml,
     guestDialogHtml: guestDialogHtml,
     editDialogHtml: editDialogHtml,

@@ -1212,6 +1212,18 @@ check('link a Raid-Helper sign-up: the person takes the Discord ID, every unlink
   assert.deepEqual([again.status, again.json.field], [409, 'fromSignup']);
 });
 
+check('imported guests retain Raid-Helper class, spec and role, including Tank and meta-class sign-ups', async () => {
+  const { mergeSignups } = await load('worker/signups-data.js');
+  const variants = [['Tank', 'Protection1', 'PALADIN', 'tank'], ['Tank', null, null, 'tank'], ['Late', 'Holy', 'PRIEST', 'healer'], ['Bench', 'Enhancement', 'SHAMAN', 'melee'], ['Mage', 'Fire', 'MAGE', 'ranged']];
+  for (const [class_name, spec_name, cls, role] of variants) {
+    const original = { source: 'raid_helper', signup_id: 77, class_name, spec_name, nickname: 'Nick', kind: 'signed' };
+    const guest = { ...original, source: 'raidsmith', signup_id: 1, rh_signup_id: 77, nickname: 'Visitor', guest: 1 };
+    const entries = mergeSignups([original, guest], new Map(), { seeNicknames: true });
+    assert.equal(entries.length, 1);
+    assert.deepEqual([entries[0].classId, entries[0].role], [cls, role], JSON.stringify(original));
+  }
+});
+
 check('Guest / Pug resolution: name, permissions, no duplicates, refresh, Planner, to-do and removal', async () => {
   const s = await signupWorld();
   await withEvent(s);

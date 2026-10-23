@@ -93,6 +93,7 @@
 
   // ── the columns ──
   function rowHtml(ctx, row) {
+    if (row.guestSignup) return G.pages.raidSignups.entryRowHtml(row.guestSignup, ctx.edit, row.guestSignup.kind !== 'signed');
     const chips = (CHIP_WORDS[row.outcome] ? '<span class="gs-hd-chip is-grey">' + esc(CHIP_WORDS[row.outcome]) + '</span>' : '') + (needsReview(row) ? chip('rose', 'Needs review') : '');
     return '<li class="gs-rb-row' + (ctx.me && ctx.me === row.playerId ? ' is-you' : '') + '" data-pid="' + esc(row.playerId) + '">' + iconHtml(ctx, row) + nameHtml(ctx, row) +
       (chips ? '<span class="gs-rb-chips">' + chips + '</span>' : '') + youHtml(ctx, row) + '</li>';
@@ -107,6 +108,7 @@
 
   // A group of names under the columns: a gold head with its count and the names in a row ("(with notice)" per name is muted text).
   function lineNameHtml(ctx, row) {
+    if (row.guestSignup) return G.pages.raidSignups.entryLineNameHtml(row.guestSignup, ctx.edit);
     const decide = ctx.review && row.outcome;
     const name = G.ui.classNameHtml(row.name, row.class);
     let inner;
@@ -133,6 +135,13 @@
       g.list.push(row);
     };
     rows.forEach(function (row) {
+      if (row.guestSignup) {
+        const kind = row.guestSignup.kind;
+        if (inColumns(row) && ROLES.indexOf(row.role) >= 0) return;
+        const labels = { tentative: 'Tentative', absence: "Can't come" };
+        place('guest:' + kind, inColumns(row) ? 'No role' : (labels[kind] || kind), row);
+        return;
+      }
       const o = row.outcome;
       if (COLUMN_OUTCOMES.indexOf(o) >= 0 && ROLES.indexOf(row.role) >= 0) return;
       if (COLUMN_OUTCOMES.indexOf(o) >= 0) place('norole', 'No role', row);
@@ -145,10 +154,14 @@
     return groups.map(function (g) { return lineHtml(ctx, g.title, g.list.sort(byName)); }).join('');
   }
 
+  function inColumns(row) {
+    return row.guestSignup ? ['signed', 'late', 'standby', 'bench'].indexOf(row.guestSignup.kind) >= 0 : COLUMN_OUTCOMES.indexOf(row.outcome) >= 0;
+  }
+
   function everyoneHtml(ctx, rows) {
-    const inColumns = rows.filter(function (r) { return COLUMN_OUTCOMES.indexOf(r.outcome) >= 0; });
+    const columnRows = rows.filter(inColumns);
     const cols = ROLES.map(function (role) {
-      return columnHtml(ctx, role, inColumns.filter(function (r) { return r.role === role; }).sort(byName));
+      return columnHtml(ctx, role, columnRows.filter(function (r) { return r.role === role; }).sort(byName));
     }).join('');
     return '<div class="gs-rb-cols">' + cols + '</div>' + extraLines(ctx, rows);
   }
@@ -185,19 +198,24 @@
     const gid = o.guildData.guild.id;
     const people = Array.isArray(data.people) ? data.people : null;
     if (people === null) return panelShell('', '<p class="gs-empty">Attendance for this raid is visible to the team\'s members.</p>');
+    const signupView = o.signups && o.signups.status === 'ok' && o.signups.data ? o.signups.data : null;
+    const guests = signupView && signupView.can.seeList ? (signupView.entries || []).filter(function (e) { return e.guest; }).map(function (e) {
+      return { name: e.name, role: e.role, guestSignup: e };
+    }) : [];
     const hasLog = !!(data.sources && Array.isArray(data.sources.reports) && data.sources.reports.length) || !!(data.raid && (data.raid.state === 'manual' || data.raid.manual));
-    if (!people.length) {
+    if (!people.length && !guests.length) {
       return panelShell('', '<p class="gs-empty">' + (hasLog ? 'No one is on this raid yet.' : 'Awaiting log. Add a Warcraft Logs report, or mark the raid as No log and enter attendance by hand.') + '</p>');
     }
-    const everyone = people.filter(P().onRosterThatDay);
-    const hidden = people.length - everyone.length;
+    const members = people.filter(P().onRosterThatDay);
+    const everyone = members.concat(guests);
+    const hidden = people.length - members.length;
     const flaggedAll = people.filter(needsReview);
     // Review is for officers: members always see Everyone, without the Needs review / Everyone switch.
     const canReview = !!(data.can && data.can.review);
     const filter = !canReview ? 'all' : (o.filter || (flaggedAll.length ? 'review' : 'all'));
-    const signupView = o.signups && o.signups.status === 'ok' && o.signups.data ? o.signups.data : null;
     const ctx = {
       gid: gid, rid: data.raid.id, review: canReview, see: !!(data.can && data.can.seeAttendance),
+      edit: !!(signupView && signupView.can.edit),
       me: signupView && signupView.me ? signupView.me.personId : null,
       specs: specsOfList(o.signups), signupRows: signupRowOf(data),
     };

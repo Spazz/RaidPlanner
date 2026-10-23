@@ -98,7 +98,7 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
     const characters = characterRows(row.player_id);
     const chosen = row.source === 'raidsmith' ? characters.find((character) => character.id === row.character_id) : null;
     const shown = chosen || displayCharacter(characters, opts.teamId);
-    const classId = row.source === 'raidsmith' ? (ownValue(RAID_HELPER_CLASS, row.class_name) || null) : signUpClassId(row);
+    const classId = row.source === 'raidsmith' && row.rh_signup_id == null ? (ownValue(RAID_HELPER_CLASS, row.class_name) || null) : signUpClassId(row);
     const spec = signUpSpecLabel(row);
     let name;
     // A guest (wave 8: signed up from a guest link, no person) is listed by the character name the guest typed.
