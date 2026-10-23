@@ -1411,12 +1411,12 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 body.has-planner-home .gs-ph { display: grid; width: 100%; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); column-gap: 16px; row-gap: 24px; align-items: start; }
 body.has-planner-home .gs-ph > * { grid-column: 1 / -1; }
 body.has-planner-home .gs-ph > #planner-notice { grid-column: 1; }
-body.has-planner-home .gs-ph > .gs-ph-hero { grid-column: 2; display: flex; flex-direction: column; gap: 24px; padding: 0; }
+body.has-planner-home .gs-ph > .gs-ph-hero { grid-column: 2; display: flex; flex-direction: column; align-items: stretch; min-width: 0; gap: 24px; padding: 0; }
 body.has-planner-home #planner-banner:empty { display: none; }
 body.has-planner-home .gs-ph-card { display: contents; }
 body.has-planner-home .gs-ph-tabs { display: none; }
 body.has-planner-home .gs-ph .gs-ph-pane[hidden], body.has-planner-home .gs-ph-pane { display: flex !important; }
-body.has-planner-home .gs-ph-pane { box-sizing: border-box; padding: 16px; gap: 12px; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
+body.has-planner-home .gs-ph-pane { box-sizing: border-box; min-width: 0; padding: 16px; gap: 12px; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
 body.has-planner-home .gs-ph-ptitle { display: block; margin: 0; font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--hd-white); }
 body.has-planner-home .gs-ph-ta { min-height: 84px; }
 body.has-planner-home .gs-ph-pane #landing-saved-list > li:nth-child(n+4) { display: none; }
@@ -1431,8 +1431,9 @@ body.has-planner-home .gs-ph .gs-ph-showall { display: inline-flex; }
 .gs-ph-date { margin: 0; font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.08em; text-transform: uppercase; color: var(--hd-white); }
 .gs-ph-date span { font-weight: 600; color: var(--text-secondary); }
 .gs-ph-ctitle { margin: 0; font: 700 18px/24px var(--font-body); }
-.guild-page a.gs-ph-cardlink, a.gs-ph-cardlink { color: var(--hd-white); text-decoration: none; overflow-wrap: anywhere; }
-a.gs-ph-cardlink:hover { text-decoration: underline; text-underline-offset: 3px; color: var(--hd-white); }
+/* User-requested colour distinction: raid-title links are gold; dates and supporting copy stay neutral. */
+.guild-page a.gs-ph-cardlink, a.gs-ph-cardlink { color: var(--accent-gold); text-decoration: none; overflow-wrap: anywhere; }
+a.gs-ph-cardlink:hover { text-decoration: underline; text-underline-offset: 3px; color: var(--accent-gold); }
 a.gs-ph-cardlink::after { content: ""; position: absolute; inset: 0; border-radius: 8px; }
 a.gs-ph-cardlink:focus-visible { outline: none; }
 a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); outline-offset: 2px; }
