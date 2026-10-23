@@ -180,6 +180,24 @@ const rows = (world, sql, ...values) => world.db.prepare(sql).bind(...values).al
 
 // ---------------------------------------------------------------------------
 
+check('Guest / Pug dialog submits a character name and refreshes the raid with one guest', async () => {
+  const s = await scenario();
+  const { A } = s;
+  await s.world.db.prepare(`INSERT INTO raid_signups
+    (raid_id, guild_id, source, signup_id, nickname, kind, class_name, spec_name, position)
+    VALUES (?, ?, 'raid_helper', 77, 'DiscordNick', 'signed', 'Rogue', 'Combat', 1)`).bind(s.rid, s.gid).run();
+  const page = await openRaid(s, A);
+  assert(page().includes('data-action="sul-guest"'));
+  A.handlers.click['sul-guest'](el({ 'data-sid': '77' }));
+  assert(A.dialogs.at(-1).includes('Character name'));
+  await A.handlers.submit['sul-guest-form'](el({ 'data-sid': '77' }, { elements: { name: { value: '  Visitor  ' } } }));
+  const saved = await rows(s.world, "SELECT nickname, rh_signup_id, guest FROM raid_signups WHERE source = 'raidsmith'");
+  assert.deepEqual(saved, [{ nickname: 'Visitor', rh_signup_id: 77, guest: 1 }]);
+  const html = page();
+  assert(html.includes('Visitor') && html.includes('Guest'));
+  assert(!html.includes('id="s-signups-unmatched"'));
+});
+
 check('member: the raid page offers four buttons; Sign up, Late, a change of character and spec, a note, and Remove my sign-up are real requests the Worker accepts', async () => {
   const s = await scenario();
   const { E } = s;

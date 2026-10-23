@@ -113,7 +113,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     bind(
       `SELECT s.raid_id, r.team_id, r.raid_on, r.zone, r.title, r.event_title, COUNT(*) AS n
          FROM raid_signups s JOIN raids r ON r.id = s.raid_id AND r.guild_id = s.guild_id
-        WHERE s.guild_id = ?1 AND s.source = 'raid_helper' AND s.player_id IS NULL AND s.kind IN ('signed', 'late', 'bench', 'tentative') AND r.raid_on >= ?2
+        WHERE s.guild_id = ?1 AND s.source = 'raid_helper' AND s.player_id IS NULL AND s.kind IN ('signed', 'late', 'bench', 'tentative') AND r.raid_on >= ?2 AND ${MERGED_ROWS}
         GROUP BY s.raid_id ORDER BY r.raid_on LIMIT ${READ_CAP}`,
       lootSince,
     ),

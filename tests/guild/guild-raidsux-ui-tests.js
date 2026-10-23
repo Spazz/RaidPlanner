@@ -607,7 +607,12 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert.equal(count(panel, />Tentative</g), 1, 'a chip for Tentative only; Signed up has none');
     assert.equal(count(panel, /data-action="sul-link"/g), 2);
     assert.equal(count(panel, /data-action="sul-person"/g), 2);
-    assert(panel.includes('aria-label="Link swift to a person"') && panel.includes('aria-label="Add swift as a new person"'));
+    assert(panel.includes('aria-label="Link swift to a person"') && panel.includes('aria-label="More actions for swift"'));
+    assert.equal(count(panel, /data-action="sul-guest"/g), 2);
+    const guest = G.pages.raidSignupLink.guestDialogHtml(entry());
+    assert(guest.includes('data-submit="sul-guest-form"') && guest.includes('data-sid="13"'));
+    assert(guest.includes('Character name') && guest.includes('name="name"') && guest.includes('Add as Guest / Pug'));
+    assertEscaped(G.pages.raidSignupLink.guestDialogHtml(entry({ name: HOSTILE + QUOTES })), 'guest dialog');
     assert(panel.includes('Link to person...') && panel.includes('Add as new person...') && panel.includes('data-sid="13"'));
     // An upcoming raid shows it too.
     const up = detail({ raid: { id: 'u1', team: 't1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, title: null, zone: 'Black Temple', size: 25, state: 'awaiting_log', openFlags: 0, stale: false, version: 1 }, people: [], pulls: [], signups: [] });

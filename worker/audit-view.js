@@ -55,7 +55,7 @@ export const ACTION_GROUP = Object.freeze({
   'duties.set': 'raids', 'launch.update': 'roster', 'launch.team': 'settings',
   // Home redesign: a to-do hidden for every officer (dismissed, snoozed, or a watch entry marked Reviewed), and brought back.
   'attention.dismiss': 'raids', 'attention.restore': 'raids',
-  'join.create': 'signups', 'join.revoke': 'signups', 'signup.guest': 'signups', 'signup.guest_remove': 'signups',
+  'join.create': 'signups', 'join.revoke': 'signups', 'signup.guest': 'signups', 'signup.guest_remove': 'signups', 'signup.guest_resolve': 'signups',
 });
 
 // Actions the Worker writes itself (no actor): the Activity log names "Raidsmith" for them instead of a former member.
@@ -308,6 +308,7 @@ export function describeRow(row, names = {}) {
     }
     case 'join.create': return `Made a guest sign-up link for ${onRaid(ent)}`;
     case 'join.revoke': return `Turned off a guest sign-up link of ${onRaid(ent)}`;
+    case 'signup.guest_resolve': return `Added ${after.name || 'a character'} as a Guest / Pug on ${onRaid(ent)}`;
     case 'signup.guest': return `A guest signed up for ${onRaid(ent)}${after.class ? ` (${CLASS_LABEL[after.class] || after.class})` : ''}`;
     case 'signup.guest_remove': return `Removed a guest sign-up from ${onRaid(ent)}`;
     case 'launch.update': return `Updated the launch status of ${person(ent)}${after.teamId ? ` on ${team(after.teamId)}` : ''}`;

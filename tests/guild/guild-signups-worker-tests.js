@@ -1212,6 +1212,40 @@ check('link a Raid-Helper sign-up: the person takes the Discord ID, every unlink
   assert.deepEqual([again.status, again.json.field], [409, 'fromSignup']);
 });
 
+check('Guest / Pug resolution: name, permissions, no duplicates, refresh, Planner, to-do and removal', async () => {
+  const s = await signupWorld();
+  await withEvent(s);
+  const post = (body, who = 'bob') => s.call(who, 'POST', s.path('/signups/guest'), body);
+  const body = { signupId: 13, name: 'Visitor' };
+  assert.equal((await post(body, 'erin')).status, 403);
+  assert.equal((await post({ ...body, name: '' })).status, 400);
+  assert.equal((await post({ ...body, name: '<img>' })).status, 400);
+  assert.equal((await post({ ...body, name: 'Gorrim' })).status, 409);
+  assert.equal((await post({ ...body, signupId: 11 })).status, 409);
+  assert.equal((await post({ ...body, signupId: 999 })).status, 404);
+  const before = (await s.call('bob', 'GET', s.path('/signups'))).json;
+  const ok = await post(body);
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  const guest = ok.json.entries.find(e => e.guest);
+  assert.deepEqual([guest.name, guest.personId, guest.classId, guest.spec, guest.kind], ['Visitor', null, 'ROGUE', 'Combat', 'signed']);
+  assert.equal(ok.json.entries.length, before.entries.length);
+  assert(!ok.json.entries.some(e => e.name === 'Stranger'));
+  assert.equal((await post(body)).status, 409);
+  assert.equal(await s.w.count('audit_log', "action = 'signup.guest_resolve'"), 1);
+  assert.equal((await s.call('bob', 'PUT', s.path('/event'), { source: UP_EVENT })).status, 200);
+  const after = (await s.call('bob', 'GET', s.path('/signups'))).json;
+  assert.equal(after.entries.filter(e => e.name === 'Visitor').length, 1);
+  assert.equal(after.entries.length, before.entries.length);
+  const seed = (await s.call('bob', 'GET', s.path('/planner'))).json;
+  assert.equal(seed.signups.filter(e => e.name === 'Visitor' && e.guest).length, 1);
+  assert(!seed.signups.some(e => e.name === 'Stranger'));
+  const todo = (await s.call('bob', 'GET', '/attention')).json.items;
+  assert(!todo.some(e => e.kind === 'signup_unmatched' && e.raidId === s.raidId));
+  const removed = await s.call('bob', 'DELETE', s.path('/guests/' + guest.signupId));
+  assert.equal(removed.status, 200, JSON.stringify(removed.json));
+  assert(removed.json.entries.some(e => e.name === 'Stranger' && !e.guest));
+});
+
 async function main() {
   const filter = process.argv[2] || '';
   let failed = 0;

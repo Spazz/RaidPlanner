@@ -165,7 +165,9 @@ export async function loadDay(db, guildId, raidId) {
     policyRowsStatement(db, guildId),
     // The kind is the effective one: a Raidsmith 'signed' with standby = 1 is a volunteer standby.
     bind(`SELECT raid_id, source, signup_id, CASE WHEN kind = 'signed' AND standby = 1 THEN 'standby' ELSE kind END AS kind, player_id FROM raid_signups
-           WHERE raid_id IN (SELECT id FROM day) AND source != 'plan' AND player_id IS NOT NULL`),
+           WHERE raid_id IN (SELECT id FROM day) AND source != 'plan' AND player_id IS NOT NULL
+             AND NOT (source = 'raid_helper' AND EXISTS (SELECT 1 FROM raid_signups n
+               WHERE n.raid_id = raid_signups.raid_id AND n.rh_signup_id = raid_signups.signup_id))`),
     bind(`SELECT raid_id, name, name_key, group_number FROM raid_plan WHERE raid_id IN (SELECT id FROM day) ORDER BY rowid`),
     bind('SELECT id, raid_id, started_at, kill FROM raid_pulls WHERE raid_id IN (SELECT id FROM day)'),
     bind('SELECT pull_id, raid_id, name, name_key, realm, realm_key, class FROM raid_presence WHERE raid_id IN (SELECT id FROM day)'),

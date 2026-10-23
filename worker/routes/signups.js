@@ -10,14 +10,14 @@ import { isId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { raidSizeFields } from '../raid-zones.js';
-import { SINGLE_LINE_STRIP, isSpecOf } from '../roster-data.js';
+import { SINGLE_LINE_STRIP, isSpecOf, nameKey } from '../roster-data.js';
 import {
   NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closeHoursOf, closedReason, closesAtOf, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey,
   signUpSpecLabel, specChoices, storedKind, windowFieldsOf,
 } from '../signups-data.js';
 import { SLOT_TIME_SQL } from '../signup-window.js';
 import { loadRaid, raidAudit } from './raids.js';
-import { bad } from './roster.js';
+import { bad, readName } from './roster.js';
 
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
@@ -80,7 +80,7 @@ export async function buildView(ctx, guildContext, raid) {
   const statements = [
     ownPersonStatement(db, guild.id, userId),
     db.prepare(
-      `SELECT source, signup_id, kind, standby, standing, guest, class_name, spec_name, position, player_id, nickname, character_id, note, updated_at FROM raid_signups
+      `SELECT source, signup_id, kind, standby, standing, guest, rh_signup_id, class_name, spec_name, position, player_id, nickname, character_id, note, updated_at FROM raid_signups
         WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') ORDER BY position, source, signup_id`,
     ).bind(raid.id),
     db.prepare(
@@ -390,9 +390,45 @@ export const unlockSignups = (ctx) => setLocked(ctx, false);
 // ---------------------------------------------------------------------------
 // Link a Raid-Helper sign-up to a person
 
-// POST .../signups/link { signupId, personId }: an officer (roster.edit on the raid's team) says whose sign-up a Raid-Helper row is. The person takes the row's
-// Discord ID when they have none (so every later sign-up of it finds them, as the Raid-Helper ingest does), and every unlinked row of the guild with that ID follows.
-// A row without a Discord ID links only itself.
+// POST .../signups/guest { signupId, name }: a raid-only guest override of one imported sign-up.
+// The source stays intact; native rows survive refresh and deleting the guest restores the unmatched source.
+export async function guestSignup(ctx) {
+  const { db, body } = ctx;
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
+  const raid = await loadRaid(ctx, guildContext, { edit: true });
+  if (!allows(guildContext.can, 'roster.edit', raid.team_id)) throw forbidden();
+  const guild = guildContext.guild;
+  if (!Number.isInteger(body.signupId) || body.signupId < 0) throw bad('Pick a sign-up.', 'signupId');
+  const name = readName(body.name, 'name', {}, guild.game_version);
+  const row = await db.prepare("SELECT * FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper' AND signup_id = ?")
+    .bind(raid.id, body.signupId).first();
+  if (!row) throw new HttpError(404, 'not_found', 'That sign-up was not found.');
+  if (row.player_id) throw new HttpError(409, 'already_linked', 'That sign-up already belongs to a person.');
+  const [onRoster, guests] = await db.batch([
+    db.prepare('SELECT 1 FROM characters WHERE guild_id = ? AND name_key = ? LIMIT 1').bind(guild.id, nameKey(name)),
+    db.prepare("SELECT nickname, rh_signup_id FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1").bind(raid.id),
+  ]);
+  if (onRoster.results.length) throw new HttpError(409, 'on_roster', 'That character is on the roster. Use Link to person instead.', { field: 'name' });
+  if (guests.results.some(g => g.rh_signup_id === body.signupId || nameKey(g.nickname) === nameKey(name))) {
+    throw new HttpError(409, 'already_joined', 'That guest or sign-up has already been added.', { field: 'name' });
+  }
+  const now = ctx.now();
+  const results = await db.batch([
+    db.prepare(`INSERT INTO raid_signups
+      (raid_id, source, signup_id, nickname, kind, standby, class_name, spec_name, position, guild_id, guest, rh_signup_id, updated_by, created_at, updated_at)
+      SELECT s.raid_id, 'raidsmith', (SELECT COALESCE(MAX(signup_id), 0) + 1 FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith'),
+        ?, s.kind, s.standby, s.class_name, s.spec_name, s.position, s.guild_id, 1, s.signup_id, ?, ?, ?
+      FROM raid_signups s WHERE s.raid_id = ? AND s.source = 'raid_helper' AND s.signup_id = ? AND s.player_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM raid_signups n WHERE n.raid_id = s.raid_id AND n.rh_signup_id = s.signup_id)`)
+      .bind(raid.id, name, ctx.session.user.id, now, now, raid.id, body.signupId),
+    raidAudit(ctx, guildContext, 'signup.guest_resolve', raid.id, null, { signupId: body.signupId, name }, CHANGED_ONE),
+  ]);
+  if (!results[0].meta.changes) throw new HttpError(409, 'already_linked', 'That sign-up has changed. Refresh and try again.');
+  return jsonResponse(await buildView(ctx, guildContext, raid));
+}
+
+// POST .../signups/link { signupId, personId }: the person takes the row's Discord ID when they have none,
+// and every unlinked row of the guild with that ID follows. A row without a Discord ID links only itself.
 export async function linkSignup(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
@@ -402,12 +438,15 @@ export async function linkSignup(ctx) {
   if (!Number.isInteger(body.signupId) || body.signupId < 0) throw bad('Send the sign-up to link.', 'signupId');
   if (!isId('p', body.personId)) throw bad('Pick the person this sign-up belongs to.', 'personId');
   const [rowResult, personResult] = await db.batch([
-    db.prepare("SELECT discord_user_id, nickname, player_id FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper' AND signup_id = ?").bind(raid.id, body.signupId),
+    db.prepare(`SELECT discord_user_id, nickname, player_id,
+      EXISTS (SELECT 1 FROM raid_signups n WHERE n.raid_id = s.raid_id AND n.rh_signup_id = s.signup_id) AS resolved_guest
+      FROM raid_signups s WHERE raid_id = ? AND source = 'raid_helper' AND signup_id = ?`).bind(raid.id, body.signupId),
     db.prepare('SELECT id, discord_user_id FROM players WHERE id = ? AND guild_id = ?').bind(body.personId, guild.id),
   ]);
   const row = rowResult.results[0];
   if (!row) throw new HttpError(404, 'not_found', 'That sign-up was not found.');
   const person = personResult.results[0];
+  if (row.resolved_guest) throw new HttpError(409, 'already_linked', 'Remove the Guest / Pug resolution before linking this sign-up.');
   if (!person) throw bad('Pick a person on the roster.', 'personId');
   if (row.player_id) throw new HttpError(409, 'already_linked', 'That sign-up is already linked to a person.', { field: 'signupId' });
   const discordId = row.discord_user_id || null;

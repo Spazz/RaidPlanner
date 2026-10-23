@@ -105,6 +105,7 @@ export const AUDIT_ACTIONS = [
   'join.revoke',
   'signup.guest',
   'signup.guest_remove',
+  'signup.guest_resolve',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

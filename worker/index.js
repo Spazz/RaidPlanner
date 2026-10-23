@@ -23,7 +23,7 @@ import { getPublicSettings, getPublicView, putPublicSettings } from './routes/pu
 import { createTeam, patchTeam } from './routes/teams.js';
 import { createScheduledRaids, getSchedule, putSchedule } from './routes/schedule.js';
 import {
-  deleteMySignup, deletePersonSignup, getMySignup, getSignups, linkSignup, lockSignups, putMySignup, putPersonSignup, unlockSignups,
+  deleteMySignup, deletePersonSignup, getMySignup, getSignups, guestSignup, linkSignup, lockSignups, putMySignup, putPersonSignup, unlockSignups,
 } from './routes/signups.js';
 import { createIdea, listIdeas } from './routes/roadmap.js';
 import {
@@ -176,6 +176,7 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/raids/:rid/signups', auth: true, handler: getSignups },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/signups/lock', auth: true, handler: lockSignups },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/signups/link', auth: true, handler: linkSignup },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/signups/guest', auth: true, handler: guestSignup },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/signups/unlock', auth: true, handler: unlockSignups },
   { method: 'PUT', path: '/api/guild/:gid/raids/:rid/signups/:pid', auth: true, handler: putPersonSignup },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/signups/:pid', auth: true, handler: deletePersonSignup },

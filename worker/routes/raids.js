@@ -42,7 +42,9 @@ const SIGNUP_KINDS = ['signed', 'late', 'standby', 'bench', 'tentative', 'absenc
 // The rows of a raid's merged sign-up list, for a query that names the raid_signups row `s`: a person's Raidsmith sign-up replaces their
 // Raid-Helper one (worker/signups-data.js mergeSignups does the same in code).
 export const MERGED_ROWS = `s.source IN ('raid_helper', 'raidsmith') AND NOT (s.source = 'raid_helper' AND s.player_id IS NOT NULL AND EXISTS (
-  SELECT 1 FROM raid_signups n WHERE n.raid_id = s.raid_id AND n.source = 'raidsmith' AND n.player_id = s.player_id))`;
+  SELECT 1 FROM raid_signups n WHERE n.raid_id = s.raid_id AND n.source = 'raidsmith' AND n.player_id = s.player_id))
+  AND NOT (s.source = 'raid_helper' AND EXISTS (SELECT 1 FROM raid_signups n
+    WHERE n.raid_id = s.raid_id AND n.rh_signup_id = s.signup_id))`;
 export { plannerName }; // the Planner's name rule lives with the sign-up helpers (worker/signups-data.js); tests import it from here
 const LIVE_ID = /^[0-9A-Za-z]{7}$/; // the id of a live share link (js/livesync.js LiveLinks.ID)
 

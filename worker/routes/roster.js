@@ -263,7 +263,8 @@ async function readFromSignup(db, guildContext, value, link) {
   if (typeof value !== 'object' || !isId('r', value.raidId) || !Number.isInteger(value.signupId)) throw bad('Pick a sign-up to link.', 'fromSignup');
   const row = await db.prepare(
     `SELECT s.discord_user_id, r.team_id FROM raid_signups s JOIN raids r ON r.id = s.raid_id AND r.guild_id = s.guild_id
-      WHERE s.guild_id = ? AND s.raid_id = ? AND s.source = 'raid_helper' AND s.signup_id = ? AND s.player_id IS NULL`,
+      WHERE s.guild_id = ? AND s.raid_id = ? AND s.source = 'raid_helper' AND s.signup_id = ? AND s.player_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM raid_signups n WHERE n.raid_id = s.raid_id AND n.rh_signup_id = s.signup_id)`,
   ).bind(guildId, value.raidId, value.signupId).first();
   if (!row) throw new HttpError(409, 'already_linked', 'That sign-up is already linked to a person.', { field: 'fromSignup' });
   requireEdit(guildContext, row.team_id);

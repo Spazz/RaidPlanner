@@ -330,7 +330,7 @@
   function guestDialogHtml(entry) {
     const who = [entry.className, entry.spec].filter(Boolean).join(' - ');
     return '<form class="gs-dialog-form gs-forge" data-submit="su-guest-form" data-sid="' + esc(entry.signupId) + '" novalidate><h2 class="gs-dialog-title" id="dlg-title">Guest sign-up</h2>' +
-      '<p class="gs-confirm-text" id="dlg-text">' + esc((entry.name || 'This guest') + (who ? ' - ' + who : '')) + '. Remove guest takes their sign-up off this raid.</p>' +
+      '<p class="gs-confirm-text" id="dlg-text">' + esc((entry.name || 'This guest') + (who ? ' - ' + who : '')) + '. ' + (entry.importedGuest ? 'Remove guest restores the original unmatched Raid-Helper sign-up.' : 'Remove guest takes their sign-up off this raid.') + '</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Remove guest</button></div></form>';
   }

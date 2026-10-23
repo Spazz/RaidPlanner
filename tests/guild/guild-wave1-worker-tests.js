@@ -389,6 +389,7 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('join.revoke', 'raid', 'r_1'), 'Turned off a guest sign-up link of the raid on Tue Oct 21 (Alpha)'],
     [row('signup.guest', 'raid', 'r_1', null, { class: 'MAGE' }), 'A guest signed up for the raid on Tue Oct 21 (Alpha) (Mage)'],
     [row('signup.guest_remove', 'raid', 'r_1', { guest: true }), 'Removed a guest sign-up from the raid on Tue Oct 21 (Alpha)'],
+    [row('signup.guest_resolve', 'raid', 'r_1', null, { name: 'Visitor' }), 'Added Visitor as a Guest / Pug on the raid on Tue Oct 21 (Alpha)'],
     [row('launch.update', 'person', 'p_kael', null, { teamId: 't_a', levelBand: '40-59', ready: false }), 'Updated the launch status of Kaelith on Alpha'],
     [row('launch.team', 'team', 't_a', { launchTeam: false }, { launchTeam: true }), 'Turned on the Launch funnel for Alpha'],
     [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 18, unmatched: 2, paste: true }), 'Entered attendance from a pasted roster for the raid on Tue Oct 21 (Alpha): 18 attended, 2 names to review'],
