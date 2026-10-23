@@ -214,9 +214,9 @@ function handleIconError(img) {
     img.remove();
     return 'removed';
   }
-  if (parent && (parent.classList.contains('buff-row-icon') || parent.classList.contains('role-icon') || parent.classList.contains('gs-pb-drum'))) {
+  if (parent && (parent.classList.contains('buff-row-icon') || parent.classList.contains('role-icon') || parent.classList.contains('gs-pb-drum') || parent.classList.contains('gs-pb-gap'))) {
     const text = document.createElement('span');
-    text.textContent = img.getAttribute('alt') || '';
+    text.textContent = img.getAttribute('data-fallback-text') || img.getAttribute('alt') || '';
     img.replaceWith(text);
     return 'text';
   }
@@ -937,7 +937,7 @@ function recruitPhrase(m, insight) {
 function gapIconHTML(m, status) {
   const entry = m.dataset[m.id];
   const url = m.iconUrl(m.id) || (entry.sourceClass ? Config.IconURL('classicon_' + entry.sourceClass.toLowerCase()) : '');
-  const inner = url ? `<img src="${esc(url)}" alt="" loading="lazy" class="buff-img">` : esc(m.abbr[m.id] || m.id);
+  const inner = url ? `<img src="${esc(url)}" alt="" loading="lazy" class="buff-img" data-fallback-text="${esc(m.abbr[m.id] || m.id)}">` : esc(m.abbr[m.id] || m.id);
   return `<button type="button" class="gs-pb-gap" aria-label="${esc(entry.name)}. ${esc(status)}" data-tt-name="${esc(entry.name)}" data-tt-desc="${esc(entry.desc || '')}" data-tt-source="${esc(status)}" data-tt-source-color="var(--text-secondary)">${inner}</button>`;
 }
 function gapGroupHTML(label, icons) {

@@ -200,7 +200,8 @@ check('every icon in the strip is a real button with a tooltip hook and no text 
   const html = els['raid-check-gaps'].innerHTML;
   const tags = [...html.matchAll(/<(\w+)[^>]*class="gs-pb-gap"[^>]*>/g)];
   assert(tags.length === 7 && tags.every(t => t[1] === 'button' && /type="button"/.test(t[0]) && /data-tt-name="[^"]+"/.test(t[0])), html);
-  assert.match(html, /<button[^>]*class="gs-pb-gap"[^>]*>(<img src="[^"]*" alt="" loading="lazy" class="buff-img">|[A-Za-z]+)<\/button>/, 'buff art with empty alt, or the abbreviation when there is none');
+  assert.match(html, /<button[^>]*class="gs-pb-gap"[^>]*>(<img src="[^"]*" alt="" loading="lazy" class="buff-img" data-fallback-text="[^"]+">|[A-Za-z]+)<\/button>/, 'decorative buff art carries an abbreviation for load failures');
+  assert.match(html, /src="\/icons\/spell_shadow_misery.jpg"[^>]*data-fallback-text="Mis"/, 'Misery renders actual spell artwork and a nonempty fallback');
   assert.equal([...html.matchAll(/ alt="[^"]+"/g)].length, 0, 'the image is decorative: the button carries the name');
 });
 
