@@ -196,6 +196,12 @@ check('Guest / Pug dialog submits a character name and refreshes the raid with o
   const html = page();
   assert(html.includes('Visitor') && html.includes('Guest'));
   assert(!html.includes('id="s-signups-unmatched"'));
+  s.world.clock.now = Date.parse('2026-10-25T16:00:00Z');
+  const pastPage = await openRaid(s, A);
+  const past = pastPage();
+  const visibleGuest = /<section[^>]*id="s-guest-signups"[\s\S]*?<\/section>/.exec(past);
+  assert(visibleGuest && visibleGuest[0].includes('Visitor'), 'past raids must show the saved guest outside collapsed Show sign-ups');
+  assert(past.indexOf('id="s-guest-signups"') < past.indexOf('<summary>Show sign-ups</summary>'));
 });
 
 check('member: the raid page offers four buttons; Sign up, Late, a change of character and spec, a note, and Remove my sign-up are real requests the Worker accepts', async () => {

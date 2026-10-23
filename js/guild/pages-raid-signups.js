@@ -169,7 +169,7 @@
     return { action: 'su-edit', attrs: ' data-pid="' + esc(entry.personId) + '" data-key="su-edit-' + esc(entry.personId) + '"', label: 'Change the sign-up of ' };
   }
 
-  function rowHtml(entry, edit) {
+  function rowHtml(entry, edit, showStatus) {
     const name = entry.name ? G.ui.classNameHtml(entry.name, entry.classId || entry.nameClassId) : '<span class="gs-muted">Unmatched sign-up</span>';
     const specText = entry.name ? (entry.spec || '') : [entry.className, entry.spec].filter(Boolean).join(' - ');
     const nick = entry.nickname && entry.nickname !== entry.name ? entry.nickname : '';
@@ -179,7 +179,7 @@
     const id = act
       ? '<button type="button" class="gs-rb-id gs-rb-btn" data-action="' + act.action + '"' + act.attrs + ' aria-label="' + esc(act.label + (entry.name || 'this player')) + '">' + text + '</button>'
       : '<span class="gs-rb-id">' + text + '</span>';
-    const chips = (entry.kind === 'late' ? greyChip('Late') : '') + (entry.guest ? greyChip('Guest') : '') + (entry.source === 'away' ? greyChip('Away (notice)') : '') +
+    const chips = (showStatus ? greyChip(KIND_LABELS[entry.kind] || entry.kind) : (entry.kind === 'late' ? greyChip('Late') : '')) + (entry.guest ? greyChip('Guest') : '') + (entry.source === 'away' ? greyChip('Away (notice)') : '') +
       (entry.notice && noticeNote(entry.notice) ? greyChip(noticeNote(entry.notice)) : '');
     return '<li class="gs-rb-row' + (entry.isMe ? ' is-you' : '') + '">' + (entry.name ? G.ui.specIconHtml(entry.classId, entry.spec, 20) : '') + id +
       (chips ? '<span class="gs-rb-chips">' + chips + '</span>' : '') + (entry.isMe ? '<span class="gs-you">You</span>' : '') + '</li>';
@@ -236,6 +236,17 @@
       return list.length ? lineHtml(g[1], list, edit) : '';
     }).join('');
     return '<div class="gs-rb-cols">' + cols + '</div>' + lines + notices + classLineHtml(view);
+  }
+
+  // Guests have no guild attendance row. Keep their sign-up record visible after the raid starts.
+  function guestPanelHtml(state) {
+    const view = state && state.status === 'ok' ? state.data : null;
+    if (!view || !view.can.seeList) return '';
+    const guests = (view.entries || []).filter(function (e) { return e.guest; }).sort(byName);
+    if (!guests.length) return '';
+    return '<section class="gs-hd-panel gs-rb" id="s-guest-signups" aria-labelledby="guest-signups-h"><div class="gs-rb-ph"><h2 class="gs-pr-h" id="guest-signups-h">Guest / Pug sign-ups</h2>' +
+      '<span class="gs-rb-mut">' + guests.length + '</span></div><div class="gs-rb-pb"><ul class="gs-rb-list">' +
+      guests.map(function (e) { return rowHtml(e, !!view.can.edit, true); }).join('') + '</ul></div></section>';
   }
 
   function headButtonsHtml(view) {
@@ -562,6 +573,7 @@
     closedText: closedText,
     viewOf: function (state) { return state && state.status === 'ok' && state.data ? state.data : null; },
     boardHtml: boardHtml,
+    guestPanelHtml: guestPanelHtml,
     groupHeadHtml: groupHeadHtml,
     guestDialogHtml: guestDialogHtml,
     editDialogHtml: editDialogHtml,
