@@ -1212,6 +1212,25 @@ check('link a Raid-Helper sign-up: the person takes the Discord ID, every unlink
   assert.deepEqual([again.status, again.json.field], [409, 'fromSignup']);
 });
 
+check('officers add a Guest / Pug without an imported signup or roster person, with class/spec/status validation', async () => {
+  const s = await signupWorld();
+  const body = { name: 'Visitor', class: 'PALADIN', spec: 'Protection', kind: 'standby', note: 'Can tank' };
+  const post = (b, who = 'bob') => s.call(who, 'POST', s.path('/signups/guest'), b);
+  const peopleBefore = await s.w.count('players');
+  assert.equal((await post(body, 'erin')).status, 403);
+  for (const bad of [{ name: '' }, { class: 'NOPE' }, { spec: 'Fire' }, { spec: null }, { kind: 'unknown' }]) assert.equal((await post({ ...body, ...bad })).status, 400);
+  assert.equal((await post({ ...body, name: 'Gorrim' })).status, 409);
+  const ok = await post(body);
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  const guest = ok.json.entries.find(e => e.guest);
+  assert.deepEqual([guest.name, guest.classId, guest.spec, guest.role, guest.kind, guest.note, guest.personId], ['Visitor', 'PALADIN', 'Protection', 'tank', 'standby', 'Can tank', null]);
+  assert.equal(await s.w.count('players'), peopleBefore);
+  assert.equal((await post({ ...body, name: 'visitor' })).status, 409);
+  const planner = (await s.call('bob', 'GET', s.path('/planner'))).json;
+  assert(planner.signups.some(e => e.name === 'Visitor' && e.guest));
+  assert.equal((await s.call('bob', 'DELETE', s.path('/guests/' + guest.signupId))).status, 200);
+});
+
 check('imported guests retain Raid-Helper class, spec and role, including Tank and meta-class sign-ups', async () => {
   const { mergeSignups } = await load('worker/signups-data.js');
   const variants = [['Tank', 'Protection1', 'PALADIN', 'tank'], ['Tank', null, null, 'tank'], ['Late', 'Holy', 'PRIEST', 'healer'], ['Bench', 'Enhancement', 'SHAMAN', 'melee'], ['Mage', 'Fire', 'MAGE', 'ranged']];

@@ -300,6 +300,23 @@
     return { characterId: ch ? ch.id : '', spec: specOf(ch, entry && entry.spec), kind: entry ? entry.kind : 'signed', note: entry && entry.note ? entry.note : '' };
   }
 
+  function addTypeHtml(selected) {
+    return '<div class="gs-field"><label class="gs-label" for="su-add-type">Sign up</label><select class="gs-input" id="su-add-type" data-change="su-add-type">' +
+      G.ui.optionsHtml([{ value: 'person', label: 'Team member' }, { value: 'guest', label: 'Guest / Pug' }], selected) + '</select></div>';
+  }
+
+  function addGuestDialogHtml(gd) {
+    const ro = G.ui.rosterOptions(gd);
+    return '<form class="gs-dialog-form gs-forge" data-submit="su-add-guest-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Add a sign-up</h2>' +
+      '<p class="gs-fine" id="dlg-help">Add a Guest / Pug for this raid. They will appear with the team, tagged Guest.</p>' + addTypeHtml('guest') +
+      '<div class="gs-field"><label class="gs-label" for="su-guest-name">Character name</label><input class="gs-input" id="su-guest-name" name="name" data-field="name" maxlength="40" autocomplete="off" required><p class="gs-field-error" id="dlg-err-name" role="alert" hidden></p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="su-guest-class">Class</label><select class="gs-input" id="su-guest-class" name="class" data-field="class" data-change="su-guest-class" required>' + G.ui.classOptionsHtml(ro, '', 'Choose a class') + '</select><p class="gs-field-error" id="dlg-err-class" role="alert" hidden></p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="su-guest-spec">Spec</label><select class="gs-input" id="su-guest-spec" name="spec" data-field="spec" required>' + G.ui.specOptionsHtml(ro, '', '', 'Choose a spec') + '</select><p class="gs-field-error" id="dlg-err-spec" role="alert" hidden></p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="su-guest-kind">Status</label><select class="gs-input" id="su-guest-kind" name="kind" data-field="kind">' + G.ui.optionsHtml(OFFICER_KINDS.map(function (k) { return { value: k[0], label: k[1] }; }), 'signed') + '</select></div>' +
+      '<div class="gs-field"><label class="gs-label" for="su-guest-note">Note (optional)</label><input class="gs-input" id="su-guest-note" name="note" data-field="note" maxlength="' + NOTE_MAX + '"><p class="gs-field-error" id="dlg-err-note" role="alert" hidden></p></div>' +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p><div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Add Guest / Pug</button></div></form>';
+  }
+
   // opts: { view, personId | null (null = adding: pick a person) }
   function editDialogHtml(opts) {
     const view = opts.view;
@@ -315,6 +332,7 @@
       : '';
     return '<form class="gs-dialog-form gs-forge" data-submit="su-edit-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">' + (adding ? 'Add a sign-up' : 'Change a sign-up') + '</h2>' +
       '<p class="gs-fine" id="dlg-help">' + (adding ? 'For someone who has not signed up themselves, or has no Discord.' : esc(person ? person.name : '')) + '</p>' +
+      (adding ? addTypeHtml('person') : '') +
       (adding
         ? '<div class="gs-field"><label class="gs-label" for="su-d-person">Person</label><select class="gs-input" id="su-d-person" name="person" data-change="su-dlg-person">' + G.ui.optionsHtml(people, person ? person.personId : '') + '</select></div>'
         : '<input type="hidden" name="person" value="' + esc(opts.personId) + '">') +
@@ -475,8 +493,28 @@
 
   G.handlers.click['su-add'] = function () {
     const c = cur();
-    if (!c || !c.x.data.roster || !c.x.data.roster.length) return;
-    G.ui.openDialog(editDialogHtml({ view: c.x.data, personId: null }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+    if (!c || !c.x.data.can.edit) return;
+    const html = c.x.data.roster && c.x.data.roster.length ? editDialogHtml({ view: c.x.data, personId: null }) : addGuestDialogHtml(currentGd());
+    G.ui.openDialog(html, { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+  };
+
+  G.handlers.change['su-add-type'] = function (el) {
+    const c = cur();
+    if (!c || !c.x.data.can.edit) return;
+    G.ui.openDialog(el.value === 'guest' ? addGuestDialogHtml(currentGd()) : editDialogHtml({ view: c.x.data, personId: null }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+  };
+
+  G.handlers.change['su-guest-class'] = function (el) {
+    const form = el.closest('form');
+    if (form) form.elements.spec.innerHTML = G.ui.specOptionsHtml(G.ui.rosterOptions(currentGd()), el.value, '', 'Choose a spec');
+  };
+
+  G.handlers.submit['su-add-guest-form'] = function (form) {
+    const c = cur();
+    if (!c || !c.x.data.can.edit) return;
+    const fields = form.elements;
+    const body = { name: fields.name.value.trim(), class: fields.class.value, spec: fields.spec.value, kind: fields.kind.value, note: fields.note.value.trim() || null };
+    return G.ui.runDialog(form, G.api.signups.guest(c.gid, c.rid, body), function (view) { setView(c, view); });
   };
 
   G.handlers.click['su-edit'] = function (el) {
@@ -566,6 +604,7 @@
     entryLineNameHtml: lineNameHtml,
     groupHeadHtml: groupHeadHtml,
     guestDialogHtml: guestDialogHtml,
+    addGuestDialogHtml: addGuestDialogHtml,
     editDialogHtml: editDialogHtml,
     removeDialogHtml: removeDialogHtml,
     bodyFor: bodyFor,

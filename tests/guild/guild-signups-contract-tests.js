@@ -180,6 +180,25 @@ const rows = (world, sql, ...values) => world.db.prepare(sql).bind(...values).al
 
 // ---------------------------------------------------------------------------
 
+check('Add a sign-up offers Guest / Pug, changes class specs and saves into the role columns, including an empty team', async () => {
+  const s = await scenario();
+  const { A } = s;
+  const page = await openRaid(s, A);
+  A.handlers.click['su-add']();
+  assert(A.dialogs.at(-1).includes('Guest / Pug'));
+  A.handlers.change['su-add-type']({ value: 'guest' });
+  assert(A.dialogs.at(-1).includes('data-submit="su-add-guest-form"'));
+  const form = { elements: { name: { value: ' Visitor ' }, class: { value: 'SHAMAN' }, spec: { value: 'Restoration', innerHTML: '' }, kind: { value: 'signed' }, note: { value: '' } } };
+  A.handlers.change['su-guest-class']({ value: 'SHAMAN', closest: () => form });
+  assert(form.elements.spec.innerHTML.includes('Restoration') && !form.elements.spec.innerHTML.includes('Protection'));
+  await A.handlers.submit['su-add-guest-form'](form);
+  const healers = /<section class="gs-rb-col" aria-label="Healers">[\s\S]*?<\/section>/.exec(page());
+  assert(healers && healers[0].includes('Visitor') && healers[0].includes('Guest'));
+  A.pages.attendance.attState().raidSignups.data.roster = [];
+  A.handlers.click['su-add']();
+  assert(A.dialogs.at(-1).includes('data-submit="su-add-guest-form"'), 'empty team can still add a guest');
+});
+
 check('Guest / Pug dialog submits a character name and refreshes the raid with one guest', async () => {
   const s = await scenario();
   const { A } = s;

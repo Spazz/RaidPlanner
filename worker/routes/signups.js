@@ -17,7 +17,7 @@ import {
 } from '../signups-data.js';
 import { SLOT_TIME_SQL } from '../signup-window.js';
 import { loadRaid, raidAudit } from './raids.js';
-import { bad, readName } from './roster.js';
+import { bad, readName, readClass, readSpec } from './roster.js';
 
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
@@ -390,29 +390,50 @@ export const unlockSignups = (ctx) => setLocked(ctx, false);
 // ---------------------------------------------------------------------------
 // Link a Raid-Helper sign-up to a person
 
-// POST .../signups/guest { signupId, name }: a raid-only guest override of one imported sign-up.
+// POST .../signups/guest: { signupId, name } resolves an import; { name, class, spec, kind, note? } adds a guest directly.
 // The source stays intact; native rows survive refresh and deleting the guest restores the unmatched source.
 export async function guestSignup(ctx) {
   const { db, body } = ctx;
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
-  if (!allows(guildContext.can, 'roster.edit', raid.team_id)) throw forbidden();
+  const imported = body.signupId !== undefined;
+  if (imported && !allows(guildContext.can, 'roster.edit', raid.team_id)) throw forbidden();
   const guild = guildContext.guild;
-  if (!Number.isInteger(body.signupId) || body.signupId < 0) throw bad('Pick a sign-up.', 'signupId');
+  if (imported && (!Number.isInteger(body.signupId) || body.signupId < 0)) throw bad('Pick a sign-up.', 'signupId');
   const name = readName(body.name, 'name', {}, guild.game_version);
-  const row = await db.prepare("SELECT * FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper' AND signup_id = ?")
-    .bind(raid.id, body.signupId).first();
-  if (!row) throw new HttpError(404, 'not_found', 'That sign-up was not found.');
-  if (row.player_id) throw new HttpError(409, 'already_linked', 'That sign-up already belongs to a person.');
+  let manual;
+  if (imported) {
+    const row = await db.prepare("SELECT * FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper' AND signup_id = ?")
+      .bind(raid.id, body.signupId).first();
+    if (!row) throw new HttpError(404, 'not_found', 'That sign-up was not found.');
+    if (row.player_id) throw new HttpError(409, 'already_linked', 'That sign-up already belongs to a person.');
+  } else {
+    const classId = readClass(body.class);
+    const spec = readSpec(body.spec, classId, 'spec');
+    if (!spec) throw bad('Choose a spec so the guest has a role.', 'spec');
+    manual = { ...readBody(body, true), classId, spec };
+  }
   const [onRoster, guests] = await db.batch([
     db.prepare('SELECT 1 FROM characters WHERE guild_id = ? AND name_key = ? LIMIT 1').bind(guild.id, nameKey(name)),
     db.prepare("SELECT nickname, rh_signup_id FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1").bind(raid.id),
   ]);
-  if (onRoster.results.length) throw new HttpError(409, 'on_roster', 'That character is on the roster. Use Link to person instead.', { field: 'name' });
-  if (guests.results.some(g => g.rh_signup_id === body.signupId || nameKey(g.nickname) === nameKey(name))) {
+  if (onRoster.results.length) throw new HttpError(409, 'on_roster', 'That character is on the guild roster. Choose their person instead of adding a guest.', { field: 'name' });
+  if (guests.results.some(g => (imported && g.rh_signup_id === body.signupId) || nameKey(g.nickname) === nameKey(name))) {
     throw new HttpError(409, 'already_joined', 'That guest or sign-up has already been added.', { field: 'name' });
   }
   const now = ctx.now();
+  if (manual) {
+    const stored = storedKind(manual.kind);
+    await db.batch([
+      db.prepare(`INSERT INTO raid_signups
+        (raid_id, source, signup_id, nickname, kind, standby, class_name, spec_name, position, guild_id, guest, note, updated_by, created_at, updated_at)
+        SELECT ?, 'raidsmith', n.next, ?, ?, ?, ?, ?, n.next, ?, 1, ?, ?, ?, ?
+        FROM (SELECT COALESCE(MAX(signup_id), 0) + 1 AS next FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith') n`)
+        .bind(raid.id, name, stored.kind, stored.standby, raidHelperClassName(manual.classId), raidHelperSpecKey(manual.classId, manual.spec), guild.id, manual.note, ctx.session.user.id, now, now, raid.id),
+      raidAudit(ctx, guildContext, 'signup.guest', raid.id, null, { name, class: manual.classId }, CHANGED_ONE),
+    ]);
+    return jsonResponse(await buildView(ctx, guildContext, raid));
+  }
   const results = await db.batch([
     db.prepare(`INSERT INTO raid_signups
       (raid_id, source, signup_id, nickname, kind, standby, class_name, spec_name, position, guild_id, guest, rh_signup_id, updated_by, created_at, updated_at)
