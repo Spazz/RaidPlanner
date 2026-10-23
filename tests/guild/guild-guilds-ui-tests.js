@@ -272,7 +272,9 @@ function withState(fn) {
     const bnetOnly = { user: { username: 'Holly', displayName: 'Holly' }, identities: { discord: null, bnet: { battletag: 'Holly#1' } }, guilds: [], create: { allowed: false, reason: 'needs_discord' }, removedFrom: [] };
     const card = G.pages.signin.noGuildHtml(bnetOnly);
     assert(card.includes('id="create-needs-discord"') && card.includes('Connect Discord to create a guild') && card.includes('href="#/linked"'));
-    assert(G.pages.signin.noGuildNoticeHtml(bnetOnly).includes('Connect Discord to create a guild'));
+    const banner = G.pages.signin.noGuildNoticeHtml(bnetOnly);
+    assert(banner.includes('href="#/linked"><span>Connect Discord</span></a>') && !banner.includes('create-needs-discord') && !banner.includes('Or connect Discord'), 'the banner is trimmed: the button carries Connect Discord');
+    assert(banner.includes('Your account isn\'t linked to a roster entry yet.') && banner.includes('send a character claim.'), 'it keeps the account-link sentence');
     const withDiscord = Object.assign({}, bnetOnly, { identities: { discord: { username: 'holly' }, bnet: null }, create: { allowed: false, reason: 'no_server' } });
     assert(!G.pages.signin.noGuildHtml(withDiscord).includes('create-needs-discord'));
   });
@@ -284,13 +286,15 @@ function withState(fn) {
     const at = html.indexOf('id="for-guilds"');
     assert(at > 0);
     const section = html.slice(at, html.indexOf('</section>', at));
-    for (const word of ['Roster', 'Raids', 'Attendance', 'Loot', 'Planner']) assert(new RegExp(`<h3>${word}</h3>`).test(section), word);
-    assert(/<a class="btn btn-primary btn-lg" id="btn-guilds-signin" href="\/auth\/login">Sign in with Discord<\/a>/.test(section));
-    assert(html.indexOf('id="import-card"') < at && at < html.indexOf('id="version-comparison"'), 'the planner\'s import card comes first, anonymous as ever');
+    for (const word of ['Roster', 'Raids', 'Attendance']) assert(new RegExp(`<h3>${word}</h3>`).test(section), word);
+    for (const cut of ['Loot', 'Planner']) assert(!new RegExp(`<h3>${cut}</h3>`).test(section), cut + ' is cut from the points');
+    assert(/<a class="gs-btn" id="btn-guilds-signin" href="\/auth\/login">Sign in with Discord<\/a>/.test(section), 'a secondary button: Load roster is the one molten');
+    assert(!section.includes('The planner above works without signing in.'));
+    assert(html.indexOf('id="import-card"') < at && !html.includes('id="version-comparison"'), 'the planner\'s import card comes first, anonymous as ever; no era cards');
     assert(!/<script/.test(section) && !/style=/.test(section) && !/[^\x00-\x7f]/.test(section));
-    assert(css.includes('body:not(.is-signed-out) #landing-view #for-guilds'), 'hidden for anyone signed in');
-    assert(css.includes('body.shell-pending #landing-view #for-guilds'), 'and before the session is known');
-    assert(/\.guild-points\s*\{/.test(css) && /\.guilds-cta\s*\{/.test(css));
+    const forge = read('planner-forge.css');
+    assert(/\.gs-ph-sec, \.gs-ph-foot \{ display: none; \}/.test(forge) && forge.includes('body.is-signed-out:not(.shell-pending) #for-guilds.gs-ph-sec'), 'shown only for the signed out, never before the session is known');
+    assert(/\.gs-ph-pts\s*\{/.test(forge) && /\.gs-ph-cta\s*\{/.test(forge));
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

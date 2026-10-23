@@ -117,8 +117,8 @@ check('molten is for primary buttons; text that reads --btn-primary-bg stays gol
   assert(ratio >= 4.5, 'contrast ' + ratio.toFixed(2));
 });
 
-check('the hero wordmark is the anvil svg (the shell draws the other brand marks) and the favicon is a gold anvil data URI', () => {
-  assert.equal((html.match(/<svg class="mark-svg"/g) || []).length, 1);
+check('the landing has no hero wordmark any more (the shell draws the brand marks) and the favicon is a gold anvil data URI', () => {
+  assert.equal((html.match(/<svg class="mark-svg"/g) || []).length, 0);
   assert(!/game-header-mark"[^>]*>P</.test(html));
   const icon = html.match(/<link rel="icon" href="([^"]*)">/)[1];
   assert(icon.startsWith('data:image/svg+xml,') && icon.includes('%23e0b53d') && !icon.includes('&#9733;'));

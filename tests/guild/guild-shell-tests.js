@@ -78,14 +78,14 @@ function target(attrs, scoped) {
 }
 
 const IDS = ['guild-root', 'shell-rail', 'shell-sidebar', 'shell-topbar-lead', 'shell-topbar-plan', 'shell-topbar-account', 'shell-banner',
-  'gs-main', 'planner-root', 'planner-notice', 'shell-tabs', 'shell-drawer', 'guild-dialogs'];
+  'gs-main', 'planner-root', 'planner-banner', 'planner-notice', 'shell-tabs', 'shell-drawer', 'guild-dialogs'];
 
 // opts: { page, url: '/path#hash', hint, storage, routes: { path: (init) => ({ status, body }) | 'hang' }, planner: bool, whatsNew: bool,
 //         beforeApp: (sandbox, els) => void  (runs after every guild script but app.js, which starts the shell) }
 function makeEnv(opts) {
   const o = Object.assign({ page: 'app', url: '/', hint: false, storage: {}, routes: {}, planner: true, unseen: false }, opts || {});
   const els = {};
-  const skeleton = o.page === 'app' ? IDS : IDS.filter(id => id !== 'shell-topbar-plan' && id !== 'planner-root' && id !== 'planner-notice');
+  const skeleton = o.page === 'app' ? IDS : IDS.filter(id => id !== 'shell-topbar-plan' && id !== 'planner-root' && id !== 'planner-banner' && id !== 'planner-notice');
   skeleton.forEach(id => { els[id] = new FakeEl(id); });
   els['gs-main'].hidden = true;
   if (els['planner-root']) els['planner-root']._html = '<main>PLANNER</main>';
@@ -938,19 +938,22 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(stat.html('shell-sidebar').includes('href="/#/g/g1/roster"'));
   });
 
-  await check('no-guild notice: signed in with zero guilds -> the notice in #planner-notice; none with guilds or signed out', async () => {
+  await check('no-guild notice: signed in with zero guilds -> the banner in #planner-banner above the head; none with guilds or signed out', async () => {
     const env = makeEnv({ url: '/', hint: true, routes: signedInRoutes(null, { '/auth/me': { status: 200, body: meBody({ guilds: [], removedFrom: [{ id: 'g9', name: 'Owls' }] }) } }) });
     await settle();
-    const n = env.html('planner-notice');
+    const n = env.html('planner-banner');
     assert(n.includes('You&#39;re not in a Raidsmith guild yet') || n.includes('You\'re not in a Raidsmith guild yet'));
     assert(n.includes('An officer removed your access to <strong>Owls</strong>') && n.includes('href="/auth/login"') && n.includes('Sign in again'));
-    assert(env.els['planner-notice'].classList.contains('gs-scope'));
+    assert(n.includes('class="gs-hd-panel gs-ph-banner'), 'an inline Forge banner');
+    assert.equal(env.html('planner-notice'), '', 'the raids slot stays empty');
+    assert(env.els['planner-banner'].classList.contains('gs-scope'));
     assert.equal(env.fetched('/api/guild/'), 0, 'no guild to fetch');
     const withGuild = makeEnv({ url: '/', hint: true, routes: signedInRoutes() });
     await settle();
-    assert.equal(withGuild.html('planner-notice'), '');
+    assert.equal(withGuild.html('planner-banner'), '');
     const out = makeEnv({ url: '/' });
     await settle();
+    assert.equal(out.html('planner-banner'), '');
     assert.equal(out.html('planner-notice'), '');
   });
 
@@ -1056,7 +1059,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(/#shell-rail, #shell-sidebar, #shell-banner, #shell-tabs, #shell-drawer \{ display: contents; \}/.test(css));
     assert(/#planner-root\[hidden\], #gs-main\[hidden\] \{ display: none !important; \}/.test(css));
     const selectors = [...css.matchAll(/(^|\})\s*([^{}@][^{}]*)\{/g)].map(m => m[2]).join(',').split(',').map(x => x.trim());
-    const planner = selectors.filter(x => /(^|[\s>+~])#planner-root|#shell-topbar-plan|\.planner-|\.title-bar|\.landing\b|\.addon-frame/.test(x) && !/#planner-root\[hidden\]/.test(x));
+    const planner = selectors.filter(x => /(^|[\s>+~])#planner-root|#shell-topbar-plan|\.planner-|\.title-bar|\.landing\b|\.addon-frame/.test(x) && !/#planner-root\[hidden\]/.test(x) && !/\.gs-ph/.test(x)); // the landing's own gs-ph- block lives in planner-forge.css
     assert.deepEqual(planner, [], 'guild.css must not style planner markup');
     assert(!/--[\w-]+\s*:/.test(GuildCss.stripOwnTokens(css).replace(/var\(--[\w-]+/g, '')), 'no custom properties (but the framework tokens, the attendance outcome colours and the Raids tones)');
   });
@@ -1200,11 +1203,11 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const routes = signedInRoutes(null, { '/auth/me': { status: 200, body: meBody({ guilds: [], removedFrom: [{ id: 'g9', name: 'Owls' }] }) } });
     const guild = makeEnv({ url: '/#/', hint: true, routes });
     await settle();
-    assert.equal(guild.html('planner-notice'), '');
+    assert.equal(guild.html('planner-banner'), '');
     assert(guild.html('gs-main').includes('Owls'));
     const planner = makeEnv({ url: '/', hint: true, routes });
     await settle();
-    assert(planner.html('planner-notice').includes('Owls'));
+    assert(planner.html('planner-banner').includes('Owls'));
   });
 
   await check('fix1 nit: focus falls back to the next displayed target, then #planner-root, when the plan name h1 is not displayed', async () => {

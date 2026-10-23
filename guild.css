@@ -218,12 +218,9 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 .gs-form .gs-alert, .gs-section .gs-alert, .gs-dialog-form .gs-alert { margin: 0; }
 .gs-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 12px 0 0; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border-strong); color: var(--text-primary); font-size: 15px; line-height: 1.4; }
 .gs-section .gs-notice { margin: 0; }
-.gs-noguild-notice { align-items: flex-start; margin: 0 0 var(--sp-4); max-width: 760px; box-sizing: border-box; }
 .gs-notice-body { flex: 1 1 320px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .gs-notice-title { margin: 0; font: 700 20px/1.2 var(--font-cond); letter-spacing: 0.03em; color: var(--text-primary); }
 .gs-notice-text { margin: 0; color: var(--text-secondary); }
-.gs-noguild-notice .gs-lead { margin: 0; font-size: 15px; }
-.gs-noguild-notice .gs-warn { margin: 0; }
 .gs-warn { margin: 0; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--warning); color: var(--text-primary); font-size: 15px; line-height: 1.5; }
 
 /* ── Forms ──────────────────────────────────────────────────── */

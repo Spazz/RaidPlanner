@@ -279,11 +279,12 @@ check('phone notices stack their actions full width at 44px; notice text is 15px
   assert.ok(!/(sync-banner|result-line|rb-failed)/.test(read('app.css')));
 });
 
-check('the landing import card is ordered before the hero text without touching the DOM', () => {
-  assert.match(rule('.hero .import-card'), /order: 1/);
-  assert.match(rule('.hero .hero-copy'), /order: 2/);
-  const hero = between(html, '<section class="hero">', '</section>');
-  assert.ok(hero.indexOf('class="hero-copy"') < hero.indexOf('id="import-card"'), 'DOM order is unchanged');
+check('the signed-out landing reads hero first, then the import card, on a phone: DOM order, no reordering rule', () => {
+  const hero = between(html, '<section class="gs-ph-hero"', '</section>');
+  assert.ok(hero.indexOf('class="gs-ph-herocopy"') < hero.indexOf('id="import-card"'), 'the hero copy comes first in the DOM');
+  const forge = read('planner-forge.css');
+  assert.ok(!/\.gs-ph-(card|herocopy|hero) \{[^}]*order:/.test(forge), 'nothing reorders them');
+  assert.match(forge, /@media \(max-width: 900px\) \{\s*body:is\(\.is-signed-out, \.landing-full\):not\(\.shell-pending\) \.gs-ph-hero \{ grid-template-columns: minmax\(0, 1fr\)/, 'one column from 900px down');
 });
 
 check('Coverage dialog text is 13-14px, the row icon 28px, and the fix buttons are Forge buttons (36px, 44px on phones)', () => {
@@ -318,9 +319,15 @@ check('the buff icon fallback label stays visible (12px floor) where the image i
   assert.match(board, /\.gs-pb-board \.buff-icon\.has-icon \.buff-label \{ display: none; \}/);
 });
 
-check('landing restore link and saved-plan Delete buttons get 44px tap areas on phones', () => {
-  const r = rule('#btn-landing-restore, .landing .row-actions .link-btn.del');
-  assert.match(r, /min-height: 44px/);
+check('landing link lines, plan More buttons, disclosure rows, tabs and footer links get 44px tap areas on phones', () => {
+  const forge = read('planner-forge.css');
+  const phone = forge.slice(forge.indexOf('.gs-ph { gap: 24px; padding: 16px 16px 32px; }') - 40);
+  assert.match(phone, /\.gs-ph-links button, \.gs-ph-foot a \{ min-height: 44px; \}/);
+  assert.match(phone, /\.gs-ph-pm \{ min-width: 44px; \}/);
+  assert.match(phone, /\.gs-ph-actions \.gs-btn-molten \{ width: 100%; min-height: 48px; \}/);
+  assert.match(forge, /\.gs-ph-tab \{[^}]*height: 44px/);
+  assert.match(forge, /\.gs-ph-disc \{[^}]*min-height: 44px/);
+  assert.match(forge, /@media \(max-width: 600px\) \{\s*\.gs-btn, \.gs-btn-sm \{ min-height: 44px; \}/, 'secondary buttons are 44px on a phone');
 });
 
 check('side safe areas pad the page on notched landscape phones, keeping existing padding', () => {

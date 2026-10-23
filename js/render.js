@@ -15,12 +15,7 @@ function announcePlanName() {
 
 function syncVersionControls() {
   const profile = GameVersions[State.gameVersion];
-  // Scoped to the real switcher tabs only — the landing page's informational
-  // "What's New" version-comparison cards (renderVersionComparison) reuse the
-  // same [data-version] attribute/values for styling and would otherwise get
-  // a live click handler wired onto them too, silently switching the whole
-  // app's game version (and re-fitting the roster) when someone clicks what
-  // looks like a plain text panel on the landing page.
+  // Scoped to the real switcher tabs (the shell's top bar): the Raid settings dialog's version segments are handled below.
   document.querySelectorAll('.game-version-tab[data-version]').forEach(button => {
     button.setAttribute('aria-pressed', String(button.dataset.version === State.gameVersion));
     button.onclick = () => switchGameVersion(button.dataset.version);
@@ -29,7 +24,8 @@ function syncVersionControls() {
   document.querySelectorAll('#raid-version-control [data-version]').forEach(button => {
     button.setAttribute('aria-pressed', String(button.dataset.version === State.gameVersion));
   });
-  document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-player roster`;
+  document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-man`;
+  if (typeof renderPlannerContext === 'function') renderPlannerContext();
   // An unmodeled version cannot be optimized: the button is disabled and the reason stands beside it.
   const optimize = document.getElementById('btn-optimize');
   const reason = document.getElementById('optimize-reason');

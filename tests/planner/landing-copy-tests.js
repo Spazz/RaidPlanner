@@ -144,54 +144,21 @@ function fakeEl(extra = {}) {
   }, extra);
 }
 
-function makeCardEnv(current) {
-  const table = fakeEl();
-  const calls = [];
-  const cardFor = el => ({ closest: () => el });
-  const api = app.sandbox(['renderVersionComparison', 'onVersionCardClick'], {
-    globals: {
-      document: { getElementById: () => table, activeElement: null },
-      State: { gameVersion: current },
-      GameVersions: { tbc: { name: 'WoW TBC', note: 'tbc note', raids: [] }, classic: { name: 'WoW Classic', note: 'classic note', raids: [] }, forever: { name: 'WoW Forever (Beta)', note: 'f note', raids: [] } },
-      Config: { Raids: {} },
-      switchGameVersion: v => calls.push(v),
-    },
-    extraSource: app.slice('function renderVersionComparison', '// Asks, then removes one landing row') + '\nglobalThis.api = { renderVersionComparison, onVersionCardClick, esc };',
-  }).api;
-  return { table, calls, cardFor, ...api };
-}
-
-check('era cards are buttons: the current one is marked and inert, any other switches the version', () => {
-  const env = makeCardEnv('tbc');
-  env.renderVersionComparison();
-  const cards = env.table.innerHTML.match(/<button [^>]*>[\s\S]*?<\/button>/g);
-  assert.equal(cards.length, 3);
-  assert(cards.every(c => c.includes('type="button"') && c.includes('class="version-compare-col')));
-  const tbc = cards.find(c => c.includes('data-version="tbc"'));
-  assert(tbc.includes('aria-current="true"') && tbc.includes('<span class="go">You are here</span>'));
-  const classic = cards.find(c => c.includes('data-version="classic"'));
-  assert(!classic.includes('aria-current') && classic.includes('<span class="go">Switch to WoW Classic</span>'));
-  assert(classic.includes('WoW Classic') && classic.includes(GameVersions.classic.note), 'content kept');
-  // Phrasing content only inside a button: no headings, paragraphs or divs.
-  for (const c of cards) {
-    const inner = c.replace(/^<button [^>]*>/, '').replace(/<\/button>$/, '');
-    assert(!/<(h[1-6]|p|div)[\s>]/.test(inner), 'block element inside a button');
-  }
-  assert(classic.includes('aria-label="Switch to WoW Classic"'), 'aria-label starts with the visible action');
-  assert(tbc.includes('aria-label="WoW TBC, current version"'), 'current card is named');
-  const click = (version, current) => env.onVersionCardClick({ target: env.cardFor({ dataset: { version }, getAttribute: k => (current && k === 'aria-current' ? 'true' : null) }) });
-  click('tbc', true);
-  assert.deepEqual(env.calls, [], 'the current card does nothing');
-  click('classic', false);
-  assert.deepEqual(env.calls, ['classic']);
-  assert(/getElementById\('version-compare-table'\)[\s\S]{0,80}addEventListener\('click', onVersionCardClick\)/.test(script), 'delegated on the container');
-});
-
-check('the inert You are here card gets no hover effect, and the card parts are block spans', () => {
-  const css = app.css || require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'app.css'), 'utf8');
-  assert(/button\.version-compare-col\.here:hover\s*\{[^}]*border-color:\s*var\(--border-accent\)/.test(css));
-  for (const cls of ['version-compare-name', 'version-compare-note', 'version-compare-raids'])
-    assert(new RegExp('\\.' + cls + '\\s*\\{[^}]*display:\\s*block').test(css), cls + ' is display:block');
+check('Pick your era is gone: the top bar switch is the only version switch, and the cut copy is not on the page', () => {
+  const css = app.css;
+  assert(!html.includes('Pick your era') && !html.includes('version-compare') && !html.includes('id="version-comparison"'));
+  assert(!/renderVersionComparison|onVersionCardClick|version-compare/.test(script), 'its script is removed');
+  assert(!/version-compare/.test(css), 'its CSS is removed');
+  assert((html.match(/class="game-version-tab gs-fg-seg"/g) || []).length === 3, 'the Classic | TBC | Forever segments stay');
+  // Signed out: copy cut on the Planner home boards (Notes "copy that is cut").
+  for (const cut of ['Melee ride with Windfury', 'See every buff you', 'Drag anyone anywhere, then share a link', 'Your plans save automatically in this browser.', 'Accepts a Raid-Helper link',
+    'Gargul exports, who won what', "Raid groups built from any raid's sign-ups", 'The planner above works without signing in.', 'Built for raid leaders who would rather pull than sort.'])
+    assert(!html.includes(cut), 'cut: ' + cut);
+  // Kept word for word.
+  for (const kept of ['Forge optimal raid groups <em>in one click.</em>', "Raidsmith also keeps your guild's records: one place for your roster, raids, attendance and loot, with the planner built in.",
+    'People, characters and alts, brought in from Raid-Helper, Warcraft Logs or Battle.net.', 'To start a guild you need to own or administer its Discord server.', 'Raidsmith &middot; forged for raid night'])
+    assert(html.includes(kept), 'kept: ' + kept);
+  assert(html.includes('<a href="/faq.html">FAQ</a>') && html.includes('<a href="/whats-new.html">What\'s new</a>'), 'one footer line: brand line, FAQ, What\'s new, feedback');
 });
 
 check('the footer feedback link carries the version and browser, encoded', () => {

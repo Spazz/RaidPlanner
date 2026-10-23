@@ -18,6 +18,7 @@ function check(name, fn) {
 const read = f => fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8').replace(/\r\n/g, '\n');
 const html = read('index.html');
 const css = read('app.css');
+const forgeCss = read('planner-forge.css');
 const appJs = read('js/app.js');
 const renderJs = read('js/render.js');
 
@@ -176,9 +177,9 @@ check('the landing has no brand row of its own: version tabs in the top bar, no 
   assert.ok(!/href="#(?:faq|whats-new)"/.test(html), 'no link to the moved sections');
   assert.ok(!html.includes('landing-nav') && !html.includes('landing-brand') && !/>Features</.test(html) && !html.includes('class="features"') && !html.includes('id="features"'));
   assert.ok(!/\.landing-nav|\.features|\.feature\b/.test(css), 'dead CSS removed');
-  const landing = sliceBetween(html, '<main class="landing" id="landing-view">', '</main>');
-  assert.equal((landing.match(/<h1[ >]/g) || []).length, 1);
-  assert.match(landing, /^<main class="landing" id="landing-view">\s*<h1 class="sr-only" tabindex="-1">Raidsmith<\/h1>/);
+  const landing = sliceBetween(html, '<main class="landing gs-forge gs-ph" id="landing-view">', '</main>');
+  assert.equal((landing.match(/<h1[ >]/g) || []).length, 1, 'one h1: the Planner head');
+  assert.match(landing, /<header class="gs-ph-head">\s*<h1 class="gs-ph-h1" tabindex="-1">Planner<\/h1>\s*<p class="gs-ph-context" id="planner-context"><\/p>/);
 });
 
 check('top-bar rules: the planner slot hides on guild sections and static pages and holds the version tabs on the landing only', () => {
@@ -192,12 +193,15 @@ check('top-bar rules: the planner slot hides on guild sections and static pages 
 });
 
 check('landing modes: full when signed out or on How it works, compact when signed in, only the import card while pending', () => {
-  assert.match(css, /\.landing-compact-head, \.landing-compact-help \{ display: none; \}/);
-  for (const part of ['.hero-copy', '#how-it-works', '#version-comparison', '.landing-footer']) {
-    assert.ok(css.includes('body:not(.is-signed-out):not(.landing-full) #landing-view ' + part), 'compact hides ' + part);
-    assert.ok(css.includes('body.shell-pending #landing-view ' + part), 'pending hides ' + part);
+  // Hidden by default, shown by the full-landing selector (signed out or How it works, session known); the head is the other way round.
+  assert.match(forgeCss, /\.gs-ph-sec, \.gs-ph-foot \{ display: none; \}/);
+  assert.match(forgeCss, /\.gs-ph-herocopy \{ display: none; \}/);
+  for (const part of ['.gs-ph-herocopy', '#how-it-works.gs-ph-sec', '.gs-ph-foot']) {
+    assert.ok(forgeCss.includes('body:is(.is-signed-out, .landing-full):not(.shell-pending) ' + part), 'the full landing shows ' + part);
   }
-  assert.match(css, /body:not\(\.is-signed-out\):not\(\.landing-full\):not\(\.shell-pending\) #landing-view \.landing-compact-head,/);
+  assert.ok(forgeCss.includes('body.is-signed-out:not(.shell-pending) #for-guilds.gs-ph-sec'), 'For guilds: signed out only');
+  assert.ok(forgeCss.includes('body:not(.is-signed-out):not(.landing-full):not(.shell-pending) .gs-ph-head'), 'the visible head: the compact home only');
+  assert.match(forgeCss, /\.gs-ph-head \{ position: absolute;/, 'in the full landing and while pending the h1 is screen-reader only');
 });
 
 check('#planner-root reproduces the old body layout: centred column, 16px gutters above 1100px, safe areas only below', () => {
@@ -208,11 +212,9 @@ check('#planner-root reproduces the old body layout: centred column, 16px gutter
   assert.match(css, /@media \(max-width: 1100px\) \{\s*\.planner-root \{ padding: 0 env\(safe-area-inset-right, 0px\) 0 env\(safe-area-inset-left, 0px\); \}/);
 });
 
-check('the hero wordmark is phone-only', () => {
-  assert.match(html, /<div class="hero-copy">\s*<div class="hero-wordmark" aria-hidden="true">/);
-  assert.match(css, /\.hero-wordmark\s*\{\s*display:\s*none/);
-  const block = css.slice(css.indexOf('/* Version tabs in the shell'));
-  assert.match(block, /\.hero-wordmark\s*\{\s*display:\s*flex/);
+check('the landing carries no hero wordmark, bullets or era cards any more', () => {
+  assert.ok(!html.includes('hero-wordmark') && !html.includes('hero-points') && !html.includes('version-compare') && !html.includes('id="version-comparison"'));
+  assert.ok(!/\.hero-wordmark|\.hero-points|\.version-compare/.test(css), 'their CSS is gone');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

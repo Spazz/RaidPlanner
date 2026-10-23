@@ -96,13 +96,15 @@ const script = app.script.replace(/\r\n/g, '\n');
   });
 
   // ── the landing ──
-  await check('landing: the slot for the guild members\' upcoming raids sits under the Planner heading; the saved plans read "Other plans on this device" for a guild member', () => {
-    const head = html.indexOf('<div class="landing-compact-head">');
+  await check('landing: the no-guild banner leads the page, the slot for the guild members\' upcoming raids sits under the Planner heading, the tab is "Your plans" for everyone', () => {
+    const banner = html.indexOf('<div id="planner-banner"></div>');
+    const head = html.indexOf('<header class="gs-ph-head">');
     const slot = html.indexOf('<div id="planner-notice"></div>');
+    assert(banner > 0 && head > banner, 'the banner sits above the head');
     assert(head > 0 && slot > head, 'the notice slot follows the heading');
-    assert(slot < html.indexOf('<section class="hero">'), 'and leads the import card');
-    assert(html.includes('<span class="lbl-solo">Your plans</span><span class="lbl-guild">Other plans on this device</span>'));
-    assert(/\.lbl-guild \{ display: none; \}/.test(css) && /body\.has-planner-guild \.lbl-solo \{ display: none; \}/.test(css));
+    assert(slot < html.indexOf('<section class="gs-ph-hero"'), 'and leads the import card');
+    assert(html.includes('>Your plans<span class="gs-ph-count"') && !html.includes('Other plans on this device') && !html.includes('lbl-guild'), 'one label for the tab');
+    assert(!/\.lbl-guild|\.lbl-solo/.test(css), 'the relabel rules are gone');
     const guildApp = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'js/guild/app.js'), 'utf8');
     assert(/document\.body\.classList\.toggle\('has-planner-guild'/.test(guildApp), 'the shell sets the body class when the viewer has a guild');
   });

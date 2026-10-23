@@ -94,13 +94,15 @@
       '</div></div>';
   }
 
-  // The same message as a notice above the compact planner home (#planner-notice).
+  // The same message as an inline banner above the Planner head (#planner-banner): the title, the account-link sentence (the
+  // Connect Discord aside goes, the button carries it), one secondary button.
   function noGuildNoticeHtml(me) {
     const p = noGuildParts(me);
-    return '<div class="gs-notice gs-noguild-notice" role="status"><div class="gs-notice-body">' +
-      '<h2 class="gs-notice-title">You\'re not in a Raidsmith guild yet</h2>' + p.removedNote +
-      '<p class="gs-notice-text">' + p.lead + '</p>' + p.claimNote + p.createNote + '</div>' +
-      (p.discord ? G.ui.buttonHtml({ label: 'Sign in again', size: 'sm', href: '/auth/login' }) : G.ui.buttonHtml({ label: 'Connect Discord', size: 'sm', href: '#/linked' })) + '</div>';
+    const lead = p.lead.replace(/ Or connect Discord to join through your guild's Discord server\.$/, '');
+    return '<section class="gs-hd-panel gs-ph-banner" role="status" aria-label="No guild"><div class="gs-ph-banner-body">' +
+      '<h2>You\'re not in a Raidsmith guild yet</h2>' + p.removedNote +
+      '<p>' + lead + '</p>' + p.claimNote + '</div>' +
+      (p.discord ? G.ui.buttonHtml({ label: 'Sign in again', href: '/auth/login' }) : G.ui.buttonHtml({ label: 'Connect Discord', href: '#/linked' })) + '</section>';
   }
 
   // A plain page that says why (access removed, not a member, forbidden, load failure). opts.actionsHtml: buttons to put before Back to start.

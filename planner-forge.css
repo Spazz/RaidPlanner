@@ -160,6 +160,129 @@
 .gs-forge a:focus-visible, .gs-forge button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 /* Menus and the toast: the one raised recipe */
 .gs-forge .gs-menu-list { min-width: 220px; padding: 6px; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
+/* ── Planner home on Forge (the landing: member / no guild, and signed out). Prefix gs-ph-. ───────────────────────────────
+   Boards: canvas GQZDB26E7tcSktN3T7zozA (Member-desktop / -phone, Signedout-desktop / -phone). One .gs-hd-panel import card with the tabs
+   Import roster | Your plans; the one molten button is Load roster. Modes follow the body classes the shell sets: signed out (or "How it works")
+   = the full landing (hero, How it works, For guilds on signed out, one footer line); a signed-in viewer = the compact home (head, card);
+   body.shell-pending (session unknown) = the card alone. Gold only on the tab count; orange only on Load roster. Self-contained: no guild.css rule. */
+.gs-ph { gap: 32px; }
+.gs-ph [hidden] { display: none !important; }
+#planner-banner:empty { display: none; }
+/* Head: the page h1 + context line. Always in the document (focus target, one h1); visible in the compact home only. */
+.gs-ph-head { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+body:not(.is-signed-out):not(.landing-full):not(.shell-pending) .gs-ph-head { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; display: flex; flex-direction: column; gap: 6px; }
+.gs-ph-h1 { margin: 0; font: 700 28px/32px var(--font-body); color: var(--hd-white); }
+.gs-ph-h1:focus { outline: none; }
+.gs-ph-context { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 15px; line-height: 22px; color: var(--text-secondary); }
+.gs-ph-context:empty { display: none; }
+.gs-ph-sep { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--text-muted); }
+/* Inline banners: no guild, and the resume banner */
+.gs-ph-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; }
+.gs-ph-banner-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.gs-ph-banner h2 { margin: 0; font: 700 15px/22px var(--font-body); color: var(--hd-white); }
+.gs-ph-banner p { margin: 0; font-size: 14px; line-height: 20px; color: var(--text-secondary); }
+.gs-ph-banner strong { color: var(--hd-white); font-weight: 600; }
+.gs-ph-banner .gs-btn { flex: none; }
+.gs-ph-banner .gs-warn { padding: 0; border: 0; background: none; font-size: 14px; line-height: 20px; color: var(--danger-text); }
+.gs-ph-banner a:not(.gs-btn) { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+/* Hero + import card */
+.gs-ph-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.gs-ph-herocopy { display: none; }
+.gs-ph-card { display: flex; flex-direction: column; min-width: 0; max-width: 680px; }
+body:is(.is-signed-out, .landing-full):not(.shell-pending) .gs-ph-herocopy { display: block; }
+body:is(.is-signed-out, .landing-full):not(.shell-pending) .gs-ph-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 520px); gap: 48px; align-items: center; padding: 16px 0 8px; }
+body:is(.is-signed-out, .landing-full):not(.shell-pending) .gs-ph-card { max-width: none; }
+.gs-ph-headline { margin: 0; font: 700 44px/48px var(--font-body); letter-spacing: -0.01em; color: var(--hd-white); }
+.gs-ph-headline em { font-style: normal; color: var(--text-secondary); }
+.gs-ph-lead { margin: 16px 0 0; max-width: 520px; font-size: 17px; line-height: 26px; color: var(--text-secondary); }
+.gs-ph-tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--hd-hair); }
+.gs-ph-tab { display: inline-flex; align-items: center; gap: 8px; height: 44px; margin: 0 0 -1px; padding: 0 12px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-muted); font: 600 15px/1 var(--font-body); cursor: pointer; }
+.gs-ph-tab:hover { color: var(--text-primary); }
+.gs-ph-tab[aria-selected="true"] { color: var(--hd-white); border-bottom-color: var(--hd-white); }
+.gs-ph-count { display: inline-block; box-sizing: border-box; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--accent-gold); color: #131416; font: 700 12px/22px var(--font-body); text-align: center; }
+.gs-ph-pane { display: flex; flex-direction: column; gap: 16px; padding: 20px 16px; }
+.gs-ph-field { display: flex; flex-direction: column; gap: 6px; }
+.gs-ph-field label { font-size: 14px; line-height: 20px; color: var(--text-secondary); }
+.gs-ph-ta { box-sizing: border-box; width: 100%; min-height: 120px; padding: 10px 12px; border: 1px solid var(--border-field); border-radius: 4px; background: var(--bg-deepest); color: var(--text-primary); font: 400 14px/1.4 var(--font-body); resize: vertical; }
+.gs-ph-ta::placeholder, .gs-ph-ta.is-sample { color: var(--text-muted); opacity: 1; }
+.gs-ph-ta:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-ph-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.gs-ph-status { font-size: 13px; line-height: 18px; color: var(--text-muted); }
+.gs-ph-status:empty { display: none; }
+.gs-ph-status.error { color: var(--danger-text); }
+.gs-ph-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 0; font-size: 14px; }
+.gs-ph-links button, .gs-ph-foot a { display: inline-flex; align-items: center; min-height: 36px; margin: 0; padding: 0; background: none; border: 0; color: var(--text-secondary); font: 600 14px/1.2 var(--font-body); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.gs-ph-links button:hover, .gs-ph-foot a:hover { color: var(--text-primary); }
+.gs-ph-lbl { margin: 0; font-size: 13px; line-height: 18px; color: var(--text-muted); }
+/* Your plans: rows (name, "N seated - M benched - date", More) and the disclosure rows */
+.gs-ph-plist { margin: 0; padding: 0; list-style: none; }
+.gs-ph-prow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 56px; border-top: 1px solid var(--hd-hair); }
+.gs-ph-prow:first-child { border-top: 0; }
+.gs-ph-open { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 0; padding: 6px 0; background: none; border: 0; text-align: left; cursor: pointer; color: var(--hd-white); font: 600 15px/1.3 var(--font-body); }
+.gs-ph-open:hover .gs-ph-ptext { text-decoration: underline; text-underline-offset: 3px; }
+.gs-ph-pname { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.gs-ph-ptext { overflow-wrap: anywhere; }
+.gs-ph-pmeta { font-size: 13px; font-weight: 400; line-height: 18px; color: var(--text-muted); }
+.gs-ph-empty { padding: 12px 0; font-size: 14px; line-height: 20px; color: var(--text-muted); }
+.gs-ph-pm { min-width: 36px; padding: 0; }
+.gs-ph-more .gs-menu-trigger { flex: none; }
+.gs-ph-disc { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; margin: 0; padding: 0 4px; background: none; border: 0; border-top: 1px solid var(--hd-hair); color: var(--text-secondary); font: 600 14px/1 var(--font-body); text-align: left; cursor: pointer; }
+.gs-ph-disc:hover { color: var(--text-primary); }
+.gs-ph-disc svg { transition: transform 0.15s; }
+.gs-ph-disc[aria-expanded="true"] svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .gs-ph-disc svg { transition: none; } }
+.gs-ph-discwrap { display: flex; flex-direction: column; }
+/* Recent imports: renderImportHistory (modals.js) draws the rows; the Forge look is applied here */
+.gs-ph-hist { display: flex; flex-direction: column; }
+.gs-ph-hist .history-row { display: flex; align-items: center; gap: 8px; min-height: 56px; border-top: 1px solid var(--hd-hair); }
+.gs-ph-hist .history-row:first-child { border-top: 0; }
+.gs-ph-hist .saved-item { flex: 1 1 auto; min-width: 0; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 0; background: none; border: 0; color: var(--hd-white); }
+.gs-ph-hist .saved-item:hover { background: none; border: 0; }
+.gs-ph-hist .saved-item-name { font-size: 15px; }
+.gs-ph-hist .saved-item-meta, .gs-ph-hist .saved-empty { font-size: 13px; line-height: 18px; }
+.gs-ph-hist .history-remove { flex: none; min-width: 36px; min-height: 36px; border-radius: 4px; border: 1px solid var(--border-medium); background: rgba(255, 255, 255, 0.04); color: var(--text-secondary); }
+.gs-ph-hist .history-remove:hover { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
+.gs-ph-hist .history-more { width: auto; align-self: flex-start; }
+/* Signed out sections */
+.gs-ph-sec, .gs-ph-foot { display: none; }
+body:is(.is-signed-out, .landing-full):not(.shell-pending) #how-it-works.gs-ph-sec { display: flex; flex-direction: column; gap: 12px; }
+body.is-signed-out:not(.shell-pending) #for-guilds.gs-ph-sec { display: flex; flex-direction: column; gap: 12px; }
+body:is(.is-signed-out, .landing-full):not(.shell-pending) .gs-ph-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 24px; padding: 16px 0 0; border-top: 1px solid var(--hd-hair); font-size: 14px; color: var(--text-muted); }
+.gs-ph-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.gs-ph-step { display: flex; flex-direction: column; gap: 8px; padding: 20px; }
+.gs-ph-num { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 14px; background: var(--seg-on-bg); font: 700 14px/1 var(--font-body); color: var(--hd-white); }
+.gs-ph-step h3, .gs-ph-pts h3 { margin: 0; font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--hd-white); }
+.gs-ph-step p, .gs-ph-pts p { margin: 0; font-size: 14px; line-height: 21px; color: var(--text-secondary); }
+.gs-ph-guilds { display: flex; flex-direction: column; gap: 16px; padding: 24px; }
+.gs-ph-glead { margin: 0; font-size: 16px; line-height: 24px; color: var(--text-primary); }
+.gs-ph-pts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.gs-ph-pts li { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--hd-hair); }
+.gs-ph-pts h3 { font-size: 16px; letter-spacing: 0.08em; }
+.gs-ph-cta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.gs-ph-note { max-width: 560px; font-size: 14px; color: var(--text-secondary); }
+@media (max-width: 900px) {
+  body:is(.is-signed-out, .landing-full):not(.shell-pending) .gs-ph-hero { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 0; }
+}
+@media (max-width: 600px) {
+  .gs-ph { gap: 24px; padding: 16px 16px 32px; }
+  .gs-ph-h1 { font-size: 24px; line-height: 28px; }
+  .gs-ph-headline { font-size: 32px; line-height: 36px; }
+  .gs-ph-lead { font-size: 16px; line-height: 24px; }
+  .gs-ph-banner { flex-direction: column; align-items: stretch; }
+  .gs-ph-banner .gs-btn { width: 100%; }
+  .gs-ph-ta { font-size: 16px; }
+  .gs-ph-actions .gs-btn-molten { width: 100%; min-height: 48px; }
+  .gs-ph-links { flex-direction: column; align-items: flex-start; gap: 0; }
+  .gs-ph-links button, .gs-ph-foot a { min-height: 44px; }
+  .gs-ph-pm { min-width: 44px; }
+  .gs-ph-hist .history-remove { min-width: 44px; min-height: 44px; }
+  .gs-ph-steps, .gs-ph-pts { grid-template-columns: minmax(0, 1fr); }
+  .gs-ph-guilds { padding: 16px; }
+  .gs-ph-cta { flex-direction: column; align-items: stretch; }
+  .gs-ph-cta .gs-btn { width: 100%; }
+  body:is(.is-signed-out, .landing-full):not(.shell-pending) .gs-ph-foot { flex-direction: column; align-items: flex-start; gap: 0; }
+}
+
 /* ── Planner board on Forge (T6): the group panels (planner redesign, lane 1). Prefix gs-pb-. ─────────────────────────────────────
    Frames: canvas XTGYHwxpeZxH3FPN9HCUTH round 3 (R3-desktop groups, R3-details group head, R3-phone). One group = one .gs-hd-panel with a 44 px head
    (gold group name, muted role word, drum icon button, muted 5/5), 44 px rows (20 px spec icon, class-coloured name over muted spec, then exceptions only)

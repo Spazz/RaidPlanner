@@ -58,55 +58,20 @@ function renderLanding() {
   LandingSample.sync(document.getElementById('landing-import'));
   renderLandingSavedList();
   renderImportHistory(document.getElementById('landing-history-list'));
-  renderVersionComparison();
+  renderPlannerContext();
 }
 
-// Static 3-column TBC / Classic Era / Forever comparison (feature-backlog-2.md
-// #9). Sources every blurb from GameVersions[key].note and GameVersions[key].raids
-// so it can never drift out of sync with the FAQ, which quotes the same facts.
-function renderVersionComparison() {
-  const table = document.getElementById('version-compare-table');
-  if (!table) return;
-  // Re-rendering after a switch replaces the focused card; give focus back to the same one.
-  const focused = document.activeElement && table.contains(document.activeElement) ? document.activeElement : null;
-  const refocus = focused ? focused.dataset.version : null;
-  const order = ['tbc', 'classic', 'forever'];
-  table.innerHTML = order.map(key => {
-    const profile = GameVersions[key];
-    if (!profile) return '';
-    // GameVersions[key].raids also carries the classicN/foreverN planning
-    // templates (kept for old saved plans — see the raids section of
-    // js/rules/classic.js and forever.js); this landing table only advertises real raids.
-    const raidNames = (profile.raids || [])
-      .map(r => Config.Raids[r])
-      .filter(r => r && r.tier !== 'Planning templates')
-      .map(r => r.name);
-    const here = key === State.gameVersion;
-    return `<button type="button" class="version-compare-col${here ? ' here' : ''}" data-version="${esc(key)}" aria-label="${esc(here ? profile.name + ', current version' : 'Switch to ' + profile.name)}"${here ? ' aria-current="true"' : ''}>
-      <span class="version-compare-name">${esc(profile.name)}</span>
-      <span class="version-compare-note">${esc(profile.note)}</span>
-      <span class="version-compare-raids"><strong>${raidNames.length} raid${raidNames.length === 1 ? '' : 's'} modeled:</strong> ${esc(raidNames.join(', ') || 'Planning templates only')}</span>
-      <span class="go">${here ? 'You are here' : 'Switch to ' + esc(profile.name)}</span>
-    </button>`;
-  }).join('');
-  if (refocus) {
-    const card = table.querySelector(`[data-version="${refocus}"]`);
-    if (card) card.focus();
-  }
+// The head's context line: "<guild> - <version>". The guild shell names the guild (PP.shell.setGuildContext); the version is the one the planner is on.
+const PLANNER_VERSION_LABELS = { tbc: 'TBC', classic: 'Classic', forever: 'Forever' };
+let plannerGuildName = '';
+function renderPlannerContext() {
+  const line = document.getElementById('planner-context');
+  if (!line) return;
+  const parts = [plannerGuildName, PLANNER_VERSION_LABELS[State.gameVersion] || ''].filter(Boolean);
+  line.innerHTML = parts.map(part => `<span>${esc(part)}</span>`).join('<span class="gs-ph-sep" aria-hidden="true"></span>');
 }
 
-// The cards are buttons that switch the game version (switchGameVersion asks first when a
-// plan is loaded). Own handler on the container: syncVersionControls wires only the real
-// .game-version-tab buttons, so the cards never get its generic [data-version] click.
-function onVersionCardClick(event) {
-  const card = event.target && event.target.closest ? event.target.closest('button[data-version]') : null;
-  if (!card || card.getAttribute('aria-current') === 'true') return;
-  switchGameVersion(card.dataset.version);
-}
-(function initVersionCards() {
-  const table = document.getElementById('version-compare-table');
-  if (table) table.addEventListener('click', onVersionCardClick);
-})();
+
 
 // Asks, then removes one landing row: a working plan (kind 'plan', id = its plan key) or a saved
 // copy (kind 'copy', id = its name). Resolves true only when something was removed. Declining keeps it.
@@ -140,65 +105,84 @@ async function deleteSavedEntry(kind, id, label) {
   return true;
 }
 
+// A landing row's More: one button and its menu with Delete inside (design-spec 2.4). The menu is the planner's own Menu (render.js).
+function landingRowMoreHtml(label, deleteAttr, deleteValue) {
+  return `<div class="menu-wrap gs-ph-more">
+      <button type="button" class="gs-btn gs-menu-trigger gs-ph-pm" aria-label="More for ${esc(label)}" aria-haspopup="menu" aria-expanded="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+      <div class="menu gs-menu-list gs-pb-menu" role="menu" aria-label="More for ${esc(label)}" hidden>
+        <button type="button" class="menu-item menu-item-danger" role="menuitem" ${deleteAttr}="${esc(deleteValue)}" data-label="${esc(label)}">Delete</button>
+      </div>
+    </div>`;
+}
+
 function renderLandingSavedList() {
   const backupNote = document.getElementById('landing-last-backup');
   if (backupNote) backupNote.textContent = BackupStamp.label(localStorage);
   const list = document.getElementById('landing-saved-list');
   if (!list) return;
+  const copiesList = document.getElementById('landing-copies-list');
   const rosters = getSavedRosters();
   const names = Object.keys(rosters);
   let drafts = [];
   try { drafts = PlanStore.read(localStorage); } catch {}
-  // Nothing saved and nothing imported: the pane shows one message and the restore row instead of two empty lists.
   let imports = [];
   try { imports = ImportHistory.read(localStorage); } catch {}
-  const pane = list.closest('.import-pane');
-  if (pane) pane.classList.toggle('is-empty', names.length === 0 && drafts.length === 0 && imports.length === 0);
-  if (names.length === 0 && drafts.length === 0) {
-    list.innerHTML = '<div class="saved-empty">No plans yet. Import a roster and your work will be saved here automatically.</div>';
-    return;
-  }
-  list.innerHTML = drafts.map(p => `<div class="history-row saved-row">
-    <button type="button" class="saved-item history-open saved-open" data-plan="${esc(LiveLinks.planKey(p.data))}">
-      <span class="saved-item-name">${esc(p.data.rosterName)}</span>
-      <span class="saved-item-meta">${p.data.groups.flat().length} seated · ${p.data.bench.length} benched · ${esc(new Date(p.updatedAt).toLocaleString())}</span>${RaidLink.isRaidPlan(p.data.planId) ? `
-      <span class="gs-hd-chip is-grey">Guild raid</span>` : ''}
+  // The tab's gold count is the working plans; the Saved copies and Recent imports rows show only when they hold something.
+  const count = document.getElementById('landing-plan-count');
+  if (count) { count.textContent = String(drafts.length); count.hidden = drafts.length === 0; }
+  const copiesWrap = document.getElementById('landing-copies-wrap');
+  if (copiesWrap) copiesWrap.hidden = names.length === 0;
+  const historyWrap = document.getElementById('landing-history-wrap');
+  if (historyWrap) historyWrap.hidden = imports.length === 0;
+  const stamp = ts => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  list.innerHTML = drafts.length ? drafts.map(p => {
+    const label = p.data.rosterName;
+    return `<li class="gs-ph-prow">
+    <button type="button" class="gs-ph-open saved-open" data-plan="${esc(LiveLinks.planKey(p.data))}">
+      <span class="gs-ph-pname"><span class="gs-ph-ptext">${esc(label)}</span>${RaidLink.isRaidPlan(p.data.planId) ? '<span class="gs-hd-chip is-grey">Guild raid</span>' : ''}</span>
+      <span class="gs-ph-pmeta">${p.data.groups.flat().length} seated - ${p.data.bench.length} benched - ${esc(stamp(p.updatedAt))}</span>
     </button>
-    <span class="row-actions"><button type="button" class="link-btn del" data-delete-plan="${esc(LiveLinks.planKey(p.data))}" data-label="${esc(p.data.rosterName)}" aria-label="Delete plan ${esc(p.data.rosterName)}">Delete</button></span>
-  </div>`).join('') + (names.length ? '<div class="saved-item-meta">Saved copies</div>' : '') + names.map(name => {
+    ${landingRowMoreHtml(label, 'data-delete-plan', LiveLinks.planKey(p.data))}
+  </li>`;
+  }).join('') : '<li class="gs-ph-empty">No plans yet. Import a roster and your work will be saved here automatically.</li>';
+  if (copiesList) copiesList.innerHTML = names.map(name => {
     const r = rosters[name];
-    const count = r.players ? r.players.length : 0;
+    const players = r.players ? r.players.length : 0;
     const raid = r.raid && Config.Raids[r.raid] ? raidSizeLabel(r.raid) : '';
-    const linked = r.sourceEventId ? ' \u00b7 Raid-Helper linked' : '';
-    return `<div class="history-row saved-row">
-      <button type="button" class="saved-item history-open saved-open" data-name="${esc(name)}">
-        <span class="saved-item-name">${esc(name)}</span>
-        <span class="saved-item-meta">${count} players${raid ? ' \u00b7 ' + esc(raid) : ''}${linked}</span>
+    const linked = r.sourceEventId ? ' - Raid-Helper linked' : '';
+    return `<li class="gs-ph-prow">
+      <button type="button" class="gs-ph-open saved-open" data-name="${esc(name)}">
+        <span class="gs-ph-pname"><span class="gs-ph-ptext">${esc(name)}</span></span>
+        <span class="gs-ph-pmeta">${players} players${raid ? ' - ' + esc(raid) : ''}${linked}</span>
       </button>
-      <span class="row-actions"><button type="button" class="link-btn del" data-delete-copy="${esc(name)}" data-label="${esc(name)}" aria-label="Delete saved copy ${esc(name)}">Delete</button></span>
-    </div>`;
+      ${landingRowMoreHtml(name, 'data-delete-copy', name)}
+    </li>`;
   }).join('');
-  list.querySelectorAll('[data-delete-plan], [data-delete-copy]').forEach(btn => btn.addEventListener('click', async () => {
-    const isPlan = btn.dataset.deletePlan !== undefined;
-    const removed = await deleteSavedEntry(isPlan ? 'plan' : 'copy', isPlan ? btn.dataset.deletePlan : btn.dataset.deleteCopy, btn.dataset.label);
-    if (removed) renderLanding();
-  }));
-  list.querySelectorAll('.saved-open').forEach(item => item.addEventListener('click', () => {
-    if (item.dataset.plan) {
-      const plan = drafts.find(p => LiveLinks.planKey(p.data) === item.dataset.plan);
-      if (plan && openThroughRaid(plan.data, item.dataset.plan)) return;
-      if (plan && PlanStore.restore(plan.data)) { ChangeLog.clear(); initGroups(); commit(); showView('app'); RaidHelperSync.check(); }
-      return;
-    }
-    const data = rosters[item.dataset.name];
-    if (!Import.loadRoster(data)) { showToast('That saved roster could not be loaded'); return; }
-    ChangeLog.clear();
-    initGroups();
-    commit();
-    showToast(`Loaded "${item.dataset.name}"`);
-    showView('app');
-    RaidHelperSync.check();
-  }));
+  for (const box of [list, copiesList]) {
+    if (!box) continue;
+    if (typeof Menu !== 'undefined') box.querySelectorAll('.gs-ph-more').forEach(wrap => Menu.init(wrap.querySelector('.gs-menu-trigger'), wrap.querySelector('.gs-menu-list')));
+    box.querySelectorAll('[data-delete-plan], [data-delete-copy]').forEach(btn => btn.addEventListener('click', async () => {
+      const isPlan = btn.dataset.deletePlan !== undefined;
+      const removed = await deleteSavedEntry(isPlan ? 'plan' : 'copy', isPlan ? btn.dataset.deletePlan : btn.dataset.deleteCopy, btn.dataset.label);
+      if (removed) renderLanding();
+    }));
+    box.querySelectorAll('.saved-open').forEach(item => item.addEventListener('click', () => {
+      if (item.dataset.plan) {
+        const plan = drafts.find(p => LiveLinks.planKey(p.data) === item.dataset.plan);
+        if (plan && openThroughRaid(plan.data, item.dataset.plan)) return;
+        if (plan && PlanStore.restore(plan.data)) { ChangeLog.clear(); initGroups(); commit(); showView('app'); RaidHelperSync.check(); }
+        return;
+      }
+      const data = rosters[item.dataset.name];
+      if (!Import.loadRoster(data)) { showToast('That saved roster could not be loaded'); return; }
+      ChangeLog.clear();
+      initGroups();
+      commit();
+      showToast(`Loaded "${item.dataset.name}"`);
+      showView('app');
+      RaidHelperSync.check();
+    }));
+  }
 }
 
 // A guild raid's plan opens through the raid: the database copy is the plan, this device's copy only the cache. A browser that never opened
@@ -234,15 +218,18 @@ const LandingSample = {
   if (!card) return;
 
   // Tabs
-  card.querySelectorAll('.import-tab').forEach(tab => tab.addEventListener('click', () => {
-    card.querySelectorAll('.import-tab').forEach(t => {
-      const active = t === tab;
-      t.classList.toggle('active', active);
-      t.setAttribute('aria-selected', String(active));
-    });
-    card.querySelectorAll('.import-pane').forEach(pane => { pane.hidden = pane.dataset.pane !== tab.dataset.pane; });
-    const focusEl = card.querySelector(`.import-pane[data-pane="${tab.dataset.pane}"] .import-field`);
+  card.querySelectorAll('.gs-ph-tab').forEach(tab => tab.addEventListener('click', () => {
+    card.querySelectorAll('.gs-ph-tab').forEach(t => t.setAttribute('aria-selected', String(t === tab)));
+    card.querySelectorAll('.gs-ph-pane').forEach(pane => { pane.hidden = pane.dataset.pane !== tab.dataset.pane; });
+    const focusEl = tab.dataset.pane === 'import' ? document.getElementById('landing-import') : null;
     if (focusEl) focusEl.focus();
+  }));
+
+  // Saved copies and Recent imports: disclosure rows.
+  card.querySelectorAll('.gs-ph-disc').forEach(button => button.addEventListener('click', () => {
+    const open = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(open));
+    document.getElementById(button.getAttribute('aria-controls')).hidden = !open;
   }));
 
   const loadInput = () => runImport('landing-import', 'landing-status-import', 'btn-landing-import', () => { showView('app'); SplitFlow.maybeOffer(); });
@@ -267,14 +254,14 @@ const LandingSample = {
     script.src = '/scenarios.js';
     script.onload = () => {
       const S = window.PPScenarios;
-      const pane = document.querySelector('.import-pane[data-pane="import"]');
+      const pane = document.querySelector('.gs-ph-pane[data-pane="import"]');
       if (!S || !pane) return;
       const wrap = document.createElement('div');
       wrap.className = 'dev-scenarios';
       wrap.innerHTML = `<label for="dev-scenario">Dev - load a test scenario (${S.scenarios.length})</label>
         <select id="dev-scenario" class="raid-dropdown"><option value="" disabled selected>Pick a scenario</option>
         ${S.scenarios.map(sc => `<option value="${esc(sc.id)}">${esc(sc.id)} - ${esc(sc.label)}</option>`).join('')}</select>`;
-      pane.insertBefore(wrap, pane.querySelector('textarea'));
+      pane.insertBefore(wrap, pane.querySelector('.gs-ph-field'));
       wrap.querySelector('select').addEventListener('change', (e) => {
         const sc = S.scenarios.find(x => x.id === e.target.value);
         if (!sc) return;
@@ -600,7 +587,7 @@ document.getElementById('btn-random').addEventListener('click', async () => {
 document.getElementById('btn-save').addEventListener('click', showSaveModal);
 document.getElementById('btn-templates').addEventListener('click', showTemplatesModal);
 // Open saved plan, and the head's "Your plans" back link: the landing's Your plans tab.
-function openSavedPlans() { showView('landing'); document.querySelector('.import-tab[data-pane="saved"]').click(); }
+function openSavedPlans() { showView('landing'); document.querySelector('.gs-ph-tab[data-pane="saved"]').click(); }
 document.getElementById('btn-load').addEventListener('click', openSavedPlans);
 document.getElementById('btn-back-plans').addEventListener('click', openSavedPlans);
 
@@ -2715,7 +2702,7 @@ commit();
 // A share link opens straight into the planner; everyone else lands on import.
 // The link may ask before replacing the restored plan, so the page starts on the landing view.
 showView('landing');
-if (hasLoadedWork()) document.querySelector('.import-tab[data-pane="saved"]').click();
+if (hasLoadedWork()) document.querySelector('.gs-ph-tab[data-pane="saved"]').click();
 // A short link (/<version>/<id>) needs a server round-trip, so it lands on
 // import first and switches to the planner once the layout arrives.
 loadFromShortLink().then(opened => { if (opened) showView('app'); });
@@ -2771,6 +2758,8 @@ const PlannerShell = {
     if (section) section.scrollIntoView();
   },
   view: () => State.view,
+  // The guild the head's context line names (the guild shell sets it; '' for no guild).
+  setGuildContext(name) { plannerGuildName = name || ''; renderPlannerContext(); },
   // The open plan's name, for the top bar's trail ("<Guild> / Planner / <plan name>").
   planName: () => State.rosterName,
   isActive: () => plannerActive(),

@@ -49,118 +49,108 @@
     <div id="shell-banner"></div>
     <main class="gs-main" id="gs-main" hidden></main>
     <div id="planner-root" class="planner-root">
-<main class="landing" id="landing-view">
-  <h1 class="sr-only" tabindex="-1">Raidsmith</h1>
-  <div class="landing-compact-head">
-    <h2 tabindex="-1">Planner</h2>
-    <p>Import sign-ups or open a saved plan. Plans save in this browser.</p>
+<main class="landing gs-forge gs-ph" id="landing-view">
+  <div id="planner-banner"></div>
+  <div class="gs-hd-panel gs-ph-banner gs-ph-resume" id="resume-banner" hidden>
+    <p>You have <strong id="resume-summary"></strong> loaded.</p>
+    <button type="button" class="gs-btn" id="btn-resume">Back to planner</button>
   </div>
+  <header class="gs-ph-head">
+    <h1 class="gs-ph-h1" tabindex="-1">Planner</h1>
+    <p class="gs-ph-context" id="planner-context"></p>
+  </header>
   <div id="planner-notice"></div>
 
-  <section class="hero">
-    <div class="hero-copy">
-      <div class="hero-wordmark" aria-hidden="true"><span class="game-header-mark"><svg class="mark-svg" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="9" cy="14" r="3" fill="#ffb35c"/><circle cx="16.5" cy="9" r="3" fill="#ffb35c"/><circle cx="24" cy="7" r="3" fill="#ffb35c"/><circle cx="31.5" cy="9" r="3" fill="#ffb35c"/><circle cx="39" cy="14" r="3" fill="#ffb35c"/><path d="M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z" transform="translate(0 -1)" fill="currentColor"/></svg></span><strong>Raidsmith</strong></div>
-      <h2>Forge optimal raid groups <em>in one click.</em></h2>
-      <p>Paste your Raid-Helper sign-ups and get raid groups built to hit harder. No spreadsheet, no login; imports stay in your browser.</p>
-      <ul class="hero-points">
-        <li>Melee ride with Windfury, casters get their totems, tanks stay with their healers.</li>
-        <li>See every buff you're missing and fix it in one click.</li>
-        <li>Drag anyone anywhere, then share a link with your raid.</li>
-      </ul>
+  <section class="gs-ph-hero" aria-label="Raidsmith planner">
+    <div class="gs-ph-herocopy">
+      <h2 class="gs-ph-headline">Forge optimal raid groups <em>in one click.</em></h2>
+      <p class="gs-ph-lead">Paste your Raid-Helper sign-ups and get raid groups built to hit harder. No spreadsheet, no login; imports stay in your browser.</p>
     </div>
 
-    <div class="import-card" id="import-card">
-      <div class="import-tabs" role="tablist">
-        <button type="button" class="import-tab active" role="tab" data-pane="import" aria-selected="true">Import roster</button>
-        <button type="button" class="import-tab" role="tab" data-pane="saved" aria-selected="false"><span class="lbl-solo">Your plans</span><span class="lbl-guild">Other plans on this device</span></button>
+    <div class="gs-hd-panel gs-ph-card" id="import-card" role="region" aria-label="Import roster">
+      <div class="gs-ph-tabs" role="tablist">
+        <button type="button" class="gs-ph-tab" role="tab" data-pane="import" aria-selected="true">Import roster</button>
+        <button type="button" class="gs-ph-tab" role="tab" data-pane="saved" aria-selected="false">Your plans<span class="gs-ph-count" id="landing-plan-count" hidden></span></button>
       </div>
 
-      <div class="resume-banner" id="resume-banner" hidden>
-        <span>You have <strong id="resume-summary"></strong> loaded.</span>
-        <button type="button" class="btn btn-primary" id="btn-resume">Back to planner</button>
-      </div>
-
-      <div class="import-pane" data-pane="import">
-        <p>Paste a Raid-Helper event link or ID, its JSON export, a Raidsmith share code, or a plain list of players (one per line). Your plans save automatically in this browser.</p>
-        <label for="landing-import" class="sr-only">Raid-Helper link, event ID, JSON, share code or player list</label>
-        <textarea class="import-field" id="landing-import" placeholder="https://raid-helper.dev/event/1234567890123456789" spellcheck="false"></textarea>
-        <div class="import-formats">Accepts a Raid-Helper link or event ID, JSON, or <button type="button" class="link-btn" id="btn-landing-sample">a player list</button>.</div>
-        <div class="import-actions">
-          <button type="button" class="btn btn-primary btn-lg" id="btn-landing-import">Load roster</button>
-          <span class="import-status" id="landing-status-import" role="status"></span>
+      <div class="gs-ph-pane" data-pane="import" role="tabpanel">
+        <div class="gs-ph-field">
+          <label for="landing-import">Paste a Raid-Helper event link or ID, its JSON export, a Raidsmith share code, or a plain list of players (one per line).</label>
+          <textarea class="gs-ph-ta" id="landing-import" placeholder="https://raid-helper.dev/event/1234567890123456789" spellcheck="false"></textarea>
         </div>
-      </div>
-
-      <div class="import-pane" data-pane="saved" hidden>
-        <p class="saved-empty-note">Nothing on the anvil yet. Plans you import or start save here automatically, in this browser only.</p>
-        <h3 class="roster-section-heading saved-full"><span class="lbl-solo">Your plans</span><span class="lbl-guild">Other plans on this device</span></h3>
-        <div class="saved-list saved-full" id="landing-saved-list"></div>
-        <div class="foot-note saved-full">Saved automatically in this browser only. Clearing site data removes them.</div>
-        <div class="row-actions">
-          <button type="button" class="link-btn" id="btn-landing-restore">Restore from a backup file</button>
-          <span class="saved-item-meta" id="landing-last-backup"></span>
+        <div class="gs-ph-actions">
+          <button type="button" class="gs-btn gs-btn-molten" id="btn-landing-import">Load roster</button>
+          <span class="gs-ph-status" id="landing-status-import" role="status"></span>
         </div>
-        <h3 class="roster-section-heading saved-full">Recent imports</h3>
-        <p class="saved-full">Original import snapshots. Your plans above keep subsequent edits.</p>
-        <div class="saved-list saved-full" id="landing-history-list"></div>
+        <p class="gs-ph-links">
+          <span class="gs-ph-lbl">No roster handy?</span>
+          <button type="button" id="btn-landing-sample">Use a sample list</button>
+          <button type="button" id="btn-landing-random">Generate a random 25-man</button>
+          <button type="button" id="btn-landing-empty">Start an empty plan</button>
+        </p>
       </div>
 
-      <div class="import-foot">
-        <span>No roster handy?</span>
-        <button type="button" class="link-btn" id="btn-landing-random">Generate a random 25-man</button>
-        <button type="button" class="link-btn" id="btn-landing-empty">Start an empty plan</button>
+      <div class="gs-ph-pane" data-pane="saved" role="tabpanel" hidden>
+        <ul class="gs-ph-plist" id="landing-saved-list"></ul>
+        <div class="gs-ph-discwrap" id="landing-copies-wrap" hidden>
+          <button type="button" class="gs-ph-disc" id="btn-landing-copies" aria-expanded="false" aria-controls="landing-copies-list">Saved copies<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+          <ul class="gs-ph-plist" id="landing-copies-list" hidden></ul>
+        </div>
+        <div class="gs-ph-discwrap" id="landing-history-wrap" hidden>
+          <button type="button" class="gs-ph-disc" id="btn-landing-history" aria-expanded="false" aria-controls="landing-history-list">Recent imports<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+          <div class="gs-ph-hist" id="landing-history-list" hidden></div>
+        </div>
+        <p class="gs-ph-links">
+          <button type="button" id="btn-landing-restore">Restore from a backup file</button>
+          <span class="gs-ph-lbl" id="landing-last-backup"></span>
+        </p>
+        <p class="gs-ph-lbl">Plans live in this browser. Clearing site data removes them.</p>
       </div>
     </div>
   </section>
 
-  <p class="landing-compact-help">New to Raidsmith? <a href="#how-it-works" data-action="how-it-works">How it works</a></p>
-
-  <section class="landing-section" id="how-it-works">
-    <div class="section-title">How it works</div>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">1</div>
+  <section class="gs-ph-sec" id="how-it-works" aria-label="How it works">
+    <h2 class="gs-hd-sl">How it works</h2>
+    <div class="gs-ph-steps">
+      <div class="gs-hd-panel gs-ph-step">
+        <span class="gs-ph-num" aria-hidden="true">1</span>
         <h3>Import</h3>
         <p>Paste a Raid-Helper link or event ID, drop in the JSON, or reopen a roster you saved.</p>
       </div>
-      <div class="step">
-        <div class="step-num">2</div>
+      <div class="gs-hd-panel gs-ph-step">
+        <span class="gs-ph-num" aria-hidden="true">2</span>
         <h3>Optimize</h3>
         <p>Import arranges groups automatically, except that an event whose Raid-Helper groups are already set keeps them. Press Optimize after any change to rebuild your groups around the buffs that matter most. Too many sign-ups? The strongest raid gets seated and the rest wait on the bench.</p>
       </div>
-      <div class="step">
-        <div class="step-num">3</div>
+      <div class="gs-hd-panel gs-ph-step">
+        <span class="gs-ph-num" aria-hidden="true">3</span>
         <h3>Share</h3>
         <p>Check your buff coverage, drag anyone you want moved, then use Share: Copy for MRT for the in-game groups, or Copy live link to send the plan.</p>
       </div>
     </div>
   </section>
 
-  <section class="landing-section" id="for-guilds" aria-labelledby="for-guilds-title">
-    <div class="section-title" id="for-guilds-title">For guilds</div>
-    <p class="guilds-lead">Raidsmith also keeps your guild's records: one place for your roster, raids, attendance and loot, with the planner built in.</p>
-    <ul class="guild-points">
-      <li class="step"><h3>Roster</h3><p>People, characters and alts, brought in from Raid-Helper, Warcraft Logs or Battle.net.</p></li>
-      <li class="step"><h3>Raids</h3><p>A weekly schedule, sign-ups and a published line-up for every raid.</p></li>
-      <li class="step"><h3>Attendance</h3><p>Worked out from your Warcraft Logs reports, under the rules your guild sets.</p></li>
-      <li class="step"><h3>Loot</h3><p>Gargul exports, who won what, and how the loot is spread.</p></li>
-      <li class="step"><h3>Planner</h3><p>Raid groups built from any raid's sign-ups, saved with the raid.</p></li>
-    </ul>
-    <div class="guilds-cta">
-      <a class="btn btn-primary btn-lg" id="btn-guilds-signin" href="/auth/login">Sign in with Discord</a>
-      <span class="guilds-note">To start a guild you need to own or administer its Discord server. The planner above works without signing in.</span>
+  <section class="gs-ph-sec" id="for-guilds" aria-labelledby="for-guilds-title">
+    <h2 class="gs-hd-sl" id="for-guilds-title">For guilds</h2>
+    <div class="gs-hd-panel gs-ph-guilds">
+      <p class="gs-ph-glead">Raidsmith also keeps your guild's records: one place for your roster, raids, attendance and loot, with the planner built in.</p>
+      <ul class="gs-ph-pts">
+        <li><h3>Roster</h3><p>People, characters and alts, brought in from Raid-Helper, Warcraft Logs or Battle.net.</p></li>
+        <li><h3>Raids</h3><p>A weekly schedule, sign-ups and a published line-up for every raid.</p></li>
+        <li><h3>Attendance</h3><p>Worked out from your Warcraft Logs reports, under the rules your guild sets.</p></li>
+      </ul>
+      <div class="gs-ph-cta">
+        <a class="gs-btn" id="btn-guilds-signin" href="/auth/login">Sign in with Discord</a>
+        <span class="gs-ph-note">To start a guild you need to own or administer its Discord server.</span>
+      </div>
     </div>
   </section>
 
-  <section class="landing-section" id="version-comparison">
-    <div class="section-title">Pick your era</div>
-    <div class="version-compare" id="version-compare-table"></div>
-  </section>
-
-  <footer class="landing-footer">
+  <footer class="gs-ph-foot">
     <span>Raidsmith &middot; forged for raid night</span>
-    <span>Built for raid leaders who would rather pull than sort.</span>
-    <a class="footer-link" id="feedback-link" href="https://github.com/Spazz/RaidPlanner/issues/new" target="_blank" rel="noopener">Report a problem or suggest a feature</a>
+    <a href="/faq.html">FAQ</a>
+    <a href="/whats-new.html">What's new</a>
+    <a id="feedback-link" href="https://github.com/Spazz/RaidPlanner/issues/new" target="_blank" rel="noopener">Report a problem or suggest a feature</a>
   </footer>
 </main>
 

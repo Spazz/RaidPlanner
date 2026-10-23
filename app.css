@@ -93,52 +93,6 @@ body {
   display: flex; flex-direction: column; gap: 28px;
 }
 
-.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 32px; align-items: start; }
-.hero-copy { padding-top: 12px; }
-.hero h2 {
-  font-family: var(--font-cond); font-weight: 700; text-transform: uppercase;
-  font-size: clamp(34px, 4.6vw, 52px); line-height: 0.98; letter-spacing: 0.02em;
-  color: var(--text-primary); margin-bottom: 16px;
-}
-.hero h2 em { font-style: normal; color: var(--accent-gold); }
-.hero p { font-size: 16px; line-height: 1.55; color: var(--text-secondary); max-width: 46ch; }
-.hero-points { list-style: none; margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
-.hero-points li { font-size: 14px; color: var(--text-secondary); display: flex; gap: 10px; align-items: baseline; }
-.hero-points li::before { content: ''; width: 6px; height: 6px; background: var(--accent-gold); flex-shrink: 0; transform: translateY(-2px); }
-
-/* Import card */
-.import-card {
-  background: var(--bg-card); border: 1px solid var(--border-medium);
-  display: flex; flex-direction: column;
-}
-.import-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border-medium); }
-.import-tab {
-  flex: 1; padding: 12px 8px; background: transparent; border: none; cursor: pointer;
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
-  font-size: 12px; font-weight: 600; color: var(--text-muted);
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
-}
-.import-tab:hover { color: var(--text-primary); }
-.import-tab.active { color: var(--accent-gold); border-bottom-color: var(--accent-gold); }
-.import-pane { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
-.import-pane p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
-.import-pane code { font-size: 11.5px; color: var(--text-muted); font-family: Consolas, 'Courier New', monospace; }
-.import-field {
-  width: 100%; padding: 11px 12px;
-  background: var(--bg-input); border: 1px solid var(--border-strong); color: var(--text-primary);
-  font-family: var(--font-body); font-size: 14px;
-}
-.import-field:focus { outline: none; border-color: var(--accent-gold); }
-.import-field::placeholder, .import-field.is-sample { color: var(--text-muted); opacity: 1; }
-.import-formats { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
-.import-formats .link-btn { font-size: inherit; text-transform: none; letter-spacing: 0; text-decoration: underline; }
-.import-pane.is-empty .saved-full { display: none; }
-.import-pane:not(.is-empty) .saved-empty-note { display: none; }
-textarea.import-field { min-height: 130px; resize: vertical; font-family: Consolas, 'Courier New', monospace; font-size: 12px; }
-.import-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.btn-lg { padding: 11px 18px; font-size: 13px; }
-.import-status { font-size: 12px; color: var(--text-muted); min-height: 16px; }
-.import-status.error { color: var(--danger); }
 .saved-list { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; }
 .saved-item {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -152,13 +106,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .history-open.saved-item { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 4px; overflow-wrap: anywhere; }
 .history-remove { flex: 0 0 32px; min-height: 36px; border: 1px solid var(--border-medium); background: var(--bg-card); color: var(--text-muted); cursor: pointer; font-size: 18px; }
 .history-remove:hover { color: var(--text-primary); border-color: var(--border-strong); }
-.row-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.row-actions .link-btn.del { color: var(--text-muted); font-size: 11px; padding: 8px 6px; }
-.row-actions .link-btn.del:hover { color: var(--danger-bright); }
-.landing .row-actions .link-btn.del { font-size: 13px; }
-.foot-note { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
-.landing .foot-note { font-size: 13px; }
-.roster-section-heading { font-family: var(--font-cond); font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent-gold); }
 .saved-list.history-preview { max-height: none; }
 .history-more { width: 100%; margin-top: 6px; }
 .history-dialog { margin: auto; width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 20px; background: var(--bg-panel); color: var(--text-primary); border: 1px solid var(--border-strong); }
@@ -197,24 +144,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .whats-new-version:first-child { margin-top: 0; }
 .whats-new-version span { font-weight: 400; color: var(--text-muted); font-size: 11px; text-transform: none; letter-spacing: 0; }
 #whats-new-body { margin-top: 12px; }
-.version-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 8px; }
-.version-compare-col { background: var(--bg-card); border: 1px solid var(--border-subtle); border-top: 3px solid var(--accent-gold-dim); padding: 16px; }
-.version-compare-col[data-version="classic"] { border-top-color: var(--version-classic); }
-.version-compare-col[data-version="tbc"] { border-top-color: #abd47d; }
-.version-compare-col[data-version="forever"] { border-top-color: #b9a0ec; }
-.version-compare-col h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; color: var(--text-heading); }
-.version-compare-col p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 10px; }
-.version-compare-name { display: block; font-family: var(--font-cond); font-size: 1.17em; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; color: var(--text-heading); }
-.version-compare-note { display: block; font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 10px; }
-.version-compare-raids { display: block; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
-.version-compare-raids strong { color: var(--text-secondary); }
-button.version-compare-col { cursor: pointer; text-align: left; color: inherit; font: inherit; display: block; width: 100%; transition: background .15s, border-color .15s; }
-button.version-compare-col:hover, button.version-compare-col:focus-visible { background: var(--bg-card-hover); border-color: var(--border-strong); }
-button.version-compare-col:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
-button.version-compare-col .go { display: block; margin-top: 10px; font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .1em; font-size: 12px; color: var(--accent-gold); }
-button.version-compare-col.here { cursor: default; border-color: var(--border-accent); }
-button.version-compare-col.here:hover { background: var(--bg-card); border-color: var(--border-accent); }
-button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 /* Keyboard shortcuts help */
 .shortcuts-list { display: flex; flex-direction: column; gap: 6px; }
 .shortcut-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
@@ -231,24 +160,12 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .plain-import-unparsed { margin-top: 10px; }
 .plain-import-unparsed h4 { font-family: var(--font-cond); color: var(--danger); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; margin: 0 0 6px; }
 .plain-import-unparsed-line { font-size: 12px; color: var(--text-muted); padding: 2px 0; overflow-wrap: anywhere; }
-.import-foot {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 10px 18px; border-top: 1px solid var(--border-subtle); background: var(--bg-panel);
-}
-.import-foot span { font-size: 11.5px; color: var(--text-muted); }
 .link-btn {
   background: none; border: none; cursor: pointer; padding: 0;
   font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
   font-size: 12px; color: var(--accent-gold);
 }
 .link-btn:hover { color: var(--accent-gold-bright); text-decoration: underline; }
-.resume-banner {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 18px; background: color-mix(in srgb, var(--accent-gold) 8%, transparent); border: 1px solid var(--border-accent);
-}
-.resume-banner strong { color: var(--accent-gold-bright); }
-.resume-banner span { font-size: 13px; color: var(--text-secondary); }
-
 
 /* Sections */
 .landing-section { display: flex; flex-direction: column; gap: 16px; }
@@ -258,20 +175,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   display: flex; align-items: center; gap: 12px;
 }
 .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border-medium); }
-.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.step {
-  padding: 18px; background: var(--bg-card); border: 1px solid var(--border-subtle);
-  display: flex; flex-direction: column; gap: 8px;
-}
-.step-num {
-  font-family: var(--font-cond); font-size: 30px; font-weight: 700; color: var(--accent-gold); line-height: 1;
-}
-.step h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 15px; color: var(--text-primary); }
-.step p { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
-.guilds-lead { font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
-.guild-points { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-.guilds-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
-.guilds-note { font-size: 13px; line-height: 1.5; color: var(--text-secondary); flex: 1 1 260px; }
 .faq { display: flex; flex-direction: column; gap: 6px; }
 .faq details { background: var(--bg-panel); border: 1px solid var(--border-subtle); }
 .faq summary {
@@ -289,10 +192,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 .footer-link { color: var(--accent-gold); text-decoration: none; }
 .footer-link:hover { color: var(--accent-gold-bright); text-decoration: underline; }
-@media (max-width: 900px) {
-  .hero { grid-template-columns: 1fr; }
-  .steps { grid-template-columns: 1fr; }
-}
 
 /* ── Main frame ── */
 .addon-frame {
@@ -484,7 +383,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 .unplaced-dialog-fields select:focus { outline: none; border-color: var(--accent-gold); }
 .unplaced-dialog-error { min-height: 16px; font-size: 12px; color: var(--danger); }
-
 
 /* Constraint / lock badges on a seated player-slot (backlog #1, #3) */
 .constraint-badge, .lock-badge { flex-shrink:0; font-size:10px; cursor:default; }
@@ -698,10 +596,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 @media (max-width: 600px) {
   /* Landing: body padding is 0 below 1100px, so the landing needs its own gutter. */
   .landing { padding: 16px 12px 40px; gap: 22px; }
-  .hero h1 { font-size: 30px; }
-  .import-field { font-size: 16px; } /* 16px stops iOS Safari zooming the page on focus */
-  textarea.import-field { font-size: 14px; }
-  .import-tab { padding-left: 6px; padding-right: 6px; }
 
   .mobile-sheet {
     width: 100%; max-height: 78vh; overflow-y: auto;
@@ -760,60 +654,26 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .chip.danger { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 /* Larger homepage type and controls for comfortable reading. */
 .landing { width:min(1180px,100%); }
-.hero h2 { font-size:clamp(38px,5vw,60px); }
-.hero-copy > p { font-size:18px; }
-.hero-points li { font-size:16px; line-height:1.45; }
-.landing .import-tab { font-size:15px; padding:15px 10px; }
-.landing .import-pane { padding:22px; gap:14px; }
-.landing .import-pane p { font-size:16px; }
-.landing .import-pane code { font-size:14px; }
-.landing textarea.import-field { font-size:16px; min-height:150px; line-height:1.5; }
 .landing .btn { font-size:15px; padding:12px 16px; }
-.landing .link-btn, .landing .import-foot span, .landing .import-status { font-size:14px; }
-.landing .resume-banner span { font-size:15px; }
-.landing .saved-item-name { font-size:15px; }
-.landing .saved-item-meta { font-size:13px; }
-.landing .saved-item { padding:12px 14px; }
-.landing .section-title, .landing .roster-section-heading { font-size:16px; }
-.landing .step h3 { font-size:18px; }
-.landing .step p, .landing .faq details p { font-size:16px; }
+.landing .link-btn { font-size:14px; }
+.landing .section-title { font-size:16px; }
+.landing .faq details p { font-size:16px; }
 .landing .faq summary { font-size:17px; padding:16px; }
 .landing-footer { font-size:13px; }
-@media(max-width:600px) {
-  .landing .import-pane { padding:16px; }
-  .landing .import-foot { flex-wrap:wrap; }
-  .landing .saved-item:not(.history-open) { flex-wrap:wrap; }
-}
 /* Wide desktop layouts: use the monitor without stretching reading lines. */
 @media (min-width:1600px) {
   .landing { width:min(1480px,calc(100% - 64px)); gap:36px; }
-  .hero { gap:48px; }
-  .hero-copy { padding-top:24px; }
-  .hero-points { max-width:56ch; }
-  .steps { gap:20px; }
-  .step { padding:24px; }
   .faq details p { max-width:90ch; }
 }
 @media (min-width:2200px) {
   .landing { width:min(1920px,calc(100% - 96px)); gap:44px; padding-top:36px; }
-  .hero { gap:72px; }
-  .hero h2 { font-size:72px; }
-  .hero-copy > p { font-size:20px; }
-  .hero-points li { font-size:18px; }
-  .landing .import-pane { padding:28px; }
-  .landing textarea.import-field { min-height:180px; }
   .addon-frame { width:min(1920px,100%); }
 }
 
-/* The anvil mark (the hero wordmark on phones). */
-.game-header-mark { width:34px; height:34px; display:grid; place-items:center; color:var(--accent-gold); }
-.game-header-mark .mark-svg { display:block; width:100%; height:100%; }
 /* The game switcher (Classic / TBC / Forever) lives in the shell's top bar. */
 /* Forge joined segments (.gs-fg-segs / .gs-fg-seg in guild.css): the tab only adds its label and the Beta marker. */
 .game-version-tab .game-name { white-space:nowrap; }
 .game-beta { display:inline-block; margin-left:6px; color:var(--text-muted); font:500 12px/1 var(--font-body); letter-spacing:.02em; }
-/* The wordmark in the hero is for phones only (the shell's menu button and top bar carry no wordmark there). */
-.hero-wordmark { display:none; }
 
 /* Assignments panel — Healer→Tank, Paladin Blessings, boss Debuffs. */
 .assignments-panel { padding:20px; max-width:960px; margin:0 auto; width:100%; }
@@ -920,15 +780,9 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .toast { top: calc(env(safe-area-inset-top, 0px) + 44px); bottom: auto; left: 12px; right: 12px; font-size: 13px; z-index: 300; transform: translateY(-10px); }
 
   /* Version tabs in the shell's top bar: Classic | TBC | Forever fill the row between the menu button and the account. */
-  .game-header-mark { width: 26px; height: 26px; }
   .game-version-nav { flex: 1 1 0; min-width: 0; display: flex; }
   .game-version-tab { flex: 1 1 auto; min-width: 0; height: 44px; padding: 0 8px; font-size: 15px; white-space: nowrap; }
   .game-beta { margin-left: 4px; }
-
-  .hero-wordmark { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
-  .hero-wordmark .game-header-mark { width: 28px; height: 28px; }
-  .hero-wordmark strong { font: 700 15px var(--font-cond); letter-spacing: .09em; text-transform: uppercase; color: #e5e0d3; }
-
 
   /* Player rows (the group panels have their own sizes in guild.css, "Planner board on Forge"). */
   .player-slot { padding: 4px 10px; gap: 8px; min-height: 38px; }
@@ -936,13 +790,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .player-name { font-size: 14px; }
   .player-spec { font-size: 11px; }
 
-
-  /* Landing: the import card comes before the hero text (M0-8). Visual order only; the DOM is unchanged. */
-  .hero .import-card { order: 1; }
-  .hero .hero-copy { order: 2; }
-
-  /* Landing: 44px tap areas for the restore link and the saved-plan Delete buttons. */
-  #btn-landing-restore, .landing .row-actions .link-btn.del { display: inline-flex; align-items: center; min-height: 44px; }
 }
 
 /* The static site pages (faq.html, whats-new.html): the landing layout inside the shell's main column. */
@@ -988,10 +835,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 /* The shell's notice slot adds no gap when it is empty (the landing, signed out). */
 #planner-notice:empty { display: none; }
-/* The import card's second tab and its heading read "Other plans on this device" once the viewer is in a guild (Upcoming raids to plan leads). */
-.lbl-guild { display: none; }
-body.has-planner-guild .lbl-solo { display: none; }
-body.has-planner-guild .lbl-guild { display: inline; }
 
 /* The planner's slot in the top bar: nothing on a guild section or a static page, version tabs on the landing,
    nothing on the plan (its head is inside the page, guild.css "Planner board on Forge"). */
@@ -1005,28 +848,3 @@ body[data-planner-view="landing"]:not(.has-planner-guild):not(.shell-pending) #s
   #shell-topbar-plan { gap: var(--sp-2); }
   body[data-planner-view="landing"]:not(.has-planner-guild):not(.shell-pending) #shell-topbar-plan .game-version-nav { display: flex; flex: 1 1 0; min-width: 0; }
 }
-
-/* Landing modes: signed out (or How it works) = the full landing; signed in = the compact planner home;
-   while the session question is open only the import card shows. */
-.landing-compact-head, .landing-compact-help { display: none; }
-.landing-compact-head h2 { font: 700 28px var(--font-cond); letter-spacing: .03em; text-transform: uppercase; color: var(--text-primary); }
-.landing-compact-head h2:focus { outline: none; }
-.landing-compact-head p { margin-top: 4px; font-size: 16px; color: var(--text-secondary); }
-.landing-compact-help { font-size: 15px; color: var(--text-secondary); }
-.landing-compact-help a { color: var(--accent-gold); }
-.landing-compact-help a:hover { color: var(--accent-gold-bright); }
-body:not(.is-signed-out):not(.landing-full) #landing-view .hero-copy,
-body:not(.is-signed-out):not(.landing-full) #landing-view #how-it-works,
-body:not(.is-signed-out):not(.landing-full) #landing-view #version-comparison,
-body:not(.is-signed-out):not(.landing-full) #landing-view .landing-footer { display: none; }
-/* The guild pitch is for visitors who are signed out: not in the compact signed-in home, and not before the session is known. */
-body:not(.is-signed-out) #landing-view #for-guilds,
-body.shell-pending #landing-view #for-guilds { display: none; }
-body:not(.is-signed-out):not(.landing-full):not(.shell-pending) #landing-view .landing-compact-head,
-body:not(.is-signed-out):not(.landing-full):not(.shell-pending) #landing-view .landing-compact-help { display: block; }
-body:not(.is-signed-out):not(.landing-full) #landing-view .hero { grid-template-columns: minmax(0, 680px); }
-body.shell-pending #landing-view .hero-copy,
-body.shell-pending #landing-view #how-it-works,
-body.shell-pending #landing-view #version-comparison,
-body.shell-pending #landing-view .landing-footer { display: none; }
-body.shell-pending #landing-view .hero { grid-template-columns: minmax(0, 680px); }

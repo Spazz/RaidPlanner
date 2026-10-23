@@ -154,7 +154,7 @@ const noComments = (text) => text.split('\n').filter(l => !/^\s*\/\//.test(l)).j
     assert.equal(hasLoadedWork(), true);
     assert.equal(State.planId, 'plan:b');
     // the landing re-renders after a removal
-    const handler = script.slice(script.indexOf("list.querySelectorAll('[data-delete-plan], [data-delete-copy]')"), script.indexOf("list.querySelectorAll('.saved-open')"));
+    const handler = script.slice(script.indexOf("box.querySelectorAll('[data-delete-plan], [data-delete-copy]')"), script.indexOf("box.querySelectorAll('.saved-open')"));
     assert(/if \(removed\) renderLanding\(\);/.test(handler));
   });
 
@@ -168,18 +168,20 @@ const noComments = (text) => text.split('\n').filter(l => !/^\s*\/\//.test(l)).j
     assert.equal(Backups.swapIn('Prime', 0).error, 'No standby player set');
   });
 
-  await check('landing rows are an open button plus a separate Delete button (no button inside a button)', () => {
-    const rows = script.slice(script.indexOf('function renderLandingSavedList'), script.indexOf('(function initLanding'));
+  await check('landing rows are an open button plus a More menu that holds Delete (no button inside a button)', () => {
+    const rows = script.slice(script.indexOf('function landingRowMoreHtml'), script.indexOf('(function initLanding'));
     for (const m of rows.matchAll(/<button[^>]*saved-open[^>]*>([^]*?)<\/button>/g)) assert(!m[1].includes('<button'));
-    assert.equal((rows.match(/data-delete-plan=/g) || []).length, 1);
-    assert.equal((rows.match(/data-delete-copy=/g) || []).length, 1);
-    assert(rows.includes('class="link-btn del"') && rows.includes('>Delete</button>'));
+    assert.equal((rows.match(/'data-delete-plan'/g) || []).length, 1);
+    assert.equal((rows.match(/'data-delete-copy'/g) || []).length, 1);
+    assert(rows.includes('class="menu-item menu-item-danger" role="menuitem"') && rows.includes('>Delete</button>'), 'Delete lives inside the menu');
+    assert(rows.includes('gs-menu-list') && rows.includes('aria-haspopup="menu"') && rows.includes('aria-label="More for'), 'a labelled More button opens it');
     assert(rows.includes("querySelectorAll('.saved-open')"));
     assert(!script.includes('function showLoadModal'));
   });
 
-  await check('Your plans pane: new storage note, backup restore link and last-backup line; old line gone', () => {
-    assert(html.includes('Saved automatically in this browser only. Clearing site data removes them.'));
+  await check('Your plans pane: the browser-only foot line, backup restore link and last-backup line; old lines gone', () => {
+    assert(html.includes('Plans live in this browser. Clearing site data removes them.'));
+    assert(!html.includes('Saved automatically in this browser only.'));
     assert(!html.includes('Latest changes saved automatically on this device.'));
     assert(/<button[^>]*id="btn-landing-restore"[^>]*>Restore from a backup file<\/button>/.test(html));
     assert(html.includes('id="landing-last-backup"'));
@@ -391,18 +393,19 @@ const noComments = (text) => text.split('\n').filter(l => !/^\s*\/\//.test(l)).j
     const raidKey = LiveLinks.planKey(raidPlan);
     // The list: the chip on the raid row only; a click opens the raid's address, not this device's copy.
     const clicks = {};
+    const copies = { innerHTML: '', querySelectorAll: () => [] };
     const list = { innerHTML: '', closest: () => ({ classList: { toggle() {} } }), querySelectorAll: sel => (sel === '.saved-open'
       ? ['tbc|raid:r1', 'tbc|plan:a'].map(key => ({ dataset: { plan: key }, addEventListener: (_e, fn) => { clicks[key] = fn; } })) : []) };
     const hash = { value: '' };
     const win = { location: { set hash(v) { hash.value = v; } }, Guild: { router: { format: r => '#/planner?raid=' + r.gid + '.' + r.rid } } };
-    const sandbox = app.sandbox(['renderLandingSavedList', 'PlanStore', 'ImportHistory', 'BackupStamp', 'PlanDbLinks'], { extraSource: app.slice('function renderLandingSavedList', '// The sample behind') + '\n', globals: {
-      document: { getElementById: id => id === 'landing-saved-list' ? list : { textContent: '' } },
+    const sandbox = app.sandbox(['renderLandingSavedList', 'PlanStore', 'ImportHistory', 'BackupStamp', 'PlanDbLinks'], { extraSource: app.slice('function landingRowMoreHtml', '// The sample behind') + '\n', globals: {
+      document: { getElementById: id => id === 'landing-saved-list' ? list : id === 'landing-copies-list' ? copies : { textContent: '' } },
       localStorage: fakeStorage, getSavedRosters: () => ({}), window: win, ChangeLog: { clear() {} }, initGroups() {}, commit() {}, showView() {}, RaidHelperSync: { check() {} },
     } });
     sandbox.api.ImportHistory.read = () => [];
     sandbox.api.BackupStamp.label = () => '';
     sandbox.api.renderLandingSavedList();
-    const rows = list.innerHTML.split('<div class="history-row saved-row">').slice(1);
+    const rows = list.innerHTML.split('<li class="gs-ph-prow">').slice(1);
     assert.equal(rows.length, 2);
     const raidRow = rows.find(r => r.includes('Sat BT'));
     const plainRow = rows.find(r => r.includes('Gruul Thursday'));

@@ -74,8 +74,10 @@ for (const [file, spec] of Object.entries(PAGES)) {
     assert(!html.includes('shell-topbar-plan') && !html.includes('planner-root'), 'the planner pieces belong to index.html');
     assert(!/era-band|game-header|whats-new-badge|brand-home|game-version/.test(html), 'no era band, header badge or version tabs');
     const footer = html.match(/<footer class="landing-footer">[\s\S]*?<\/footer>/)[0];
-    const indexFooter = indexHtml.match(/<footer class="landing-footer">[\s\S]*?<\/footer>/)[0];
-    assert.equal(footer, indexFooter, 'the same footer as the homepage');
+    const indexFooter = indexHtml.match(/<footer class="gs-ph-foot">[\s\S]*?<\/footer>/)[0];
+    const feedback = f => f.match(/<a [^>]*id="feedback-link"[^>]*>[^<]*<\/a>/)[0].replace(/ class="footer-link"/, '');
+    assert.equal(feedback(footer), feedback(indexFooter), 'the same feedback link as the homepage');
+    assert(footer.includes('Raidsmith &middot; forged for raid night') && indexFooter.includes('Raidsmith &middot; forged for raid night'), 'both carry the brand line');
   });
 
   check(`${file}: loads only its scripts in order, nothing inline, every file exists and is whitelisted and deployed`, () => {
@@ -143,7 +145,8 @@ check('the homepage lost the kicker, the version note, the What\'s new banner an
 
 check('the homepage has no era band; the shell\'s sidebar owns the links to the pages, and nothing points at the old anchors', () => {
   assert(!/era-band|game-header-links|whats-new-badge|nav-whats-new/.test(indexHtml), 'the header links moved to the shell');
-  assert(indexHtml.includes('<a href="#how-it-works" data-action="how-it-works">How it works</a>'), 'the compact home links to How it works');
+  assert(!indexHtml.includes('New to Raidsmith?'), 'the compact home has no How it works link of its own: the sidebar Help carries it (shell.js)');
+  assert(read('js/guild/shell.js').includes("action: 'how-it-works'"), 'the sidebar Help links to How it works');
   const sources = ['index.html', 'README.md', 'faq.html', 'whats-new.html', ...fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).map(f => 'js/' + f)];
   for (const rel of sources) assert(!/(?:href=|['"`])["']?#(?:faq|whats-new)["'`]/.test(read(rel)), `${rel} still points at a moved anchor`);
 });
@@ -168,12 +171,12 @@ check('index.html carries the shell skeleton: every id, in order, with the plann
   // The planner's other body-level pieces stay outside the shell.
   const afterShell = indexHtml.slice(indexHtml.indexOf('<div id="guild-dialogs">'));
   for (const id of ['drag-ghost', 'toast', 'sr-status', 'print-sheet', 'buff-tooltip-portal']) assert(afterShell.includes('id="' + id + '"'), id + ' stays at body level');
-  // Compact home: the notice slot, the head and the help line.
+  // Planner home: the banner slot, the head with its context line, the notice slot.
+  assert(/<div id="planner-banner"><\/div>/.test(indexHtml));
   assert(/<div id="planner-notice"><\/div>/.test(indexHtml));
-  assert(/<h2 tabindex="-1">Planner<\/h2>\s*<p>Import sign-ups or open a saved plan\. Plans save in this browser\.<\/p>/.test(indexHtml));
-  assert(indexHtml.includes('New to Raidsmith? <a href="#how-it-works" data-action="how-it-works">How it works</a>'));
-  assert(indexHtml.includes('<h1 class="sr-only" tabindex="-1">Raidsmith</h1>'), 'the landing h1 can take focus');
-  assert.equal((indexHtml.match(/<h1 class="sr-only" tabindex="-1">/g) || []).length, 1);
+  assert(/<h1 class="gs-ph-h1" tabindex="-1">Planner<\/h1>\s*<p class="gs-ph-context" id="planner-context"><\/p>/.test(indexHtml), 'the landing h1 can take focus');
+  assert(!indexHtml.includes('Import sign-ups or open a saved plan. Plans save in this browser.'), 'the old intro line is cut');
+  assert.equal((indexHtml.match(/<h1 class="gs-ph-h1" tabindex="-1">/g) || []).length, 1);
   assert.equal((indexHtml.match(/<h1 class="gs-pb-h1 plan-only" tabindex="-1">/g) || []).length, 1, 'the plan name is the plan view h1 and can take focus');
 });
 

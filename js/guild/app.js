@@ -16,7 +16,7 @@
   const ATTENTION_MAX_AGE_MS = 60000; // the Home count is read again on a guild route change once it is older than this
   // Actions the planner's own markup may carry too (the compact home's "How it works" link).
   const SHARED_ACTIONS = ['open-planner', 'how-it-works'];
-  const SCOPED_SLOTS = ['shell-rail', 'shell-sidebar', 'shell-topbar-lead', 'shell-topbar-account', 'shell-banner', 'shell-tabs', 'shell-drawer', 'gs-main', 'planner-notice', 'guild-dialogs'];
+  const SCOPED_SLOTS = ['shell-rail', 'shell-sidebar', 'shell-topbar-lead', 'shell-topbar-account', 'shell-banner', 'shell-tabs', 'shell-drawer', 'gs-main', 'planner-banner', 'planner-notice', 'guild-dialogs'];
 
   const state = {
     page: 'app',       // body[data-page]: 'app' (index.html) | 'faq' | 'whats-new'
@@ -423,7 +423,7 @@
     return !!el && (!el.getClientRects || el.getClientRects().length > 0);
   }
 
-  // The planner's focus target on a section switch: the compact home's h2, else the sr-only h1 (landing) or the
+  // The planner's focus target on a section switch: the home's h1 (landing) or the
   // plan-name h1 (plan view). A target that is not displayed (the plan name is hidden in the Reference comp view) cannot take focus, so
   // the next one is tried, and the planner root last.
   function focusPlannerTarget() {
@@ -433,8 +433,6 @@
     if (view === 'app') {
       selectors.push('#app h1.gs-pb-h1');
     } else {
-      const cl = document.body.classList;
-      if (!cl.contains('is-signed-out') && !cl.contains('landing-full')) selectors.push('#planner-root h2[tabindex="-1"]');
       selectors.push('#planner-root h1');
     }
     for (let i = 0; i < selectors.length; i++) {
@@ -1009,12 +1007,25 @@
     // Signed in with no guild: the notice above the compact planner home. Only while the planner shows: the guild
     // section's own no-guild card carries the same markup (and its ids).
     const notice = byId('planner-notice');
+    const banner = byId('planner-banner');
     if (notice) {
       if (notice.classList) notice.classList.add('gs-scope');
       const guilds = state.me && Array.isArray(state.me.guilds) ? state.me.guilds : null;
-      // No guild: the notice. A guild: "Upcoming raids to plan" for a viewer who may plan for one of its teams (pages-planner-landing.js).
-      notice.innerHTML = section === 'planner' && guilds ? (guilds.length ? G.pages.plannerLanding.html() : G.pages.signin.noGuildNoticeHtml(state.me)) : '';
+      // A guild: "Upcoming raids to plan" for a viewer who may plan for one of its teams (pages-planner-landing.js).
+      notice.innerHTML = section === 'planner' && guilds && guilds.length ? G.pages.plannerLanding.html() : '';
+      // No guild: the banner above the head.
+      if (banner) {
+        if (banner.classList) banner.classList.add('gs-scope');
+        banner.innerHTML = section === 'planner' && guilds && !guilds.length ? G.pages.signin.noGuildNoticeHtml(state.me) : '';
+      }
       if (document.body) document.body.classList.toggle('has-planner-guild', !!(guilds && guilds.length));
+      // The head's context line names the guild the sidebar shows.
+      const shell = plannerShell();
+      if (shell && shell.setGuildContext) {
+        const gid = guilds && guilds.length ? chromeGuildId() : null;
+        const mine = gid ? guilds.filter(function (g) { return g.id === gid; })[0] : null;
+        shell.setGuildContext(mine ? mine.name : '');
+      }
     }
 
     if (section === 'guild' && focusHeading === true && !firstRender) {
