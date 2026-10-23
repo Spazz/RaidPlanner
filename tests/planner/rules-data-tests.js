@@ -436,13 +436,11 @@ check('bestAirTotem, bestPaladinAura and specAura name existing buffs of the rig
   });
 });
 
-check('catalog: every buff id has an icon, an abbreviation and a CSS class; every debuff id an abbreviation and an icon or the documented text fallback', () => {
-  // catalog.js documents the fallback for debuffs only ("entries left blank fall back to the text abbreviation"); a buff without
-  // an icon, an abbreviation or a CSS class would render as an empty badge.
+check('catalog: every buff id has an icon, an abbreviation and a CSS class; every debuff id an abbreviation and a spell icon', () => {
+  // Missing debuff artwork must not silently become a class crest in Raid check.
   const filled = (table, id) => typeof catalog[table][id] === 'string' && catalog[table][id].trim() !== '';
   const buffIds = new Set();
   const debuffIds = new Set();
-  const textFallback = new Set();
   noProblems(problem => {
     for (const version of VERSIONS) {
       for (const id of Object.keys(RulesData[version].buffs)) {
@@ -454,11 +452,11 @@ check('catalog: every buff id has an icon, an abbreviation and a CSS class; ever
       for (const id of Object.keys(RulesData[version].debuffs)) {
         debuffIds.add(id);
         if (!filled('debuffAbbreviations', id)) problem(`${version}.debuffs.${id} has no entry in catalog.debuffAbbreviations`);
-        if (!filled('debuffIcons', id)) textFallback.add(id);
+        if (!filled('debuffIcons', id) || catalog.debuffIcons[id].startsWith('classicon_')) problem(`${version}.debuffs.${id} has no spell icon in catalog.debuffIcons`);
       }
     }
   });
-  return `${buffIds.size} buff ids, ${debuffIds.size} debuff ids, ${textFallback.size} debuffs show their abbreviation instead of an icon`;
+  return `${buffIds.size} buff ids, ${debuffIds.size} debuff ids, all with spell artwork`;
 });
 
 check('sourceClass is a known class; sourceSpec and preferSpec are specs of that class', () => {

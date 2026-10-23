@@ -303,8 +303,8 @@ RulesData.catalog = {
     DRUMS: 'buff-drums',
   },
 
-  // Icon slugs (icons/<slug>.jpg) per debuff id. Best-effort Wowhead slugs - entries left blank fall back to the text
-  // abbreviation (same graceful-degradation pattern as Config.BuffIconURL).
+  // Icon slugs (icons/<slug>.jpg) for every modeled debuff. Keep complete: the Raid check
+  // strip otherwise falls back to a class crest instead of the spell artwork.
   debuffIcons: {
     JUDGEMENT_CRUSADER: 'spell_holy_holysmite',
     JUDGEMENT_LIGHT: 'spell_holy_healingaura',
@@ -327,6 +327,14 @@ RulesData.catalog = {
     IMPROVED_SHADOW_BOLT: 'spell_shadow_shadowbolt',
     SHADOW_WEAVING: 'spell_shadow_blackplague',
     STORMSTRIKE: 'ability_shaman_stormstrike',
+    CURSE_WEAKNESS: 'spell_shadow_curseofmannoroth',
+    WINTERS_CHILL: 'spell_frost_chillingblast',
+    IMPROVED_SCORCH: 'spell_fire_soulburn',
+    MISERY: 'spell_shadow_misery',
+    VAMPIRIC_EMBRACE: 'spell_shadow_unsummonbuilding',
+    SCORPID_STING: 'ability_hunter_criticalshot',
+    HUNTERS_MARK: 'ability_hunter_snipershot',
+    EXPOSE_WEAKNESS: 'ability_rogue_findweakness',
   },
 
   // Short label per debuff id.
