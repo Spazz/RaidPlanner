@@ -61,13 +61,14 @@ function renderLanding() {
   renderPlannerContext();
 }
 
-// The head's context line: "<guild> - <version>". The guild shell names the guild (PP.shell.setGuildContext); the version is the one the planner is on.
+// The head's context line: "<guild> - <team> - <version>" (the team only on the officer home). The guild shell names the guild (PP.shell.setGuildContext); the version is the one the planner is on.
 const PLANNER_VERSION_LABELS = { tbc: 'TBC', classic: 'Classic', forever: 'Forever' };
 let plannerGuildName = '';
+let plannerTeamName = '';
 function renderPlannerContext() {
   const line = document.getElementById('planner-context');
   if (!line) return;
-  const parts = [plannerGuildName, PLANNER_VERSION_LABELS[State.gameVersion] || ''].filter(Boolean);
+  const parts = [plannerGuildName, plannerTeamName, PLANNER_VERSION_LABELS[State.gameVersion] || ''].filter(Boolean);
   line.innerHTML = parts.map(part => `<span>${esc(part)}</span>`).join('<span class="gs-ph-sep" aria-hidden="true"></span>');
 }
 
@@ -2759,7 +2760,7 @@ const PlannerShell = {
   },
   view: () => State.view,
   // The guild the head's context line names (the guild shell sets it; '' for no guild).
-  setGuildContext(name) { plannerGuildName = name || ''; renderPlannerContext(); },
+  setGuildContext(name, team) { plannerGuildName = name || ''; plannerTeamName = team || ''; renderPlannerContext(); },
   // The open plan's name, for the top bar's trail ("<Guild> / Planner / <plan name>").
   planName: () => State.rosterName,
   isActive: () => plannerActive(),

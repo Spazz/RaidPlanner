@@ -74,6 +74,7 @@
       </div>
 
       <div class="gs-ph-pane" data-pane="import" role="tabpanel">
+        <h2 class="gs-ph-ptitle">Import sign-ups</h2>
         <div class="gs-ph-field">
           <label for="landing-import">Paste a Raid-Helper event link or ID, its JSON export, a Raidsmith share code, or a plain list of players (one per line).</label>
           <textarea class="gs-ph-ta" id="landing-import" placeholder="https://raid-helper.dev/event/1234567890123456789" spellcheck="false"></textarea>
@@ -91,6 +92,7 @@
       </div>
 
       <div class="gs-ph-pane" data-pane="saved" role="tabpanel" hidden>
+        <h2 class="gs-ph-ptitle">On this device</h2>
         <ul class="gs-ph-plist" id="landing-saved-list"></ul>
         <div class="gs-ph-discwrap" id="landing-copies-wrap" hidden>
           <button type="button" class="gs-ph-disc" id="btn-landing-copies" aria-expanded="false" aria-controls="landing-copies-list">Saved copies<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -101,6 +103,8 @@
           <div class="gs-ph-hist" id="landing-history-list" hidden></div>
         </div>
         <p class="gs-ph-links">
+          <button type="button" class="gs-ph-showall" id="btn-landing-showall">Show all</button>
+          <span class="gs-ph-showall gs-ph-sep" aria-hidden="true"></span>
           <button type="button" id="btn-landing-restore">Restore from a backup file</button>
           <span class="gs-ph-lbl" id="landing-last-backup"></span>
         </p>

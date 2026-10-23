@@ -228,6 +228,7 @@ body:is(.is-signed-out, .landing-full):not(.shell-pending) .gs-ph-card { max-wid
 .gs-ph-more .gs-menu-trigger { flex: none; }
 .gs-ph-disc { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; margin: 0; padding: 0 4px; background: none; border: 0; border-top: 1px solid var(--hd-hair); color: var(--text-secondary); font: 600 14px/1 var(--font-body); text-align: left; cursor: pointer; }
 .gs-ph-disc:hover { color: var(--text-primary); }
+.gs-ph .gs-ph-ptitle, .gs-ph .gs-ph-showall { display: none; }
 .gs-ph-disc svg { transition: transform 0.15s; }
 .gs-ph-disc[aria-expanded="true"] svg { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .gs-ph-disc svg { transition: none; } }

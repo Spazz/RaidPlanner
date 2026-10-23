@@ -1766,6 +1766,29 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(accounts.html('gs-main').includes('id="settings-title" tabindex="-1">Accounts</h2>'), 'the Accounts name reads as the people address');
   });
 
+  await check('Planner officer layout: guild cards own the primary, Help returns to the full landing, members keep import', async () => {
+    const env = makeEnv({ url: '/', hint: true, routes: signedInRoutes(OFFICER_CAN) });
+    await settle();
+    const load = new FakeEl('btn-landing-import');
+    env.els['btn-landing-import'] = load;
+    const model = env.G.pages.plannerLanding.model;
+    model.rows = []; model.canEdit = true;
+    env.G.app.render();
+    assert(env.body.classList.contains('has-planner-home'));
+    assert(!load.classList.contains('gs-btn-molten'));
+    assert(env.html('planner-notice').includes('No upcoming raids'));
+    env.body.classList.add('landing-full');
+    env.G.app.render();
+    assert(!env.body.classList.contains('has-planner-home'), 'Help does not squeeze its hero into the officer rail');
+    assert(load.classList.contains('gs-btn-molten'));
+    assert.equal(env.html('planner-notice'), '');
+    env.body.classList.remove('landing-full');
+    model.canEdit = false;
+    env.G.app.render();
+    assert(!env.body.classList.contains('has-planner-home'));
+    assert(load.classList.contains('gs-btn-molten'), 'members retain the import primary');
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed) process.exit(1);
 })();

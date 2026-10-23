@@ -502,16 +502,18 @@ function withState(fn) {
     assert.deepEqual(s.calls.map(c => c.url).sort(), ['/api/guild/g1', '/api/guild/g1/raids?team=t2'], 'only the team the viewer may edit is read; nothing for an archived or other team');
     s.restore();
     const out = PL().html();
-    assert(out.includes('id="pl-h">Upcoming raids to plan</h2>'));
-    assert.deepEqual([...out.matchAll(/data-rid="([^"]+)"/g)].map(m => m[1]), ['r_alt1', 'r_alt2'], 'soonest first');
-    const first = out.slice(out.indexOf('<li class="gs-pl-row">'), out.indexOf('</li>'));
-    assert(first.includes('>Wed Oct 21, 8:00 PM CT</a>') && first.includes('href="#/g/g1/raids/r/r_alt1"'), 'the date in the guild zone, linked to the raid');
-    assert(stripTags(first).includes('Prog night - Karazhan - Alts'), stripTags(first));
-    assert(stripTags(first).includes('17 / 25 signed up, 1 bench') && first.includes('Planned'));
-    assert(first.includes('aria-label="Plan Wed Oct 21, 8:00 PM CT"') && first.includes('data-action="pl-plan" data-gid="g1" data-rid="r_alt1"'));
-    assert(out.includes('Not planned') && out.includes('<span class="gs-pl-count">-</span>'), 'no counts for a viewer who may not see them');
-    assert.equal(count(out, /gs-btn-molten/g), 0, 'the landing has its own primary (Load roster)');
-    assert(stripTags(out).includes("Plans you start here, or import below, are saved on this device only. A raid's plan is saved to the raid."), 'the footnote is true for standalone plans and does not claim the device for raid plans');
+    assert(out.includes('id="pl-h"><span class="gs-ph-sl">Upcoming'));
+    assert.deepEqual([...out.matchAll(/<a class="gs-ph-cardlink"[^>]+data-rid="([^"]+)"/g)].map(m => m[1]), ['r_alt1', 'r_alt2'], 'soonest first');
+    const first = out.slice(out.indexOf('<li class="gs-hd-panel gs-ph-rcard">'), out.indexOf('</li>'));
+    assert(first.includes('Wed Oct 21') && first.includes('8:00 PM CT'), 'date and time in the guild zone');
+    assert(first.includes('href="#/planner?raid=g1.r_alt1"'), 'the whole card links to the raid plan');
+    assert(first.includes('Prog night') && first.includes('Karazhan - 25-man - Alts'));
+    assert(stripTags(first).includes('17 / 25 signed up, 1 bench') && first.includes('is-green">Planned'));
+    assert(first.includes('data-action="pl-plan" data-gid="g1" data-rid="r_alt1"'));
+    assert(first.includes('>Open plan</button>'), 'the soonest planned raid still owns the primary');
+    assert(out.includes('is-grey">Not planned') && out.includes('<p class="gs-ph-su">-</p>'), 'no counts for a viewer who may not see them');
+    assert.equal(count(out, /gs-btn-molten/g), 1, 'only the soonest raid has a molten action');
+    assert(!out.includes('saved on this device only'), 'guild raid cards do not claim browser-only storage');
     assertNoRawAttrs(out);
   }));
 
@@ -533,7 +535,7 @@ function withState(fn) {
     api = plannerWorld({ g1: { name: 'Ravens', can: { 'raids.edit': 'guild' }, teams: [T('t1', 'Main team'), T('t2', 'Alts')], raids: { t1: [upcoming('r1', 1)], t2: [] }, fail: 't2' } });
     s = stub(api);
     await PL().refresh();
-    assert.deepEqual([...PL().html().matchAll(/data-rid="([^"]+)"/g)].map(m => m[1]), ['r1'], 'the team that fails adds no rows and breaks nothing');
+    assert.deepEqual([...PL().html().matchAll(/<a class="gs-ph-cardlink"[^>]+data-rid="([^"]+)"/g)].map(m => m[1]), ['r1'], 'the team that fails adds no rows and breaks nothing');
     s.restore();
     PL().reset();
     S.me = null;
@@ -557,8 +559,8 @@ function withState(fn) {
     await first;
     const n = s.calls.length;
     const out = PL().html();
-    assert.equal(count(out, /data-action="pl-plan"/g), 6, 'at most six rows');
-    assert(out.includes('and 1 more on the Raids page'));
+    assert.equal(count(out, /class="gs-hd-panel gs-ph-rcard"/g), 6, 'at most six rows');
+    assert(stripTags(out).includes('and 1 more on the Raids page'));
     assert(stripTags(out).includes('Ravens') && stripTags(out).includes('Owls'), 'with two guilds each row names its guild');
     assert.equal(await PL().refresh(), false, 'fresh: no new read');
     assert.equal(s.calls.length, n);
@@ -593,6 +595,58 @@ function withState(fn) {
     assert.equal(failed.disabled, false);
     assert(PL().html().includes('id="pl-error" role="alert">Server says so.') && renders === 1);
     G.pages.raids.planInPlanner = real;
+  }));
+
+  await check('Planner home cards: unplanned primary, date-only cards, escaped titles and modified link clicks', withState(async () => {
+    PL().reset();
+    const s = stub(plannerWorld({ g1: { name: 'Ravens', can: OFFICER_CAN, teams: [T('t1', 'Main team')], raids: { t1: [upcoming('r1', 1, { planned: false, timeKnown: false, title: HOSTILE })] } } }));
+    await PL().refresh(); s.restore();
+    const out = PL().html();
+    assert(out.includes('>Plan raid</button>'));
+    assert(!out.includes('PM CT'), 'date-only raids do not invent a start time');
+    assertEscaped(out, 'card title');
+    const link = el({ 'data-gid': 'g1', 'data-rid': 'r1' }, { tagName: 'A', setAttribute() {}, removeAttribute() {} });
+    const real = G.pages.raids.planInPlanner;
+    let calls = 0, prevented = 0;
+    G.pages.raids.planInPlanner = () => { calls++; return Promise.resolve(false); };
+    try {
+      assert.equal(G.handlers.click['pl-plan'](link, { ctrlKey: true }), null);
+      assert.equal(calls, 0, 'modified clicks use the real href');
+      await G.handlers.click['pl-plan'](link, { preventDefault() { prevented++; } });
+      assert.equal(calls, 1); assert.equal(prevented, 1, 'ordinary clicks refresh sign-ups before navigation');
+    } finally { G.pages.raids.planInPlanner = real; }
+  }));
+
+  await check('Planner home Show all: moves the original lists, restores on close, and closes before planner actions', withState(async () => {
+    const realDoc = ctx.document;
+    function parent() { return { children: [], replaceChild(next, old) { const i = this.children.indexOf(old); assert(i >= 0); this.children[i] = next; next.parentNode = this; old.parentNode = null; }, appendChild(n) { this.children.push(n); n.parentNode = this; } }; }
+    const home = parent();
+    const ids = ['landing-saved-list', 'landing-copies-wrap', 'landing-history-wrap'];
+    const nodes = ids.map(id => { const n = { id }; home.appendChild(n); return n; });
+    const opener = { id: 'btn-landing-showall' };
+    let body, listeners, dialog, opens = 0;
+    ctx.document = { getElementById: id => id === opener.id ? opener : (id === 'pl-all-body' ? body : nodes.find(n => n.id === id)), createComment: () => ({}) };
+    G.ui.openDialog = () => {
+      opens++; body = parent(); listeners = {};
+      dialog = { open: true, querySelector: () => body, addEventListener: (type, fn, capture) => { listeners[type] = { fn, capture }; }, close() { this.open = false; } };
+      return dialog;
+    };
+    try {
+      PL().openAllPlans();
+      assert.equal(G.app.lastActionEl, opener, 'focus returns to Show all');
+      assert.deepEqual(body.children, nodes, 'no cloned forms or duplicate hook IDs');
+      assert.equal(PL().openAllPlans(), null); assert.equal(opens, 1);
+      listeners.close.fn(); body = null;
+      assert.deepEqual(home.children, nodes, 'Escape/Close restores all three lists');
+      for (const action of ['.saved-open', '[data-delete-plan]', '[data-delete-copy]', '[data-history-open]', '[data-history-delete]', '.history-more']) {
+        PL().openAllPlans();
+        assert.equal(listeners.click.capture, true);
+        listeners.click.fn({ target: { closest: selector => selector.includes(action) } });
+        assert.equal(dialog.open, false, action + ' closes the dialog before its own handler');
+        assert.deepEqual(home.children, nodes, action + ' restores synchronously');
+        listeners.close.fn(); body = null;
+      }
+    } finally { ctx.document = realDoc; }
   }));
 
   await check('guild.css: every gs- class the new Home and Planner landing markup uses has a rule', () => {

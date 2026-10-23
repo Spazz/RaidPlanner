@@ -1405,19 +1405,55 @@ body.shell-section-planner .gs-crumbs li.is-current { flex: 0 1 auto; min-width:
 .gs-attn2-line { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
 .gs-hcard { box-sizing: border-box; background: var(--bg-panel); border: 1px solid var(--border-subtle); padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
 .gs-hcard-body { display: flex; flex-direction: column; gap: 12px; }
-/* The Planner landing for guild members: Upcoming raids to plan (pages-planner-landing.js), the width of the compact import card */
-.gs-pl { box-sizing: border-box; width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: var(--sp-3); }
-.gs-pl-list { list-style: none; margin: 0; padding: 0; background: var(--bg-panel); border: 1px solid var(--border-subtle); }
-.gs-pl-row { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.1fr) auto auto; align-items: center; gap: 8px 16px; padding: 12px 16px; }
-.gs-pl-row + .gs-pl-row { border-top: 1px solid var(--border-subtle); }
-.gs-pl-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
-a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; color: var(--text-primary); text-decoration: none; }
-:where(a.gs-pl-when:hover) { color: var(--text-primary); }
-.gs-pl-count { font-size: 15px; line-height: 1.35; color: var(--text-secondary); }
+/* The officer Planner home (pages-planner-landing.js, body.has-planner-home): raid cards in the main column; the import form and the device plans (the landing's own two
+   panes, restyled as panels, never duplicated) in a 320 px right column. Below 1024 px: one column, cards, import, device plans. Replaces the old .gs-pl panel. */
+body.has-planner-home .gs-ph { display: grid; grid-template-columns: minmax(0, 1fr) 320px; column-gap: 32px; row-gap: 24px; align-items: start; }
+body.has-planner-home .gs-ph > * { grid-column: 1 / -1; }
+body.has-planner-home .gs-ph > #planner-notice { grid-column: 1; }
+body.has-planner-home .gs-ph > .gs-ph-hero { grid-column: 2; display: flex; flex-direction: column; gap: 24px; padding: 0; }
+body.has-planner-home #planner-banner:empty { display: none; }
+body.has-planner-home .gs-ph-card { display: contents; }
+body.has-planner-home .gs-ph-tabs { display: none; }
+body.has-planner-home .gs-ph .gs-ph-pane[hidden], body.has-planner-home .gs-ph-pane { display: flex !important; }
+body.has-planner-home .gs-ph-pane { box-sizing: border-box; padding: 16px; gap: 12px; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
+body.has-planner-home .gs-ph-ptitle { display: block; margin: 0; font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--hd-white); }
+body.has-planner-home .gs-ph-ta { min-height: 84px; }
+body.has-planner-home .gs-ph-pane #landing-saved-list > li:nth-child(n+4) { display: none; }
+body.has-planner-home .gs-ph-pane .gs-ph-discwrap, body.has-planner-home .gs-ph-pane #landing-last-backup, body.has-planner-home .gs-ph-pane[data-pane="saved"] > p.gs-ph-lbl { display: none; }
+body.has-planner-home .gs-ph .gs-ph-showall { display: inline-flex; }
+.gs-ph-raids { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.gs-ph-sl { display: inline-flex; align-items: center; gap: 8px; }
+.gs-ph-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.gs-ph-rcard { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; align-items: start; padding: 16px 20px; }
+.gs-ph-rcard > * { grid-column: 1; min-width: 0; }
+.gs-ph-cardtop { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.gs-ph-date { margin: 0; font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.08em; text-transform: uppercase; color: var(--hd-white); }
+.gs-ph-date span { font-weight: 600; color: var(--text-secondary); }
+.gs-ph-ctitle { margin: 0; font: 700 18px/24px var(--font-body); }
+.guild-page a.gs-ph-cardlink, a.gs-ph-cardlink { color: var(--hd-white); text-decoration: none; overflow-wrap: anywhere; }
+a.gs-ph-cardlink:hover { text-decoration: underline; text-underline-offset: 3px; color: var(--hd-white); }
+a.gs-ph-cardlink::after { content: ""; position: absolute; inset: 0; border-radius: 8px; }
+a.gs-ph-cardlink:focus-visible { outline: none; }
+a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-ph-csub { margin: 0; font-size: 15px; line-height: 22px; color: var(--text-secondary); }
+.gs-ph-su { margin: 0; font-size: 13px; line-height: 18px; color: var(--text-secondary); }
+.gs-ph-cardr { grid-column: 2 !important; grid-row: 1 / span 4; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.gs-ph-cardr .gs-btn { position: relative; z-index: 1; }
+@media (hover: hover) { .gs-ph-rcard:hover { border-color: rgba(255, 255, 255, 0.16); background-image: linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03)), var(--hd-panel); } }
+.gs-ph-none, .gs-ph-morer { margin: 0; font-size: 14px; line-height: 20px; color: var(--text-secondary); }
+.gs-ph-dlgbody { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 16px; }
+.gs-ph-dlg [hidden] { display: none !important; }
+@media (max-width: 1023px) {
+  body.has-planner-home .gs-ph { grid-template-columns: minmax(0, 1fr); }
+  body.has-planner-home .gs-ph > #planner-notice, body.has-planner-home .gs-ph > .gs-ph-hero { grid-column: 1; }
+}
 @media (max-width: 600px) {
-  .gs-pl-row { grid-template-columns: minmax(0, 1fr) auto; padding: 12px; }
-  .gs-pl-main, .gs-pl-row .gs-btn { grid-column: 1 / -1; }
-  .gs-pl-row .gs-btn { min-height: var(--control-h-lg); }
+  .gs-ph-rcard { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .gs-ph-cardtop { justify-content: space-between; }
+  .gs-ph-cardr { grid-column: 1 !important; grid-row: auto; align-items: stretch; }
+  .gs-ph-cardr .gs-btn { width: 100%; min-height: 48px; }
+  body.has-planner-home .gs-ph .gs-btn { min-height: 44px; }
+  body.has-planner-home .gs-ph .gs-ph-actions .gs-btn { width: 100%; }
 }
 /* Design framework T4: the member Home (next raid first, then attendance, loot, away and calendar) */
 .gs-mnext { border-left: 3px solid var(--text-primary); background: var(--next-bg); gap: 8px; }

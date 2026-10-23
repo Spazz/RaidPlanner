@@ -1011,20 +1011,28 @@
     if (notice) {
       if (notice.classList) notice.classList.add('gs-scope');
       const guilds = state.me && Array.isArray(state.me.guilds) ? state.me.guilds : null;
+      const fullLanding = document.body && document.body.classList.contains('landing-full');
       // A guild: "Upcoming raids to plan" for a viewer who may plan for one of its teams (pages-planner-landing.js).
-      notice.innerHTML = section === 'planner' && guilds && guilds.length ? G.pages.plannerLanding.html() : '';
+      notice.innerHTML = section === 'planner' && !fullLanding && guilds && guilds.length ? G.pages.plannerLanding.html() : '';
       // No guild: the banner above the head.
       if (banner) {
         if (banner.classList) banner.classList.add('gs-scope');
         banner.innerHTML = section === 'planner' && guilds && !guilds.length ? G.pages.signin.noGuildNoticeHtml(state.me) : '';
       }
       if (document.body) document.body.classList.toggle('has-planner-guild', !!(guilds && guilds.length));
+      // The officer home (cards + right column) while the viewer may plan for a team; Load roster is a secondary button there (the soonest card carries the one molten).
+      const officerHome = section === 'planner' && !fullLanding && !!(guilds && guilds.length) && G.pages.plannerLanding.active();
+      if (document.body) document.body.classList.toggle('has-planner-home', officerHome);
+      const loadRoster = byId('btn-landing-import');
+      if (loadRoster && loadRoster.classList) loadRoster.classList.toggle('gs-btn-molten', !officerHome);
       // The head's context line names the guild the sidebar shows.
       const shell = plannerShell();
       if (shell && shell.setGuildContext) {
         const gid = guilds && guilds.length ? chromeGuildId() : null;
         const mine = gid ? guilds.filter(function (g) { return g.id === gid; })[0] : null;
-        shell.setGuildContext(mine ? mine.name : '');
+        const gd = gid ? state.guilds[gid] : null;
+        const team = officerHome && gd ? (G.shell.activeTeams(gd.teams).filter(function (t) { return t.id === teamFor(gd); })[0] || {}).name : '';
+        shell.setGuildContext(mine ? mine.name : '', team || '');
       }
     }
 
