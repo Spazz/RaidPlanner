@@ -4,9 +4,9 @@
 
 A raid group planner for World of Warcraft Classic Era, TBC Anniversary and WoW Forever. Import a Raid-Helper sign-up list (or paste a roster), let the optimizer lay out the parties for buff and debuff coverage, adjust by drag and drop, then share a link, copy raid chat text, or export an MRT note.
 
-Production: one Cloudflare Worker (`worker/`) serves the static site, the share-link API and the guild tracker at `https://raidsmith.SUBDOMAIN.workers.dev` (placeholder until the first deploy; the Worker is deployed with `wrangler deploy`, see Deploy below).
+Production: one Cloudflare Worker (`worker/`) serves the static site, the share-link API and the guild tracker at `https://app.raidsmith.workers.dev` (deployed by Cloudflare Workers Builds, see Deploy below).
 
-**When the domain changes**, the host lives in two places. In `index.html`, `faq.html` and `whats-new.html` (each page has its own `og:url`): `og:url`, `og:image` and `twitter:image`. Replace `raidsmith.SUBDOMAIN.workers.dev` in those three files (one find-and-replace). In the tests the host is ONE constant, `SITE_HOST` in `tests/site-host.js`, which `head-tests.js`, `site-pages-tests.js` and `deploy-tests.js` read.
+**When the domain changes**, the host lives in two places. In `index.html`, `faq.html` and `whats-new.html` (each page has its own `og:url`): `og:url`, `og:image` and `twitter:image`. Replace `app.raidsmith.workers.dev` in those three files (one find-and-replace). In the tests the host is ONE constant, `SITE_HOST` in `tests/site-host.js`, which `head-tests.js`, `site-pages-tests.js` and `deploy-tests.js` read.
 
 It is a static site with no build step and no npm dependencies: `index.html` (the planner), two static pages (`faq.html`, `whats-new.html`), `app.css` and eighteen plain `<script src>` files (fourteen under `js/`, the four rules data files under `js/rules/`), plus the Cloudflare Worker (`worker/`) that serves them and keeps the live share links (`worker/share.js`, D1 table `share_links`).
 
