@@ -1,5 +1,5 @@
 {
-  "name": "raidsmith",
+  "name": "app",
   "main": "worker/index.js",
   "compatibility_date": "2026-09-30",
   "assets": {
