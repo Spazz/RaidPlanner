@@ -184,11 +184,10 @@
       else if (flags) Object.assign(log, { state: 'current', line: flags + ' to review' });
       else Object.assign(log, { state: 'done', line: logLine });
       if (awards && awards.length) Object.assign(loot, { state: 'done', line: plural(awards.length, 'item', 'items') });
-      else if (logged && !flags) Object.assign(loot, { state: 'current', line: 'No loot yet' });
-      else Object.assign(loot, { line: 'After the log' });
+      else Object.assign(loot, { state: 'current', line: 'No loot yet' });
     }
-    const stages = [signups, planned, publish, log, loot].map(function (s) { s.target = 's-' + s.key; return s; });
-    const current = stages.filter(function (s) { return s.state === 'current'; })[0];
+    const stages = [signups, planned, publish, loot, log].map(function (s) { s.target = 's-' + s.key; return s; });
+    const current = !upcoming && flags ? log : stages.filter(function (s) { return s.state === 'current'; })[0];
     return { stages: stages, current: current ? current.key : null, flags: flags, logged: logged, published: published, planned: !!plan, signed: signed, bench: bench, rosterKnown: !!roster, upcoming: upcoming };
   }
 
@@ -225,9 +224,11 @@
           secondary: { variant: 'secondary', label: 'Open review queue', href: G.router.format({ name: 'review', gid: gd.guild.id }) } }
           : { title: 'Review attendance', text: 'Waiting for an officer to review attendance.' };
       case 'loot': {
-        if (!loot || !loot.canImport(p.loot)) return { title: 'Record the loot', text: 'Waiting for an officer to record the loot.' };
-        return { title: 'Record the loot', text: 'Import the Gargul export of this raid, or add awards by hand.', primary: { label: 'Import loot awards', attrs: { 'data-action': 'loot-import-open', 'data-key': 'ns-primary' } },
-          secondary: loot.canAdd(p.loot) ? { label: 'Add loot award', attrs: { 'data-action': 'loot-add-open', 'data-key': 'ns-secondary' } } : null };
+        if (!loot || !loot.canImport(p.loot)) return !model.logged && edit
+          ? { title: 'Add the Warcraft Logs report', text: 'Loot and logs can be recorded in either order.', primary: op('report-add', 'Add log', 'ns-primary'), secondary: op('manual-open', 'Mark attendance by hand', 'ns-secondary') }
+          : { title: 'Record the loot', text: 'Waiting for an officer to record the loot.' };
+        return { title: 'Record the loot', text: 'Loot and logs can be recorded in either order. Import Gargul or add an award in Loot.', primary: { label: 'Import loot awards', attrs: { 'data-action': 'loot-import-open', 'data-key': 'ns-primary' } },
+          secondary: !model.logged && edit ? op('report-add', 'Add log', 'ns-secondary') : loot.canAdd(p.loot) ? { label: 'Add loot award', attrs: { 'data-action': 'loot-add-open', 'data-key': 'ns-secondary' } } : null };
       }
       default:
         if (model.upcoming) return model.published ? { title: 'The line-up is out', text: 'Members have been asked to confirm their group. The log, the attendance review and the loot awards open when the raid starts.' } : null;
@@ -304,11 +305,9 @@
     if (model.upcoming) return facts + prios;
     const bosses = G.pages.raidFacts ? G.pages.raidFacts.bossesHtml(data) : '';
     const loot = lootPanelHtml(gd, data, opts.loot);
-    const lootStage = model.stages.filter(function (s) { return s.key === 'loot'; })[0];
     const placeholder = function (text) { return G.pages.raidLoot ? G.pages.raidLoot.placeholderHtml(text) : ''; };
     let lootHtml;
     if (loot) lootHtml = loot;
-    else if (lootStage.state === 'later') lootHtml = placeholder('Opens after the log is attached. Then import the Gargul export here.');
     else lootHtml = placeholder('Reading the loot awards...');
     return facts + bosses + '<div class="gs-rpg-sp gs-rpg-sp-loot" id="s-loot" tabindex="-1">' + lootHtml + '</div>' + prios;
   }

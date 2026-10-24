@@ -443,6 +443,16 @@ const labelsOf = (out, id) => {
     }
   });
 
+  await check('loot and logs are independently available after the raid starts; guests do not show Waiting', () => {
+    const noLog = past({ sources: { event: null, reports: [], plan: null } }, { state: 'awaiting_log' });
+    const html = page(noLog, { loot: lState([]) });
+    assert(html.includes('Loot and logs can be recorded in either order'));
+    assert(html.includes('data-action="loot-import-open"') && html.includes('data-op="report-add"'));
+    assert(!html.includes('After the log') && !html.includes('Opens after the log'));
+    const roster = G.pages.raidRoster.cardHtml({ guildData: gd(OFFICER_CAN), data: up(), state: rState({ published: true, entries: [{ name: 'Visitor', personId: null, guest: true, class: 'ROGUE', spec: 'Combat', group: 1, status: 'guest' }], counts: { confirmed: 0, pending: 0, guests: 1 } }) });
+    assert(roster.includes('>Guest<') && !roster.includes('>Waiting<'));
+  });
+
   console.log(`\nRaid page shell UI tests: ${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;
 })();

@@ -468,7 +468,7 @@ check('route: the week block -- the reset week in the guild\'s zone, readiness f
   const now = [...(await s.attention('gm')).week.raids, ...(await s.ok('gm', 'GET', '/attention/week?offset=1')).week.raids];
   const by = Object.fromEntries(now.map((r) => [r.raidId, r]));
   assert.deepEqual([by[ids.p3].status, by[ids.p3].signed, by[ids.p3].size, by[ids.p3].lineupPublished], ['open', 10, 10, false]);
-  assert.deepEqual([by[ids.p4].status, by[ids.p4].lineupPublished, by[ids.p4].confirmed, by[ids.p4].cantCome, by[ids.p4].noAnswer], ['ready', true, 1, 1, 2]);
+  assert.deepEqual([by[ids.p4].status, by[ids.p4].lineupPublished, by[ids.p4].confirmed, by[ids.p4].cantCome, by[ids.p4].noAnswer], ['ready', true, 1, 1, 0], 'anonymous seats cannot confirm and do not count as unanswered');
   assert.equal(by[ids.today].status, 'short');
   const startsAt = by[ids.p4].startsAt;
   assert.equal(by[ids.p4].signupsCloseAt, startsAt - 3 * 3600000);

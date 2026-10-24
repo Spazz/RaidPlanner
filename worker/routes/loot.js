@@ -1,3 +1,4 @@
+import { guestIdentityStatement } from '../guest-identity.js';
 // Loot: awards imported from Gargul's Detailed (JSON) export onto a past raid, their tags and notes, and the four views
 // (per raid, balance, by raid, by item, per person) plus the loot policy. Matching a winner to a person happens on read
 // (loot-store.js). Rules: tasks/reference/guild-phase4-spec.md.
@@ -449,7 +450,7 @@ const teamAwardStatements = (bind, db, guild) => [
   bind(`${AWARD_SELECT} WHERE a.guild_id = ?1 AND a.team_id = ?2 ORDER BY a.awarded_at DESC, a.id LIMIT ${LOOT_LIST_CAP}`),
   bind(`SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id IN
           (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT winner_name_key FROM loot_awards WHERE guild_id = ?1 AND team_id = ?2))`),
-  db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
+  guestIdentityStatement(db, guild.id),
 ];
 
 // The awards the viewer may see with their match: everything for 'full', only the viewer's own person's for 'own'.
@@ -605,7 +606,7 @@ export async function getPersonLoot(ctx) {
     bind(`${AWARD_SELECT} WHERE a.guild_id = ?1 AND EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.player_id = ?2
             AND c.name_key = a.winner_name_key AND c.realm_key = a.winner_realm_key) ORDER BY a.awarded_at DESC, a.id LIMIT ${LOOT_LIST_CAP}`),
     lootPolicyRowsStatement(db, guild.id),
-    db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
+    guestIdentityStatement(db, guild.id),
   ]);
   const player = playerResult.results[0];
   if (!player) throw new HttpError(404, 'not_found', 'That person was not found.');
@@ -757,7 +758,7 @@ export async function getLootItem(ctx) {
       `SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id IN
          (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT winner_name_key FROM loot_awards WHERE guild_id = ?1 AND team_id = ?2 AND item_id = ?3))`,
     ).bind(guild.id, teamParam, itemId),
-    db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
+    guestIdentityStatement(db, guild.id),
     db.prepare(`SELECT id, raid_on, title, event_title, zone FROM raids WHERE guild_id = ?1 AND id IN (SELECT raid_id FROM loot_awards WHERE guild_id = ?1 AND team_id = ?2 AND item_id = ?3)`)
       .bind(guild.id, teamParam, itemId),
   ]);

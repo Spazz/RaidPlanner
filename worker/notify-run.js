@@ -67,7 +67,7 @@ export async function unconfirmedPeople(db, raidId) {
   const rows = (await db.prepare(
     `SELECT rr.name, rr.player_id, ${MENTION_COLUMNS}
        FROM raid_roster rr LEFT JOIN players p ON p.id = rr.player_id
-      WHERE rr.raid_id = ? AND rr.status = 'pending'
+      WHERE rr.raid_id = ? AND rr.status = 'pending' AND rr.player_id IS NOT NULL
       ORDER BY rr.group_number = 0, rr.group_number, rr.seq, rr.name_key`,
   ).bind(raidId).all()).results;
   return rows.map(personOf);

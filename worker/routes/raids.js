@@ -160,6 +160,15 @@ function eventSignupStatements(db, guild, raidId, event, guard) {
          FROM json_each(?) WHERE ${guard.sql}`,
     ).bind(raidId, guild.id, guild.id, JSON.stringify(rows), ...guard.params));
   }
+  // Guest identity is local; availability and supplied class/spec still follow the imported sign-up.
+  // Keep a removed sign-up as absent so existing log/loot identity is not erased.
+  statements.push(db.prepare(`UPDATE raid_signups AS g SET
+    kind = COALESCE((SELECT s.kind FROM raid_signups s WHERE s.raid_id = g.raid_id AND s.source = 'raid_helper' AND s.signup_id = g.rh_signup_id), 'absence'),
+    class_name = COALESCE((SELECT s.class_name FROM raid_signups s WHERE s.raid_id = g.raid_id AND s.source = 'raid_helper' AND s.signup_id = g.rh_signup_id
+      AND s.class_name NOT IN ('Absence', 'Bench', 'Tentative', 'Late')), g.class_name),
+    spec_name = COALESCE((SELECT s.spec_name FROM raid_signups s WHERE s.raid_id = g.raid_id AND s.source = 'raid_helper' AND s.signup_id = g.rh_signup_id), g.spec_name)
+    WHERE g.raid_id = ? AND g.source = 'raidsmith' AND g.guest = 1 AND g.rh_signup_id IS NOT NULL AND ${guard.sql}`)
+    .bind(raidId, ...guard.params));
   return { statements, count: rows.length };
 }
 

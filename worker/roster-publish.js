@@ -1,8 +1,8 @@
 // Publishing the roster, the pure half (no I/O): an officer presses "Publish roster" and the raid's plan placements are frozen as the roster (raid_roster) that
 // members see and answer: who sits in which group, or on the bench (group 0), and whether they confirmed or said they cannot make it. The routes in
 // worker/routes/roster-publish.js read the rows and call these.
-import { signUpSpecLabel } from './signups-data.js';
-import { isSpecOf } from './roster-data.js';
+import { signUpSpecLabel, signUpClassId } from './signups-data.js';
+import { isSpecOf, nameKey } from './roster-data.js';
 
 export const ROSTER_STATUSES = ['pending', 'confirmed', 'declined'];
 
@@ -12,6 +12,7 @@ export const ROSTER_STATUSES = ['pending', 'confirmed', 'declined'];
 // the class is the character's, the spec the one the person signed up with on this raid when it is a spec of that class, else the character's main spec.
 // -> [{ name, nameKey, personId | null, className | null, spec | null, group, seq }]
 export function buildSeats({ plan, characters, signups, teamId }) {
+  const guests = new Map(signups.filter(row => row.guest === 1).map(row => [nameKey(row.nickname), row]));
   const byKey = new Map();
   for (const character of characters) {
     if (!byKey.has(character.name_key)) byKey.set(character.name_key, []);
@@ -30,6 +31,7 @@ export function buildSeats({ plan, characters, signups, teamId }) {
   };
   return plan.map((entry, index) => {
     const character = [...(byKey.get(entry.name_key) || [])].sort(compare)[0] || null;
+    const guest = !character && guests.get(entry.name_key);
     let spec = null;
     if (character) {
       const signed = signedSpec.get(character.player_id);
@@ -40,8 +42,9 @@ export function buildSeats({ plan, characters, signups, teamId }) {
       name: entry.name,
       nameKey: entry.name_key,
       personId: character ? character.player_id : null,
-      className: character ? character.class : null,
-      spec,
+      className: character ? character.class : guest ? signUpClassId(guest) : null,
+      spec: guest ? signUpSpecLabel(guest) : spec,
+      ...(guest ? { guest: true } : {}),
       group: entry.group_number,
       seq: index,
     };
@@ -62,8 +65,9 @@ export function planChanged(roster, plan) {
 }
 
 export const rosterCounts = (rows) => ({
-  pending: rows.filter((row) => row.status === 'pending').length,
-  confirmed: rows.filter((row) => row.status === 'confirmed').length,
-  declined: rows.filter((row) => row.status === 'declined').length,
+  pending: rows.filter((row) => !row.guest && row.status === 'pending').length,
+  confirmed: rows.filter((row) => !row.guest && row.status === 'confirmed').length,
+  declined: rows.filter((row) => !row.guest && row.status === 'declined').length,
+  ...(rows.some(row => row.guest) ? { guests: rows.filter(row => row.guest).length } : {}),
   total: rows.length,
 });

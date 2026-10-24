@@ -99,10 +99,10 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
   await check('stages: a raid nobody signed up for waits for sign-ups; a raid with sign-ups and no plan is on Plan; Publish needs a plan; the line-up being read never flashes a Publish button', () => {
     const none = G.pages.raid.stagesOf(up(), {});
     assert.equal(none.current, 'signups');
-    assert.equal(keysOf(none), 'signups:current plan:later publish:later log:later loot:later');
+    assert.equal(keysOf(none), 'signups:current plan:later publish:later loot:later log:later');
     const signed = G.pages.raid.stagesOf(up(), { signups: sState(view()) });
     assert.equal(signed.current, 'plan');
-    assert.equal(keysOf(signed), 'signups:done plan:current publish:later log:later loot:later');
+    assert.equal(keysOf(signed), 'signups:done plan:current publish:later loot:later log:later');
     assert.equal(signed.stages[0].line, '3 signed up, 1 bench');
     assert.equal(signed.stages[1].line, 'Not planned yet');
     const planned = up({ sources: { event: null, reports: [], plan: { label: 'Gruul night', players: 19 } } });
@@ -115,29 +115,29 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const published = G.pages.raid.stagesOf(planned, { signups: sState(view()), roster: rState({ published: true, counts: { confirmed: 17, pending: 2, declined: 0 } }) });
     assert.equal(published.current, null, 'everything before the raid is done');
     assert.equal(published.stages[2].line, '17 of 19 confirmed');
-    assert.equal(keysOf(published), 'signups:done plan:done publish:done log:later loot:later');
+    assert.equal(keysOf(published), 'signups:done plan:done publish:done loot:later log:later');
     const eventOnly = G.pages.raid.stagesOf(up({ sources: { event: { id: 'e1', title: 'E', signups: 12, otherServer: false }, reports: [], plan: null } }), {});
     assert.equal(eventOnly.stages[0].state, 'done', 'Raid-Helper sign-ups count while the panel is still loading');
   });
 
-  await check('stages: after the start Plan and Publish are skipped when nothing was done; Log is current until there is a log and its flags are decided; Loot follows', () => {
+  await check('stages: after the start Plan and Publish are skipped when nothing was done; Log is current until there is a log and its flags are decided; Loot is available independently', () => {
     const bare = G.pages.raid.stagesOf(past({ sources: { event: null, reports: [], plan: null }, people: [] }), {});
-    assert.equal(keysOf(bare), 'signups:done plan:skipped publish:skipped log:current loot:later');
-    assert.equal(bare.stages[3].line, 'No log yet');
-    assert.equal(bare.stages[4].line, 'After the log');
+    assert.equal(keysOf(bare), 'signups:done plan:skipped publish:skipped loot:current log:current');
+    assert.equal(bare.stages[4].line, 'No log yet');
+    assert.equal(bare.stages[3].line, 'No loot yet');
     const flagged = G.pages.raid.stagesOf(past({ people: [prow('p_a', 'Alliesha', { needsReview: true, outcome: 'late' })] }), {});
     assert.equal(flagged.current, 'log');
-    assert.equal(flagged.stages[3].line, '1 to review');
+    assert.equal(flagged.stages[4].line, '1 to review');
     const reviewed = G.pages.raid.stagesOf(past(), { loot: lState([]) });
-    assert.equal(keysOf(reviewed), 'signups:done plan:skipped publish:skipped log:done loot:current');
-    assert.equal(reviewed.stages[3].line, '1 report');
+    assert.equal(keysOf(reviewed), 'signups:done plan:skipped publish:skipped loot:current log:done');
+    assert.equal(reviewed.stages[4].line, '1 report');
     const byHand = G.pages.raid.stagesOf(past({ raid: Object.assign({}, past().raid, { state: 'manual', manual: { reason: 'x', presentPlayerIds: [] } }), sources: { event: null, reports: [], plan: null } }), { loot: lState([]) });
-    assert.equal(byHand.stages[3].line, 'Entered by hand');
+    assert.equal(byHand.stages[4].line, 'Entered by hand');
     const done = G.pages.raid.stagesOf(past({ sources: { event: null, reports: [{ code: 'W1' }, { code: 'W2' }], plan: { label: 'P', players: 3 } } }), { loot: lState([{ id: 1 }, { id: 2 }]), roster: rState({ published: true, counts: { confirmed: 3, pending: 0, declined: 0 } }) });
     assert.equal(done.current, null);
-    assert.equal(keysOf(done), 'signups:done plan:done publish:done log:done loot:done');
-    assert.equal(done.stages[3].line, '2 reports');
-    assert.equal(done.stages[4].line, '2 items');
+    assert.equal(keysOf(done), 'signups:done plan:done publish:done loot:done log:done');
+    assert.equal(done.stages[4].line, '2 reports');
+    assert.equal(done.stages[3].line, '2 items');
   });
 
   await check('no stage strip (the bar and the Raid facts carry the stages); the old jump targets still land on the page, before and after the raid', () => {
@@ -184,7 +184,7 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const waitPlan = nextOf(memberData(), { signups: sState(view({ can: { edit: false, self: true, seeList: true, seeNicknames: false } })) }, member);
     assert.deepEqual([waitPlan.title, waitPlan.text, waitPlan.primary, waitPlan.secondary], ['Plan this raid', 'Waiting for an officer to plan this raid.', undefined, undefined]);
     const waitLog = nextOf(past({ can: { edit: false, review: false, seeAttendance: true, seeNicknames: false }, sources: { event: null, reports: [], plan: null }, people: [] }), {}, member);
-    assert.equal(waitLog.text, 'Waiting for an officer to add the log.');
+    assert.equal(waitLog.text, 'Waiting for an officer to record the loot.');
     const reviewOnly = nextOf(past({ can: { edit: false, review: true, seeAttendance: true, seeNicknames: false }, people: [prow('p_a', 'Alliesha', { needsReview: true, outcome: 'late' })] }), {}, member);
     assert.equal(reviewOnly.primary.label, 'Review attendance', 'a reviewer who cannot edit the raid may still review');
     const waitLoot = nextOf(past({ can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), { loot: lState([], false) }, member);
@@ -261,7 +261,7 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const stage = page(past({ sources: { event: null, reports: [], plan: null }, people: [] }), {});
     assert(stage.includes('Awaiting log.') && stage.includes('id="raid-people"'));
     const lootLocked = page(past({ sources: { event: null, reports: [], plan: null }, people: [] }), {});
-    assert(lootLocked.includes('Opens after the log is attached. Then import the Gargul export here.') && lootLocked.includes('id="s-loot"') && lootLocked.includes('id="loot-ph-h">Loot</h2>'));
+    assert(!lootLocked.includes('Opens after the log') && lootLocked.includes('id="s-loot"') && lootLocked.includes('Reading the loot awards...'));
   });
 
   await check('post-raid mode: Everyone lists the people who were on the roster that day - a later joiner is left out unless they signed up, were in the log or were decided on; Needs review keeps every flag', () => {

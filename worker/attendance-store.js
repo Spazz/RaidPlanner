@@ -1,3 +1,4 @@
+import { guestIdentityStatement, guestKeysFor } from './guest-identity.js';
 // Attendance I/O: the only place that turns D1 rows into the pure modules' input and writes their results back.
 // The pure modules (attendance-calendar / -policy / -consolidate / -metrics) never see the database.
 import { consolidateRaid, resolveFillIns } from './attendance-consolidate.js';
@@ -172,7 +173,7 @@ export async function loadDay(db, guildId, raidId) {
     bind('SELECT id, raid_id, started_at, kill FROM raid_pulls WHERE raid_id IN (SELECT id FROM day)'),
     bind('SELECT pull_id, raid_id, name, name_key, realm, realm_key, class FROM raid_presence WHERE raid_id IN (SELECT id FROM day)'),
     bind('SELECT raid_id, player_id FROM raid_manual WHERE raid_id IN (SELECT id FROM day)'),
-    db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guildId),
+    guestIdentityStatement(db, guildId),
     bind('SELECT raid_id, player_id, outcome, credit, credit_id, reason, flags FROM attendance_decisions WHERE raid_id IN (SELECT id FROM day)'),
     // Every character of every person involved: on a team of the day, in a log, a sign-up, a manual tick, a stored row or the plan.
     // D1 allows at most 5 terms in one compound SELECT, so the people are gathered in two CTEs of at most 4 terms each.
@@ -239,7 +240,7 @@ export function consolidateDay(guild, loaded) {
     if (!charactersByName.has(row.name_key)) charactersByName.set(row.name_key, []);
     charactersByName.get(row.name_key).push(row);
   }
-  const guests = loaded.guests.map((row) => keyOf(row.name_key, row.realm_key));
+
   const group = (rows) => {
     const map = new Map();
     for (const row of rows) {
@@ -292,7 +293,7 @@ export function consolidateDay(guild, loaded) {
       signups,
       pulls: (pullsBy.get(raid.id) || []).map((pull) => ({ startedAt: pull.started_at, kill: pull.kill === 1, keys: keysByPull.get(pull.id) || [] })),
       manualPresent: (manualBy.get(raid.id) || []).map((row) => row.player_id),
-      guests,
+      guests: [...guestKeysFor(loaded.guests, raid.id)],
       decisions,
       logPlayers,
       manualKeys: pasted.map((row) => keyOf(row.name_key, row.realm_key)),

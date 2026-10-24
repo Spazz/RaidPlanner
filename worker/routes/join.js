@@ -24,6 +24,7 @@ import { NOTE_MAX, raidHelperClassName, raidHelperSpecKey } from '../signups-dat
 import { loadRaid, raidAudit } from './raids.js';
 import { bad, readClass, readName } from './roster.js';
 import { buildView } from './signups.js';
+import { recomputeRaid } from '../attendance-store.js';
 
 export const JOIN_COOKIE = '__Host-rs_join';
 export const JOIN_COOKIE_TTL = 30 * 24 * 60 * 60;
@@ -119,6 +120,7 @@ export async function deleteGuestSignup(ctx) {
     raidAudit(ctx, guildContext, 'signup.guest_remove', raid.id, { guest: true }, null, CHANGED_ONE),
   ]);
   if (!results[0].results.length) throw new HttpError(404, 'not_found', 'That guest sign-up does not exist.');
+  if (raid.reports > 0 || raid.log_mode === 'manual') await recomputeRaid(ctx, guildContext.guild, raid.id);
   return jsonResponse(await buildView(ctx, guildContext, raid));
 }
 

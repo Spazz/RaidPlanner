@@ -1,3 +1,4 @@
+import { guestIdentityStatement, guestKeysFor } from '../guest-identity.js';
 // "Paste raid roster" on a raid without a log: an officer pastes the names of who was there (plain lists, the in-game /who, a raid frame copied from an
 // addon), sees who matched, and saves them as the raid's hand-entered attendance.
 //   POST /api/guild/:gid/raids/:rid/manual/paste/preview  { text }          (raids.edit)  who matched, who is a known guest, who matched nobody, the lines that were not names
@@ -37,14 +38,14 @@ async function analyse(ctx, guild, text) {
       `SELECT c.name, c.name_key, c.realm_key, c.class, c.player_id FROM characters c
         WHERE c.guild_id = ? AND c.name_key IN (SELECT value FROM json_each(?)) ORDER BY c.is_main DESC, c.id`,
     ).bind(guild.id, wanted),
-    db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
+    guestIdentityStatement(db, guild.id),
   ]);
   const characters = new Map();
   for (const row of characterResult.results) {
     const key = `${row.name_key}|${row.realm_key}`;
     if (!characters.has(key)) characters.set(key, { personId: row.player_id, name: row.name, class: row.class });
   }
-  const guests = new Set(guestResult.results.map((row) => `${row.name_key}|${row.realm_key}`));
+  const guests = guestKeysFor(guestResult.results, ctx.params.rid);
   const realmOf = (text) => {
     if (text === null) return resolveRealm(guild, undefined);
     const found = resolveRealm(guild, text);

@@ -1,3 +1,4 @@
+import { guestIdentityStatement, guestKeysFor } from './guest-identity.js';
 // Read side of the raids: the raid detail every raid route answers with, the shared character-display rule and
 // the redaction (nicknames, reasons, other teams' attendance) by permission.
 import { HttpError } from './http.js';
@@ -72,7 +73,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     bind(`SELECT name, name_key, realm, realm_key, class, COUNT(*) AS pulls FROM raid_presence
            WHERE raid_id = ?2 AND guild_id = ?1 GROUP BY name_key, realm_key
           UNION ALL SELECT name, name_key, realm, realm_key, NULL, 0 FROM raid_manual_names WHERE raid_id = ?2 AND guild_id = ?1`),
-    db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
+    guestIdentityStatement(db, guild.id),
     db.prepare('SELECT id, team_id, policy, version FROM attendance_policies WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, username, global_name, display_name FROM users WHERE id IN (SELECT decided_by FROM attendance_decisions WHERE raid_id = ?2 AND decided_by IS NOT NULL)
              OR id = (SELECT manual_by FROM raids WHERE id = ?2 AND guild_id = ?1)`),
@@ -100,7 +101,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const charactersByPlayer = groupBy(characterResult.results, 'player_id');
   const characterKeys = new Set(characterResult.results.map((row) => presenceKey(row.name_key, row.realm_key)));
   // The character query is narrowed to this raid's names; a character with the same name on another realm key still matches only by key.
-  const guestKeys = new Set(guestResult.results.map((row) => presenceKey(row.name_key, row.realm_key)));
+  const guestKeys = guestKeysFor(guestResult.results, raid.id);
 
   const planByPlayer = new Map();
   const charactersByName = groupBy(characterResult.results, 'name_key');

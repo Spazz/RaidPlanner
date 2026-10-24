@@ -45,7 +45,7 @@
   // A row of the Line-up panel: spec icon, class-coloured name, muted spec; a chip only for an answer that is not the default (Confirmed shows nothing).
   function entryHtml(e, myPersonId) {
     const status = e.status === 'confirmed' || e.status === 'declined' ? e.status : 'pending';
-    const chip = status === 'pending' ? '<span class="gs-hd-chip is-grey">Waiting</span>' : status === 'declined' ? '<span class="gs-hd-chip is-rose">Can\'t come</span>' : '';
+    const chip = e.guest ? '<span class="gs-hd-chip is-grey">Guest</span>' : status === 'pending' ? '<span class="gs-hd-chip is-grey">Waiting</span>' : status === 'declined' ? '<span class="gs-hd-chip is-rose">Can\'t come</span>' : '';
     const me = !!(myPersonId && e.personId && e.personId === myPersonId);
     return '<li class="gs-rb-row' + (me ? ' is-you' : '') + '">' + G.ui.specIconHtml(e.class, e.spec, 20) + '<span class="gs-rb-id"><span class="gs-rb-nm">' + G.ui.classNameHtml(e.name, e.class) + '</span>' +
       (e.spec ? '<span class="gs-rb-sp">' + esc(e.spec) + '</span>' : '') + '</span>' + (chip ? '<span class="gs-rb-chips">' + chip + '</span>' : '') + (me ? '<span class="gs-you">You</span>' : '') + '</li>';
@@ -53,7 +53,7 @@
 
   function countsText(c) {
     const x = c || {};
-    return (x.confirmed || 0) + ' confirmed, ' + (x.pending || 0) + ' waiting' + (x.declined ? ', ' + x.declined + ' can\'t come' : '');
+    return (x.confirmed || 0) + ' confirmed, ' + (x.pending || 0) + ' waiting' + (x.declined ? ', ' + x.declined + ' can\'t come' : '') + (x.guests ? ', ' + x.guests + ' guests' : '');
   }
 
   // Whether the line-up can be published now (the raid page's More menu offers it too): an officer, a raid that has not started, a plan, nothing published yet.

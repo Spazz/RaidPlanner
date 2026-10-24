@@ -432,6 +432,7 @@ export async function guestSignup(ctx) {
         .bind(raid.id, name, stored.kind, stored.standby, raidHelperClassName(manual.classId), raidHelperSpecKey(manual.classId, manual.spec), guild.id, manual.note, ctx.session.user.id, now, now, raid.id),
       raidAudit(ctx, guildContext, 'signup.guest', raid.id, null, { name, class: manual.classId }, CHANGED_ONE),
     ]);
+    await recomputeIfEvidence(ctx, guild, raid);
     return jsonResponse(await buildView(ctx, guildContext, raid));
   }
   const results = await db.batch([
@@ -445,6 +446,7 @@ export async function guestSignup(ctx) {
     raidAudit(ctx, guildContext, 'signup.guest_resolve', raid.id, null, { signupId: body.signupId, name }, CHANGED_ONE),
   ]);
   if (!results[0].meta.changes) throw new HttpError(409, 'already_linked', 'That sign-up has changed. Refresh and try again.');
+  await recomputeIfEvidence(ctx, guild, raid);
   return jsonResponse(await buildView(ctx, guildContext, raid));
 }
 

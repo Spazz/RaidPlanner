@@ -1,3 +1,4 @@
+import { guestIdentityStatement, guestKeysFor } from './guest-identity.js';
 // Loot I/O: the policy rows and resolver, the viewer's access to a team's loot, the match of an award's winner to a character,
 // a guest or nobody (done on READ, so linking a name fixes past awards), and the award view every loot route answers with.
 // The pure modules (loot-policy / loot-import / loot-metrics) never see the database.
@@ -93,7 +94,7 @@ export function matchStatements(db, guildId, nameKeys) {
       `SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters
         WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT value FROM json_each(?2)))`,
     ).bind(guildId, JSON.stringify([...new Set(nameKeys.filter((key) => key !== null))])),
-    db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guildId),
+    guestIdentityStatement(db, guildId),
   ];
 }
 
@@ -103,7 +104,7 @@ export function matchStatements(db, guildId, nameKeys) {
 export function makeMatcher(characterRows, guestRows) {
   const byKey = new Map(characterRows.map((row) => [keyOf(row.name_key, row.realm_key), row]));
   const byPlayer = groupBy(characterRows, 'player_id');
-  const guests = new Set(guestRows.map((row) => keyOf(row.name_key, row.realm_key)));
+  const guestsByRaid = new Map();
   return (award) => {
     if (award.winner_name_key === null) return { match: { kind: 'disenchanted' }, characterClass: null };
     const key = keyOf(award.winner_name_key, award.winner_realm_key);
@@ -117,7 +118,8 @@ export function makeMatcher(characterRows, guestRows) {
         characterClass: character.class,
       };
     }
-    return { match: { kind: guests.has(key) ? 'guest' : 'unmatched' }, characterClass: null };
+    if (!guestsByRaid.has(award.raid_id)) guestsByRaid.set(award.raid_id, guestKeysFor(guestRows, award.raid_id));
+    return { match: { kind: guestsByRaid.get(award.raid_id).has(key) ? 'guest' : 'unmatched' }, characterClass: null };
   };
 }
 

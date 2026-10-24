@@ -1,3 +1,4 @@
+import { guestIdentityStatement, guestKeysFor } from '../guest-identity.js';
 // Needs attention: GET /attention reads everything the guild home page lists in ONE batch (a handful of guild-wide statements, not one per
 // team) and hands it to worker/attention.js. For officers and team leads (anyone holding review, roster, raid or loot editing for a team);
 // each kind of item is limited to the teams the viewer holds the matching right for.
@@ -97,7 +98,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, weekSignups, weekRoster, weekCharacters, weekLate, onboarding] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, weekSignups, weekRoster, weekCharacters, weekLate, guestIdentities, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -178,7 +179,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     bind(
       `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, COUNT(*) AS n
          FROM raid_roster rr JOIN raids r ON r.id = rr.raid_id
-        WHERE r.guild_id = ? AND r.starts_at > ? AND r.starts_at <= ? AND r.roster_published_at IS NOT NULL AND rr.status = 'pending'
+        WHERE r.guild_id = ? AND r.starts_at > ? AND r.starts_at <= ? AND r.roster_published_at IS NOT NULL AND rr.status = 'pending' AND rr.player_id IS NOT NULL
         GROUP BY r.id ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
       now, now + CONFIRM_HOURS * 3600000,
     ),
@@ -216,7 +217,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind IN ('signed', 'late')) AS n_in,
               (SELECT COUNT(*) FROM raid_roster rr WHERE rr.raid_id = r.id AND rr.status = 'confirmed') AS confirmed,
               (SELECT COUNT(*) FROM raid_roster rr WHERE rr.raid_id = r.id AND rr.status = 'declined') AS declined,
-              (SELECT COUNT(*) FROM raid_roster rr WHERE rr.raid_id = r.id AND rr.status = 'pending') AS pending
+              (SELECT COUNT(*) FROM raid_roster rr WHERE rr.raid_id = r.id AND rr.status = 'pending' AND rr.player_id IS NOT NULL) AS pending
          FROM raids r WHERE r.guild_id = ?1 AND r.raid_on >= ?2 AND r.raid_on <= ?3 ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
       weekFrom, weekTo,
     ),
@@ -242,6 +243,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
         WHERE guild_id = ?1 AND kind = 'late' AND starts_on <= ?3 AND (ends_on IS NULL OR ends_on >= ?2) LIMIT ${READ_CAP}`,
       weekFrom, weekTo,
     ),
+    guestIdentityStatement(db, guild.id),
     // The setup checklist's flags, for the people who set the guild up (no statement for anyone else: `onboarding` is then undefined).
     ...[onboardingStatement(db, guildContext)].filter(Boolean),
   ]);
@@ -294,7 +296,11 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     allowsTeam: (action, teamId) => allows(can, action, teamId),
     granted: (action) => isGranted(can[action]),
     flaggedRaids: flagged.results,
-    lootUnmatched: lootUnmatched.results,
+    lootUnmatched: lootUnmatched.results.map(row => {
+      const known = guestKeysFor(guestIdentities.results, row.raid_id);
+      const keys = String(row.keys || '').split(',').filter(key => key && !known.has(key));
+      return { ...row, names: keys.length, keys: keys.join(',') };
+    }).filter(row => row.names > 0),
     signupUnmatched: signupUnmatched.results,
     claims: claims.results[0] ? claims.results[0].n : 0,
     trials: trials.results,

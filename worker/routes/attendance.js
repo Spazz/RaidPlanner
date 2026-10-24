@@ -1,3 +1,4 @@
+import { guestIdentityStatement, guestKeysFor } from '../guest-identity.js';
 // Attendance: the policy and Warcraft Logs settings, the review queue and decisions, unmatched characters, the team page,
 // person history and the backfill list. Raids themselves are in raids.js.
 import { HttpError, cleanText, jsonResponse } from '../http.js';
@@ -223,7 +224,7 @@ export async function getReview(ctx) {
     bind(`SELECT name_key, realm_key FROM characters WHERE guild_id = ?1 AND name_key IN
             (SELECT name_key FROM raid_presence WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)
              UNION SELECT name_key FROM raid_manual_names WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0))`),
-    ctx.db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
+    guestIdentityStatement(ctx.db, guild.id),
     bind(`SELECT id, team_id, policy_fp, log_mode, open_flags, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id = ?2`),
     policyRowsStatement(ctx.db, guild.id),
@@ -242,7 +243,7 @@ export async function getReview(ctx) {
   const rowsByRaid = groupBy(rowResult.results, 'raid_id');
   const presenceByRaid = groupBy(presenceResult.results, 'raid_id');
   const characterKeys = new Set(knownResult.results.map((row) => presenceKey(row.name_key, row.realm_key)));
-  const guestKeys = new Set(guestResult.results.map((row) => presenceKey(row.name_key, row.realm_key)));
+  const guests = guestResult.results;
   const stale = allRaidResult.results
     .filter((raid) => isStale(raidState(raid, raid.reports, resolver)))
     .map((raid) => raid.id);
@@ -262,10 +263,10 @@ export async function getReview(ctx) {
         pulls: { present: row.pulls_present, total: row.pulls_total, missedFirst: row.missed_first === 1, missedLast: row.missed_last === 1 },
       };
     }).sort((a, b) => a.name.localeCompare(b.name) || a.playerId.localeCompare(b.playerId));
-    const unmatched = findUnmatched(presenceByRaid.get(raid.id) || [], characterKeys, guestKeys).map((entry) => ({ kind: 'unmatched', ...entry }));
+    const unmatched = findUnmatched(presenceByRaid.get(raid.id) || [], characterKeys, guestKeysFor(guests, raid.id)).map((entry) => ({ kind: 'unmatched', ...entry }));
     return { raid: { id: raid.id, raidOn: raid.raid_on, zone: raid.zone, openFlags: raid.open_flags, stale: staleIds.has(raid.id) }, items: [...people, ...unmatched] };
   });
-  return jsonResponse({ team: { id: team.id, name: team.name }, raids, stale, lootUnmatched: lootUnmatchedGroups(guildContext, team.id, lootResult.results) });
+  return jsonResponse({ team: { id: team.id, name: team.name }, raids, stale, lootUnmatched: lootUnmatchedGroups(guildContext, team.id, lootResult.results.filter(row => !guestKeysFor(guests, row.raid_id).has(presenceKey(row.name_key, row.realm_key)))) });
 }
 
 // The loot winners nobody matches, newest raid first: [{ raid: { id, raidOn, zone }, items: [{ kind: 'unmatched', key, name, realm, class, awards }] }].

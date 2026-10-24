@@ -236,7 +236,10 @@ check('Home and Raids: what the scheduler found - an event on another day, a web
   s.world.db.sqlite.prepare("UPDATE raids SET event_id = '123456789', event_server = ?, event_synced = ?, event_checked_at = ?, event_moved_on = '2026-10-19' WHERE id = ?").run(SERVER, synced, synced, rid);
   await A.api.put(`${s.base}/teams/${s.teamId}/notifications`, { webhookUrl: HOOK, reminders: true });
   s.world.db.sqlite.prepare("UPDATE team_notifications SET webhook_state = 'disabled', disabled_at = ?, disabled_status = 404").run(NOW);
-  s.world.db.sqlite.prepare("INSERT INTO raid_roster (raid_id, guild_id, name_key, name, group_number, status, seq) VALUES (?, ?, 'aldric', 'Aldric', 1, 'pending', 0), (?, ?, 'bryn', 'Bryn', 1, 'pending', 1)").run(rid, s.gid, rid, s.gid);
+  for (const name of ['Aldric', 'Bryn']) {
+    const member = await A.api.post(`${s.base}/roster`, { teamId: s.teamId, name, class: 'WARRIOR', mainSpec: 'Arms', status: 'raider' });
+    s.world.db.sqlite.prepare("INSERT INTO raid_roster (raid_id, guild_id, name_key, name, player_id, group_number, status) VALUES (?, ?, ?, ?, ?, 1, 'pending')").run(rid, s.gid, name.toLowerCase(), name, member.person.id);
+  }
   s.world.db.sqlite.prepare('UPDATE raids SET roster_published_at = ? WHERE id = ?').run(NOW - 3600000, rid);
   s.world.clock.now = startsAt - 5 * 3600000; // 5 h before the start: the confirm count is open
   // Home.

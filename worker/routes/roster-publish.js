@@ -28,19 +28,24 @@ async function rosterReply(ctx, guildContext, raid) {
     const seat = published && own ? rosterResult.results.find((row) => row.player_id === own.id) : null;
     return { published, publishedAt: published ? raid.roster_published_at : null, mine: seat ? { group: seat.group_number, name: seat.name, class: seat.class, spec: seat.spec, status: seat.status } : null };
   }
-  const [rosterResult, planResult, userResult] = await db.batch([
+  const [rosterResult, planResult, userResult, guestResult] = await db.batch([
     rosterSql,
     db.prepare('SELECT name_key, group_number FROM raid_plan WHERE raid_id = ?').bind(raid.id),
     db.prepare('SELECT display_name, global_name, username FROM users WHERE id = ?').bind(raid.roster_published_by || ''),
+    db.prepare("SELECT nickname, guest, class_name, spec_name FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1").bind(raid.id),
   ]);
+  const guestSeats = new Map(buildSeats({ plan: rosterResult.results.filter(row => !row.player_id), characters: [], signups: guestResult.results, teamId: raid.team_id }).filter(row => row.guest).map(row => [row.nameKey, row]));
+  const entries = rosterResult.results.map(row => {
+    const guest = guestSeats.get(row.name_key);
+    return { name: row.name, personId: row.player_id, class: guest ? guest.className : row.class, spec: guest ? guest.spec : row.spec, group: row.group_number,
+      status: guest ? 'guest' : row.status, respondedAt: row.responded_at, ...(guest ? { guest: true } : {}) };
+  });
   return {
     published,
     publishedAt: published ? raid.roster_published_at : null,
     publishedBy: published ? userName(userResult.results[0]) : null,
-    entries: rosterResult.results.map((row) => ({
-      name: row.name, personId: row.player_id, class: row.class, spec: row.spec, group: row.group_number, status: row.status, respondedAt: row.responded_at,
-    })),
-    counts: rosterCounts(rosterResult.results),
+    entries,
+    counts: rosterCounts(entries),
     planChanged: published && planChanged(rosterResult.results, planResult.results),
     // Whether publishing also posts to the team's Discord channel (a usable webhook with line-up posts on): the raid page's Publish question says who is told.
     discordPost: await announcesToDiscord(ctx, raid),
@@ -78,7 +83,7 @@ export async function publishRoster(ctx) {
       `SELECT id, player_id, name_key, class, main_spec, is_main, team_id FROM characters
         WHERE guild_id = ? AND name_key IN (SELECT name_key FROM raid_plan WHERE raid_id = ?)`,
     ).bind(guild.id, raid.id),
-    db.prepare("SELECT player_id, source, spec_name FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND player_id IS NOT NULL").bind(raid.id),
+    db.prepare("SELECT player_id, source, spec_name, class_name, nickname, guest FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND (player_id IS NOT NULL OR guest = 1)").bind(raid.id),
     db.prepare('SELECT name_key, group_number FROM raid_roster WHERE raid_id = ?').bind(raid.id),
   ]);
   if (!planResult.results.length) throw new HttpError(409, 'no_plan', 'This raid has no plan yet. Save the plan from the Planner first.');
