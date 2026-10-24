@@ -11,6 +11,7 @@ import { AWARD_SELECT, lootAccess, lootPolicyRowsStatement, makeLootPolicyResolv
 import { allows, loadGuildContext } from '../permissions.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { allowsSurname, cleanCharacterName, nameKey, realmKey } from '../roster-data.js';
+import { signUpClassId } from '../signups-data.js';
 import { loadRaid } from './raids.js';
 import { bad } from './roster.js';
 
@@ -31,7 +32,7 @@ async function boardFor(ctx, guildContext, raid, access) {
   const [listResult, importResult, signupResult, attendanceResult, teamResult, hereResult, earlierResult, namesResult, characterResult] = await db.batch([
     db.prepare('SELECT source, kind, name, name_key, item_id, item_name, prio, copies FROM raid_loot_lists WHERE raid_id = ? ORDER BY source, position').bind(raid.id),
     db.prepare('SELECT source, row_count, imported_at FROM raid_loot_imports WHERE raid_id = ?').bind(raid.id),
-    db.prepare('SELECT source, player_id, kind, standby FROM raid_signups WHERE raid_id = ? AND player_id IS NOT NULL').bind(raid.id),
+    db.prepare('SELECT source, player_id, kind, standby, guest, nickname, class_name, spec_name FROM raid_signups WHERE raid_id = ? AND (player_id IS NOT NULL OR guest = 1)').bind(raid.id),
     db.prepare('SELECT player_id, outcome FROM attendance WHERE raid_id = ? AND guild_id = ?').bind(raid.id, guild.id),
     db.prepare(
       `SELECT p.id AS player_id FROM players p WHERE p.guild_id = ?1 AND p.status != 'inactive'
@@ -66,6 +67,7 @@ async function boardFor(ctx, guildContext, raid, access) {
   const board = buildBoard({
     rows: listResult.results,
     characters,
+    guestClasses: new Map(signupResult.results.filter(row => row.source === 'raidsmith' && row.guest === 1).map(row => [nameKey(row.nickname), signUpClassId(row)])),
     expected: expected.ids,
     receivedKeys: new Set(earlierResult.results.map((row) => `${row.item_id}|${row.winner_name_key}`)),
     itemNames: new Map(namesResult.results.map((row) => [row.item_id, row.item_name])),

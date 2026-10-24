@@ -82,7 +82,7 @@ const BOARD = (over) => Object.assign({
   items: [
     {
       itemId: 28770, itemName: 'Nathrezim Mindblade', contested: true, done: false, omitted: 2, results: [{ winner: 'Aldric', personId: 'p_aldric', tag: 'MS', result: 'top', kind: 'prio' }],
-      line: [e('Aldric', 'aldric', { prio: 1, top: true }), e('Brindle', 'brindle', { prio: 1, top: true, class: 'MAGE' }), e('Pugone', 'pugone', { kind: 'sr', prio: null, copies: 2, guest: true, personId: null, class: null, top: true }), e('Cassia', 'cassia', { kind: 'wish', prio: 2, class: 'PRIEST' })],
+      line: [e('Aldric', 'aldric', { prio: 1, top: true }), e('Brindle', 'brindle', { prio: 1, top: true, class: 'MAGE' }), e('Pugone', 'pugone', { kind: 'sr', prio: null, copies: 2, guest: true, personId: null, class: 'MAGE', top: true }), e('Cassia', 'cassia', { kind: 'wish', prio: 2, class: 'PRIEST' })],
     },
     {
       itemId: 30311, itemName: null, contested: false, done: true, omitted: 0, results: [{ winner: 'Cassia', personId: 'p_cassia', tag: 'MS', result: 'elsewhere', kind: null }, { winner: null, personId: null, tag: 'DE', result: 'disenchanted', kind: null }],
@@ -155,7 +155,7 @@ check('card: players have their own item lists with priority labels, guest tags 
   assert(rows[0].includes('Disenchanted') && !rows[0].includes('Disenchanted:'));
   assert(rows[1].includes('gs-class-mage') && rows[2].includes('gs-class-priest'));
   assert(stripTags(rows[2]).includes('Wish #2'));
-  assert(stripTags(rows[3]).includes('Guest') && stripTags(rows[3]).includes('SR x2'));
+  assert(rows[3].includes('gs-class-mage') && stripTags(rows[3]).includes('Guest') && stripTags(rows[3]).includes('SR x2'));
   assert(stripTags(rows[4]).includes('Prio #3') && !rows[4].includes('Roll-off'));
   const filtered = card(okState({ view: { contested: false, player: 'aldric' } })).split('<li class="gs-board-row').slice(1);
   assert.equal(filtered.length, 1);

@@ -116,7 +116,7 @@ const contestKey = (entry) => (entry.personId ? `p:${entry.personId}` : `n:${ent
 // expected: Set of person ids. receivedKeys: Set of `${itemId}|${nameKey}` the team already awarded on an earlier raid.
 // itemNames: Map itemId -> name (from past awards). awards: the awards of THIS raid { item_id, tag, winner_name, winner_name_key } with `personId` filled in
 // when the winner is a roster character. -> { items, unmatched }
-export function buildBoard({ rows, characters, expected, receivedKeys, itemNames, awards }) {
+export function buildBoard({ rows, characters, guestClasses = new Map(), expected, receivedKeys, itemNames, awards }) {
   const byItem = new Map();
   for (const row of rows) {
     if (!byItem.has(row.item_id)) byItem.set(row.item_id, []);
@@ -147,7 +147,7 @@ export function buildBoard({ rows, characters, expected, receivedKeys, itemNames
         name: character ? character.name : row.name,
         nameKey: row.name_key,
         personId,
-        class: character ? character.class : null,
+        class: character ? character.class : (guestClasses.get(row.name_key) || null),
         kind: row.kind,
         prio: row.kind === 'sr' ? null : row.prio,
         copies: row.copies,

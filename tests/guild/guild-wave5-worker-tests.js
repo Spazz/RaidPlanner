@@ -274,6 +274,21 @@ check('PUT loot-lists: loot.edit only (a member 403, a team lead of another team
   assert.equal(await s.w.count('raid_loot_imports'), 0);
 });
 
+check('GET loot-board: guest class comes from this raid signup and never another raid', async () => {
+  const s = await scenario();
+  const raid = await s.raid('2027-01-20');
+  const other = await s.raid('2027-01-21');
+  const added = await s.call('gm', 'POST', `/raids/${raid}/signups/guest`, { name: 'Pugone', class: 'MAGE', spec: 'Fire', kind: 'signed' });
+  assert.equal(added.status, 200, added.text);
+  for (const rid of [raid, other]) {
+    assert.equal((await s.paste('gm', rid, s.softres([sr('pugone', 28770)]))).status, 200);
+    const board = (await s.board('gm', rid)).json;
+    const entry = board.items[0].line[0];
+    assert.equal(entry.guest, true);
+    assert.equal(entry.class, rid === raid ? 'MAGE' : null);
+  }
+});
+
 check('GET loot-board: the roster is the Raidsmith sign-ups, TMB prio people on it come first, pugs after, a person who is away from the raid is left out', async () => {
   const s = await scenario({ members: ['m1'] });
   const a = await s.person('Aldric');
