@@ -16,7 +16,9 @@
     {
       "binding": "DB",
       "database_name": "raidsmith",
-      "database_id": "local-raidsmith",
+      "database_id": "64d25379-899d-4709-a1e1-e85d2a1c6d52",
+      // Local dev (8787) keeps its D1 file: wrangler keys local state on preview_database_id first.
+      "preview_database_id": "local-raidsmith",
       "migrations_dir": "migrations"
     }
   ]

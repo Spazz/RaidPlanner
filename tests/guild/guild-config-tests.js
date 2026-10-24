@@ -116,7 +116,7 @@ check('wrangler.jsonc: Worker entry, assets, run_worker_first covers every Worke
   assert(!reaches(first.filter((glob) => glob !== '/auth/*'), '/auth/login'));
   assert(!reaches(first.filter((glob) => glob !== '/api/roadmap/*'), '/api/roadmap/ideas'));
   assert(reaches(['/*'], '/index.html') && !reaches(['/api/guild'], '/api/guild/g1'));
-  assert.deepEqual(config.d1_databases, [{ binding: 'DB', database_name: 'raidsmith', database_id: 'local-raidsmith', migrations_dir: 'migrations' }]);
+  assert.deepEqual(config.d1_databases, [{ binding: 'DB', database_name: 'raidsmith', database_id: '64d25379-899d-4709-a1e1-e85d2a1c6d52', preview_database_id: 'local-raidsmith', migrations_dir: 'migrations' }]);
   assert.equal(config.vars, undefined);
   assert.equal(fs.existsSync(path.join(ROOT, 'worker', 'index.js')), true);
   assert.deepEqual(JSON.parse(read('worker/package.json')), { type: 'module' });

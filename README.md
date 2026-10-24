@@ -150,7 +150,7 @@ One Cloudflare Worker serves everything (`wrangler.jsonc`): the static files fro
 
 ## Guild tracker (local)
 
-The guild tracker (the shell in `js/guild/` and `guild.css`, loaded by `index.html`, `faq.html` and `whats-new.html`; the Worker in `worker/`, D1 migrations in `migrations/`) runs on Cloudflare's Wrangler (`wrangler.jsonc` still carries the local D1 id `local-raidsmith` until the first deploy).
+The guild tracker (the shell in `js/guild/` and `guild.css`, loaded by `index.html`, `faq.html` and `whats-new.html`; the Worker in `worker/`, D1 migrations in `migrations/`) runs on Cloudflare's Wrangler (`wrangler.jsonc` holds the live D1 id; local dev keeps `preview_database_id` `local-raidsmith`).
 
 **Run it.** Node 22 or newer. Fill `.env` from `.env.example` (names only; `.env` is never committed or served), then:
 
