@@ -30,7 +30,11 @@ const PEOPLE = {
 const NOW = Date.parse('2026-10-17T16:00:00Z');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const plain = (value) => JSON.parse(JSON.stringify(value));
-const settle = async () => { for (let i = 0; i < 40; i++) await new Promise((resolve) => setImmediate(resolve)); };
+// The Planners' requests still in flight. The Worker signs sessions with crypto.subtle (thread pool, real time), so a fixed number of turns
+// is not enough on a slow machine (the Cloudflare build): settle until no request is pending.
+const inflight = new Set();
+const turns = async () => { for (let i = 0; i < 40; i++) await new Promise((resolve) => setImmediate(resolve)); };
+const settle = async () => { await turns(); while (inflight.size) { await Promise.allSettled([...inflight]); await turns(); } };
 
 // ---------------------------------------------------------------------------
 // The Worker side (as guild-wave2-contract-tests.js): one app over one D1, a cookie jar per signed-in person
@@ -166,7 +170,13 @@ function plannerFor(world, jar) {
     __env: env, localStorage: env.storage, document,
     window: { location, localStorage: env.storage, addEventListener() {}, Guild: { api: guildApi, router: G.router, planSource: G.planSource } },
     history: { replaceState() {} }, navigator: {},
-    fetch: async (url, init = {}) => { env.calls.push({ url: String(url), method: init.method || 'GET' }); return f(url, init); },
+    fetch: (url, init = {}) => {
+      env.calls.push({ url: String(url), method: init.method || 'GET' });
+      const request = f(url, init);
+      inflight.add(request);
+      request.then(() => inflight.delete(request), () => inflight.delete(request));
+      return request;
+    },
     setTimeout: (fn, ms) => { const id = env.nextTimer++; env.timers.push({ id, at: env.now + ms, fn }); return id; },
     clearTimeout: (id) => { env.timers = env.timers.filter((t) => t.id !== id); },
     setInterval: () => 0,
