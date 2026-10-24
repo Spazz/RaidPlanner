@@ -103,6 +103,41 @@
       '<ol class="gs-board-line" aria-label="In line">' + item.line.map(entryHtml).join('') + '</ol>' + omitted + resultsHtml(item) + '</li>';
   }
 
+  // Group the filtered items under their players, keeping each item's priority and outcome visible.
+  function playerListHtml(gd, items, view) {
+    const groups = new Map();
+    items.forEach(function (item) {
+      item.line.forEach(function (entry) {
+        if (view.player && entry.nameKey !== view.player) return;
+        if (!groups.has(entry.nameKey)) groups.set(entry.nameKey, { entry: entry, items: [] });
+        const rows = groups.get(entry.nameKey).items;
+        const existing = rows.find(function (row) { return row.item.itemId === item.itemId; });
+        if (existing) existing.entries.push(entry);
+        else rows.push({ item: item, entry: entry, entries: [entry] });
+      });
+    });
+    return Array.from(groups.values()).sort(function (a, b) { return a.entry.name.localeCompare(b.entry.name, 'en'); }).map(function (group) {
+      const e = group.entry;
+      const rows = group.items.sort(function (a, b) {
+        const kinds = { prio: 0, wish: 1, sr: 2 };
+        return (kinds[a.entry.kind] || 0) - (kinds[b.entry.kind] || 0) ||
+          (a.entry.prio == null ? Infinity : a.entry.prio) - (b.entry.prio == null ? Infinity : b.entry.prio) ||
+          (a.item.itemName || '').localeCompare(b.item.itemName || '', 'en');
+      }).map(function (row) {
+        const item = row.item;
+        const entry = row.entry;
+        return '<li class="gs-board-player-item' + (entry.received ? ' is-received' : '') + '"><div class="gs-board-item">' +
+          row.entries.map(function (e) { return '<span class="gs-board-tag">' + esc(entryLabel(e)) + '</span>'; }).join('') +
+          L().itemHtml({ itemId: item.itemId, itemName: item.itemName, quality: null }, gd.guild.gameVersion) +
+          (item.contested ? '<span class="gs-hd-chip is-grey">Roll-off</span>' : '') +
+          (entry.received ? '<span class="gs-hd-chip is-grey">Already got it</span>' : '') +
+          (item.done ? '<span class="gs-hd-chip is-grey">All have it</span>' : '') + '</div>' + resultsHtml(item) + '</li>';
+      }).join('');
+      return '<li class="gs-board-row gs-board-player"><h3 class="gs-board-player-name">' + G.ui.classNameHtml(e.name, e.class) +
+        (e.guest ? ' <span class="gs-hd-chip is-grey">Guest</span>' : '') + '</h3><ul class="gs-board-player-items" aria-label="Items for ' + esc(e.name) + '">' + rows + '</ul></li>';
+    }).join('');
+  }
+
   // One summary line per list: what was pasted when (with Remove for an editor), or "not pasted".
   function sourceLineHtml(data, k, edit) {
     const l = (data.lists || {})[k];
@@ -215,7 +250,7 @@
     if (!shown.length) {
       list = '<p class="gs-empty">No item matches these filters.</p>';
     } else {
-      list = '<ul class="gs-board-list" aria-label="Items and who is in line">' + shown.map(function (item) { return rowHtml(gd, item); }).join('') + '</ul>' +
+      list = '<ul class="gs-board-list" aria-label="Players and their loot priorities">' + playerListHtml(gd, shown, view) + '</ul>' +
         (shown.length < data.items.length ? '<p class="gs-fine">' + esc('Showing ' + shown.length + ' of ' + data.items.length + ' items.') + '</p>' : '');
     }
     const unmatched = (data.unmatched || []).length

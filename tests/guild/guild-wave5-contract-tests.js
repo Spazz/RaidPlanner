@@ -230,9 +230,9 @@ check('Loot board: an officer pastes the TMB and softres exports through the rea
   assert(text.includes('Loot prios') && text.includes('2 items'), text.slice(0, 300));
   assert(/TMB prios\s*:\s*6 rows, pasted/.test(text) && /Soft-reserves\s*:\s*not pasted/.test(text));
   assert(text.includes('In line: the 2 people signed up, placed or present on this raid.'));
-  assert(text.includes('Prio #1 Aldric') && text.includes('Already got it'), 'the sword Aldric got on 2026-10-10 is greyed');
+  assert(text.includes('Aldric') && text.includes('Prio #1') && text.includes('Already got it'), 'the sword Aldric got on 2026-10-10 is greyed');
   assert(text.includes('Nathrezim Mindblade'), 'the item is named from the guild\'s own award history');
-  assert(text.includes('Item 30311') && text.includes('Prio #1 Brindle'));
+  assert(text.includes('Item 30311') && text.includes('Brindle') && text.includes('Prio #1'));
   assert(text.includes('2 TMB names are not on the roster') === false && text.includes('1 TMB name is not on the roster') && text.includes('Zorgax'), text);
   assert(!page.html().includes('is-contested'), 'Aldric already has it, so Brindle is alone at the top');
 
@@ -246,12 +246,16 @@ check('Loot board: an officer pastes the TMB and softres exports through the rea
   assert(/Soft-reserves\s*:\s*3 rows, pasted/.test(text));
   const html = page.html();
   const rows = html.split('<li class="gs-board-row').slice(1);
-  assert.equal(rows.length, 2);
-  const sword = rows.find((r) => r.includes('Nathrezim Mindblade'));
-  const staff = rows.find((r) => r.includes('Item 30311'));
-  assert(sword.includes('is-contested') && stripTags(sword).includes('Roll-off'), 'Brindle (prio 1) and a pug on the sword: a roll-off');
-  assert(stripTags(sword).includes('Prio #1 Aldric Already got it Prio #1 Brindle SR x2 Pugone Guest'));
-  assert(staff.includes('is-contested') && stripTags(staff).includes('Prio #1 Brindle SR Brindle SR Pugone Guest'), 'Brindle on both lists counts once, the pug makes the second');
+  assert.equal(rows.length, 3);
+  const aldricRow = rows.find(r => r.includes('Items for Aldric'));
+  const brindleRow = rows.find(r => r.includes('Items for Brindle'));
+  const pugRow = rows.find(r => r.includes('Items for Pugone'));
+  assert(aldricRow.includes('Nathrezim Mindblade') && aldricRow.includes('Already got it'));
+  assert(brindleRow.includes('Roll-off') && brindleRow.includes('Nathrezim Mindblade') && brindleRow.includes('Item 30311'));
+  assert.equal((brindleRow.match(/class="gs-board-player-item[" ]/g) || []).length, 2, 'one item row even when both prio and SR apply');
+  assert(stripTags(brindleRow).includes('Prio #1') && stripTags(brindleRow).includes('SR'));
+  assert(pugRow.includes('Guest') && stripTags(pugRow).includes('SR x2') && pugRow.includes('Item 30311'));
+
 
   // A member of the team sees the board, but no paste controls; the Worker refuses her paste.
   const memberPage = await openRaid(s, E, up);

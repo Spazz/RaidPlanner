@@ -141,22 +141,25 @@ check('api: board, saveList, manual and teamRoster hit the contract paths with t
 });
 
 // ── the card ─────────────────────────────────────────────────────
-check('card: one row per item with the line in order, roll-off and "All have it" pills, SR copies, guest and "Already got it" chips, and where it went', () => {
+check('card: players have their own item lists with priority labels, guest tags and award results', () => {
   const out = card(okState());
   const text = stripTags(out);
   assert(out.includes('id="board-h"') && text.includes('Loot prios') && text.includes('3 items, 1 roll-off'));
   const rows = out.split('<li class="gs-board-row').slice(1);
-  assert.equal(rows.length, 3);
-  assert(rows[0].includes('is-contested') && rows[0].includes('Roll-off') && !rows[0].includes('All have it'));
-  assert(rows[0].includes('href="https://www.wowhead.com/tbc/item=28770"') && rows[0].includes('>Nathrezim Mindblade<'));
-  const line0 = stripTags(rows[0].slice(rows[0].indexOf('<ol'), rows[0].indexOf('</ol>')));
-  assert.equal(line0, 'Prio #1 Aldric Prio #1 Brindle SR x2 Pugone Guest Wish #2 Cassia');
-  assert(rows[0].includes('gs-class-warrior') && rows[0].includes('gs-class-mage') && rows[0].includes('gs-class-priest'));
-  assert(rows[0].includes('2 more are in line but not on this raid.'));
-  assert(rows[0].includes('Went to prio #1: Aldric'));
-  assert(rows[1].includes('is-done') && rows[1].includes('All have it') && rows[1].includes('is-received') && rows[1].includes('Already got it') && rows[1].includes('>Item 30311<'));
-  assert(rows[1].includes('Went elsewhere: Cassia') && rows[1].includes('Disenchanted') && !rows[1].includes('Disenchanted:'));
-  assert(stripTags(rows[2]).includes('Prio #3 Thoren') && !rows[2].includes('Roll-off') && !rows[2].includes('is-contested'));
+  assert.equal(rows.length, 5);
+  const names = ['Aldric', 'Brindle', 'Cassia', 'Pugone', 'Thoren'];
+  rows.forEach((row, i) => assert(row.includes('aria-label="Items for ' + names[i] + '"')));
+  assert(rows[0].includes('>Nathrezim Mindblade<') && rows[0].includes('>Item 30311<'));
+  assert(rows[0].includes('Roll-off') && rows[0].includes('Already got it') && rows[0].includes('All have it'));
+  assert(rows[0].includes('Went to prio #1: Aldric') && rows[0].includes('Went elsewhere: Cassia'));
+  assert(rows[0].includes('Disenchanted') && !rows[0].includes('Disenchanted:'));
+  assert(rows[1].includes('gs-class-mage') && rows[2].includes('gs-class-priest'));
+  assert(stripTags(rows[2]).includes('Wish #2'));
+  assert(stripTags(rows[3]).includes('Guest') && stripTags(rows[3]).includes('SR x2'));
+  assert(stripTags(rows[4]).includes('Prio #3') && !rows[4].includes('Roll-off'));
+  const filtered = card(okState({ view: { contested: false, player: 'aldric' } })).split('<li class="gs-board-row').slice(1);
+  assert.equal(filtered.length, 1);
+  assert(filtered[0].includes('Items for Aldric'));
   assert(/TMB prios\s*:\s*12 rows, pasted/.test(text) && /Soft-reserves\s*:\s*not pasted/.test(text));
   assert(text.includes('In line: the 3 people signed up, placed or present on this raid.'));
   assert(text.includes('1 TMB name is not on the roster') && out.includes('Zed'));
