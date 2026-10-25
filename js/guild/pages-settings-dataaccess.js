@@ -79,8 +79,9 @@
       body = '<p class="gs-fine" id="dkeys-intro">' + esc(INTRO) + ' The key is shown once, when you make it. Turn a key off at any time and it stops working at once.' +
         (limits.perHour ? ' Each key can be used ' + esc(String(limits.perHour)) + ' times an hour.' : '') + '</p>' +
         (keys.length
-          ? '<div class="gs-table-wrap gs-hd-panel"><table class="gs-table gs-table-stack gs-table-guests" aria-label="Data keys"><thead><tr><th scope="col">Key</th><th scope="col">Reads</th><th scope="col">Status</th><th scope="col">Used</th><th scope="col">Ends</th>' +
-            '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + keys.map(keyRowHtml).join('') + '</tbody></table></div>'
+          ? '<div class="gs-table-wrap gs-hd-panel"><table class="gs-table gs-table-stack gs-table-guests" aria-label="Data keys"><thead><tr>' + G.ui.sortThHtml('dkeys', 'key', 'Key') + '' + G.ui.sortThHtml('dkeys', 'reads', 'Reads') + '' + G.ui.sortThHtml('dkeys', 'status', 'Status') + '' + G.ui.sortThHtml('dkeys', 'used', 'Used') + '' + G.ui.sortThHtml('dkeys', 'ends', 'Ends') + '' +
+            '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + G.ui.sortItems('dkeys', keys, { key: function (k) { return k.name; }, reads: function (k) { return k.team ? k.team.name : 'Whole guild'; }, status: function (k) { return k.status; }, used: function (k) { return Number(k.uses) || 0; },
+              ends: function (k) { return k.status === 'revoked' ? k.revokedAt : k.expiresAt; } }).map(keyRowHtml).join('') + '</tbody></table></div>'
           : '<p class="gs-empty gs-hd-panel" id="dkeys-empty">No data keys yet.</p>');
     }
     return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions">' + head + '</div>' +

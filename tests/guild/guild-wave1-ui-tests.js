@@ -272,7 +272,7 @@ function withState(fn) {
     assert(out.includes('<pre class="gs-audit-json">Before\n{\n  &quot;status&quot;: &quot;raider&quot;\n}\n\nAfter\n{\n  &quot;status&quot;: &quot;reserve&quot;\n}</pre>'), out.slice(out.indexOf('<pre'), out.indexOf('</pre>') + 6));
     assert(out.includes('Action: person.update'));
     assert(out.includes('<table class="gs-table gs-table-audit" aria-label="Activity log">') && out.includes('<ul class="gs-roster-cards gs-audit-cards gs-hd-panel" aria-label="Activity log">') && out.includes('<li class="gs-roster-card">'));
-    assert(out.includes('<th scope="col">When</th><th scope="col">Who</th><th scope="col">What</th>'));
+    assert(/<th scope="col" aria-sort="none"><button[^>]*data-sort="when"[^>]*>When[\s\S]*<button[^>]*data-sort="who"[^>]*>Who[\s\S]*<button[^>]*data-sort="what"[^>]*>What/.test(out));
     assert(out.includes('Showing 1 entry, newest first.'));
     assert(!out.includes('data-action="audit-older"'));
     assert(out.includes('(America/New_York)'));

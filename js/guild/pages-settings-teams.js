@@ -19,6 +19,11 @@
     return leads.map(function (p) { return '<span class="gs-lead-name">' + esc(p.displayName) + '</span>'; }).join(', ');
   }
 
+  const TEAM_SORT = {
+    team: function (t) { return t.name; }, size: function (t) { return t.size; }, players: function (t) { return t.players == null ? 0 : t.players; },
+    lead: function (t) { return (Array.isArray(t.leads) ? t.leads : []).map(function (p) { return p.displayName; }).join(', '); },
+  };
+
   function activeRow(team, canEdit) {
     const actions = teamActionsHtml(team, canEdit);
     return '<tr><th scope="row" class="gs-cell-strong">' + esc(team.name) + '</th><td>' + esc(team.size) + '-man</td><td>' + esc(team.players == null ? 0 : team.players) + '</td><td>' + leadsText(team) +
@@ -83,9 +88,9 @@
       (canEdit ? '<button type="button" class="gs-btn gs-btn-molten" data-action="team-add" data-key="team-add">Add team</button>' : '') + '</div>' +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       (active.length
-        ? '<div class="gs-table-wrap gs-hd-panel gs-teams-table"><table class="gs-table gs-table-teams" aria-label="Teams"><thead><tr><th scope="col">Team</th><th scope="col">Size</th><th scope="col">Players</th><th scope="col">Team Lead</th><th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' +
-          active.map(function (t) { return activeRow(t, canEdit); }).join('') + '</tbody></table></div>' +
-          '<ul class="gs-team-cards" aria-label="Teams">' + active.map(function (t) { return activeCard(t, canEdit); }).join('') + '</ul>'
+        ? '<div class="gs-table-wrap gs-hd-panel gs-teams-table"><table class="gs-table gs-table-teams" aria-label="Teams"><thead><tr>' + G.ui.sortThHtml('settings-teams', 'team', 'Team') + '' + G.ui.sortThHtml('settings-teams', 'size', 'Size') + '' + G.ui.sortThHtml('settings-teams', 'players', 'Players') + '' + G.ui.sortThHtml('settings-teams', 'lead', 'Team Lead') + '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' +
+          G.ui.sortItems('settings-teams', active, TEAM_SORT).map(function (t) { return activeRow(t, canEdit); }).join('') + '</tbody></table></div>' +
+          '<ul class="gs-team-cards" aria-label="Teams">' + G.ui.sortItems('settings-teams', active, TEAM_SORT).map(function (t) { return activeCard(t, canEdit); }).join('') + '</ul>'
         : '<p class="gs-empty">No active teams.' + (canEdit ? ' Add a team to get started.' : '') + '</p>') +
       '<p class="gs-fine">' + esc(NOTE) + '</p>' +
       (archived.length

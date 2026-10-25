@@ -94,10 +94,11 @@
 
   function listHtml(s) {
     const c = counts(s.preview, s.view, s.ticked);
-    const shown = visibleRows(s.preview, s.view);
+    const shown = G.ui.sortItems('bnet-import', visibleRows(s.preview, s.view), { character: function (r) { return r.name; }, class: function (r) { return G.ui.className(r.class); },
+      level: function (r) { return r.level; }, rank: function (r) { return r.rank; }, note: function (r) { return r.status; } });
     const table = shown.length
       ? '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import gs-table-bnet-import" aria-label="Guild members"><thead><tr><th scope="col"><label class="gs-tick"><input type="checkbox" id="bnet-tick-all" data-change="bnet-tick-all" data-key="bnet-tick-all" aria-label="Select all shown"' +
-        (c.allShownTicked ? ' checked' : '') + (c.addable ? '' : ' disabled') + '></label></th><th scope="col">Character</th><th scope="col">Class</th><th scope="col">Level</th><th scope="col">Rank</th><th scope="col">Note</th></tr></thead><tbody>' +
+        (c.allShownTicked ? ' checked' : '') + (c.addable ? '' : ' disabled') + '></label></th>' + G.ui.sortThHtml('bnet-import', 'character', 'Character') + '' + G.ui.sortThHtml('bnet-import', 'class', 'Class') + '' + G.ui.sortThHtml('bnet-import', 'level', 'Level') + '' + G.ui.sortThHtml('bnet-import', 'rank', 'Rank') + '' + G.ui.sortThHtml('bnet-import', 'note', 'Note') + '</tr></thead><tbody>' +
         shown.map(function (row) { return rowHtml(row, s); }).join('') + '</tbody></table></div>'
       : '<p class="gs-empty" id="bnet-none">' + (c.total ? 'No one matches these filters.' : 'Battle.net lists no members for this guild.') + '</p>';
     return table + '<p class="gs-fine" id="bnet-showing">Showing ' + esc(c.shown) + ' of ' + esc(c.total) + '.</p>';

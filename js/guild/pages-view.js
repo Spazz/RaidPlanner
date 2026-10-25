@@ -91,7 +91,7 @@
 
   function raidRows(raids) {
     return raids.map(function (r) {
-      return { cells: { date: esc(G.ui.weekdayDay(r.raidOn)), zone: esc(r.zone), title: r.title ? esc(r.title) : '<span class="gs-muted gs-dash">-</span>' } };
+      return { sort: { date: r.raidOn }, cells: { date: esc(G.ui.weekdayDay(r.raidOn)), zone: esc(r.zone), title: r.title ? esc(r.title) : '<span class="gs-muted gs-dash">-</span>' } };
     });
   }
 
@@ -116,7 +116,7 @@
     return '<p class="gs-fine gs-view-window">' + esc(windowText(entry.window, entry.raids)) + '</p>' +
       (people.length
         ? tableHtml('Attendance of ' + teamName(entry), [{ key: 'name', label: 'Name', primary: true }, { key: 'pct', label: 'Attendance', align: 'right' }, { key: 'counted', label: 'Raids counted' }], people.map(function (p) {
-          return { mark: p.class, cells: { name: G.ui.classNameHtml(p.name, p.class), pct: esc(G.ui.percent(p.pct)), counted: esc(G.ui.plural(Number(p.counted) || 0, 'raid', 'raids') + ' counted') } };
+          return { mark: p.class, sort: { counted: Number(p.counted) || 0 }, cells: { name: G.ui.classNameHtml(p.name, p.class), pct: esc(G.ui.percent(p.pct)), counted: esc(G.ui.plural(Number(p.counted) || 0, 'raid', 'raids') + ' counted') } };
         }), 'people')
         : '<p class="gs-empty">No attendance to show yet.</p>');
   }
@@ -128,7 +128,7 @@
     if (!awards.length) return '<p class="gs-empty">No loot awarded yet.</p>';
     return tableHtml('Loot of ' + teamName(entry), [{ key: 'item', label: 'Item', primary: true }, { key: 'winner', label: 'Winner' }, { key: 'awarded', label: 'Awarded' }], awards.map(function (a) {
       const winner = a.disenchanted ? '<span class="gs-muted">Disenchanted</span>' : (a.winner ? G.ui.classNameHtml(a.winner, a.winnerClass) : '<span class="gs-muted gs-dash">-</span>');
-      return { cells: { item: G.ui.itemLinkHtml({ itemId: a.itemId, itemName: a.itemName, quality: a.quality }, gameVersion), winner: winner, awarded: esc(G.ui.formatDateTime(a.awardedAt, zone)) } };
+      return { sort: { awarded: a.awardedAt }, cells: { item: G.ui.itemLinkHtml({ itemId: a.itemId, itemName: a.itemName, quality: a.quality }, gameVersion), winner: winner, awarded: esc(G.ui.formatDateTime(a.awardedAt, zone)) } };
     }), 'awards');
   }
 

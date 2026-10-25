@@ -163,10 +163,12 @@
   }
 
   function tableHtml(rows, state, ro) {
-    const newRows = rows.filter(isNewKind);
+    const newRows = G.ui.sortItems('rh-new', rows.filter(isNewKind), {
+      nickname: function (r) { return r.nickname; }, main: function (r) { return r.main && r.main.name || ''; }, alts: function (r) { return (r.alts || []).length; },
+      note: function (r) { return rowNotes(r, state.rows[sid(r)]).join(' '); } });
     const shown = state.showAll ? newRows : newRows.slice(0, SHOW_FIRST);
     if (!newRows.length) return '<p class="gs-empty">No new people in this event.</p>';
-    return '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import" aria-label="Sign-ups to add"><thead><tr><th scope="col">Add</th><th scope="col">Discord nickname</th><th scope="col">Main</th><th scope="col">Alts from the nickname</th><th scope="col">Note</th></tr></thead><tbody>' +
+    return '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import" aria-label="Sign-ups to add"><thead><tr><th scope="col">Add</th>' + G.ui.sortThHtml('rh-new', 'nickname', 'Discord nickname') + '' + G.ui.sortThHtml('rh-new', 'main', 'Main') + '' + G.ui.sortThHtml('rh-new', 'alts', 'Alts from the nickname') + '' + G.ui.sortThHtml('rh-new', 'note', 'Note') + '</tr></thead><tbody>' +
       shown.map(function (r) { return newRowHtml(r, state.rows[sid(r)], ro, state.rowErrors && state.rowErrors[sid(r)]); }).join('') + '</tbody></table></div>' +
       (newRows.length > shown.length || state.showAll && newRows.length > SHOW_FIRST
         ? '<div class="gs-showing"><span class="gs-fine">Showing ' + shown.length + ' of ' + newRows.length + '</span><button type="button" class="gs-btn gs-btn-sm" data-action="rh-show-all" data-key="rh-show-all">' + (state.showAll ? 'Show fewer' : 'Show all') + '</button></div>'
@@ -387,8 +389,9 @@
             }).join('') + '</ul>'
           : '') +
         (decide.length
-          ? '<h3 class="gs-h3">' + esc(decide.length + ' to decide') + '</h3><div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import" aria-label="' + esc(decide.length + ' to decide') + '"><thead><tr><th scope="col">Character</th><th scope="col">In the log</th><th scope="col">Match</th><th scope="col">What to do</th></tr></thead><tbody>' +
-            decide.map(function (d) { return decideRowHtml(d, s.choices[d.key] || { action: 'skip', status: 'trial' }, opts.people, s.rowErrors && s.rowErrors[d.key]); }).join('') + '</tbody></table></div>'
+          ? '<h3 class="gs-h3">' + esc(decide.length + ' to decide') + '</h3><div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import" aria-label="' + esc(decide.length + ' to decide') + '"><thead><tr>' + G.ui.sortThHtml('wcl-decide', 'character', 'Character') + '' + G.ui.sortThHtml('wcl-decide', 'log', 'In the log') + '' + G.ui.sortThHtml('wcl-decide', 'match', 'Match') + '' + G.ui.sortThHtml('wcl-decide', 'todo', 'What to do') + '</tr></thead><tbody>' +
+            G.ui.sortItems('wcl-decide', decide, { character: function (d) { return d.name; }, log: function (d) { return G.ui.className(d.class); }, match: function (d) { return d.suggestion ? d.suggestion.name : ''; },
+              todo: function (d) { return (s.choices[d.key] || {}).action || 'skip'; } }).map(function (d) { return decideRowHtml(d, s.choices[d.key] || { action: 'skip', status: 'trial' }, opts.people, s.rowErrors && s.rowErrors[d.key]); }).join('') + '</tbody></table></div>'
           : '<p class="gs-empty">Everyone in this report is already on the roster.</p>') + '</section>';
       footer = wclCommitOpts(gid, counts, s);
     }

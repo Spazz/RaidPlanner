@@ -170,8 +170,9 @@
       result = '<section aria-labelledby="csv-result" class="gs-import-result"><div class="gs-import-result-head"><h2 class="gs-h2" id="csv-result">' + esc(plural(pv.totals.rows, 'row', 'rows')) + ' read</h2>' +
         '<div class="gs-chips"><span class="gs-chip">' + pv.totals.people + ' new ' + (pv.totals.people === 1 ? 'person' : 'people') + '</span><span class="gs-chip">' + plural(pv.totals.alts, 'Alt', 'Alts') + '</span>' +
         '<span class="gs-chip">' + pv.totals.taken + ' on the roster</span><span class="gs-chip">' + plural(pv.totals.problems, 'problem', 'problems') + '</span></div></div>' +
-        '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import" aria-label="Rows of the file"><thead><tr><th scope="col">Character</th><th scope="col">Team</th><th scope="col">Status</th><th scope="col">What happens</th></tr></thead><tbody>' +
-        plan.rows.map(function (r) { return rowHtml(r, s.choices, opts.people, s.rowErrors, names); }).join('') + '</tbody></table></div></section>';
+        '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import" aria-label="Rows of the file"><thead><tr>' + G.ui.sortThHtml('csv-rows', 'character', 'Character') + '' + G.ui.sortThHtml('csv-rows', 'team', 'Team') + '' + G.ui.sortThHtml('csv-rows', 'status', 'Status') + '' + G.ui.sortThHtml('csv-rows', 'what', 'What happens') + '</tr></thead><tbody>' +
+        G.ui.sortItems('csv-rows', plan.rows, { character: function (r) { return r.row.name; }, team: function (r) { return r.row.teamName; }, status: function (r) { return r.row.status || 'raider'; },
+          what: function (r) { return r.row.action || ''; } }).map(function (r) { return rowHtml(r, s.choices, opts.people, s.rowErrors, names); }).join('') + '</tbody></table></div></section>';
       footer = {
         id: 'csv-footer', text: csvSummary(plan),
         back: { attrs: { 'data-action': 'csv-back', 'data-key': 'csv-back' } }, cancel: { href: rosterHref(gid) },

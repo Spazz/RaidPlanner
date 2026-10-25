@@ -52,8 +52,9 @@
   }
 
   function listHtml(rows, zone, now) {
-    return '<div class="gs-table-wrap gs-hd-panel gs-audit-table"><table class="gs-table gs-table-audit" aria-label="Activity log"><thead><tr><th scope="col">When</th><th scope="col">Who</th>' +
-      '<th scope="col">What</th><th scope="col"><span class="gs-sr">Details</span></th></tr></thead><tbody>' +
+    rows = G.ui.sortItems('settings-activity', rows, { when: function (r) { return r.at; }, who: function (r) { return whoText(r); }, what: function (r) { return r.text; } });
+    return '<div class="gs-table-wrap gs-hd-panel gs-audit-table"><table class="gs-table gs-table-audit" aria-label="Activity log"><thead><tr>' + G.ui.sortThHtml('settings-activity', 'when', 'When') + '' + G.ui.sortThHtml('settings-activity', 'who', 'Who') + '' +
+      '' + G.ui.sortThHtml('settings-activity', 'what', 'What') + '<th scope="col"><span class="gs-sr">Details</span></th></tr></thead><tbody>' +
       rows.map(function (r) { return rowHtml(r, zone, now); }).join('') + '</tbody></table></div>' +
       '<ul class="gs-roster-cards gs-audit-cards gs-hd-panel" aria-label="Activity log">' + rows.map(function (r) { return cardHtml(r, zone, now); }).join('') + '</ul>';
   }

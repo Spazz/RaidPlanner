@@ -47,12 +47,13 @@
     const nights = listOf(zone.nights);
     return '<section class="gs-card-sec gs-prog-zone" aria-labelledby="' + id + '-h"><div class="gs-card-sec-head"><h' + ctx.level + ' class="gs-h' + ctx.level + '" id="' + id + '-h">' + esc(zone.zone) + '</h' + ctx.level + '>' +
       '<span class="gs-fine">' + esc(zone.bossesKilled + ' of ' + plural(bosses.length, 'boss', 'bosses') + ' down') + '</span></div><div class="gs-card-sec-body">' + bestLine +
-      '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-prog" aria-label="Bosses in ' + esc(zone.zone) + '"><thead><tr><th scope="col">Boss</th><th scope="col">Status</th><th scope="col">First kill</th>' +
-      '<th scope="col">Wipes before the kill</th><th scope="col">Kills since</th></tr></thead><tbody>' + bosses.map(bossRowHtml).join('') + '</tbody></table></div>' +
+      '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-prog" aria-label="Bosses in ' + esc(zone.zone) + '"><thead><tr>' + G.ui.sortThHtml(id + '-bosses', 'boss', 'Boss') + '' + G.ui.sortThHtml(id + '-bosses', 'status', 'Status') + '' + G.ui.sortThHtml(id + '-bosses', 'first', 'First kill') + '' +
+      '' + G.ui.sortThHtml(id + '-bosses', 'wipes', 'Wipes before the kill') + '' + G.ui.sortThHtml(id + '-bosses', 'since', 'Kills since') + '</tr></thead><tbody>' + G.ui.sortItems(id + '-bosses', bosses, { boss: function (b) { return b.name; }, status: function (b) { return b.killed ? 1 : 0; }, first: function (b) { return b.killed ? b.firstKillOn : null; },
+        wipes: function (b) { return b.killed ? b.wipesBeforeKill : b.wipes; }, since: function (b) { return b.killed ? b.killsSince : null; } }).map(bossRowHtml).join('') + '</tbody></table></div>' +
       (nights.length
         ? '<h' + (ctx.level + 1) + ' class="gs-view-sub">Nights with a kill' + (zone.nightCount > nights.length ? ' (newest ' + nights.length + ' of ' + zone.nightCount + ')' : '') + '</h' + (ctx.level + 1) + '>' +
-          '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-prog" aria-label="Nights in ' + esc(zone.zone) + '"><thead><tr><th scope="col">Night</th><th scope="col">Bosses killed</th><th scope="col">Wipes</th>' +
-          '<th scope="col">First pull to last kill</th></tr></thead><tbody>' + nights.map(function (n) { return nightRowHtml(n, ctx.gid, ctx.links); }).join('') + '</tbody></table></div>'
+          '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-prog" aria-label="Nights in ' + esc(zone.zone) + '"><thead><tr>' + G.ui.sortThHtml(id + '-nights', 'night', 'Night') + '' + G.ui.sortThHtml(id + '-nights', 'bosses', 'Bosses killed') + '' + G.ui.sortThHtml(id + '-nights', 'wipes', 'Wipes') + '' +
+          '' + G.ui.sortThHtml(id + '-nights', 'time', 'First pull to last kill') + '</tr></thead><tbody>' + G.ui.sortItems(id + '-nights', nights, { night: function (n) { return n.raidOn; }, bosses: function (n) { return n.bosses; }, wipes: function (n) { return n.wipes; }, time: function (n) { return n.durationMs; } }).map(function (n) { return nightRowHtml(n, ctx.gid, ctx.links); }).join('') + '</tbody></table></div>'
         : '') +
       '</div></section>';
   }

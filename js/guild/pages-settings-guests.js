@@ -80,8 +80,9 @@
       const links = linksOf(d);
       body = '<p class="gs-fine" id="guests-intro">' + esc(INTRO) + ' The address is shown once, when you make it. Turn a link off at any time and it stops working at once.</p>' +
         (links.length
-          ? '<div class="gs-table-wrap gs-hd-panel"><table class="gs-table gs-table-stack gs-table-guests" aria-label="Guest links"><thead><tr><th scope="col">Link</th><th scope="col">Shows</th><th scope="col">Status</th><th scope="col">Used</th><th scope="col">Ends</th>' +
-            '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + links.map(linkRowHtml).join('') + '</tbody></table></div>'
+          ? '<div class="gs-table-wrap gs-hd-panel"><table class="gs-table gs-table-stack gs-table-guests" aria-label="Guest links"><thead><tr>' + G.ui.sortThHtml('guest-links', 'link', 'Link') + '' + G.ui.sortThHtml('guest-links', 'shows', 'Shows') + '' + G.ui.sortThHtml('guest-links', 'status', 'Status') + '' + G.ui.sortThHtml('guest-links', 'used', 'Used') + '' + G.ui.sortThHtml('guest-links', 'ends', 'Ends') + '' +
+            '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + G.ui.sortItems('guest-links', links, { link: function (l) { return titleOf(l); }, shows: function (l) { return l.team ? l.team.name : 'Whole guild'; }, status: function (l) { return l.status; }, used: function (l) { return Number(l.uses) || 0; },
+              ends: function (l) { return l.status === 'revoked' ? l.revokedAt : l.expiresAt; } }).map(linkRowHtml).join('') + '</tbody></table></div>'
           : '<p class="gs-empty gs-hd-panel" id="guests-empty">No guest links yet.</p>');
     }
     return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions">' + head + '</div>' +
