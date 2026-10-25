@@ -16,6 +16,7 @@ import { isId, newId } from '../ids.js';
 import { reconcileStanding } from '../standing.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
+import { notInactiveSql } from '../person-legacy.js';
 import { guildToday } from '../roster-view.js';
 import { bad } from './roster.js';
 
@@ -165,7 +166,7 @@ async function getTeamNotices(ctx, guildContext, teamId) {
     ctx.db.prepare(
       `SELECT n.id, n.player_id, n.kind, n.at_time, n.starts_on, n.ends_on, n.weekday, n.reason, n.created_at
          FROM away_notices n JOIN players p ON p.id = n.player_id AND p.guild_id = n.guild_id
-        WHERE n.guild_id = ?1 AND p.status != 'inactive' AND n.starts_on <= ?2 AND (n.ends_on IS NULL OR n.ends_on >= ?3)
+        WHERE n.guild_id = ?1 AND ${notInactiveSql('p')} AND n.starts_on <= ?2 AND (n.ends_on IS NULL OR n.ends_on >= ?3)
           AND n.player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?4)`,
     ).bind(guild.id, last, today, team.id),
     ctx.db.prepare('SELECT id, player_id, name, class, is_main, team_id FROM characters WHERE guild_id = ? AND team_id = ?').bind(guild.id, team.id),

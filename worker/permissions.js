@@ -118,7 +118,7 @@ export function resolvePermissions(assignments, rolePermissions, ownTeamIds = []
       }
       if (!teamScoped.has(permission.action)) teamScoped.set(permission.action, new Set());
       if (permission.scope === 'team' && assignment.team_id) teamScoped.get(permission.action).add(assignment.team_id);
-      if (permission.scope === 'own_teams') for (const teamId of ownTeamIds) teamScoped.get(permission.action).add(teamId);
+      if (permission.scope === 'own_teams') for (const teamId of ownTeamIds) if (teamId) teamScoped.get(permission.action).add(teamId);
     }
   }
   const can = {};
@@ -226,10 +226,11 @@ export async function loadGuildContext(db, userId, guildId, viewAs = null) {
         WHERE ra.guild_id = ? AND ra.user_id = ?`,
     ).bind(guildId, userId),
     effectivePermissionsStatement(db, guildId),
-    // The teams of the characters of the person who is this user's (linked to the account, or matching its Discord ID).
+    // The teams of the characters of the person who is this user's (linked to the account, or matching its Discord ID). A teamless character
+    // (team_id NULL) is on no team and grants no team scope.
     db.prepare(
       `SELECT DISTINCT c.team_id FROM characters c JOIN players p ON p.id = c.player_id
-        WHERE p.guild_id = ? AND ${ownPlayerSql('p', '?')}`,
+        WHERE p.guild_id = ? AND c.team_id IS NOT NULL AND ${ownPlayerSql('p', '?')}`,
     ).bind(guildId, userId, userId),
   ]);
   const guild = guildResult.results[0];
@@ -242,7 +243,7 @@ export async function loadGuildContext(db, userId, guildId, viewAs = null) {
   if (membership !== 'member') {
     throw new HttpError(403, 'not_member', "You are not in this guild's Discord server, and no roster entry is linked to your account. Sign in again if you just joined the server, or ask an officer to link your account to your roster entry.");
   }
-  const ownTeamIds = ownTeamResult.results.map((row) => row.team_id);
+  const ownTeamIds = ownTeamResult.results.map((row) => row.team_id).filter((teamId) => teamId !== null);
   const resolved = resolvePermissions(assignmentResult.results, permissionResult.results, ownTeamIds);
   const real = {
     userId,

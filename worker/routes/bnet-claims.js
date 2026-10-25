@@ -6,6 +6,7 @@ import { CLAIM_BLOCKED_TEXT, planClaims } from '../bnet-store.js';
 import { isId, newId } from '../ids.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { toPerson } from '../person.js';
+import { coreRankOfPersonSql, syncCharacterRanksStatement } from '../person-legacy.js';
 import { CREATE_STATUSES } from '../roster-data.js';
 import { markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
 import { canSeeAvatars, guildToday, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
@@ -93,16 +94,17 @@ export async function approveClaim(ctx) {
   const writes = [];
   let team = null;
   let personId = plan.person ? plan.person.id : null;
+  // core_rank from the person's players row (dual write, worker/person-legacy.js); the writes end with syncCharacterRanksStatement for the rest.
   const insertCharacter = (playerId, isMain) => db.prepare(
-    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ? WHERE ${pending.sql}`,
+    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at, core_rank)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ${coreRankOfPersonSql('?')} WHERE ${pending.sql}`,
   ).bind(newId('c', ctx.randomBytes), guild.id, playerId, team.id, claim.name, claim.name_key, claim.realm, claim.realm_key, claim.class,
-    isMain ? 1 : 0, now, now, ...pending.params);
+    isMain ? 1 : 0, now, now, playerId, ...pending.params);
 
   if (plan.kind === 'add_alt') {
     team = await requireTarget(db, guild.id, body.teamId);
     if (!allows(guildContext.can, 'roster.edit', team.id)) throw forbidden();
-    writes.push(insertCharacter(plan.person.id, false));
+    writes.push(insertCharacter(plan.person.id, false), syncCharacterRanksStatement(db, guild.id, plan.person.id));
   } else if (plan.kind === 'new_person') {
     team = await requireTarget(db, guild.id, body.teamId);
     if (!allows(guildContext.can, 'roster.edit', team.id)) throw forbidden();
@@ -114,7 +116,7 @@ export async function approveClaim(ctx) {
       `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, discord_nickname, user_id, version, notes_version, created_by, created_at, updated_at)
        SELECT ?, ?, ?, ?, ?, NULL, ?, NULL, ?, 1, 0, ?, ?, ? WHERE ${pending.sql}`,
     ).bind(personId, guild.id, status, today, status === 'trial' ? today : null, claim.discord_id, claim.user_id, userId, now, now, ...pending.params));
-    writes.push(insertCharacter(personId, true));
+    writes.push(insertCharacter(personId, true), syncCharacterRanksStatement(db, guild.id, personId));
   } else if (plan.kind === 'link_person') {
     writes.push(db.prepare(
       `UPDATE players SET discord_user_id = ?, user_id = ?, discord_nickname = NULL, version = version + 1, updated_at = ?

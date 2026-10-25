@@ -6,6 +6,7 @@ import { isId, newId } from '../ids.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { memberSql } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
+import { CORE_RANK_OF_IMPORTED_CHARACTER_SQL, syncCharacterRanksStatement } from '../person-legacy.js';
 import { IMPORT_LIMIT, IMPORT_WINDOW_MS, WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, enforceRateLimit } from '../ratelimit.js';
 import {
   CREATE_STATUSES, RAID_HELPER_CLASS, RAID_HELPER_SPEC, WCL_CLASS, cleanCharacterName, cleanNickname, isSpecOf, nameKey,
@@ -297,15 +298,18 @@ export async function writeImport(ctx, guildContext, team, plan) {
   }
   if (plan.characters.length) {
     statements.push(db.prepare(
-      `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at)
+      `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at, core_rank)
        SELECT json_extract(value, '$.id'), ?, json_extract(value, '$.playerId'), COALESCE(json_extract(value, '$.teamId'), ?), json_extract(value, '$.name'), json_extract(value, '$.nameKey'),
               json_extract(value, '$.realm'), json_extract(value, '$.realmKey'), json_extract(value, '$.class'), json_extract(value, '$.mainSpec'),
-              json_extract(value, '$.offSpec'), json_extract(value, '$.isMain'), ?, ?
+              json_extract(value, '$.offSpec'), json_extract(value, '$.isMain'), ?, ?, ${CORE_RANK_OF_IMPORTED_CHARACTER_SQL}
          FROM json_each(?)`,
     ).bind(guild.id, team.id, now, now, JSON.stringify(plan.characters.map((character) => ({
       ...character, nameKey: nameKey(character.name), isMain: character.isMain ? 1 : 0,
     })))));
   }
+  // Dual write (worker/person-legacy.js): the character columns of every person the import touches follow their players rows.
+  const personIds = [...new Set([...plan.people.map((person) => person.id), ...plan.characters.map((character) => character.playerId)])];
+  if (personIds.length) statements.push(syncCharacterRanksStatement(db, guild.id, personIds));
   if (plan.nicknameUpdates.length) {
     const json = JSON.stringify(plan.nicknameUpdates);
     statements.push(db.prepare(

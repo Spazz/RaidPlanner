@@ -4,6 +4,7 @@
 import { isOwnPlayer, memberSql } from './membership.js';
 import { allows, isGranted } from './permissions.js';
 import { toPerson } from './person.js';
+import { legacyColumnSql, legacyColumnsSql, legacyPersonColumnsSql, onTrialSql } from './person-legacy.js';
 import { raidRoleOf } from './recruit-data.js';
 import { roleOf, todayIn, trialFlag } from './roster-data.js';
 
@@ -19,6 +20,7 @@ export function guildToday(guild, nowMs) {
 
 const byName = (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 
+// A teamless character (team_id NULL, from lane B2 on) has team { id: null, name: null, archived: false }: the shape stays, the id is null.
 export function characterView(row) {
   return {
     id: row.id,
@@ -39,11 +41,16 @@ export function characterView(row) {
 // (what the Discord line of the record shows), accountUser the account the person belongs to (the link arm first).
 export async function loadPersonData(db, guildId, personId) {
   const [playerResult, characterResult, userResult, editorResult] = await db.batch([
-    db.prepare('SELECT * FROM players WHERE id = ? AND guild_id = ?').bind(personId, guildId),
+    // Every players column, the five legacy person fields (status, trial and left dates) through worker/person-legacy.js.
+    db.prepare(
+      `SELECT id, guild_id, joined_on, discord_user_id, discord_nickname, notes, notes_updated_by, notes_updated_at, version, notes_version,
+              created_by, created_at, updated_at, user_id, rank, rank_on, ${legacyPersonColumnsSql('players')}
+         FROM players WHERE id = ? AND guild_id = ?`,
+    ).bind(personId, guildId),
     db.prepare(
       `SELECT c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main,
               t.name AS team_name, t.archived AS team_archived
-         FROM characters c JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
+         FROM characters c LEFT JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
         WHERE c.player_id = ? AND c.guild_id = ?`,
     ).bind(personId, guildId),
     db.prepare(
@@ -138,7 +145,7 @@ export function buildPersonRecord(guildContext, data, today, viewer) {
         via: data.accountUser ? (data.accountUser.by_link === 1 ? 'link' : 'discord') : null,
         linked: !!player.user_id,
       },
-      homeTeam: home ? { id: home.id, name: home.name } : null,
+      homeTeam: home && home.id ? { id: home.id, name: home.name } : null,
     },
     characters: data.characters.map((entry) => entry.view),
     notes: notesView(data, guildContext, home),
@@ -160,8 +167,8 @@ export async function loadRosterFlags(db, guildContext, today) {
   const [teamResult, trialResult] = await db.batch([
     db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guildId),
     db.prepare(
-      `SELECT m.team_id, p.status, p.trial_end FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ? AND p.status = 'trial' AND p.trial_end IS NOT NULL`,
+      `SELECT m.team_id, ${legacyColumnsSql('p', 'status', 'trialEnd')} FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
+        WHERE p.guild_id = ? AND ${onTrialSql('p')} AND ${legacyColumnSql('p', 'trialEnd')} IS NOT NULL`,
     ).bind(guildId),
   ]);
   const flags = {};
@@ -169,7 +176,8 @@ export async function loadRosterFlags(db, guildContext, today) {
     if (allows(guildContext.can, 'roster.edit', team.id)) flags[team.id] = 0;
   }
   for (const row of trialResult.results) {
-    if (flags[row.team_id] !== undefined && trialFlag(row.status, row.trial_end, today)) flags[row.team_id]++;
+    // A person whose main has no team (team_id NULL) counts for no team.
+    if (row.team_id !== null && flags[row.team_id] !== undefined && trialFlag(row.status, row.trial_end, today)) flags[row.team_id]++;
   }
   return flags;
 }
@@ -209,10 +217,10 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
   const guildId = guildContext.guild.id;
   const [rowResult, userResult] = await db.batch([
     db.prepare(
-      `SELECT p.id AS player_id, p.status, p.joined_on, p.trial_start, p.trial_end, p.left_on, p.left_reason, p.discord_user_id, p.user_id, p.version,
+      `SELECT p.id AS player_id, ${legacyPersonColumnsSql('p')}, p.joined_on, p.discord_user_id, p.user_id, p.version,
               c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main,
               t.name AS team_name, t.archived AS team_archived
-         FROM players p JOIN characters c ON c.player_id = p.id JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
+         FROM players p JOIN characters c ON c.player_id = p.id LEFT JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
         WHERE p.guild_id = ? AND p.id IN (SELECT player_id FROM characters WHERE team_id = ? AND guild_id = ?)`,
     ).bind(guildId, team.id, guildId),
     // Signed in = the person's account (linked by an officer, or matching the Discord ID they carry) is a member of this guild.

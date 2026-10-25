@@ -9,6 +9,7 @@ import { LIST_SOURCES, buildBoard, expectedPeople, isListSource, readListRows } 
 import { LOOT_TAGS } from '../loot-policy.js';
 import { AWARD_SELECT, lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver, viewAwards } from '../loot-store.js';
 import { allows, loadGuildContext } from '../permissions.js';
+import { notInactiveSql } from '../person-legacy.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { allowsSurname, cleanCharacterName, nameKey, realmKey } from '../roster-data.js';
 import { signUpClassId } from '../signups-data.js';
@@ -35,7 +36,7 @@ async function boardFor(ctx, guildContext, raid, access) {
     db.prepare('SELECT source, player_id, kind, standby, guest, nickname, class_name, spec_name FROM raid_signups WHERE raid_id = ? AND (player_id IS NOT NULL OR guest = 1)').bind(raid.id),
     db.prepare('SELECT player_id, outcome FROM attendance WHERE raid_id = ? AND guild_id = ?').bind(raid.id, guild.id),
     db.prepare(
-      `SELECT p.id AS player_id FROM players p WHERE p.guild_id = ?1 AND p.status != 'inactive'
+      `SELECT p.id AS player_id FROM players p WHERE p.guild_id = ?1 AND ${notInactiveSql('p')}
           AND EXISTS (SELECT 1 FROM characters c WHERE c.player_id = p.id AND c.guild_id = ?1 AND c.team_id = ?2)`,
     ).bind(guild.id, raid.team_id),
     db.prepare('SELECT item_id, tag, winner_name, winner_name_key FROM loot_awards WHERE raid_id = ? AND guild_id = ? ORDER BY awarded_at, id').bind(raid.id, guild.id),

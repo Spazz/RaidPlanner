@@ -5,6 +5,7 @@ import { consolidateRaid, resolveFillIns } from './attendance-consolidate.js';
 import { attendanceAwaySignups, noticeOfRow } from './away.js';
 import { REGION_RESET_DAY, consolidationFingerprint, resolvePolicy } from './attendance-policy.js';
 import { allows } from './permissions.js';
+import { legacyColumnsSql } from './person-legacy.js';
 
 export const SIGNUP_KINDS = ['signed', 'late', 'standby', 'bench', 'tentative', 'absence'];
 
@@ -187,7 +188,7 @@ export async function loadDay(db, guildId, raidId) {
             UNION SELECT player_id FROM raid_manual WHERE raid_id IN (SELECT id FROM day)
             UNION SELECT player_id FROM attendance WHERE raid_id IN (SELECT id FROM day)
             UNION SELECT player_id FROM attendance_decisions WHERE raid_id IN (SELECT id FROM day))
-          SELECT c.player_id, c.name_key, c.realm_key, c.team_id, c.is_main, p.status, p.joined_on, p.left_on
+          SELECT c.player_id, c.name_key, c.realm_key, c.team_id, c.is_main, ${legacyColumnsSql('p', 'status')}, p.joined_on, ${legacyColumnsSql('p', 'leftOn')}
             FROM characters c JOIN players p ON p.id = c.player_id
            WHERE c.guild_id = ?1 AND (c.player_id IN (SELECT player_id FROM who_by_character) OR c.player_id IN (SELECT player_id FROM who_by_row))`),
     // The Away notices that cover the day (worker/away.js): each one is one more, weakest, sign-up of its person for the raids of the day (consolidateDay).

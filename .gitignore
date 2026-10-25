@@ -46,6 +46,8 @@
 !tools/
 !tools/*.js
 !tools/make-og-image.py
+!tools/hierarchy/
+!tools/hierarchy/*.sql
 !.github/
 !.github/workflows/
 !.github/workflows/test.yml

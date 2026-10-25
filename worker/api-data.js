@@ -7,6 +7,7 @@
 import { teamAttendanceData } from './routes/attendance.js';
 import { lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver } from './loot-store.js';
 import { allows } from './permissions.js';
+import { legacyColumnsSql } from './person-legacy.js';
 import { roleOf } from './roster-data.js';
 import { API_DATASETS } from './api-keys.js';
 
@@ -24,8 +25,9 @@ const ROSTER_COLUMNS = ['team', 'character', 'realm', 'class', 'role', 'main_spe
 async function readRoster(db, scope) {
   const teams = teamsFor(scope, 'roster');
   if (!teams.length) return empty(ROSTER_COLUMNS);
+  // A team roster lists placed characters: the INNER JOIN on teams leaves a teamless character (team_id NULL) out on purpose.
   const result = await db.prepare(
-    `SELECT t.name AS team_name, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, p.status, p.joined_on
+    `SELECT t.name AS team_name, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, ${legacyColumnsSql('p', 'status')}, p.joined_on
        FROM characters c
        JOIN players p ON p.id = c.player_id AND p.guild_id = c.guild_id
        JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id

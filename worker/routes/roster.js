@@ -5,6 +5,7 @@ import { isId, newId } from '../ids.js';
 import { memberCandidatesSql, memberSql } from '../membership.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
+import { coreRankOfPersonSql, syncCharacterRanksStatement } from '../person-legacy.js';
 import {
   CLASS_IDS, CREATE_STATUSES, LEFT_REASONS, allowsSurname, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
 } from '../roster-data.js';
@@ -157,12 +158,14 @@ export async function resolveLinkUser(db, guildContext, userId, exceptPlayerId =
   return user;
 }
 
+// The core rank comes from the person's players row (dual write R1 -> R2, worker/person-legacy.js); the caller's batch ends with
+// syncCharacterRanksStatement for the other four columns (left and trial dates).
 export function insertCharacter(db, guildId, row, now) {
   return db.prepare(
-    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at, core_rank)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${coreRankOfPersonSql('?')})`,
   ).bind(row.id, guildId, row.playerId, row.teamId, row.name, nameKey(row.name), row.realm, row.realmKey,
-    row.class, row.mainSpec, row.offSpec, row.isMain ? 1 : 0, now, now);
+    row.class, row.mainSpec, row.offSpec, row.isMain ? 1 : 0, now, now, row.playerId);
 }
 
 // The two statements that move the Main (spec: "The Main invariant").
@@ -324,6 +327,7 @@ export async function createPerson(ctx) {
       // Raids whose logs name this character show "Recalculate".
       markRaidsStale(db, guild.id, [nameKey(name)], null, [team.id]),
       ...(fromSignup ? [linkSignupsStatement(db, guild.id, playerId, fromSignup.discordId, fromSignup.raidId, fromSignup.signupId), markPersonRaidsStale(db, guild.id, playerId)] : []),
+      syncCharacterRanksStatement(db, guild.id, playerId),
     ]);
   } catch (error) {
     if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realm);
@@ -433,6 +437,8 @@ export async function patchPerson(ctx) {
           CHANGED_ONE),
         // Status, join and left dates and the Discord link decide who is expected and which sign-ups are theirs: their teams' raids need recalculating.
         ...(changed.some((key) => ['status', 'joinedOn', 'leftOn', 'link'].includes(key)) ? [markPersonRaidsStale(db, guildContext.guild.id, player.id)] : []),
+        // Dual write: the character columns follow the players row this batch just wrote (a lost version race changed nothing, so this changes nothing).
+        syncCharacterRanksStatement(db, guildContext.guild.id, player.id),
       ]);
     } catch (error) {
       mapCreateError(error);
@@ -562,7 +568,7 @@ export async function addCharacter(ctx) {
         { mainCharacterId: data.characters.find((entry) => entry.row.is_main === 1).row.id }, { mainCharacterId: characterId }),
     );
   }
-  statements.push(markRaidsStale(db, guild.id, [nameKey(name)], null, [team.id]));
+  statements.push(markRaidsStale(db, guild.id, [nameKey(name)], null, [team.id]), syncCharacterRanksStatement(db, guild.id, player.id));
   let results;
   try {
     results = await db.batch(statements);
@@ -649,6 +655,8 @@ export async function makeMain(ctx) {
     ...makeMainStatements(db, data.player.id, target.id, now, { homeTeamId: home.id, targetTeamId: target.team_id }),
     audit(ctx, guildContext, 'character.main', 'character', target.id, { mainCharacterId: previous.id }, { mainCharacterId: target.id },
       CHANGED_ONE),
+    // The trial dates sit on the main character: they move with it.
+    syncCharacterRanksStatement(db, guildContext.guild.id, data.player.id),
   ]);
   if (results[1].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, target.id);
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));

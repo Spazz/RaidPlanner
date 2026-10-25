@@ -11,6 +11,7 @@ import { teamAttendanceData } from './routes/attendance.js';
 import { displayCharacter, groupBy } from './attendance-view.js';
 import { lootPolicyRowsStatement, makeLootPolicyResolver } from './loot-store.js';
 import { SECTION_ACTIONS, allows } from './permissions.js';
+import { notInactiveSql } from './person-legacy.js';
 import { buildProgress, publicProgress } from './progress.js';
 import { progressPullsStatement } from './progress-store.js';
 import { roleOf } from './roster-data.js';
@@ -39,7 +40,7 @@ const SECTION_READS = {
     statements: (db, guild, team) => [db.prepare(
       `SELECT c.player_id, c.name, c.class, c.main_spec, c.team_id, c.is_main
          FROM characters c JOIN players p ON p.id = c.player_id
-        WHERE c.guild_id = ?1 AND p.status != 'inactive'
+        WHERE c.guild_id = ?1 AND ${notInactiveSql('p')}
           AND c.player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`,
     ).bind(guild.id, team.id)],
     shape: (team, [result]) => ({

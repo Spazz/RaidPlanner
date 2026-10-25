@@ -20,6 +20,7 @@ import { isOwnPlayer } from '../membership.js';
 import { announceLoot } from '../notify-run.js';
 import { teamNotifyStatement } from '../notify-store.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
+import { legacyColumnsSql } from '../person-legacy.js';
 import { allowsSurname, cleanCharacterName, nameKey, realmKey } from '../roster-data.js';
 import { guildToday, viewerOf } from '../roster-view.js';
 import { windowStartFor } from './attendance.js';
@@ -478,7 +479,7 @@ const balanceStatements = (bind, db, guild) => [
     policyRowsStatement(db, guild.id),
     bind('SELECT id, raid_on FROM raids WHERE guild_id = ?1 AND team_id = ?2'),
     bind('SELECT raid_id, player_id, outcome, attended, credit FROM attendance WHERE guild_id = ?1 AND team_id = ?2'),
-    bind(`SELECT p.id, p.status FROM players p WHERE p.guild_id = ?1
+    bind(`SELECT p.id, ${legacyColumnsSql('p', 'status')} FROM players p WHERE p.guild_id = ?1
             AND p.id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`),
     bind(`SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1
             AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`),
@@ -601,7 +602,7 @@ export async function getPersonLoot(ctx) {
   const personId = ctx.params.pid;
   const bind = (sql) => db.prepare(sql).bind(guild.id, personId);
   const [playerResult, characterResult, awardResult, policyResult, guestResult] = await db.batch([
-    bind('SELECT id, status, discord_user_id, user_id FROM players WHERE guild_id = ?1 AND id = ?2'),
+    bind(`SELECT id, ${legacyColumnsSql('players', 'status')}, discord_user_id, user_id FROM players WHERE guild_id = ?1 AND id = ?2`),
     bind('SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`${AWARD_SELECT} WHERE a.guild_id = ?1 AND EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.player_id = ?2
             AND c.name_key = a.winner_name_key AND c.realm_key = a.winner_realm_key) ORDER BY a.awarded_at DESC, a.id LIMIT ${LOOT_LIST_CAP}`),
@@ -613,7 +614,8 @@ export async function getPersonLoot(ctx) {
   const resolver = makeLootPolicyResolver(policyResult.results);
   const isMe = isOwnPlayer(player, viewerOf(ctx));
   // Someone else's loot is shown per team, where the viewer may see the whole team.
-  const teamIds = new Set([...characterResult.results.map((row) => row.team_id), ...awardResult.results.map((row) => row.team_id)]);
+  // A teamless character (team_id NULL) is on no team: it adds none to the person's loot pages.
+  const teamIds = new Set([...characterResult.results.map((row) => row.team_id), ...awardResult.results.map((row) => row.team_id)].filter(Boolean));
   const visibleTeams = new Set([...teamIds].filter((teamId) => lootAccess(guildContext, resolver, teamId).level === 'full'));
   if (!isMe && !visibleTeams.size) throw forbidden();
   const matcher = makeMatcher(characterResult.results, guestResult.results);
