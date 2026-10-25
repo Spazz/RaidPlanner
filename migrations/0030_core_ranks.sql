@@ -5,11 +5,11 @@
 --    (raid_signups.character_id 0010, standing_signups.character_id 0015, both ON DELETE SET NULL), so their links are saved to side
 --    tables first, DROP TABLE nulls them, and they are restored afterwards. Same ids, same columns, same indexes, same triggers.
 --    New columns: core_rank (FK core_ranks, DEFAULT 'raider' so today's INSERTs keep working until lane B2), source_rank_key,
---    left_at (INTEGER epoch ms, like created_at; backfilled as UTC midnight of players.left_on), trial_start / trial_end
+--    left_on (TEXT YYYY-MM-DD, same CHECK as players.left_on; copied straight from it), trial_start / trial_end
 --    (TEXT YYYY-MM-DD with the same checks as players.trial_start / trial_end). team_id is now NULLABLE (composite FK to teams kept; SQLite
 --    does not enforce a composite FK when one column is NULL).
 -- 3. Backfill from players (players.status stays untouched, legacy): raider / trial / reserve -> that core_rank on EVERY character of the
---    person; inactive -> social, with left_at set only when left_reason is 'left' or 'kicked' (break / other / NULL: left_at stays NULL).
+--    person; inactive -> social, with left_on set only when left_reason is 'left' or 'kicked' (break / other / NULL: left_on stays NULL).
 --    players.trial_start / trial_end are copied onto the person's MAIN character only while status = trial.
 -- 4. NOT done here: alts stay on their main's team and there is no unique (team, person) index. Both land with the code in lane B2.
 
@@ -49,7 +49,7 @@ CREATE TABLE characters_new (
   updated_at      INTEGER NOT NULL,
   core_rank       TEXT NOT NULL DEFAULT 'raider' REFERENCES core_ranks(id),
   source_rank_key TEXT,
-  left_at         INTEGER,
+  left_on         TEXT CHECK (left_on IS NULL OR date(left_on) IS left_on),
   trial_start     TEXT CHECK (trial_start IS NULL OR date(trial_start) IS trial_start),
   trial_end       TEXT CHECK (trial_end IS NULL OR date(trial_end) IS trial_end),
   FOREIGN KEY (guild_id, player_id) REFERENCES players(guild_id, id) ON DELETE CASCADE,
@@ -58,13 +58,12 @@ CREATE TABLE characters_new (
 );
 
 INSERT INTO characters_new (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main,
-                            created_at, updated_at, core_rank, source_rank_key, left_at, trial_start, trial_end)
+                            created_at, updated_at, core_rank, source_rank_key, left_on, trial_start, trial_end)
 SELECT c.id, c.guild_id, c.player_id, c.team_id, c.name, c.name_key, c.realm, c.realm_key, c.class, c.main_spec, c.off_spec, c.is_main,
        c.created_at, c.updated_at,
        CASE p.status WHEN 'inactive' THEN 'social' ELSE p.status END,
        NULL,
-       CASE WHEN p.status = 'inactive' AND p.left_reason IN ('left', 'kicked') AND p.left_on IS NOT NULL
-            THEN CAST(strftime('%s', p.left_on) AS INTEGER) * 1000 END,
+       CASE WHEN p.status = 'inactive' AND p.left_reason IN ('left', 'kicked') THEN p.left_on END,
        CASE WHEN p.status = 'trial' AND c.is_main = 1 THEN p.trial_start END,
        CASE WHEN p.status = 'trial' AND c.is_main = 1 THEN p.trial_end END
 FROM characters c JOIN players p ON p.id = c.player_id;

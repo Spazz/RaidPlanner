@@ -3,7 +3,7 @@
  * Run: node tests/guild/guild-migration-0030-tests.js
  *
  * Builds a database at migration 0029, seeds people of every status / left_reason with mains, alts and sign-ups linked to characters,
- * applies migrations/0030_core_ranks.sql on the node:sqlite D1 stand-in (foreign keys ON) and checks counts, links, ranks, left_at,
+ * applies migrations/0030_core_ranks.sql on the node:sqlite D1 stand-in (foreign keys ON) and checks counts, links, ranks, left_on,
  * trial dates, the nullable team and the core_ranks foreign key.
  */
 const fs = require('node:fs');
@@ -102,12 +102,12 @@ check('core_rank backfill covers every character of the person', () => {
   assert.equal(all.length, 16);
   for (const r of all) assert.equal(r.core_rank, want[r.player_id], r.player_id);
 });
-check('left_at only for left / kicked, as UTC midnight ms of left_on', () => {
-  const got = Object.fromEntries(rows(db, 'SELECT id, left_at FROM characters WHERE is_main = 1').map((r) => [r.id, r.left_at]));
-  assert.equal(got.p_left_main, Date.UTC(2026, 8, 20));
-  assert.equal(got.p_kicked_main, Date.UTC(2026, 8, 21));
+check('left_on only for left / kicked, copied from players.left_on', () => {
+  const got = Object.fromEntries(rows(db, 'SELECT id, left_on FROM characters WHERE is_main = 1').map((r) => [r.id, r.left_on]));
+  assert.equal(got.p_left_main, '2026-09-20');
+  assert.equal(got.p_kicked_main, '2026-09-21');
   for (const k of ['p_break_main', 'p_other_main', 'p_noreason_main', 'p_raider_main', 'p_trial_main']) assert.equal(got[k], null, k);
-  assert.equal(one(db, 'SELECT COUNT(*) FROM characters WHERE left_at IS NOT NULL'), 4, 'both characters of the two leavers');
+  assert.equal(one(db, 'SELECT COUNT(*) FROM characters WHERE left_on IS NOT NULL'), 4, 'both characters of the two leavers');
   assert.equal(one(db, 'SELECT COUNT(*) FROM characters WHERE source_rank_key IS NOT NULL'), 0);
 });
 check('trial dates land on the main character of a trial person only', () => {
