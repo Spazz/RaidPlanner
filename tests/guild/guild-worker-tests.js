@@ -224,7 +224,7 @@ check('schema: foreign key actions are exactly the designed ones', async () => {
     .map((fk) => `${fk.from}->${fk.table}(${fk.to}):${fk.on_delete}`).sort();
   assert.deepEqual(fks('sessions'), ['user_id->users(id):CASCADE']);
   assert.deepEqual(fks('user_servers'), ['user_id->users(id):CASCADE']);
-  assert.deepEqual(fks('guilds'), ['created_by->users(id):SET NULL']);
+  assert.deepEqual(fks('guilds'), ['created_by->users(id):SET NULL', 'owner_user_id->users(id):SET NULL']);
   assert.deepEqual(fks('teams'), ['guild_id->guilds(id):CASCADE']);
   assert.deepEqual(fks('role_permissions'), ['role_id->roles(id):CASCADE']);
   assert.deepEqual(fks('role_assignments'), [
@@ -1706,7 +1706,7 @@ check('claim: an allowlisted manager takes a guild that has no Guild Master (no 
   assert.equal(await w.count('role_assignments', "role_id = 'guild_master'"), 0);
 
   // A blocked person cannot claim.
-  w.db.sqlite.exec(`INSERT INTO guild_blocks VALUES ('${s.guildId}', '${(await w.rows('SELECT id FROM users WHERE discord_id = ?', PEOPLE.frank.id))[0].id}', NULL, NULL, 1)`);
+  w.db.sqlite.exec(`INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at) VALUES ('${s.guildId}', '${(await w.rows('SELECT id FROM users WHERE discord_id = ?', PEOPLE.frank.id))[0].id}', NULL, NULL, 1)`);
   const blocked = await claim(frank);
   assert.equal(blocked.status, 403);
   assert.equal(blocked.json.error, 'access_removed');
