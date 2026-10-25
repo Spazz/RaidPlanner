@@ -9,6 +9,7 @@
 //     unless they may edit loot, sign-up notes (never).
 // The people and raids keep their Raidsmith ids so the lists in the file refer to each other.
 import { allows } from './permissions.js';
+import { legacyPersonColumnsSql } from './person-legacy.js';
 
 export const EXPORT_FORMAT = 'raidsmith-guild-export';
 export const EXPORT_VERSION = 1;
@@ -46,7 +47,7 @@ export async function buildGuildExport(db, guildContext, nowMs) {
     db.prepare('SELECT id, name, size, archived, created_at FROM teams WHERE guild_id = ? ORDER BY created_at, id').bind(gid),
     db.prepare('SELECT team_id, weekday, start_time, zone, title FROM team_schedules WHERE guild_id = ? ORDER BY team_id, weekday').bind(gid),
     db.prepare(
-      `SELECT id, status, joined_on, trial_start, trial_end, left_on, left_reason, notes, rank, rank_on, created_at
+      `SELECT id, ${legacyPersonColumnsSql('players')}, joined_on, notes, rank, rank_on, created_at
          FROM players WHERE guild_id = ? ORDER BY created_at, id`,
     ).bind(gid),
     db.prepare(
@@ -86,9 +87,10 @@ export async function buildGuildExport(db, guildContext, nowMs) {
     charactersByPlayer.get(row.player_id).push(row);
   }
   // The person's home team is the team of their main character (the person page's rule for who may read the notes).
+  // undefined: no main at all; null: a main without a team (only whoever holds the notes permission for the whole guild reads the notes).
   const homeTeamOf = (playerId) => {
     const main = (charactersByPlayer.get(playerId) || []).find((row) => row.is_main === 1);
-    return main ? main.team_id : null;
+    return main ? main.team_id : undefined;
   };
 
   return {
@@ -114,7 +116,7 @@ export async function buildGuildExport(db, guildContext, nowMs) {
     })),
     people: players.map((player) => {
       const homeTeam = homeTeamOf(player.id);
-      const notesAllowed = homeTeam !== null && allows(can, 'roster.notes.view', homeTeam);
+      const notesAllowed = homeTeam !== undefined && allows(can, 'roster.notes.view', homeTeam);
       return {
         id: player.id,
         status: player.status,

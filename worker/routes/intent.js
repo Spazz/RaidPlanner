@@ -13,6 +13,7 @@ import { auditStatement } from '../audit.js';
 import { isId, newId } from '../ids.js';
 import { ownPersonStatement } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
+import { legacyColumnsSql, notInactiveSql } from '../person-legacy.js';
 import { pickTotals, raidRoleOf, targetsOf } from '../recruit-data.js';
 import { MULTI_LINE_STRIP, SPECS, isRealDate, isSpecOf } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
@@ -90,15 +91,15 @@ async function boardPayload(ctx, guildContext, team, roundRow, viewerPersonId) {
   }
   const [pickResult, peopleResult] = await db.batch([
     db.prepare(
-      `SELECT k.player_id, k.kind, k.class, k.spec, k.role, k.note, p.status, m.name AS main_name, m.class AS main_class
+      `SELECT k.player_id, k.kind, k.class, k.spec, k.role, k.note, ${legacyColumnsSql('p', 'status')}, m.name AS main_name, m.class AS main_class
          FROM intent_picks k JOIN players p ON p.id = k.player_id AND p.guild_id = k.guild_id
          LEFT JOIN characters m ON m.player_id = p.id AND m.is_main = 1
         WHERE k.round_id = ? AND k.guild_id = ? ORDER BY k.kind, m.name_key, k.player_id`,
     ).bind(roundRow.id, guildId),
     // The people of the team who may still pick: not inactive, with a character on the team.
     db.prepare(
-      `SELECT p.id, p.status, m.name, m.class FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ? AND p.status != 'inactive' AND EXISTS (SELECT 1 FROM characters c WHERE c.player_id = p.id AND c.team_id = ?)
+      `SELECT p.id, ${legacyColumnsSql('p', 'status')}, m.name, m.class FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
+        WHERE p.guild_id = ? AND ${notInactiveSql('p')} AND EXISTS (SELECT 1 FROM characters c WHERE c.player_id = p.id AND c.team_id = ?)
         ORDER BY m.name_key, p.id`,
     ).bind(guildId, team.id),
   ]);
@@ -213,7 +214,7 @@ export async function closeIntent(ctx) {
 // The person a pick is for: in this guild, not inactive, with a character on the round's team. The caller must be that person or edit the team.
 async function loadPickPerson(ctx, guildContext, round, team) {
   const guildId = guildContext.guild.id;
-  const person = await ctx.db.prepare('SELECT id, status FROM players WHERE id = ? AND guild_id = ?').bind(ctx.params.pid, guildId).first();
+  const person = await ctx.db.prepare(`SELECT id, ${legacyColumnsSql('players', 'status')} FROM players WHERE id = ? AND guild_id = ?`).bind(ctx.params.pid, guildId).first();
   if (!person) throw notFound('That person was not found.');
   const own = await viewerPerson(ctx, guildContext);
   if (own !== person.id && !allows(guildContext.can, 'roster.edit', team.id)) throw forbidden();

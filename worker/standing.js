@@ -17,6 +17,7 @@ import { weekdayOf } from './attendance-calendar.js';
 import { displayCharacter } from './attendance-view.js';
 import { noticeCovers, noticeOfRow } from './away.js';
 import { recomputeRaid } from './attendance-store.js';
+import { legacyColumnsSql } from './person-legacy.js';
 import { isSpecOf } from './roster-data.js';
 import { raidHelperClassName, raidHelperSpecKey } from './signups-data.js';
 
@@ -134,7 +135,7 @@ export async function reconcileStanding(ctx, guild, { teamIds = null, personId =
         WHERE guild_id = ?1 AND kind = 'away' AND player_id IN (${ENTRIES_IN_SCOPE})`,
     ),
     scoped(
-      `SELECT c.id, c.player_id, c.team_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, p.status FROM characters c JOIN players p ON p.id = c.player_id
+      `SELECT c.id, c.player_id, c.team_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, ${legacyColumnsSql('p', 'status')} FROM characters c JOIN players p ON p.id = c.player_id
         WHERE c.guild_id = ?1 AND c.player_id IN (${ENTRIES_IN_SCOPE})`,
     ),
   ]);

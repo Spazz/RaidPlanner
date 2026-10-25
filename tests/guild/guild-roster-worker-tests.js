@@ -1561,7 +1561,7 @@ check('Raid-Helper commit: a 100-row commit under 64 KB (above the 16 KB cap of 
   assert.deepEqual([r.json.people, r.json.characters], [100, 500]);
   const writes = batches.filter((statements) => statements.some((sql) => /INSERT INTO players/.test(sql)));
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].length, 4, 'players, characters, the stale mark, one audit row: a handful of statements whatever the size');
+  assert.equal(writes[0].length, 5, 'players, characters, the character-column sync (dual write), the stale mark, one audit row: a handful of statements whatever the size');
   assert.equal(await s.w.count('characters', 'is_main = 1'), 100);
   // The other routes keep the 16 KB cap, and the commit cap is 64 KB.
   assert.equal((await s.w.call(s.jars.bob, 'POST', `${s.guildPath}/roster/import/raid-helper/preview`, undefined, { rawBody: body })).status, 413);

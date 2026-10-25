@@ -28,6 +28,7 @@ import { displayCharacter, groupBy } from '../attendance-view.js';
 import { ATTENTION_VIEW_ACTIONS, LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, WEEK_OFFSET_MAX, DISMISS_RULES, buildAttention, dismissalUntil, findAttentionItem } from '../attention.js';
 import { onboardingStatement, shapeOnboarding } from '../onboarding.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
+import { legacyColumnSql, legacyColumnsSql, onTrialSql, raidingSql } from '../person-legacy.js';
 import { LOG_GRACE_HOURS, LOG_NUDGE_LOOKBACK_DAYS, RAID_DURATION_HOURS } from '../duties.js';
 import { CONFIRM_HOURS } from '../notify.js';
 import { effectiveRaidSize } from '../raid-zones.js';
@@ -119,9 +120,11 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
       lootSince,
     ),
     bind("SELECT COUNT(*) AS n FROM character_claims WHERE guild_id = ? AND status = 'pending'"),
+    // A main with no team (c.team_id NULL) has no team to review the trial: buildAttention leaves it out, as it leaves out an archived team's.
     bind(
-      `SELECT p.id, p.trial_end, c.name, c.class, c.team_id FROM players p JOIN characters c ON c.player_id = p.id AND c.is_main = 1
-        WHERE p.guild_id = ? AND p.status = 'trial' AND p.trial_end IS NOT NULL AND p.trial_end <= ? ORDER BY p.trial_end, p.id LIMIT ${READ_CAP}`,
+      `SELECT p.id, ${legacyColumnsSql('p', 'trialEnd')}, c.name, c.class, c.team_id FROM players p JOIN characters c ON c.player_id = p.id AND c.is_main = 1
+        WHERE p.guild_id = ? AND ${onTrialSql('p')} AND ${legacyColumnSql('p', 'trialEnd')} IS NOT NULL AND ${legacyColumnSql('p', 'trialEnd')} <= ?
+        ORDER BY ${legacyColumnSql('p', 'trialEnd')}, p.id LIMIT ${READ_CAP}`,
       trialUntil,
     ),
     // Raids of the last two weeks that happened (a log or hand-entered attendance) with no loot imported, in a team that has imported loot before.
@@ -160,10 +163,10 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
         WHERE a.guild_id = ? AND a.credit_team_id IN (SELECT value FROM json_each(?)) AND a.credit = 1 AND a.outcome = 'fill_in'`,
       watchJson,
     ),
-    bind("SELECT id, status, joined_on, left_on, rank, rank_on FROM players WHERE guild_id = ? AND status IN ('raider', 'trial')"),
+    bind(`SELECT id, ${legacyColumnsSql('players', 'status')}, joined_on, ${legacyColumnsSql('players', 'leftOn')}, rank, rank_on FROM players WHERE guild_id = ? AND ${raidingSql('players')}`),
     bind(
       `SELECT player_id, name, class, team_id, is_main FROM characters
-        WHERE guild_id = ?1 AND player_id IN (SELECT id FROM players WHERE guild_id = ?1 AND status IN ('raider', 'trial'))`,
+        WHERE guild_id = ?1 AND player_id IN (SELECT id FROM players WHERE guild_id = ?1 AND ${raidingSql('players')})`,
     ),
     // Upcoming raids with a published roster where someone said they cannot make it.
     bind(

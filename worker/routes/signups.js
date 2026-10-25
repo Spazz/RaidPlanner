@@ -9,6 +9,7 @@ import { displayCharacter } from '../attendance-view.js';
 import { isId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
+import { legacyColumnsSql, notInactiveSql } from '../person-legacy.js';
 import { raidSizeFields } from '../raid-zones.js';
 import { SINGLE_LINE_STRIP, isSpecOf, nameKey } from '../roster-data.js';
 import {
@@ -95,9 +96,9 @@ export async function buildView(ctx, guildContext, raid) {
   const awayAt = statements.length + (edit ? 1 : 0);
   if (edit) {
     statements.push(db.prepare(
-      `SELECT p.id AS person_id, p.status, c.id, c.player_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, c.team_id
+      `SELECT p.id AS person_id, ${legacyColumnsSql('p', 'status')}, c.id, c.player_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, c.team_id
          FROM players p JOIN characters c ON c.player_id = p.id
-        WHERE p.guild_id = ? AND p.status != 'inactive' AND p.id IN (SELECT player_id FROM characters WHERE guild_id = ? AND team_id = ?)`,
+        WHERE p.guild_id = ? AND ${notInactiveSql('p')} AND p.id IN (SELECT player_id FROM characters WHERE guild_id = ? AND team_id = ?)`,
     ).bind(guild.id, guild.id, teamId));
   }
   if (upcoming) {

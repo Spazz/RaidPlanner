@@ -15,6 +15,7 @@ import { displayCharacter, groupBy, isStale, loadRaidDetail, raidState } from '.
 import { isId, newId } from '../ids.js';
 import { isOwnPlayer } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
+import { legacyColumnsSql, syncCharacterRanksStatement } from '../person-legacy.js';
 import { CLASS_IDS, CREATE_STATUSES, cleanCharacterName, DEFAULT_WCL_FLAVOUR, isRealDate, nameKey } from '../roster-data.js';
 import { guildToday, viewerOf } from '../roster-view.js';
 import { listWclReports, requireWclConfigured } from '../sources.js';
@@ -410,6 +411,7 @@ export async function postUnmatched(ctx) {
   const now = ctx.now();
   const statements = [];
   let mainIndex = -1;
+  let syncPersonId = null; // the person whose character columns follow the players row (dual write, worker/person-legacy.js)
   const stale = markRaidsStale(db, guild.id, [keyName], raid.id, body.action === 'guest' ? [] : [raid.team_id]);
 
   if (body.action === 'guest') {
@@ -435,6 +437,7 @@ export async function postUnmatched(ctx) {
     const trialStart = status === 'trial' ? joinedOn : null;
     const playerId = newId('p', ctx.randomBytes);
     const characterId = newId('c', ctx.randomBytes);
+    syncPersonId = playerId;
     statements.push(
       db.prepare(
         `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, version, notes_version, created_by, created_at, updated_at)
@@ -472,6 +475,7 @@ export async function postUnmatched(ctx) {
     if (!characterClass) throw bad('Pick this character\'s class.', 'class');
     if (!realm) throw bad('That realm is not valid for this guild.', 'key');
     const characterId = newId('c', ctx.randomBytes);
+    syncPersonId = body.personId;
     statements.push(
       insertCharacter(db, guild.id, {
         id: characterId, playerId: body.personId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: characterClass,
@@ -499,6 +503,7 @@ export async function postUnmatched(ctx) {
       mainIndex = statements.length - 2;
     }
   }
+  if (syncPersonId) statements.push(syncCharacterRanksStatement(db, guild.id, syncPersonId));
   let results;
   try {
     results = await db.batch(statements);
@@ -572,7 +577,7 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
     bind(`SELECT raid_id, player_id, outcome, credit, signup_kind, attended, needs_review, via_raid_id, flags FROM attendance WHERE guild_id = ?1 AND team_id = ?2`),
     bind(`SELECT a.raid_id, a.player_id, r.raid_on, r.team_id AS host_team_id FROM attendance a JOIN raids r ON r.id = a.raid_id
            WHERE a.guild_id = ?1 AND a.credit_team_id = ?2 AND a.credit = 1 AND a.outcome = 'fill_in'`),
-    bind(`SELECT p.id, p.status, p.joined_on, p.left_on, p.discord_user_id, p.user_id, p.rank, p.rank_on FROM players p WHERE p.guild_id = ?1
+    bind(`SELECT p.id, ${legacyColumnsSql('p', 'status')}, p.joined_on, ${legacyColumnsSql('p', 'leftOn')}, p.discord_user_id, p.user_id, p.rank, p.rank_on FROM players p WHERE p.guild_id = ?1
              AND (p.id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR p.id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
     bind(`SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1
              AND (player_id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR player_id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
@@ -718,7 +723,7 @@ export async function getPersonAttendance(ctx) {
   const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, personId);
   const [policyResult, playerResult, characterResult, rowResult, raidResult, borrowedResult, teamResult, hostResult, decisionResult, dismissalResult] = await ctx.db.batch([
     policyRowsStatement(ctx.db, guild.id),
-    bind('SELECT id, status, joined_on, left_on, discord_user_id, user_id, rank, rank_on FROM players WHERE guild_id = ?1 AND id = ?2'),
+    bind(`SELECT id, ${legacyColumnsSql('players', 'status')}, joined_on, ${legacyColumnsSql('players', 'leftOn')}, discord_user_id, user_id, rank, rank_on FROM players WHERE guild_id = ?1 AND id = ?2`),
     bind('SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind('SELECT * FROM attendance WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
@@ -742,7 +747,8 @@ export async function getPersonAttendance(ctx) {
   const today = guildToday(guild, ctx.now());
   const teamNames = new Map(teamResult.results.map((team) => [team.id, team.name]));
   const hostTeamOf = new Map(hostResult.results.map((row) => [row.id, row.team_id]));
-  const teamIds = new Set([...characterResult.results.map((row) => row.team_id), ...raidResult.results.map((row) => row.team_id)]);
+  // A teamless character (team_id NULL) is on no team: it adds no team page.
+  const teamIds = new Set([...characterResult.results.map((row) => row.team_id), ...raidResult.results.map((row) => row.team_id)].filter(Boolean));
   const visible = [...teamIds].filter((teamId) => allows(guildContext.can, 'attendance.view', teamId)).sort((a, b) => (teamNames.get(a) || '').localeCompare(teamNames.get(b) || ''));
   if (!visible.length) throw forbidden();
   const home = displayCharacter(characterResult.results, null);

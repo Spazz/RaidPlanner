@@ -22,6 +22,7 @@ import { checkRateLimit } from '../ratelimit.js';
 import {
   APPLY_STATUSES, CONTACT_MAX, MAX_QUESTIONS, NOTES_MAX, manyLines, oneLine, questionsOf, readAnswers, readQuestions,
 } from '../apply-data.js';
+import { syncCharacterRanksStatement } from '../person-legacy.js';
 import { isSpecOf, nameKey, rosterOptions } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
 import { loadSession, hashToken } from '../session.js';
@@ -369,6 +370,7 @@ export async function acceptApplication(ctx) {
         after: { personId: playerId, teamId: team.id, linked: !!linkUser, trialEnd },
       }, { sql: 'changes() = 1', params: [] }),
       markRaidsStale(db, guild.id, [key], null, [team.id]),
+      syncCharacterRanksStatement(db, guild.id, playerId),
     ]);
   } catch (error) {
     const kind = constraintOf(error);
