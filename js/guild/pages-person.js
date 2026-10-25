@@ -30,7 +30,7 @@
   }
   function severalTeams(gd, record) {
     const ids = {};
-    (record.characters || []).forEach(function (c) { if (c.team) ids[c.team.id] = true; });
+    (record.characters || []).forEach(function (c) { if (c.team && c.team.id) ids[c.team.id] = true; });
     return G.shell.activeTeams(gd && gd.teams).length > 1 || Object.keys(ids).length > 1;
   }
   function isEditing(gd, record, part) {
@@ -166,7 +166,7 @@
   }
 
   function characterRowHtml(c, can, showTeam) {
-    const team = showTeam && c.team ? ' &middot; ' + esc(c.team.name) + (c.team.archived ? ' (archived)' : '') : '';
+    const team = showTeam && c.team && c.team.id ? ' &middot; ' + esc(c.team.name) + (c.team.archived ? ' (archived)' : '') : '';
     return '<div class="gs-pr-row gs-pr-char" data-cid="' + esc(c.id) + '">' + G.ui.specIconHtml(c.class, c.mainSpec, 20) + '<span class="gs-pr-cname">' + G.ui.classNameHtml(c.name, c.class) + '</span>' +
       '<span class="gs-pr-what">' + G.ui.specLineHtml(c.class, c.mainSpec, c.offSpec) + team + (c.realm ? ' &middot; ' + esc(c.realm) : '') + '</span>' +
       '<span class="gs-hd-chip is-grey">' + (c.isMain ? 'Main' : 'Alt') + '</span>' + (can.edit ? '<span class="gs-pr-end">' + charActionsHtml(c, can) + '</span>' : '') + '</div>';
@@ -291,7 +291,7 @@
     const active = G.shell.activeTeams(gd.teams);
     if (active.length < 2) return '';
     const items = active.map(function (t) { return { value: t.id, label: t.name }; });
-    if (character && character.team && !items.some(function (i) { return i.value === character.team.id; })) {
+    if (character && character.team && character.team.id && !items.some(function (i) { return i.value === character.team.id; })) {
       items.push({ value: character.team.id, label: character.team.name + ' (archived)' });
     }
     return '<div class="gs-field"><label class="gs-label" for="dlg-team">Team</label><select class="gs-input" id="dlg-team" name="teamId" data-field="teamId">' + G.ui.optionsHtml(items, selectedId) + '</select>' +
@@ -320,7 +320,7 @@
       '<p class="gs-field-error" id="dlg-err-mainSpec" role="alert" hidden></p></div>' +
       '<div class="gs-field"><label class="gs-label" for="dlg-offspec">Off spec</label><select class="gs-input" id="dlg-offspec" name="offSpec" data-field="offSpec">' + G.ui.specOptionsHtml(ro, cls, c ? c.offSpec : '', 'None') + '</select>' +
       '<p class="gs-field-error" id="dlg-err-offSpec" role="alert" hidden></p></div></div>' +
-      charTeamFieldHtml(gd, edit ? c.team.id : opts.defaultTeamId, c) + modeFields;
+      charTeamFieldHtml(gd, edit ? (c.team && c.team.id) : opts.defaultTeamId, c) + modeFields;
     return G.ui.dialogHtml({
       kind: 'form', title: edit ? 'Edit ' + c.name : 'Add a character for ' + person.name, bodyHtml: fields,
       primary: { label: edit ? 'Save' : 'Add character' }, formAttrs: { 'data-submit': 'char-form', 'data-mode': edit ? 'edit' : 'add', 'data-cid': edit ? c.id : null },

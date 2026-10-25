@@ -605,6 +605,25 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assertNoRawAttrs(out);
   });
 
+  await check('teamless alt and a null homeTeam: person page, dialog, flags and filters do not crash, name no team, link no team', async () => {
+    const NONE = { id: null, name: null, archived: false };
+    const rec = record({
+      person: { homeTeam: null },
+      characters: [Object.assign(charRec(8, 'Solvhand', 'PALADIN', 'Protection', 'Holy', true), { team: NONE }), Object.assign(charRec('8b', 'Glimmerkin', 'PRIEST', 'Holy', 'Discipline', false), { team: NONE })],
+    });
+    const gd = guildData();
+    const out = personPage(rec, gd) + G.pages.person.characterDialogHtml({ guildData: gd, record: rec, character: rec.characters[1], defaultTeamId: null });
+    assert(out.includes('Glimmerkin') && !/undefined|null/.test(out.replace(/data-[a-z-]+="null"/g, '')), 'no undefined/null text');
+    assert(!out.includes('(archived)') && !out.includes('value="null"'), 'no archived or null team');
+    assert.equal(G.pages.person.personHtml({ guildData: gd, record: rec, linkable: [] }).includes('t_main'), false, 'teamless characters are not placed under a real team');
+    // roster-sort: a teamless main is flagged under no team, and a null selected team flags nobody
+    const p = plain(rp(40, 'Nomad', 'MAGE', 'Frost', 'Fire', 'trial', { flag: { kind: 'ends', days: 3 }, homeTeam: NONE }));
+    assert.equal(G.rosterSort.isFlaggedHere(p, null), false);
+    assert.equal(G.rosterSort.isFlaggedHere(p, 't_main'), false);
+    assert.deepEqual(G.rosterSort.trialsToDecide([p], 't_main'), []);
+    assert.equal(G.rosterSort.filterPeople([p], { status: 'everyone', role: 'all', query: '' }, 't_main').length, 1, 'the teamless character stays in the Everyone filter');
+  });
+
   await check('character dialogs: Add has Main or Alt with the "becomes an Alt" help; Edit prefills; a Team select only with several teams', () => {
     const rec = record();
     const add = G.pages.person.characterDialogHtml({ guildData: guildData(), record: rec, character: null, defaultTeamId: 't_main' });
