@@ -127,7 +127,7 @@
       const size = typeof r.size === 'number' && r.size > 0 ? r.size + '-player' : '';
       const name = r.zone || r.title || size;
       const sub = name !== size ? size : '';
-      return { id: r.id, cells: {
+      return { id: r.id, sort: { date: r.raidOn, counts: r.counts ? (r.counts.present || 0) : null }, cells: {
         date: '<a class="gs-raid-link" href="' + esc(raidHref(gid, r.id)) + '">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + '</a>',
         raid: name ? '<strong class="gs-rp-zone">' + esc(name) + '</strong>' + (sub ? '<span class="gs-rp-size">' + esc(sub) + '</span>' : '') : '<span class="gs-muted">-</span>',
         bosses: esc(bossesText(r.bosses)),

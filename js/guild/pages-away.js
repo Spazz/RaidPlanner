@@ -83,7 +83,7 @@
   // The notices as the data table (cards on a phone): the sentence is the row, then the reason, then Edit and Remove. They are all the viewer's own.
   function tableHtml(items, o, label) {
     const rows = items.map(function (n) {
-      return { id: n.id || n.noticeId, ariaLabel: noticeText(n, o.today), cells: {
+      return { id: n.id || n.noticeId, ariaLabel: noticeText(n, o.today), sort: { what: n.from || noticeText(n, o.today) }, cells: {
         what: esc(noticeText(n, o.today)), reason: n.reason ? esc(n.reason) : '', actions: noticeActionsHtml(n, o),
       } };
     });

@@ -58,7 +58,9 @@
   }
 
   function rolesHtml(data) {
-    const rows = data.totals.roles.filter(function (r) { return r.role !== 'none' || r.people > 0; }).map(function (r) {
+    const rows = G.ui.sortItems('launch-roles', data.totals.roles.filter(function (r) { return r.role !== 'none' || r.people > 0; }), {
+      role: function (r) { return ROLE_LABELS[r.role]; }, people: function (r) { return r.people; }, intent: function (r) { return r.intent; }, character: function (r) { return r.character; },
+      level: function (r) { return r.level; }, ready: function (r) { return r.ready; }, target: function (r) { return r.target; }, gap: function (r) { return r.gap; } }).map(function (r) {
       const gap = r.gap === null ? '-' : (r.gap > 0 ? 'Need ' + r.gap : 'Covered');
       return '<tr><th scope="row" class="gs-cell-strong">' + esc(ROLE_LABELS[r.role]) + '</th><td class="gs-num" data-label="People">' + esc(r.people) + '</td>' +
         '<td class="gs-num" data-label="Spec poll">' + esc(r.intent) + '</td><td class="gs-num" data-label="Character">' + esc(r.character) + '</td>' +
@@ -66,8 +68,8 @@
         '<td class="gs-num" data-label="Target">' + (r.target === null ? '-' : esc(r.target)) + '</td><td data-label="Gap">' + esc(gap) + '</td></tr>';
     }).join('');
     return '<section class="gs-card-sec" aria-labelledby="launch-roles-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="launch-roles-h">By role</h2></div><div class="gs-card-sec-body">' +
-      '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="The funnel by role"><thead><tr><th scope="col">Role</th><th scope="col">People</th><th scope="col">Spec poll</th>' +
-      '<th scope="col">Character</th><th scope="col">Level band</th><th scope="col">Ready</th><th scope="col">Target</th><th scope="col">Gap</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="The funnel by role"><thead><tr>' + G.ui.sortThHtml('launch-roles', 'role', 'Role') + '' + G.ui.sortThHtml('launch-roles', 'people', 'People') + '' + G.ui.sortThHtml('launch-roles', 'intent', 'Spec poll') + '' +
+      '' + G.ui.sortThHtml('launch-roles', 'character', 'Character') + '' + G.ui.sortThHtml('launch-roles', 'level', 'Level band') + '' + G.ui.sortThHtml('launch-roles', 'ready', 'Ready') + '' + G.ui.sortThHtml('launch-roles', 'target', 'Target') + '' + G.ui.sortThHtml('launch-roles', 'gap', 'Gap') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<p class="gs-fine">Target is the team\'s recruitment target for the role; Gap is how many more ready people it still needs.</p></div></section>';
   }
 
@@ -83,7 +85,9 @@
   }
 
   function rowsHtml(data) {
-    const rows = data.rows.map(function (row) {
+    const rows = G.ui.sortItems('launch-people', data.rows, {
+      player: function (r) { return r.name; }, intent: function (r) { return r.intent ? G.ui.className(r.intent.class) + ' ' + r.intent.spec : ''; }, character: function (r) { return r.flags.character; },
+      level: function (r) { return r.level ? r.level.band : ''; }, ready: function (r) { return r.ready; } }).map(function (row) {
       const canSet = data.canEdit || row.mine;
       const pick = row.intent ? G.ui.classNameHtml(G.ui.className(row.intent.class) + ' ' + row.intent.spec, row.intent.class) + (row.role ? ' <span class="gs-fine">' + esc(ROLE_ONE[row.role] || '') + '</span>' : '') : '<span class="gs-muted">Not picked</span>';
       const ready = canSet
@@ -95,8 +99,8 @@
         '<td data-label="Level band">' + levelCell(data, row, canSet) + '</td><td data-label="Ready">' + ready + '</td></tr>';
     }).join('');
     if (!data.rows.length) return '<p class="gs-empty">Nobody on this team yet.</p>';
-    return '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="Launch readiness by person"><thead><tr><th scope="col">Player</th><th scope="col">Spec poll</th>' +
-      '<th scope="col">Character</th><th scope="col">Level band</th><th scope="col">Ready</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    return '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="Launch readiness by person"><thead><tr>' + G.ui.sortThHtml('launch-people', 'player', 'Player') + '' + G.ui.sortThHtml('launch-people', 'intent', 'Spec poll') + '' +
+      '' + G.ui.sortThHtml('launch-people', 'character', 'Character') + '' + G.ui.sortThHtml('launch-people', 'level', 'Level band') + '' + G.ui.sortThHtml('launch-people', 'ready', 'Ready') + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   function offHtml(data) {

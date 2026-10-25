@@ -209,7 +209,7 @@
       if (byKey[key].tags.indexOf(w.tag) < 0) byKey[key].tags.push(w.tag);
     });
     const whoRows = groups.map(function (g) {
-      return { id: g.first.id, cells: {
+      return { id: g.first.id, sort: { night: g.first.raidOn, times: g.times }, cells: {
         winner: L().winnerHtml(gid, g.first.winner, g.first.match, true) + (edit && g.times > 1 && g.first.winner && g.first.winner.name ? L().chipHtml('rose', 'Possible duplicate') : ''),
         times: esc(g.times), tag: g.tags.map(function (t) { return L().tagTextHtml(t, null); }).join(', '),
         night: '<a href="' + esc(href({ name: 'lootnight', gid: gid, rid: g.first.raidId })) + '">' + esc(dayText(g.first.raidOn)) + '</a>' } };

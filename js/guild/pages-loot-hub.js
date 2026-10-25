@@ -403,6 +403,7 @@
 
   G.handlers.click['lstand-sort'] = function (el) {
     ui().sort = el.getAttribute('data-value') === 'name' ? 'name' : 'due';
+    G.ui.clearTableSort('Loot standings'); // the Order bar and a column head are two ways to order one table: the last one pressed wins
     G.app.render();
   };
 

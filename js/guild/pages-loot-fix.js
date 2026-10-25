@@ -40,7 +40,7 @@
   function unknownHtml(gd, list) {
     if (!list.length) return '<p class="gs-lt-pad gs-fine" id="lf-unknown-none">None. Every winner matches a roster character or a guest.</p>';
     const rows = list.map(function (w) {
-      return { id: w.id, cells: {
+      return { id: w.id, sort: { night: w.raidOn }, cells: {
         item: L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion),
         winner: L().winnerHtml(gd.guild.id, w.winner, w.match, true),
         night: '<a href="' + esc(href({ name: 'lootnight', gid: gd.guild.id, rid: w.raidId })) + '">' + esc(dayText(w.raidOn)) + '</a>',

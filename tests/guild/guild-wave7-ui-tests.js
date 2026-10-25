@@ -148,7 +148,7 @@ function keyData(extra) {
     const hostile = S.settingsHtml({ guildData: guildData(), data: keyData({ keys: [keyData().keys[0]].map(k => Object.assign({}, k, { name: HOSTILE })) }) });
     assert(!hostile.includes('<img src=x'));
     assertNoRawAttrs(out);
-    assert(/<table[^>]*aria-label="Data keys"/.test(out) && /<th scope="col">Key<\/th>/.test(out));
+    assert(/<table[^>]*aria-label="Data keys"/.test(out) && /<th scope="col" aria-sort="none"><button[^>]*data-sort="key"[^>]*>Key/.test(out));
   });
 
   await check('data access dialogs: the form (name, team, what it reads with a dataset members cannot see disabled, expiry), the one-time key with its links, the turn-off question', () => {
@@ -276,7 +276,7 @@ function keyData(extra) {
     assert(t.includes('1h 20m') && t.includes('1h 05m'), t);
     // Wipes: before the kill for a boss that is down, all wipes for one that is not.
     assert(/data-label="Wipes before the kill" class="gs-num">2</.test(out) && /data-label="Wipes" class="gs-num">4</.test(out));
-    assert(/<th scope="col">Wipes before the kill<\/th>/.test(out) && /<th scope="col">Kills since<\/th>/.test(out));
+    assert(/<button[^>]*data-sort="wipes"[^>]*>Wipes before the kill/.test(out) && /<button[^>]*data-sort="since"[^>]*>Kills since/.test(out));
     assert(/<a href="#\/g\/g1\/raids\/r\/r_2">/.test(out), 'a night links to its raid for members');
     assert(out.includes('gs-table-stack') && out.includes('data-label="First kill"'));
     assert(/\.gs-table-prog \{ min-width: 520px; \}/.test(css) && /@media \(max-width: 600px\) \{\s*\.gs-table-prog \{ min-width: 0; \}/.test(css), 'the desktop minimum is reset on a phone');

@@ -156,6 +156,7 @@
     const outcome = '<span class="gs-outchip">' + box + '<span>' + esc(word) + '</span></span>';
     return {
       id: rid || date,
+      sort: { date: date },
       cells: {
         date: grey(rid ? '<a href="' + esc(G.router.format({ name: 'raid', gid: gid, rid: rid })) + '">' + esc(day) + '</a>' : esc(day)),
         raid: grey(zone ? esc(zone) : dash), outcome: grey(outcome), credit: grey(esc(creditWord(cell, pending))), reason: cell.reason ? esc(cell.reason) : dash,

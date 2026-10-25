@@ -271,8 +271,8 @@ function assertNoRawAttrs(out) {
   await check('data table: head with aria-sort, first column is the row header and link, the viewer\'s row keeps its place with a YOU tag, cells carry data-label for the phone card', () => {
     const out = ui.dataTableHtml({ label: 'Sign-ups', columns: COLS, rows: [row('a', 'Ironvale', { mark: 'WARRIOR' }), row('me', 'Thornwick', { you: true, mark: 'DRUID' }), row('c', 'Mirelle')] });
     assert(out.startsWith('<div class="gs-dtable-wrap"><table class="gs-dtable" aria-label="Sign-ups">'));
-    assert(out.includes('<th scope="col" class="" aria-sort="ascending"><button type="button" class="gs-sort" data-action="table-sort" data-sort="name" data-key="sort-name" data-dir="asc">Character'));
-    assert(out.includes('<th scope="col" class="is-right">Updated</th>'));
+    assert(out.includes('<th scope="col" class="" aria-sort="ascending"><button type="button" class="gs-sort" data-action="table-sort" data-table="Sign-ups" data-sort="name" data-key="tsort-Sign-ups-name" data-dir="asc">Character'));
+    assert(out.includes('<th scope="col" class="is-right" aria-sort="none"><button type="button" class="gs-sort" data-action="table-sort" data-table="Sign-ups" data-sort="updated"'), 'every head is sortable');
     const firstRow = out.slice(out.indexOf('<tbody>'));
     assert(firstRow.indexOf('Ironvale') < firstRow.indexOf('Thornwick') && firstRow.indexOf('Thornwick') < firstRow.indexOf('Mirelle'), 'You keep the given order, not first');
     assert(firstRow.includes('<th scope="row" class="gs-dtable-primary"><a href="#/p/me">Thornwick</a> <span class="gs-you">You</span></th>'));

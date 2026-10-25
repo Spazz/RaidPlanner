@@ -201,6 +201,81 @@
     jumpTo(el.getAttribute('data-target'));
   };
 
+  // ── SORTABLE TABLE HEADS (one mechanism for every data table) ──
+  // Every column head of a data table is a sort button (aria-sort); only a column of row actions (srLabel, or sort: false) is not. The state is per table key
+  // ({ col, dir }), kept here so it survives a re-render; no state = the table's own order, no arrow (a column's `sort: 'ascending'` only draws the arrow of
+  // an order the rows already have). The click handler 'table-sort' flips it and redraws. Values: a row's `sort: { <col>: value }` (a number, a timestamp or a
+  // string; dates MUST come this way), else the plain text of the cell. Text compares case-insensitively, numbers as numbers, empty (and "-") always last.
+  //   dataTableHtml: columns[].sort, opts.key (the table key, default its label).
+  //   Hand-built <table>: ui.sortThHtml(tableKey, colKey, label, { cls, attrs, defaultDir }) draws the <th>; ui.sortItems(tableKey, items, { <col>: item => value }) returns the sorted copy.
+  const tableSortState = ui.tableSortState = {};
+  function tableKeyOf(o) { return String(o.key || o.label || 'table'); }
+  function sortStateOf(tableKey) { return has(tableSortState, tableKey) ? tableSortState[tableKey] : null; }
+  function isSortable(c) { return c.sort !== false && !c.srLabel; }
+  function plainText(html) {
+    return String(html == null ? '' : html).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  }
+  // null = empty (sorts last); a number, or a lower-cased string.
+  function normalizeSortValue(v) {
+    if (v == null) return null;
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v.getTime();
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    const t = String(v).trim();
+    if (!t || /^[-\u2013\u2014]+$/.test(t)) return null;
+    if (/^-?\d+(\.\d+)?%?$/.test(t)) return parseFloat(t);
+    return t.toLowerCase();
+  }
+  ui.normalizeSortValue = normalizeSortValue;
+  function compareSortValues(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    if (typeof a === 'number') return -1;
+    if (typeof b === 'number') return 1;
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  // Stable sort of entries ({ row, value }); empty always last, either direction.
+  function sortEntries(entries, dir) {
+    const sign = dir === 'desc' ? -1 : 1;
+    return entries.map(function (e, i) { return { e: e, i: i }; }).sort(function (x, y) {
+      const a = x.e.value, b = y.e.value;
+      if (a == null || b == null) return a == null && b == null ? x.i - y.i : (a == null ? 1 : -1);
+      return sign * compareSortValues(a, b) || x.i - y.i;
+    }).map(function (p) { return p.e; });
+  }
+  ui.sortRows = function (rows, columns, st) {
+    const c = (columns || []).filter(function (x) { return x && x.key === st.col && isSortable(x); })[0];
+    if (!c) return rows;
+    return sortEntries(rows.map(function (r) {
+      const raw = r.sort && has(r.sort, c.key) ? r.sort[c.key] : plainText(r.cells && has(r.cells, c.key) ? r.cells[c.key] : '');
+      return { row: r, value: normalizeSortValue(raw) };
+    }), st.dir).map(function (e) { return e.row; });
+  };
+  ui.sortItems = function (tableKey, items, getters) {
+    const st = sortStateOf(tableKey);
+    const list = Array.isArray(items) ? items : [];
+    if (!st || !getters || typeof getters[st.col] !== 'function') return list;
+    return sortEntries(list.map(function (it) { return { row: it, value: normalizeSortValue(getters[st.col](it)) }; }), st.dir).map(function (e) { return e.row; });
+  };
+  // The click: a new column starts ascending; the active column flips; a column that only shows a default arrow (data-dir) flips that.
+  ui.toggleTableSort = function (tableKey, col, shownDir) {
+    const st = sortStateOf(tableKey);
+    const cur = st ? (st.col === col ? st.dir : '') : (shownDir || '');
+    tableSortState[tableKey] = { col: col, dir: cur === 'asc' ? 'desc' : 'asc' };
+    return tableSortState[tableKey];
+  };
+  ui.clearTableSort = function (tableKey) { delete tableSortState[tableKey]; };
+  ui.sortThHtml = function (tableKey, col, label, opts) {
+    const o = opts || {};
+    const st = sortStateOf(tableKey);
+    const dir = st ? (st.col === col ? st.dir : '') : (o.defaultDir || '');
+    return '<th scope="col"' + (o.cls ? ' class="' + esc(o.cls) + '"' : '') + ' aria-sort="' + (dir ? (dir === 'asc' ? 'ascending' : 'descending') : 'none') + '"' + (o.attrs || '') + '><button type="button" class="gs-sort" data-action="table-sort" data-table="' + esc(tableKey) + '" data-sort="' + esc(col) + '" data-key="tsort-' + esc(tableKey) + '-' + esc(col) + '"' +
+      (dir ? ' data-dir="' + dir + '"' : '') + '>' + esc(label) + '<span class="gs-sort-ind" aria-hidden="true"></span></button></th>';
+  };
+  G.handlers.click['table-sort'] = function (el) {
+    ui.toggleTableSort(el.getAttribute('data-table'), el.getAttribute('data-sort'), el.getAttribute('data-dir'));
+    if (G.app && G.app.render) G.app.render();
+  };
+
   // ── DATA TABLE ──
   // Head: 12 px caps muted; a sortable column says so (aria-sort) and its head is a button. Rows 52 high. The viewer's own row keeps its place in the page's sort order (never moved to the top): tinted, gold
   // edge and the tag YOU. The first column is the row's link. Numbers right-aligned, at most 7 columns. Over 10 rows show 10 and "Show all N"
@@ -217,15 +292,18 @@
     const all = (Array.isArray(o.rows) ? o.rows : []).filter(Boolean);
     if (!columns.length) return '';
     if (!all.length) return o.emptyHtml || '';
-    const sorted = all;
+    const tableKey = tableKeyOf(o);
+    const st = sortStateOf(tableKey);
+    const sorted = st ? ui.sortRows(all, columns, st) : all;
     const limit = o.limit > 0 ? o.limit : 10;
     const shown = o.showAll || sorted.length <= limit ? sorted : sorted.slice(0, limit);
     const primaryKey = (columns.filter(function (c) { return c.primary; })[0] || columns[0]).key;
     const head = columns.map(function (c) {
-      const dir = c.sort === 'ascending' || c.sort === 'descending' ? c.sort : '';
+      const sortable = isSortable(c);
+      const dir = !sortable ? '' : st ? (st.col === c.key ? (st.dir === 'desc' ? 'descending' : 'ascending') : '') : (c.sort === 'ascending' || c.sort === 'descending' ? c.sort : '');
       const note = c.headNote ? '<span class="gs-th-note">' + esc(c.headNote) + '</span>' : '';
-      const inner = c.sort ? '<button type="button" class="gs-sort" data-action="' + esc(c.sortAction || 'table-sort') + '" data-sort="' + esc(c.key) + '" data-key="' + esc(c.sortKey || 'sort-' + c.key) + '"' + (dir ? ' data-dir="' + (dir === 'ascending' ? 'asc' : 'desc') + '"' : '') + '>' + esc(c.label) + note + '<span class="gs-sort-ind" aria-hidden="true"></span></button>' : esc(c.label) + note;
-      return '<th scope="col" class="' + (c.align === 'right' ? 'is-right' : '') + '"' + (c.sort ? ' aria-sort="' + (dir || 'none') + '"' : '') + '>' + (c.srLabel ? '<span class="gs-sr">' + inner + '</span>' : inner) + '</th>';
+      const inner = sortable ? '<button type="button" class="gs-sort" data-action="' + esc(c.sortAction || 'table-sort') + '" data-table="' + esc(tableKey) + '" data-sort="' + esc(c.key) + '" data-key="' + esc(c.sortKey || 'tsort-' + tableKey + '-' + c.key) + '"' + (dir ? ' data-dir="' + (dir === 'ascending' ? 'asc' : 'desc') + '"' : '') + '>' + esc(c.label) + note + '<span class="gs-sort-ind" aria-hidden="true"></span></button>' : esc(c.label) + note;
+      return '<th scope="col" class="' + (c.align === 'right' ? 'is-right' : '') + '"' + (sortable ? ' aria-sort="' + (dir || 'none') + '"' : '') + '>' + (c.srLabel ? '<span class="gs-sr">' + inner + '</span>' : inner) + '</th>';
     }).join('');
     const body = shown.map(function (r) {
       const cells = columns.map(function (c) {
