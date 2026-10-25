@@ -94,7 +94,9 @@ check('disenchant: awardedTo "||de||" becomes an award with no winner and disenc
   assert.equal(spaced.awards.length, 1);
   assert.deepEqual(plain([spaced.awards[0].winnerName, spaced.awards[0].winnerRealm, spaced.awards[0].winnerClass, spaced.awards[0].disenchanted, spaced.awards[0].flags]), [null, null, null, true, ['OS']], 'flags are kept as Gargul wrote them');
   assert.equal(one({ awardedTo: 'Thoren-Ashmere' }).awards[0].disenchanted, false, 'a normal award says so');
-  assert.equal(one({ awardedTo: '||DE||' }).awards.length, 0, 'the mark is exactly ||de||; anything else must be a character name');
+  assert.equal(one({ awardedTo: '|de|' }).awards[0].disenchanted, true, 'copied out of the game the doubled pipes arrive single');
+  assert.equal(one({ awardedTo: '|de|' }).skipped.length, 0);
+  assert.equal(one({ awardedTo: '||DE||' }).awards.length, 0, 'the mark is exactly ||de|| or |de|; anything else must be a character name');
   assert.equal(one({ awardedTo: '||de||' }).skipped.length, 0);
 });
 

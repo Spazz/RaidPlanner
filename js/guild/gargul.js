@@ -20,7 +20,7 @@
 //   - checksum is a 20-digit string (two string hashes joined, cut to 20, right-padded with "0"); entries that predate
 //     checksums have none (Exporter.lua l.246 invents one only for the non-raw formats), so they are skipped here.
 //   - awardedTo is "Name-Realm" (addRealm always appends the realm; the realm has spaces and hyphens removed). A disenchanted
-//     item has awardedTo "||de||" (Exporter.disenchantedItemIdentifier) and no winner. It is kept as an award with winnerName,
+//     item has awardedTo "||de||" (Exporter.disenchantedItemIdentifier; "|de|" once copied) and no winner. It is kept as an award with winnerName,
 //     winnerRealm and winnerClass null and disenchanted true (Gargul's winnerClass on such an entry is only the PRIEST fallback);
 //     the Worker stores it with the tag DE and no winner.
 //   - winnerClass is a NUMBER (Constants.UnitClasses: 1 WARRIOR, 2 PALADIN, 3 HUNTER, 4 ROGUE, 5 PRIEST, 7 SHAMAN, 8 MAGE,
@@ -33,7 +33,8 @@
 
   const MAX_PER_REQUEST = 500;
   const MAX_FILE_CHARS = 8 * 1024 * 1024;
-  const DISENCHANT_MARK = '||de||';
+  // Gargul writes "||de||"; copied out of the game's edit box the doubled pipes arrive as single ones ("|de|", as item links do).
+  const DISENCHANT_MARK = /^\|\|?de\|\|?$/;
   const FLAG_KEYS = ['OS', 'SR', 'WL', 'PL', 'TMB'];
   const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
   const CLASS_BY_NUMBER = { 1: 'WARRIOR', 2: 'PALADIN', 3: 'HUNTER', 4: 'ROGUE', 5: 'PRIEST', 7: 'SHAMAN', 8: 'MAGE', 9: 'WARLOCK', 11: 'DRUID' };
@@ -162,7 +163,7 @@
     if (!itemId) return { reason: 'Missing item ID' };
 
     if (typeof row.awardedTo !== 'string' || !row.awardedTo.trim()) return { reason: 'Missing winner' };
-    const disenchanted = row.awardedTo.trim() === DISENCHANT_MARK;
+    const disenchanted = DISENCHANT_MARK.test(row.awardedTo.trim());
     const winner = disenchanted ? { name: null, realm: null } : parseWinner(row.awardedTo, surname);
     if (!winner) return { reason: 'Winner name is not a character name' };
 
