@@ -149,6 +149,16 @@
       ariaLabel: count ? 'Home, ' + count + (count === 1 ? ' item needs' : ' items need') + ' attention' : 'Home' };
   }
 
+  // A section head: a presentational list entry (never focusable); the collapsed sidebar draws it as a divider.
+  function navHead(key, label) {
+    return { key: 'head-' + key, head: true, label: label };
+  }
+
+  // The guild's Planner item: opens the plan of the current team's next upcoming raid (the 'open-team-planner' action), else the Raids list.
+  function teamPlannerItem(gid, base) {
+    return { key: 'planner', label: 'Planner', short: 'Planner', icon: 'planner', href: guildHref(gid, 'raids', base), action: 'open-team-planner' };
+  }
+
   function plannerItem() {
     return { key: 'planner', label: 'Planner', short: 'Planner', icon: 'planner', href: '/', action: 'open-planner' };
   }
@@ -170,21 +180,25 @@
     const claims = bs.claims > 0 ? bs.claims : 0;
     const a = flags + claims;
     const b = base || '';
-    const items = [
+    const top = [
+      { key: 'raids', label: 'Raids', short: 'Raids', icon: 'raids', href: guildHref(gid, 'raids', b) },
+      { key: 'loot', label: 'Loot', short: 'Loot', icon: 'loot', href: guildHref(gid, 'loot', b) },
       { key: 'roster', label: 'Roster', short: 'Roster', icon: 'roster', href: guildHref(gid, 'roster', b), badge: n,
         ariaLabel: n ? 'Roster, ' + n + (n === 1 ? ' trial' : ' trials') + ' to decide' : 'Roster' },
-      { key: 'raids', label: 'Raids', short: 'Raids', icon: 'raids', href: guildHref(gid, 'raids', b) },
       { key: 'attendance', label: 'Attendance', short: 'Attendance', icon: 'attendance', href: guildHref(gid, 'attendance', b), badge: a,
         ariaLabel: attendanceLabel(flags, claims) },
-      { key: 'loot', label: 'Loot', short: 'Loot', icon: 'loot', href: guildHref(gid, 'loot', b) },
-      plannerItem(),
     ];
-    if (canSeeSettings(can)) {
-      // The bare address: the app opens the first page on a wide screen and the list of pages on a phone.
-      items.push({ key: 'settings', label: 'Guild settings', short: 'Settings', icon: 'settings', separated: true,
-        href: b + G.router.format({ name: 'settings', gid: gid, tab: null }) });
-    }
-    return items;
+    // Team tools: the Planner, for those who hold raids.edit for at least one team. Guild admin: Guild settings. The bare settings address lets the app
+    // open the first page on a wide screen and the list of pages on a phone.
+    const teamTools = hasAction(can, 'raids.edit') ? [teamPlannerItem(gid, b)] : [];
+    const admin = canSeeSettings(can) ? [{ key: 'settings', label: 'Guild settings', short: 'Settings', icon: 'settings',
+      href: b + G.router.format({ name: 'settings', gid: gid, tab: null }) }] : [];
+    // A head shows only when more than one section is visible (a member sees the top items alone, with no heads).
+    const showHeads = 1 + (teamTools.length ? 1 : 0) + (admin.length ? 1 : 0) > 1;
+    const out = top.slice();
+    if (teamTools.length) out.push.apply(out, (showHeads ? [navHead('team-tools', 'Team tools')] : []).concat(teamTools));
+    if (admin.length) out.push.apply(out, (showHeads ? [navHead('guild-admin', 'Guild admin')] : []).concat(admin));
+    return out;
   }
 
   // What's new, Future enhancements, How it works, FAQ: the four pages the single Help item of every sidebar opens.
@@ -209,7 +223,7 @@
 
   // The nav model, one function (tested as a matrix): the sidebar / drawer list for this viewer.
   // Signed out, or signed in with no guild (or its data not loaded yet): Planner, then the Help item.
-  // With a guild: Home (the officer list or the member's own page), Roster, Raids, Attendance, Loot, Planner, [Guild settings], then the one Help item.
+  // With a guild: Home (the officer list or the member's own page), Raids, Loot, Roster, Attendance, then [Team tools: Planner] and [Guild admin: Guild settings] under heads when more than one section shows, then the one Help item.
   // Phone tabs are tabItems (Home, Raids, Roster or Loot, Attendance, More); the drawer carries the whole list.
   function sidebarItems(ctx) {
     const gd = guildOf(ctx);
@@ -298,6 +312,7 @@
 
   function navListHtml(items, ctx, listId) {
     return '<ul class="gs-nav-list">' + items.map(function (item) {
+      if (item.head) return '<li class="gs-nav-head" role="presentation"><span class="gs-nav-headtxt">' + esc(item.label) + '</span></li>';
       const sep = item.separated ? '<li class="gs-nav-sep" role="separator"></li>' : '';
       return sep + (item.children ? foldHtml(item, ctx, listId || 'side') : navLinkHtml(item, ctx));
     }).join('') + '</ul>';

@@ -195,7 +195,8 @@ function meBody(extra) {
   return Object.assign({ user: Object.assign({}, USER, { prefs: Object.assign({}, USER.prefs) }), guilds: [{ id: 'g1', name: 'Ravens' }], create: { allowed: false }, removedFrom: [], deleteImpact: { handOverFirst: [], guildsDeleted: [] } }, extra || {});
 }
 const MEMBER_CAN = { 'roster.view': 'guild' };
-const OFFICER_CAN = { 'roster.view': 'guild', 'roster.edit': 'guild', 'guild.teams': 'guild', 'guild.access': 'guild' };
+const OFFICER_CAN = { 'roster.view': 'guild', 'roster.edit': 'guild', 'raids.edit': 'guild', 'guild.teams': 'guild', 'guild.access': 'guild' };
+const TEAM_LEAD_CAN = { 'roster.view': 'guild', 'roster.edit': ['t1'], 'raids.edit': ['t1'] };
 function guildBody(can) {
   return {
     guild: { id: 'g1', name: 'Ravens', realm: 'Mistvale', realmKind: 'realm', gameVersion: 'tbc', region: 'EU' },
@@ -213,6 +214,7 @@ const signedInRoutes = (can, extra) => Object.assign({
   'POST /auth/logout': { status: 200, body: {} },
 }, extra || {});
 const keysOf = items => items.map(i => i.key + (i.separated ? '|sep' : ''));
+const TOP_KEYS = ['home', 'raids', 'loot', 'roster', 'attendance'];
 const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
 
 (async () => {
@@ -243,30 +245,58 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(G.shell.slots(can).tabs, '', 'no tabs without a guild');
   });
 
-  await check('nav matrix: member = Home, Roster, Raids, Attendance, Loot, Planner, Help; tiles; five phone tabs (Home, Raids, Attendance, Loot, More)', () => {
+  await check('nav matrix: member = Home, Raids, Loot, Roster, Attendance, Help (no heads, no Planner); tiles; five phone tabs (Home, Raids, Attendance, Loot, More)', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(MEMBER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'help|sep']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), TOP_KEYS.concat(['help|sep']));
     assert.equal(G.shell.homeBadge(Object.assign({}, ctx, { attentionCount: 4 })), 0, 'the member Home counts nothing');
     assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['home', 'raids', 'attendance', 'loot', 'more']);
     const s = G.shell.slots(ctx);
     assert(s.rail.includes('gs-tile is-active') && s.rail.includes('data-action="open-planner"'), 'tiles; the rail logo is a Planner link');
-    assert(/<nav class="gs-tabs"/.test(s.tabs) && s.tabs.includes('data-action="open-drawer"') && !s.tabs.includes('data-action="open-planner"'), 'More opens the drawer; Planner lives there');
-    assert(!s.sidebar.includes('Guild settings'));
+    assert(/<nav class="gs-tabs"/.test(s.tabs) && s.tabs.includes('data-action="open-drawer"') && !s.tabs.includes('data-action="open-planner"'), 'More opens the drawer');
+    assert(!s.sidebar.includes('Guild settings') && !s.sidebar.includes('gs-nav-head') && !s.sidebar.includes('Planner'), 'a member sees no heads, no Planner, no settings');
+    assert(!s.drawer.includes('gs-nav-head') && !s.drawer.includes('open-team-planner'), 'nor in the phone drawer');
   });
 
   await check('nav matrix: officer / GM gets Home first and Guild settings (separated) before the Help item; tabs are Home, Raids, Roster, Attendance, More', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep', 'help|sep']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), TOP_KEYS.concat(['head-team-tools', 'planner', 'head-guild-admin', 'settings', 'help|sep']));
     assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['home', 'raids', 'roster', 'attendance', 'more']);
+    const s = G.shell.slots(ctx);
+    for (const html of [s.sidebar, s.drawer]) {
+      assert(html.includes('<li class="gs-nav-head" role="presentation"><span class="gs-nav-headtxt">Team tools</span></li>') && html.includes('>Guild admin</span></li>'), 'both heads, presentational');
+      assert(html.indexOf('Team tools') < html.indexOf('data-action="open-team-planner"') && html.indexOf('Guild admin') < html.indexOf('Guild settings'), 'heads sit above their item');
+    }
+    assert(!/<a[^>]*gs-nav-head/.test(s.sidebar) && !s.tabs.includes('Team tools'), 'heads are not links; the phone tab bar has none');
+  });
+
+  await check('nav matrix: a team lead with raids.edit gets the top items and Team tools (Planner), no Guild admin; the tab bar stays as is', () => {
+    const { G } = makeEnv();
+    const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(TEAM_LEAD_CAN), teamId: 't1' };
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), TOP_KEYS.concat(['head-team-tools', 'planner', 'help|sep']));
+    assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['home', 'raids', 'roster', 'attendance', 'more']);
+    assert(!G.shell.slots(ctx).tabs.includes('Planner'));
+    // raids.edit is the gate: another edit right alone shows no Planner and no head
+    const rosterOnly = Object.assign({}, ctx, { guildData: guildBody({ 'roster.view': 'guild', 'roster.edit': ['t1'] }) });
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(rosterOnly))), TOP_KEYS.concat(['help|sep']));
+    const emptyList = Object.assign({}, ctx, { guildData: guildBody({ 'raids.edit': [] }) });
+    assert(!keysOf(G.shell.sidebarItems(emptyList)).includes('planner'), 'an empty team list is no right');
+  });
+
+  await check('nav: collapsed sidebar keeps the head text for screen readers and the CSS turns it into a divider', () => {
+    const { G } = makeEnv();
+    const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(OFFICER_CAN), teamId: 't1', collapsed: true };
+    assert(G.shell.slots(ctx).sidebar.includes('class="gs-nav-headtxt">Team tools</span>'));
+    const css = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'guild.css'), 'utf8');
+    assert(/\.is-collapsed \.gs-sidebar \.gs-nav-head \{[^}]*height: 1px[^}]*\}/.test(css) && /\.gs-nav-headtxt \{[^}]*clip: rect/.test(css));
   });
 
   await check('nav: the guild nav shows on the planner section and the static pages, but the phone tabs only on guild sections', () => {
     const { G } = makeEnv();
     for (const section of ['planner', 'page']) {
       const ctx = { section, page: section === 'page' ? 'faq' : 'app', me: meBody(), route: null, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-      assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))).slice(0, 7), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep'], section);
+      assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))).slice(0, 9), TOP_KEYS.concat(['head-team-tools', 'planner', 'head-guild-admin', 'settings']), section);
       assert.equal(G.shell.slots(ctx).tabs, '', section + ': no tabs');
     }
   });
@@ -613,6 +643,27 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
   });
 
   // ── the Planner link, both ways ────────────────────────────────
+  await check('nav Planner (Team tools): opens the plan of the current team next upcoming raid; no upcoming raid or a failed read opens the Raids list', async () => {
+    const withRaids = (upcoming, status) => signedInRoutes(OFFICER_CAN, { '/api/guild/g1/raids?team=t1': { status: status || 200, body: { team: { id: 't1', name: 'Main' }, today: '2026-10-17', can: { edit: true, signup: false }, upcoming, raids: [], hasMore: false } } });
+    const a = makeEnv({ url: '/#/g/g1/roster', routes: withRaids([{ id: 'r7', eventSourced: false }, { id: 'r8' }]) });
+    await settle();
+    const ev = a.click({ 'data-action': 'open-team-planner' }, { scoped: true });
+    await settle();
+    assert.equal(ev.prevented, 1);
+    const route = a.G.router.parse(a.loc.hash);
+    assert.deepEqual([route.name, route.rid], ['planner', 'r7'], 'the soonest raid');
+    const b = makeEnv({ url: '/#/g/g1/roster', routes: withRaids([]) });
+    await settle();
+    b.click({ 'data-action': 'open-team-planner' }, { scoped: true });
+    await settle();
+    assert.equal(b.loc.hash, '#/g/g1/raids', 'no upcoming raid: the Raids list');
+    const c = makeEnv({ url: '/#/g/g1/roster', routes: withRaids([{ id: 'r7' }], 500) });
+    await settle();
+    c.click({ 'data-action': 'open-team-planner' }, { scoped: true });
+    await settle();
+    assert.equal(c.loc.hash, '#/g/g1/raids', 'a failed read: the Raids list');
+  });
+
   await check('Planner link: on a guild section it pushes the address without its hash and shows the planner, plan untouched', async () => {
     const env = makeEnv({ url: '/tbc/abc1234#/g/g1/roster', routes: signedInRoutes() });
     await settle();

@@ -168,15 +168,15 @@ function withState(fn) {
 
   await check('shell: Home is the first sidebar and drawer item for every guild member (the member Home or the officer list), and the first phone tab', () => {
     const officer = shellCtx(OFFICER_CAN);
-    assert.deepEqual(keys(G.shell.sidebarItems(officer)).slice(0, 3), ['home', 'roster', 'raids']);
+    assert.deepEqual(keys(G.shell.sidebarItems(officer)).slice(0, 3), ['home', 'raids', 'loot']);
     assert.deepEqual(keys(G.shell.tabItems(officer)), ['home', 'raids', 'roster', 'attendance', 'more'], 'the phone tabs stay five: Home, Raids, Roster, Attendance, More');
     const home = G.shell.sidebarItems(officer)[0];
     assert.equal(home.label, 'Home');
     assert.equal(home.href, '#/g/g1');
     assert.equal(home.icon, 'home');
     assert(G.icons.names.includes('home') && G.icons.names.includes('arrow'));
-    assert.deepEqual(keys(G.shell.sidebarItems(shellCtx(MEMBER_CAN))).slice(0, 2), ['home', 'roster'], 'a member has a Home too');
-    assert.deepEqual(keys(G.shell.sidebarItems(shellCtx(LEAD_CAN))).slice(0, 2), ['home', 'roster'], 'a team lead (team-list actions) does');
+    assert.deepEqual(keys(G.shell.sidebarItems(shellCtx(MEMBER_CAN))).slice(0, 2), ['home', 'raids'], 'a member has a Home too');
+    assert.deepEqual(keys(G.shell.sidebarItems(shellCtx(LEAD_CAN))).slice(0, 2), ['home', 'raids'], 'a team lead (team-list actions) does');
     const slots = G.shell.slots(officer);
     assert(slots.sidebar.indexOf('href="#/g/g1"') > 0 && slots.sidebar.indexOf('href="#/g/g1"') < slots.sidebar.indexOf('href="#/g/g1/roster"'));
     assert(slots.drawer.includes('href="#/g/g1"') && slots.drawer.includes('Home'), 'the drawer carries it');

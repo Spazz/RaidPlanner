@@ -1282,6 +1282,27 @@
     render();
   };
 
+  // The guild nav's Planner item (Team tools): the plan of the current team's next upcoming raid, read at click time from GET /raids?team= (the same list the
+  // Raids page shows, soonest first). A team with no upcoming raid (or a failed read) opens the Raids list instead.
+  G.handlers.click['open-team-planner'] = function (el, ev) {
+    if (!isPlainClick(ev)) return null;
+    if (ev && ev.preventDefault) ev.preventDefault();
+    const gid = chromeGuildId();
+    const gd = gid && state.guilds ? state.guilds[gid] : null;
+    const teamId = gd ? teamFor(gd) : null;
+    const toRaids = function () { go(G.router.format({ name: 'section', gid: gid, section: 'raids' })); return false; };
+    if (!gid || !teamId) return Promise.resolve(gid ? toRaids() : false);
+    return G.api.get('/api/guild/' + encodeURIComponent(gid) + '/raids?team=' + encodeURIComponent(teamId)).then(function (data) {
+      const next = data && Array.isArray(data.upcoming) ? data.upcoming[0] : null;
+      if (!next || !next.id) return toRaids();
+      return G.pages.raids.planInPlanner(gid, next.id, next.eventSourced && next.eventId ? { id: next.eventId, otherServer: !!next.otherServer } : null);
+    }).catch(function (err) {
+      const c = G.api.classify(err);
+      if (c.view === 'signin') { G.app.requireSignin(); return false; }
+      return toRaids();
+    });
+  };
+
   // How it works: the full landing scrolled to that section. The hash is replaced so a second click works the same
   // and a reload lands there. On a static page it is a plain link to /#how-it-works.
   G.handlers.click['how-it-works'] = function (el, ev) {

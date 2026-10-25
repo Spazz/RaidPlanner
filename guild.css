@@ -120,6 +120,8 @@ body.guild-page {
 .gs-new-pill { margin-left: auto; padding: 1px 6px; background: transparent; border: 1px solid var(--border-field); color: var(--text-secondary); font: 600 12px/1.4 var(--font-cond); letter-spacing: 0.06em; }
 .gs-new-dot { display: none; position: absolute; top: 8px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--text-secondary); }
 .gs-nav-sep { height: 1px; margin: var(--sp-2) 20px; background: var(--border-subtle); }
+/* Section head (Team tools, Guild admin): not focusable; collapsed, the text goes and a thin divider takes its place (screen readers keep the text). */
+.gs-nav-head { padding: 16px 20px 6px; font-size: 12px; font-weight: 600; line-height: 1.2; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .gs-label-short { display: none; }
 .gs-side-foot { margin-top: auto; border-top: 1px solid var(--border-subtle); }
 .gs-collapse { width: 100%; height: 44px; box-sizing: border-box; margin: 0; padding: 0 20px; display: flex; align-items: center; gap: 12px; background: transparent; border: 0; border-radius: 0; color: var(--text-muted); font: 600 15px/1 var(--font-cond); letter-spacing: 0.03em; text-align: left; cursor: pointer; }
@@ -136,6 +138,8 @@ body.guild-page {
 .is-collapsed .gs-sidebar .gs-label-full { display: none; }
 .is-collapsed .gs-sidebar .gs-label-short { display: block; }
 .is-collapsed .gs-sidebar .gs-nav-sep { margin: var(--sp-2) 12px; }
+.is-collapsed .gs-sidebar .gs-nav-head { height: 1px; padding: 0; margin: var(--sp-2) 12px; background: var(--border-subtle); font-size: 0; overflow: hidden; position: relative; }
+.is-collapsed .gs-sidebar .gs-nav-head .gs-nav-headtxt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .is-collapsed .gs-sidebar .gs-new-pill { display: none; }
 .is-collapsed .gs-sidebar .gs-new-dot { display: block; }
 .is-collapsed .gs-sidebar .gs-collapse { justify-content: center; padding: 0; }
