@@ -209,7 +209,7 @@
   // May this viewer edit the notices of the person? (raids.edit on a team the person has a character on; the Worker decides in the end.)
   function canEditPerson(gd, record) {
     const can = gd && gd.me && gd.me.can;
-    return (record && Array.isArray(record.characters) ? record.characters : []).some(function (c) { return c.team && G.shell.allowsTeam(can, 'raids.edit', c.team.id); });
+    return (record && Array.isArray(record.characters) ? record.characters : []).some(function (c) { return c.team && c.team.id && G.shell.allowsTeam(can, 'raids.edit', c.team.id); });
   }
 
   // opts: { guildData, record, state: a().awayPerson }  ->  the Away notices section of the person page (T2), or null

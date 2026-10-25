@@ -24,7 +24,7 @@
 
   // Home team = the team of the person's Main. The trial strip, the badge and "Trials to decide" use it.
   function isFlaggedHere(p, teamId) {
-    return !!(p && p.trialFlag) && mainOf(p).team && mainOf(p).team.id === teamId;
+    return !!(p && p.trialFlag) && !!teamId && !!mainOf(p).team && mainOf(p).team.id === teamId;
   }
 
   function trialsToDecide(people, teamId) {
