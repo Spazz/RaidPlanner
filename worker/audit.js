@@ -120,6 +120,9 @@ export const AUDIT_ACTIONS = [
   'signup.open_withdraw',
   'person.join',
   'character.match_roster',
+  'person.match_create',
+  'person.match_link',
+  'character.proof_supersede',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

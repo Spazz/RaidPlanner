@@ -2,12 +2,16 @@
 // is deleted. ONE module, two callers: the officer route (worker/routes/person-join.js) and the Battle.net sign-in match ("Battle.net proof joins two persons
 // automatically"), which puts joinPersonsStatements() into its own batch. Nothing here writes: the function reads, decides and hands back prepared statements.
 //
-//   joinPersonsStatements(db, { guildId, aId, bId, actorUserId, now, reason: 'officer' | 'bnet', randomBytes?, guards?, expectedVersions? })
+//   joinPersonsStatements(db, { guildId, aId, bId, actorUserId, now, reason: 'officer' | 'bnet', randomBytes?, guards?, expectedVersions?, lean? })
 //     -> { survivorId, loserId, statements, counts, journalId, appliedIndex, deletedIndex, teamlessCharacterIds }   or throws HttpError
 //   statements ... for db.batch, in order. appliedIndex = the position of the journal INSERT: its meta.changes is 1 when the batch applied and 0 when a guard
 //                  refused it (a concurrent edit), in which case EVERY statement was a no-op. deletedIndex = the position of the DELETE of the loser.
 //   guards ....... [{ sql, params }] repeated (AND) in every statement: the officer route passes the Seniority guard of both persons, the sign-in match its own.
 //   expectedVersions { [personId]: players.version } the versions the caller saw; a difference throws 409 `conflict` before anything is built.
+//   lean ......... the Battle.net sign-in match (a callback has a statement budget): the counts are read in ONE statement and a table the loser has no rows in gets no
+//                  statements (3 reads + 8 to 10 writes for a loser with a few rows, against 3 + about 35). The journal row is inserted only while those tables are
+//                  STILL empty for the loser and every later statement asks for the journal row, so a row that appeared after the count makes the whole batch a
+//                  no-op (appliedIndex says so). The end state is the one of the full join (tests/guild/guild-b6a-match-tests.js compares them).
 //
 // WHO SURVIVES   the account-linked person (players.user_id), else the older one (created_at, then id).
 // REFUSED        400 same person | 404 a person that is not in this guild | 409 join_owned_by_two: both persons are owned and the sets of owners differ (an owner is the
@@ -44,6 +48,8 @@ import { LIMITS } from './limits.js';
 
 export const JOIN_REASONS = Object.freeze(['officer', 'bnet']);
 export const MAX_NOTES = 4000;
+// The tables whose rows make a raid stale when they move (step 3 of the statements).
+const EVIDENCE_TABLES = Object.freeze(['attendance', 'raid_manual', 'raid_signups', 'attendance_decisions', 'raid_roster', 'raid_duties']);
 
 // A table that references players(id) by a foreign key -> how the join treats it. 'keyed': UPDATE OR IGNORE then DELETE what is left (keys = the other columns of the
 // unique key the person id is part of). 'plain': every row moves (no unique key holds the person id). 'special': see the statements below.
@@ -84,7 +90,10 @@ const PERSONS_SQL = `SELECT p.id, p.version, p.notes_version, p.created_at, p.us
        (SELECT u.id FROM users u WHERE u.discord_id = p.discord_user_id) AS discord_account_id,
        (SELECT u.discord_id FROM users u WHERE u.id = p.user_id) AS user_discord_id
   FROM players p WHERE p.guild_id = ? AND p.id IN (?, ?)`;
-const CHARACTERS_SQL = 'SELECT id, player_id, team_id, is_main FROM characters WHERE guild_id = ? AND player_id IN (?, ?)';
+// Every lookup of characters by person names the index: with only "guild_id = ? AND player_id = ?" to go on the planner takes characters_guild_id and walks the
+// whole guild (a 1,200-member guild reads 1,200 rows per statement, and a join runs this in about 35 statements).
+const BY_PERSON = 'INDEXED BY characters_player';
+const CHARACTERS_SQL = `SELECT id, player_id, team_id, is_main FROM characters ${BY_PERSON} WHERE guild_id = ? AND player_id IN (?, ?)`;
 
 // The owners of a person as a set of keys: the account of players.user_id, the account whose Discord ID the person carries, else the bare Discord ID.
 function ownerKeysOf(person) {
@@ -140,16 +149,24 @@ const loserSignupWins = (s, l) =>
 
 const keyJoin = (keys) => keys.map((key) => ` AND s.${key} = l.${key}`).join('');
 
-// Counts of the loser's rows per table, read just before the batch (the batch itself moves whatever rows exist when it runs). One statement per table.
-function countStatements(db, guildId, survivorId, loserId) {
-  const named = [];
-  const add = (name, sql, ...params) => named.push({ name, statement: db.prepare(sql).bind(...params) });
-  add('characters',
+// Counts of the loser's rows per table, read just before the batch (the batch itself moves whatever rows exist when it runs). ONE statement for all tables (one
+// scalar subquery per table, each answering a JSON object): a read costs a callback with a statement budget one statement, not one per table.
+function countStatement(db, guildId, survivorId, loserId) {
+  const names = [];
+  const parts = [];
+  const bound = [];
+  const add = (name, columns, sql, ...params) => {
+    names.push(name);
+    parts.push(`(SELECT json_object(${columns.map((column) => `'${column}', ${column}`).join(', ')}) FROM (${sql})) AS c_${name}`);
+    bound.push(...params);
+  };
+  const PLAIN = ['total', 'clash'];
+  add('characters', ['total', 'team_cleared', 'main_demoted'],
     `SELECT COUNT(*) AS total,
             COALESCE(SUM(l.team_id IS NOT NULL AND l.team_id IN (SELECT s.team_id FROM characters s WHERE s.player_id = ? AND s.team_id IS NOT NULL)), 0) AS team_cleared,
             COALESCE(SUM(l.is_main = 1 AND EXISTS (SELECT 1 FROM characters m WHERE m.player_id = ? AND m.is_main = 1)), 0) AS main_demoted
-       FROM characters l WHERE l.guild_id = ? AND l.player_id = ?`, survivorId, survivorId, guildId, loserId);
-  add('raid_signups',
+       FROM characters l ${BY_PERSON} WHERE l.guild_id = ? AND l.player_id = ?`, survivorId, survivorId, guildId, loserId);
+  add('raid_signups', ['total', 'clash', 'loser_wins'],
     `SELECT COUNT(*) AS total,
             COALESCE(SUM(l.source = 'raidsmith' AND EXISTS (SELECT 1 FROM raid_signups s WHERE s.raid_id = l.raid_id AND s.source = 'raidsmith' AND s.player_id = ?)), 0) AS clash,
             COALESCE(SUM(l.source = 'raidsmith' AND EXISTS (SELECT 1 FROM raid_signups s WHERE s.raid_id = l.raid_id AND s.source = 'raidsmith' AND s.player_id = ?
@@ -157,41 +174,45 @@ function countStatements(db, guildId, survivorId, loserId) {
        FROM raid_signups l WHERE l.guild_id = ? AND l.player_id = ?`, survivorId, survivorId, guildId, loserId);
   for (const [table, spec] of Object.entries(JOIN_TABLES)) {
     if (spec.how === 'keyed') {
-      add(table,
+      add(table, PLAIN,
         `SELECT COUNT(*) AS total,
                 COALESCE(SUM(EXISTS (SELECT 1 FROM ${table} s WHERE s.guild_id = l.guild_id AND s.player_id = ?${keyJoin(spec.keys)})), 0) AS clash
            FROM ${table} l WHERE l.guild_id = ? AND l.player_id = ?`, survivorId, guildId, loserId);
     } else if (spec.how === 'plain') {
-      add(table, `SELECT COUNT(*) AS total, 0 AS clash FROM ${table} WHERE guild_id = ? AND player_id = ?`, guildId, loserId);
+      add(table, PLAIN, `SELECT COUNT(*) AS total, 0 AS clash FROM ${table} WHERE guild_id = ? AND player_id = ?`, guildId, loserId);
     }
   }
-  add('person_blocks', 'SELECT COUNT(*) AS total, 0 AS clash FROM person_blocks WHERE guild_id = ? AND player_id = ?', guildId, loserId);
-  add('attention_dismissals',
+  add('person_blocks', PLAIN, 'SELECT COUNT(*) AS total, 0 AS clash FROM person_blocks WHERE guild_id = ? AND player_id = ?', guildId, loserId);
+  add('attention_dismissals', PLAIN,
     `SELECT COUNT(*) AS total,
             COALESCE(SUM(EXISTS (SELECT 1 FROM attention_dismissals x WHERE x.guild_id = d.guild_id AND x.item_id = replace(d.item_id, ?, ?))), 0) AS clash
        FROM attention_dismissals d WHERE d.guild_id = ? AND d.kind IN ${DISMISSAL_KINDS} AND instr(d.item_id, ?) > 0`, loserId, survivorId, guildId, loserId);
-  add('character_name_aliases',
-    'SELECT COUNT(*) AS total, 0 AS clash FROM character_name_aliases WHERE guild_id = ? AND character_id IN (SELECT id FROM characters WHERE guild_id = ? AND player_id = ?)',
+  add('character_name_aliases', PLAIN,
+    `SELECT COUNT(*) AS total, 0 AS clash FROM character_name_aliases WHERE guild_id = ? AND character_id IN (SELECT id FROM characters ${BY_PERSON} WHERE guild_id = ? AND player_id = ?)`,
     guildId, guildId, loserId);
-  return named;
+  const text = `SELECT ${parts.join(',\n       ')}`;
+  return { names, statement: db.prepare(text).bind(...bound) };
 }
 
-// { table: { moved, dropped, ... } }: moved = the loser's rows that now belong to the survivor, dropped = rows removed because both persons had one (either side's).
-function countsOf(named, results, { survivorAccount }) {
-  const rowOf = (name) => results[named.findIndex((entry) => entry.name === name)].results[0];
+// -> { counts, totals }. counts: { table: { moved, dropped, ... } } where moved = the loser's rows that now belong to the survivor, dropped = rows removed because both
+// persons had one (either side's). totals: { table: the loser's rows } (a lean join reads it to leave the empty tables out).
+function countsOf(names, result, { survivorAccount }) {
+  const row = result.results[0];
+  const rows = Object.fromEntries(names.map((name) => [name, JSON.parse(row[`c_${name}`])]));
   const counts = {};
-  for (const { name } of named) {
-    const row = rowOf(name);
-    counts[name] = { moved: row.total - (row.clash || 0), dropped: row.clash || 0 };
+  const totals = {};
+  for (const name of names) {
+    counts[name] = { moved: rows[name].total - (rows[name].clash || 0), dropped: rows[name].clash || 0 };
+    totals[name] = rows[name].total;
   }
-  const signups = rowOf('raid_signups');
+  const signups = rows.raid_signups;
   counts.raid_signups = { moved: signups.total - (signups.clash - signups.loser_wins), dropped: signups.clash };
-  const characters = rowOf('characters');
+  const characters = rows.characters;
   counts.characters = { moved: characters.total, dropped: 0, teamCleared: characters.team_cleared, mainDemoted: characters.main_demoted };
-  const blocks = rowOf('person_blocks');
+  const blocks = rows.person_blocks;
   counts.person_blocks = { moved: survivorAccount ? 0 : blocks.total, dropped: 0, guildBlocks: survivorAccount ? blocks.total : 0 };
-  counts.character_name_aliases = { moved: rowOf('character_name_aliases').total, dropped: 0 };
-  return counts;
+  counts.character_name_aliases = { moved: rows.character_name_aliases.total, dropped: 0 };
+  return { counts, totals };
 }
 
 const ACCOUNT_OF_SURVIVOR_SQL = 'COALESCE(sp.user_id, (SELECT u.id FROM users u WHERE u.discord_id = sp.discord_user_id))';
@@ -203,7 +224,7 @@ function combinedNotes(survivorNotes, loserNotes) {
 }
 
 export async function joinPersonsStatements(db, {
-  guildId, aId, bId, actorUserId, now, reason, randomBytes = defaultRandomBytes, guards = [], expectedVersions = null,
+  guildId, aId, bId, actorUserId, now, reason, randomBytes = defaultRandomBytes, guards = [], expectedVersions = null, lean = false,
 }) {
   if (!JOIN_REASONS.includes(reason)) throw new Error('joinPersonsStatements: reason is officer or bnet');
   if (aId === bId) throw bad('Pick two different people to join.', 'otherPersonId');
@@ -221,9 +242,19 @@ export async function joinPersonsStatements(db, {
   const survivorHasMain = survivorCharacters.some((row) => row.is_main === 1);
   const survivorAccount = !!(survivor.user_id || survivor.discord_account_id);
 
-  const named = countStatements(db, guildId, S, L);
-  const countResults = await db.batch(named.map((entry) => entry.statement));
-  const counts = countsOf(named, countResults, { survivorAccount });
+  const countRead = countStatement(db, guildId, S, L);
+  const [countResult] = await db.batch([countRead.statement]);
+  const { counts, totals } = countsOf(countRead.names, countResult, { survivorAccount });
+
+  // LEAN (the Battle.net sign-in match, which has a statement budget): a table the loser has no rows in gets no statements. The journal row is inserted only while
+  // the loser STILL has none there (a row that appeared after the count makes the batch a no-op: appliedIndex says so, and the caller tries again later), and
+  // every other statement asks for the journal row instead of repeating the check (a batch is one transaction, nothing else changes those tables inside it).
+  const skipped = new Set(lean ? Object.keys(totals).filter((name) => name !== 'characters' && name !== 'character_name_aliases' && totals[name] === 0) : []);
+  const journalId = newId('pj', randomBytes);
+  const emptyGuards = [...skipped].map((name) => (name === 'attention_dismissals'
+    ? { sql: `NOT EXISTS (SELECT 1 FROM attention_dismissals WHERE guild_id = ? AND kind IN ${DISMISSAL_KINDS} AND instr(item_id, ?) > 0)`, params: [guildId, L] }
+    : { sql: `NOT EXISTS (SELECT 1 FROM ${name} WHERE guild_id = ? AND player_id = ?)`, params: [guildId, L] }));
+  const journalMarker = { sql: 'EXISTS (SELECT 1 FROM person_joins WHERE id = ?)', params: [journalId] };
 
   // The survivor's own fields.
   const notes = combinedNotes(survivor.notes, loser.notes);
@@ -233,23 +264,26 @@ export async function joinPersonsStatements(db, {
 
   // The guard of every statement: the guild, the versions of BOTH persons (notes_version too: a notes edit does not bump version), the 20-character cap, and the
   // caller's own guards. After the survivor's own fields were written its version (and notes_version) are the new ones.
-  const guardFor = (survivorVersion, survivorNotesVersion) => ({
-    sql: `(SELECT COUNT(*) FROM characters WHERE guild_id = ? AND player_id IN (?, ?)) <= ${LIMITS.charactersPerPerson}
+  const guardFor = (survivorVersion, survivorNotesVersion, more = []) => ({
+    sql: `(SELECT COUNT(*) FROM characters ${BY_PERSON} WHERE guild_id = ? AND player_id IN (?, ?)) <= ${LIMITS.charactersPerPerson}
           AND EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ? AND notes_version = ?)
           AND EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ? AND notes_version = ?)
-          ${guards.map((guard) => `AND ${guard.sql}`).join(' ')}`,
-    params: [guildId, S, L, S, guildId, survivorVersion, survivorNotesVersion, L, guildId, loser.version, loser.notes_version, ...guards.flatMap((guard) => guard.params)],
+          ${[...more, ...guards].map((guard) => `AND ${guard.sql}`).join(' ')}`,
+    params: [guildId, S, L, S, guildId, survivorVersion, survivorNotesVersion, L, guildId, loser.version, loser.notes_version, ...[...more, ...guards].flatMap((guard) => guard.params)],
   });
-  const guard = guardFor(survivor.version, survivor.notes_version);
-  const guardAfter = guardFor(survivor.version + 1, survivor.notes_version + (notesChanged ? 1 : 0));
+  const afterVersion = survivor.version + 1;
+  const afterNotesVersion = survivor.notes_version + (notesChanged ? 1 : 0);
+  const journalGuard = guardFor(survivor.version, survivor.notes_version, emptyGuards);
+  const guard = guardFor(survivor.version, survivor.notes_version, lean ? [journalMarker] : []);
+  const guardAfter = guardFor(afterVersion, afterNotesVersion, lean ? [journalMarker] : []);
   const statements = [];
   const guarded = (sql, params, using = guard) => statements.push(db.prepare(sql + ' AND ' + using.sql).bind(...params, ...using.params));
 
   // 1. The journal row: its changes() says whether the batch applied.
-  const journalId = newId('pj', randomBytes);
+  const opening = lean ? journalGuard : guard;
   statements.push(db.prepare(
-    `INSERT INTO person_joins (id, guild_id, survivor_player_id, loser_player_id, counts, joined_by, joined_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}`,
-  ).bind(journalId, guildId, S, L, JSON.stringify(counts), actorUserId ?? null, now, ...guard.params));
+    `INSERT INTO person_joins (id, guild_id, survivor_player_id, loser_player_id, counts, joined_by, joined_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${opening.sql}`,
+  ).bind(journalId, guildId, S, L, JSON.stringify(counts), actorUserId ?? null, now, ...opening.params));
 
   // 2. The audit row (ids and counts only; the Activity view resolves the names and the loser's id).
   statements.push(auditStatement({ db, randomBytes, now: () => now }, {
@@ -263,7 +297,7 @@ export async function joinPersonsStatements(db, {
   }, guard));
 
   // 3. Raids that hold one of the loser's own rows (results, ticks, decisions, sign-ups, seats, duties): stale, before the rows move.
-  guarded(
+  if (!EVIDENCE_TABLES.every((name) => skipped.has(name))) guarded(
     `UPDATE raids SET policy_fp = '', version = version + 1
       WHERE guild_id = ?
         AND (id IN (SELECT raid_id FROM attendance WHERE guild_id = ? AND player_id = ?)
@@ -278,29 +312,32 @@ export async function joinPersonsStatements(db, {
   // 4. Characters: one Main (the survivor's stays), one character per team (the survivor's stays, the loser's goes teamless), then all of them move.
   // (characters.updated_at stays as it is: the Trial clock reads it as the day a rank was last written, and a join writes no rank.)
   if (survivorHasMain) {
-    guarded('UPDATE characters SET is_main = 0 WHERE guild_id = ? AND player_id = ? AND is_main = 1', [guildId, L]);
+    guarded(`UPDATE characters ${BY_PERSON} SET is_main = 0 WHERE guild_id = ? AND player_id = ? AND is_main = 1`, [guildId, L]);
   }
   guarded(
-    `UPDATE characters SET team_id = NULL
+    `UPDATE characters ${BY_PERSON} SET team_id = NULL
       WHERE guild_id = ? AND player_id = ? AND team_id IS NOT NULL
         AND team_id IN (SELECT s.team_id FROM characters s WHERE s.player_id = ? AND s.team_id IS NOT NULL)`,
     [guildId, L, S],
   );
-  guarded('UPDATE characters SET player_id = ? WHERE guild_id = ? AND player_id = ?', [S, guildId, L]);
+  guarded(`UPDATE characters ${BY_PERSON} SET player_id = ? WHERE guild_id = ? AND player_id = ?`, [S, guildId, L]);
 
   // 5. Native sign-ups: where both signed up for a raid the winner stays; the rest move.
-  guarded(
-    `DELETE FROM raid_signups
-      WHERE guild_id = ? AND source = 'raidsmith' AND player_id = ?
-        AND EXISTS (SELECT 1 FROM raid_signups l WHERE l.raid_id = raid_signups.raid_id AND l.source = 'raidsmith' AND l.player_id = ?
-                      AND ${loserSignupWins('raid_signups', 'l')})`,
-    [guildId, S, L],
-  );
-  guarded('UPDATE OR IGNORE raid_signups SET player_id = ? WHERE guild_id = ? AND player_id = ?', [S, guildId, L]);
-  guarded('DELETE FROM raid_signups WHERE guild_id = ? AND player_id = ?', [guildId, L]);
+  if (!skipped.has('raid_signups')) {
+    guarded(
+      `DELETE FROM raid_signups
+        WHERE guild_id = ? AND source = 'raidsmith' AND player_id = ?
+          AND EXISTS (SELECT 1 FROM raid_signups l WHERE l.raid_id = raid_signups.raid_id AND l.source = 'raidsmith' AND l.player_id = ?
+                        AND ${loserSignupWins('raid_signups', 'l')})`,
+      [guildId, S, L],
+    );
+    guarded('UPDATE OR IGNORE raid_signups SET player_id = ? WHERE guild_id = ? AND player_id = ?', [S, guildId, L]);
+    guarded('DELETE FROM raid_signups WHERE guild_id = ? AND player_id = ?', [guildId, L]);
+  }
 
   // 6. The other tables, in the order of JOIN_TABLES.
   for (const [table, spec] of Object.entries(JOIN_TABLES)) {
+    if (skipped.has(table)) continue;
     if (spec.how === 'keyed') {
       guarded(`UPDATE OR IGNORE ${table} SET player_id = ? WHERE guild_id = ? AND player_id = ?`, [S, guildId, L]);
       guarded(`DELETE FROM ${table} WHERE guild_id = ? AND player_id = ?`, [guildId, L]);
@@ -311,22 +348,26 @@ export async function joinPersonsStatements(db, {
 
   // 7. Dismissed Needs-attention items name the person inside their id.
   const rekey = `kind IN ${DISMISSAL_KINDS} AND instr(item_id, ?) > 0`;
-  guarded(`UPDATE OR IGNORE attention_dismissals SET item_id = replace(item_id, ?, ?) WHERE guild_id = ? AND ${rekey}`, [L, S, guildId, L]);
-  guarded(`DELETE FROM attention_dismissals WHERE guild_id = ? AND ${rekey}`, [guildId, L]);
+  if (!skipped.has('attention_dismissals')) {
+    guarded(`UPDATE OR IGNORE attention_dismissals SET item_id = replace(item_id, ?, ?) WHERE guild_id = ? AND ${rekey}`, [L, S, guildId, L]);
+    guarded(`DELETE FROM attention_dismissals WHERE guild_id = ? AND ${rekey}`, [guildId, L]);
+  }
 
   // 8. A block on the loser: the survivor's account is blocked when it has one (the block follows the person), else the block moves with the person.
-  guarded(
-    `INSERT OR IGNORE INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at, tombstone_missing)
-     SELECT pb.guild_id, ${ACCOUNT_OF_SURVIVOR_SQL}, pb.blocked_by, pb.reason, pb.created_at, pb.tombstone_missing
-       FROM person_blocks pb JOIN players sp ON sp.id = ? AND sp.guild_id = pb.guild_id
-      WHERE pb.guild_id = ? AND pb.player_id = ? AND ${ACCOUNT_OF_SURVIVOR_SQL} IS NOT NULL`,
-    [S, guildId, L],
-  );
-  guarded(
-    `UPDATE OR IGNORE person_blocks SET player_id = ?
-      WHERE guild_id = ? AND player_id = ? AND NOT EXISTS (SELECT 1 FROM players sp WHERE sp.id = ? AND sp.guild_id = ? AND ${ACCOUNT_OF_SURVIVOR_SQL} IS NOT NULL)`,
-    [S, guildId, L, S, guildId],
-  );
+  if (!skipped.has('person_blocks')) {
+    guarded(
+      `INSERT OR IGNORE INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at, tombstone_missing)
+       SELECT pb.guild_id, ${ACCOUNT_OF_SURVIVOR_SQL}, pb.blocked_by, pb.reason, pb.created_at, pb.tombstone_missing
+         FROM person_blocks pb JOIN players sp ON sp.id = ? AND sp.guild_id = pb.guild_id
+        WHERE pb.guild_id = ? AND pb.player_id = ? AND ${ACCOUNT_OF_SURVIVOR_SQL} IS NOT NULL`,
+      [S, guildId, L],
+    );
+    guarded(
+      `UPDATE OR IGNORE person_blocks SET player_id = ?
+        WHERE guild_id = ? AND player_id = ? AND NOT EXISTS (SELECT 1 FROM players sp WHERE sp.id = ? AND sp.guild_id = ? AND ${ACCOUNT_OF_SURVIVOR_SQL} IS NOT NULL)`,
+      [S, guildId, L, S, guildId],
+    );
+  }
 
   // 9. The survivor now holds every character: its raids (every raid of its teams with evidence, and the raids naming its characters) are stale.
   statements.push(markPersonRaidsStale(db, guildId, S, guard));
@@ -353,5 +394,5 @@ export async function joinPersonsStatements(db, {
   const deletedIndex = statements.length;
   guarded('DELETE FROM players WHERE id = ? AND guild_id = ? AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ?)', [L, guildId, L], guardAfter);
 
-  return { survivorId: S, loserId: L, statements, counts, journalId, appliedIndex: 0, deletedIndex, teamlessCharacterIds };
+  return { survivorId: S, loserId: L, statements, counts, journalId, appliedIndex: 0, deletedIndex, teamlessCharacterIds, skippedTables: [...skipped] };
 }

@@ -382,8 +382,9 @@ check('callback: stores the account id, BattleTag and the character snapshot, us
   const entry = snapshot['profile-classicann-us'];
   assert.equal(entry.fetchedAt, s.w.clock.now);
   assert.deepEqual(entry.characters.map((c) => c.name), ['Aldric', 'Brindle', 'Cassia', 'Dunmar', 'Eliora', 'Fenwick', 'Galdor', 'Quillfeather', 'Stranger'], 'the Death Knight is dropped');
-  assert.deepEqual(entry.characters[0], { name: 'Aldric', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'WARRIOR', level: 70 });
-  assert.deepEqual(entry.characters.find((c) => c.name === 'Cassia'), { name: 'Cassia', realm: 'Nightslayer', realmSlug: 'nightslayer', class: 'PRIEST', level: 68 });
+  // The identity key (B6a sign-in match) rides along: the fake serves ids 7000 + position, on realm 4001.
+  assert.deepEqual(entry.characters[0], { name: 'Aldric', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'WARRIOR', level: 70, characterId: 7000, realmId: 4001, namespace: 'profile-classicann-us' });
+  assert.deepEqual(entry.characters.find((c) => c.name === 'Cassia'), { name: 'Cassia', realm: 'Nightslayer', realmSlug: 'nightslayer', class: 'PRIEST', level: 68, characterId: 7002, realmId: 4002, namespace: 'profile-classicann-us' });
   assert.equal(entry.characters.find((c) => c.name === 'Stranger').realm, 'Faraway Isle', 'an unlisted realm is named from its slug');
   // The calls: the code for a token (Basic auth), user info, one profile call for the one namespace; nothing else.
   assert.deepEqual(s.w.asked().map((r) => `${r.method} ${r.path} ${r.namespace || ''} ${r.token}`), [

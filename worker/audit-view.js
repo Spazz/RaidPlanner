@@ -24,6 +24,8 @@ export const GROUP_IDS = AUDIT_GROUPS.map((group) => group.id);
 export const ACTION_GROUP = Object.freeze({
   'person.create': 'roster', 'person.update': 'roster', 'person.delete': 'roster', 'person.notes': 'roster',
   'person.account_link': 'roster', 'person.account_unlink': 'roster', 'person.join': 'roster', 'character.match_roster': 'roster',
+  // The Battle.net sign-in match (B6a): a person made or linked from the account's roster characters; a newer proof replacing another account's.
+  'person.match_create': 'roster', 'person.match_link': 'roster', 'character.proof_supersede': 'bnet',
   'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'character.place': 'roster', 'character.release': 'roster', 'character.move': 'roster', 'team_request.create': 'roster', 'team_request.withdraw': 'roster', 'team_request.approve': 'roster', 'team_request.reject': 'roster', 'roster.import': 'roster',
   'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.plan_edit': 'raids', 'raid.manual': 'raids',
   'schedule.update': 'raids', 'schedule.fill': 'raids', 'raid.settings': 'raids', 'roster.publish': 'raids', 'roster.unpublish': 'raids', 'roster.decline': 'signups',
@@ -444,6 +446,10 @@ export function describeRow(row, names = {}) {
     }
     case 'character.match_roster':
       return `Matched ${character(ent)} to its place on the in-game roster${after.renamed ? ' and took its name' : ''}`;
+    case 'person.match_create': return `Added ${person(ent)} to the roster from the characters of a Battle.net account that are on the in-game roster`;
+    case 'person.match_link': return `Linked a Battle.net account to ${person(ent)} because its characters are on the in-game roster`;
+    case 'character.proof_supersede':
+      return `The Battle.net proof of ${character(ent)} passed to ${get('user', after.userId, null) ? `the account ${user(after.userId)}` : 'another account'}, which proved it more recently`;
     case 'character.claim': return after.outcome === 'link_person'
       ? `Linked their account to ${person(after.personId)} through ${character(ent)}`
       : `Added ${character(ent)} to their own record${after.source === 'hand' ? ' by hand' : ' from Battle.net'}`;

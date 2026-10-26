@@ -433,6 +433,11 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('person.join', 'person', 'p_thoren', null, null), 'Joined a person into Thoren'],
     [row('character.match_roster', 'character', 'c_th', { personId: 'p_thoren' }, { personId: 'p_thoren', renamed: true }), 'Matched Thoren to its place on the in-game roster and took its name'],
     [row('character.match_roster', 'character', 'c_th', { personId: 'p_thoren' }, { personId: 'p_thoren', renamed: false }), 'Matched Thoren to its place on the in-game roster'],
+    // Hierarchy B6a part 2a: the Battle.net sign-in match.
+    [row('person.match_create', 'person', 'p_thoren', null, { characters: 3 }), 'Added Thoren to the roster from the characters of a Battle.net account that are on the in-game roster'],
+    [row('person.match_link', 'person', 'p_thoren', null, { userId: 'u_erin' }), 'Linked a Battle.net account to Thoren because its characters are on the in-game roster'],
+    [row('character.proof_supersede', 'character', 'c_th', { userId: 'u_bob' }, { userId: 'u_erin' }), 'The Battle.net proof of Thoren passed to the account Erin E, which proved it more recently'],
+    [row('character.proof_supersede', 'character', 'c_th', { userId: 'u_bob' }, { userId: 'u_gone' }), 'The Battle.net proof of Thoren passed to another account, which proved it more recently'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {

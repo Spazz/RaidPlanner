@@ -29,6 +29,7 @@ const ALLOWED_CORE_RANK_WRITERS = {
   'worker/claim-apply.js': 'applyClaimPlan: a claimed character (new person, alt), whoever decides - the claimant, or an officer approving a claim',
   'worker/routes/roster-import.js': 'writeImport (Raid-Helper, Warcraft Logs, CSV and Battle.net roster imports)',
   'worker/rank-map.js': 'applyRankMap: the in-game roster and the rank map decide the rank of every character (roster sync batch, rank-map edit)',
+  'worker/bnet-match.js': 'the Battle.net sign-in match: a roster character of the account is created with the core rank of its roster row (newCoreRankSql, the rank map of the guild)',
 };
 
 const FIELDS = ['status', 'trial_start', 'trial_end', 'left_on', 'left_reason'];
@@ -346,7 +347,7 @@ check('every INSERT INTO characters in worker/ names core_rank', () => {
     const inComments = raw.split(/\r?\n/).filter((l) => /^\s*\/\//.test(l) && /INTO\s+characters\b/i.test(l)).length;
     assert.equal(mentions - inComments, literal, `${rel}: an INSERT INTO characters outside a plain SQL literal`);
   }
-  assert.equal(seen, 3, 'the three character inserts today: roster.js insertCharacter, claim-apply.js, roster-import.js writeImport');
+  assert.equal(seen, 4, 'the four character inserts today: roster.js insertCharacter, claim-apply.js, roster-import.js writeImport, bnet-match.js (the sign-in match)');
 });
 
 check('core_rank is written only by the allowed paths', () => {
@@ -383,9 +384,9 @@ check('the legacy players fields are written nowhere (R4: the mirror is gone; th
     }
   }
   assert.deepEqual(problems, [], `write the character columns instead (worker/person-legacy.js); players.status is the placeholder 'raider' only:\n${problems.join('\n')}`);
-  // The five places that create a person: roster.js (create), applications.js (accept), attendance.js (unmatched name -> person), claim-apply.js (new person), roster-import.js.
+  // The six places that create a person: roster.js (create), applications.js (accept), attendance.js (unmatched name -> person), claim-apply.js (new person), roster-import.js, bnet-match.js (the sign-in match).
   assert.deepEqual(inserters, [
-    'worker/claim-apply.js', 'worker/routes/applications.js', 'worker/routes/attendance.js', 'worker/routes/roster-import.js', 'worker/routes/roster.js',
+    'worker/bnet-match.js', 'worker/claim-apply.js', 'worker/routes/applications.js', 'worker/routes/attendance.js', 'worker/routes/roster-import.js', 'worker/routes/roster.js',
   ]);
 });
 

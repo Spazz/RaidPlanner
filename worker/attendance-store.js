@@ -114,10 +114,11 @@ const MARK_STALE_SQL = `UPDATE raids SET policy_fp = '', version = version + 1
       WHERE guild_id = ?1 AND id != ?2
         AND (id IN (${loggedUnder('SELECT value FROM json_each(?3)')})
              OR (team_id IN (SELECT value FROM json_each(?4)) AND ${HAS_EVIDENCE}))`;
+// (The person's characters are read through characters_player: given only "guild_id = ? AND player_id = ?" the planner walks the whole guild by characters_guild_id.)
 const MARK_PERSON_STALE_SQL = `UPDATE raids SET policy_fp = '', version = version + 1
       WHERE guild_id = ?1
-        AND (id IN (${loggedUnder('SELECT name_key FROM characters WHERE guild_id = ?1 AND player_id = ?2')})
-             OR (team_id IN (SELECT team_id FROM characters WHERE guild_id = ?1 AND player_id = ?2) AND ${HAS_EVIDENCE}))`;
+        AND (id IN (${loggedUnder('SELECT name_key FROM characters INDEXED BY characters_player WHERE guild_id = ?1 AND player_id = ?2')})
+             OR (team_id IN (SELECT team_id FROM characters INDEXED BY characters_player WHERE guild_id = ?1 AND player_id = ?2) AND ${HAS_EVIDENCE}))`;
 
 // `guard` ({ sql, params }, optional) is another condition of the write: a batch whose statements all carry one marks nothing when it fails. The two statements number
 // their placeholders (?1-?4 and ?1-?2), so the guard's anonymous ones are numbered on after them (D1 does not mix the two forms).
