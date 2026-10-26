@@ -6,6 +6,7 @@
  *   - GET lists the viewer's own requests and, for roster.edit on the request's team, the pending ones of that team only;
  *   - the requester withdraws; the team's Team Leads and officers approve (the character is placed through the same guarded statement as the team routes)
  *     or reject; a lead of another team learns nothing (404); a decided request is final (409);
+ *   - approving refuses (409 request_changed) when the asker no longer owns the character or is blocked, before the write and inside it;
  *   - the D6 to-do (attention kind team_requests) and the nav badge (teamRequestFlags) count PENDING requests only, per team, for those who can decide;
  *   - Delete my data removes the pending requests of the account.
  */
@@ -242,6 +243,60 @@ check('the new audit actions read in the Activity log, with the character and th
   assert(/Asked for Altone to be put on Bravo/.test(log), log);
   assert(/Approved the request to put Altone on Bravo/.test(log));
   assert(/Withdrew the request to put Alttwo on Charlie/.test(log));
+});
+
+check('approve refuses (409 request_changed) when the asker no longer owns the character - the person was unlinked or relinked to another account - or the asker is blocked; the request stays pending', async () => {
+  const s = await world();
+  await s.member('m3', 'Memberthree');
+  const a = (await ask(s, 'm1', s.alt1, s.bravo)).json.request.id;
+  const approve = (who = 'tlb') => s.call(who, 'POST', `/team-requests/${a}/approve`, {});
+  const refused = async () => {
+    const res = await approve();
+    assert.deepEqual([res.status, res.json.error], [409, 'request_changed'], res.text);
+    assert.equal(await s.teamOf(s.alt1), null, 'nothing was placed');
+    assert.equal((await rowOf(s, a)).status, 'pending');
+    assert.equal((await s.rows("SELECT id FROM audit_log WHERE action IN ('team_request.approve', 'character.place')")).length, 0);
+  };
+  // The person is unlinked from the asker's account, then linked to a different one.
+  await s.ok('gm', 'PUT', `/roster/${s.m1.pid}/account`, { userId: null }, 200);
+  await refused();
+  await s.link(s.m1.pid, 'm3');
+  await refused();
+  // Linked to the asker again: the request is theirs once more.
+  await s.ok('gm', 'PUT', `/roster/${s.m1.pid}/account`, { userId: null }, 200);
+  await s.link(s.m1.pid, 'm1');
+  // A block on the asker's account stops it, and lifting the block brings it back.
+  s.exec(`INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at) VALUES ('${s.gid}', '${s.uids.m1}', '${s.uids.gm}', 'spam', 1)`);
+  await refused();
+  s.exec(`DELETE FROM guild_blocks WHERE user_id = '${s.uids.m1}'`);
+  await s.ok('o1', 'POST', `/team-requests/${a}/approve`, {}, 200);
+  assert.equal(await s.teamOf(s.alt1), s.bravo);
+  // Reject is still the way out for a request nobody can approve any more.
+  const b = (await ask(s, 'm1', s.alt2, s.charlie)).json.request.id;
+  await s.ok('gm', 'PUT', `/roster/${s.m1.pid}/account`, { userId: null }, 200);
+  await s.fail('o1', 'POST', `/team-requests/${b}/approve`, {}, 409, 'request_changed');
+  await s.ok('o1', 'POST', `/team-requests/${b}/reject`, {}, 200);
+  assert.equal((await rowOf(s, b)).status, 'rejected');
+});
+
+check('the approval re-checks the asker inside the placing statement: an account relinked or blocked between the read and the write places nothing', async () => {
+  const { placeStatement } = await import('../../worker/team-place.js');
+  const { askerStillOwns } = await import('../../worker/routes/team-requests.js');
+  const s = await world();
+  const id = (await ask(s, 'm1', s.alt1, s.bravo)).json.request.id;
+  const row = { player_id: s.m1.pid, requested_by: s.uids.m1 };
+  const place = async () => (await s.w.db.batch([placeStatement(s.w.db, {
+    guildId: s.gid, personId: s.m1.pid, characterId: s.alt1, teamId: s.bravo, from: null, now: 1, extra: askerStillOwns(s.gid, row),
+  })]))[0].meta.changes;
+  s.exec(`INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at) VALUES ('${s.gid}', '${s.uids.m1}', '${s.uids.gm}', 'x', 1)`);
+  assert.equal(await place(), 0, 'blocked');
+  s.exec(`DELETE FROM guild_blocks WHERE user_id = '${s.uids.m1}'`);
+  s.exec(`UPDATE players SET user_id = NULL WHERE id = '${s.m1.pid}'`);
+  assert.equal(await place(), 0, 'no longer the person\'s account');
+  s.exec(`UPDATE players SET user_id = '${s.uids.m1}' WHERE id = '${s.m1.pid}'`);
+  assert.equal(await place(), 1, 'the asker, not blocked, owns the person');
+  assert.equal(await s.teamOf(s.alt1), s.bravo);
+  assert.equal((await rowOf(s, id)).status, 'pending', 'the statement places only; the route closes the request in the same batch');
 });
 
 runChecks(checks);

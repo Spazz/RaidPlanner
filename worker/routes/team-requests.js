@@ -9,8 +9,9 @@
 // The pending count reaches the Home to-do list (attention kind team_requests) and the nav badge (teamRequestFlags in GET /api/guild/:gid), and nothing else does.
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
+import { isBlocked } from '../block-check.js';
 import { newId } from '../ids.js';
-import { ownPersonStatement } from '../membership.js';
+import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { toPerson } from '../person.js';
 import { SINGLE_LINE_STRIP, nameKey } from '../roster-data.js';
@@ -33,6 +34,14 @@ const AUDIT = (ctx, guildContext, action, id, after) => auditStatement(ctx, {
 }, CHANGED_ONE);
 
 const PENDING = (id) => ({ sql: "EXISTS (SELECT 1 FROM team_requests WHERE id = ? AND status = 'pending')", params: [id] });
+
+// The asker is still who they were: the character's person is still theirs (its account did not change) and their account is not blocked here. The approval
+// checks it before the write for a clear answer and repeats it inside the placing statement.
+export const askerStillOwns = (guildId, row) => ({
+  sql: `EXISTS (SELECT 1 FROM players op WHERE op.id = ? AND op.guild_id = ? AND ${ownPlayerSql('op', '?')})
+        AND NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)`,
+  params: [row.player_id, guildId, row.requested_by, row.requested_by, guildId, row.requested_by],
+});
 
 const REQUEST_COLUMNS = `q.id, q.status, q.note, q.created_at, q.decided_at, q.team_id, t.name AS team_name, t.archived AS team_archived,
        q.character_id, c.name AS character_name, c.class AS character_class, c.player_id, c.team_id AS character_team_id, q.requested_by`;
@@ -159,6 +168,13 @@ export async function approveTeamRequest(ctx) {
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const row = await loadDecidable(ctx, guildContext);
+  // Whoever asked may no longer own the character (its person was relinked to another account or unlinked, or the asker's account was deleted) or may have been
+  // blocked since: approving would place a character for someone who is not that person's, or not in the guild.
+  const changed = () => new HttpError(409, 'request_changed', 'The request or the character changed while you were deciding. Reload to see where it stands.');
+  if (!row.requested_by || await isBlocked(db, guild.id, row.requested_by)) throw changed();
+  const owns = await db.prepare(`SELECT 1 AS found FROM players p WHERE p.id = ? AND p.guild_id = ? AND ${ownPlayerSql('p', '?')}`)
+    .bind(row.player_id, guild.id, row.requested_by, row.requested_by).first();
+  if (!owns) throw changed();
   if (row.team_archived === 1) throw new HttpError(409, 'team_archived', 'That team is archived, so nobody can be placed on it. Reject the request.');
   if (row.character_team_id !== null) {
     throw new HttpError(409, 'on_team', `${row.character_name} was put on a team in the meantime. Reject this request.`);
@@ -167,11 +183,15 @@ export async function approveTeamRequest(ctx) {
   if (held) throw teamTaken();
   const now = ctx.now();
   const pending = PENDING(row.id);
+  const asker = askerStillOwns(guild.id, row);
   let results;
   try {
     results = await db.batch([
-      // The same guarded statement as the team routes, and only while the request is still pending.
-      placeStatement(db, { guildId: guild.id, personId: row.player_id, characterId: row.character_id, teamId: row.team_id, from: null, now, extra: pending }),
+      // The same guarded statement as the team routes, and only while the request is still pending and its asker still owns the character.
+      placeStatement(db, {
+        guildId: guild.id, personId: row.player_id, characterId: row.character_id, teamId: row.team_id, from: null, now,
+        extra: { sql: `(${pending.sql}) AND ${asker.sql}`, params: [...pending.params, ...asker.params] },
+      }),
       db.prepare("UPDATE team_requests SET status = 'approved', decided_by = ?, decided_at = ? WHERE id = ? AND guild_id = ? AND status = 'pending' AND changes() = 1")
         .bind(ctx.session.user.id, now, row.id, guild.id),
       AUDIT(ctx, guildContext, 'team_request.approve', row.id, { teamId: row.team_id, characterId: row.character_id, personId: row.player_id }),
@@ -185,9 +205,7 @@ export async function approveTeamRequest(ctx) {
     if (constraintOf(error) === 'team_taken') throw teamTaken();
     throw error;
   }
-  if (results[0].meta.changes !== 1) {
-    throw new HttpError(409, 'request_changed', 'The request or the character changed while you were deciding. Reload to see where it stands.');
-  }
+  if (results[0].meta.changes !== 1) throw changed();
   return jsonResponse({
     request: { id: row.id, status: 'approved' }, personId: row.player_id, teamRequestFlags: await loadTeamRequestFlags(db, guildContext),
   });
