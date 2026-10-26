@@ -635,6 +635,11 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND] });
     const many = G.pages.person.characterDialogHtml({ guildData: gd, record: rec, character: rec.characters[1], defaultTeamId: 't_main' });
     assert(many.includes('name="teamId"') && /<option value="t_main" selected>/.test(many));
+    // A character on no team has no Team to edit: with several teams the field is still left out, so saving cannot place it (B2).
+    const NONE = { id: null, name: null, archived: false };
+    const teamless = Object.assign({}, rec.characters[1], { team: NONE });
+    const lone = G.pages.person.characterDialogHtml({ guildData: gd, record: rec, character: teamless, defaultTeamId: null });
+    assert(lone.includes('Edit Glimmerkin') && !lone.includes('name="teamId"') && !lone.includes('dlg-team'), 'no Team field for a character on no team');
   });
 
   // ── behaviour against a stubbed API ────────────────────────────
