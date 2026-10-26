@@ -3,7 +3,7 @@
  * Run: node tests/guild/guild-b2-review-fixes-tests.js
  *
  *   1. PATCH /roster/:pid mirrors a field into players only when that field changed: a legacy players row the characters cannot carry (a Break with its
- *      left date, trial dates on a person who is not on trial) survives an unrelated PATCH; a real change still mirrors; mismatch.sql stays 0;
+ *      left date, trial dates on a person who is not on trial) survives an unrelated PATCH (R2/R3; since R4 nothing writes those columns);
  *   2. the trial review of a Trial alt shows the officer notes of the person's HOME team only: the lead of the alt's team reads attendance and loot, not the notes;
  *   3. a lost Make-Main race (the same move already done by another request) does not copy the old Main's empty trial dates over the new Main's;
  *   4. a custom role that holds signups.self at guild or team scope still needs a character on the raid's team roster to sign up (U R4-Q1);
@@ -71,7 +71,8 @@ async function scenario({ teams = ['Alpha', 'Bravo'] } = {}) {
       const res = await s.ok(who, 'POST', `/roster/${pid}/characters`, { teamId: tids[0], class: 'ROGUE', mainSpec: 'Combat', offSpec: null, name, ...body });
       return res.characters.find((c) => c.name === name).id;
     },
-    async inSync(label) { assert.deepEqual(await w.db.prepare(MISMATCH).first(), ZERO, `in sync after ${label}`); },
+    // R4 (lane B4b) deleted the players mirror, so mismatch.sql no longer describes a state the code keeps: the R2 sync checks stay as labels only.
+    async inSync(label) { assert.ok(MISMATCH && ZERO && label); },
     playerRow: async (pid) => (await s.rows('SELECT status, joined_on, trial_start, trial_end, left_on, left_reason, version FROM players WHERE id = ?', pid))[0],
   };
   return s;
@@ -105,37 +106,8 @@ check('PATCH: a joinedOn-only change keeps the legacy Break + left date of an ol
   }
 });
 
-check('PATCH: a change of status or of a date still mirrors into players, and only that field changes', async () => {
-  const s = await scenario();
-  const p = await s.newPerson({ name: 'Mirrorone' });
-  let record = await s.ok('gm', 'GET', `/roster/${p.pid}`);
-  await s.ok('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: record.person.version, status: 'inactive', leftReason: 'kicked', leftOn: '2027-01-10' }, 200);
-  assert.deepEqual(await s.playerRow(p.pid), { status: 'inactive', joined_on: p.res.person.joinedOn, trial_start: null, trial_end: null, left_on: '2027-01-10', left_reason: 'kicked', version: 2 });
-  await s.inSync('Inactive + Kicked');
-  record = await s.ok('gm', 'GET', `/roster/${p.pid}`);
-  await s.ok('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: record.person.version, leftOn: '2027-01-12' }, 200);
-  const dated = await s.playerRow(p.pid);
-  assert.deepEqual([dated.status, dated.left_on, dated.left_reason], ['inactive', '2027-01-12', 'kicked'], 'only the left date moved');
-  record = await s.ok('gm', 'GET', `/roster/${p.pid}`);
-  await s.ok('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: record.person.version, status: 'trial', trialStart: '2027-01-15', trialEnd: '2027-02-15' }, 200);
-  const trial = await s.playerRow(p.pid);
-  assert.deepEqual([trial.status, trial.trial_start, trial.trial_end, trial.left_on, trial.left_reason], ['trial', '2027-01-15', '2027-02-15', null, null]);
-  await s.inSync('Trial with dates');
-  record = await s.ok('gm', 'GET', `/roster/${p.pid}`);
-  await s.ok('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: record.person.version, trialEnd: '2027-02-20' }, 200);
-  const moved = await s.playerRow(p.pid);
-  assert.deepEqual([moved.status, moved.trial_start, moved.trial_end], ['trial', '2027-01-15', '2027-02-20']);
-  await s.inSync('a new trial end');
-  // A legacy Break row that really changes (back to Raider) mirrors the new status.
-  const brk = await s.newPerson({ name: 'Breakback' });
-  s.exec(`UPDATE players SET status = 'inactive', left_on = '2026-01-05', left_reason = 'break', version = version + 1 WHERE id = '${brk.pid}'`);
-  s.exec(`UPDATE characters SET core_rank = 'social', left_on = NULL, left_reason = NULL WHERE player_id = '${brk.pid}'`);
-  record = await s.ok('gm', 'GET', `/roster/${brk.pid}`);
-  await s.ok('gm', 'PATCH', `/roster/${brk.pid}`, { expectedVersion: record.person.version, status: 'raider' }, 200);
-  assert.equal((await s.playerRow(brk.pid)).status, 'raider');
-  assert.deepEqual((await s.rows('SELECT core_rank FROM characters WHERE player_id = ?', brk.pid)).map((r) => r.core_rank), ['raider']);
-  await s.inSync('Break row back to Raider');
-});
+// "A change of status or of a date still mirrors into players" was an R2/R3 check: R4 (lane B4b) deleted the mirror, and
+// guild-legacy-columns-tests.js pins that nothing writes those columns any more.
 
 // ---------------------------------------------------------------------------
 // 2. The trial review shows the home team's notes only
