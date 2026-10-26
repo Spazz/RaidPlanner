@@ -208,6 +208,21 @@ export async function loadApplicationFlags(db, guildContext) {
   return flags;
 }
 
+// { [teamId]: n }: pending team requests (a person asked for a character to be placed on the team), for the active teams the viewer can edit; {} for everyone
+// else. The badge counts these and nothing else (D6): the characters on no team are a list, not a to-do. One query.
+export async function loadTeamRequestFlags(db, guildContext) {
+  if (!isGranted(guildContext.can['roster.edit'])) return {};
+  const result = await db.prepare(
+    `SELECT t.id, (SELECT COUNT(*) FROM team_requests q WHERE q.guild_id = t.guild_id AND q.team_id = t.id AND q.status = 'pending') AS n
+       FROM teams t WHERE t.guild_id = ? AND t.archived = 0`,
+  ).bind(guildContext.guild.id).all();
+  const flags = {};
+  for (const team of result.results) {
+    if (allows(guildContext.can, 'roster.edit', team.id)) flags[team.id] = team.n;
+  }
+  return flags;
+}
+
 // The pending character claims of the guild, for the Attendance nav badge (the Review queue lists them): the same count the Needs attention item shows.
 // Only for people who can decide claims (roster.edit anywhere); 0 for everyone else.
 export async function loadPendingClaims(db, guildContext) {

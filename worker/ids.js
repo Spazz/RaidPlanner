@@ -33,6 +33,8 @@ const PATTERNS = {
   ad: /^ad_[A-Za-z0-9_-]{22}$/,
   // Hierarchy build: one roster sync attempt (roster_syncs.id).
   rs: /^rs_[A-Za-z0-9_-]{22}$/,
+  // Hierarchy build, lane B3: a team request (a person asks for one of their characters to be placed on a team).
+  tq: /^tq_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {
@@ -83,6 +85,8 @@ export const PARAM_SOURCE = {
   kid: 'ak_[A-Za-z0-9_-]{22}',
   // PM wave 8: a guest sign-up link (DELETE .../join-links/:jid) and a sign-up's number on its raid (DELETE .../guests/:sid).
   jid: 'jl_[A-Za-z0-9_-]{22}',
+  // A team request (lane B3).
+  trid: 'tq_[A-Za-z0-9_-]{22}',
   // A Needs attention item id (DELETE .../attention/dismissals/:itemid): 'claims', 'no_loot:r_..', 'watch:t_..:p_..'; the colons may arrive as %3A. The handler decodes it.
   itemid: '[a-z_]+(?:(?::|%3[Aa])[A-Za-z0-9_-]{1,40}){0,2}',
   sid: '[0-9]{1,9}',

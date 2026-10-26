@@ -101,7 +101,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, weekSignups, weekRoster, weekCharacters, weekLate, guestIdentities, onboarding] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, raids, rows, borrowed, people, characters, rosterDeclined, applications, teamRequests, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, weekSignups, weekRoster, weekCharacters, weekLate, guestIdentities, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -181,6 +181,8 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     ),
     // Applications nobody has looked at yet, per team.
     bind("SELECT team_id, COUNT(*) AS n FROM applications WHERE guild_id = ? AND status = 'new' GROUP BY team_id"),
+    // Pending team requests (D6): a person asked for one of their characters to be placed on the team.
+    bind("SELECT team_id, COUNT(*) AS n FROM team_requests WHERE guild_id = ? AND status = 'pending' GROUP BY team_id"),
     // Upcoming raids with a published roster that start within CONFIRM_HOURS and still have seats nobody has answered.
     bind(
       `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, COUNT(*) AS n
@@ -318,6 +320,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     ranks,
     rosterDeclined: rosterDeclined.results,
     applications: applications.results,
+    teamRequests: teamRequests.results,
     rosterPending: rosterPending.results,
     eventMoved: eventMoved.results,
     webhooksOff: webhooksOff.results,

@@ -12,7 +12,7 @@ import { addDays, localTimeToMs, weekStart } from './attendance-calendar.js';
 import { noticeOfRow, raidNoticeEffects } from './away.js';
 import { EXPECTED_KINDS, mergeSignups, roleGroup } from './signups-data.js';
 
-export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'log_missing', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
+export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'team_requests', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'log_missing', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
 export const INFO_KINDS = ['unlocked'];  // listed with severity 'info'
 // Readiness FACTS about a raid: the Week view builds the raid's sentence from them (or from `week`). They stay in `items`, marked `readiness: true`,
@@ -87,6 +87,7 @@ function daysBetween(from, to) {
 //   claims: number, trials: [{ id, trial_end, name, class, team_id }],
 //   noLoot: [{ id, team_id, raid_on, zone, title, event_title }],
 //   applications: [{ team_id, n }]   (applications still marked New, per team)
+//   teamRequests: [{ team_id, n }]   (pending team requests, per team: a person asked for a character to be placed on the team)
 //   rosterDeclined: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids with a published roster: n seats said "can't make it")
 //   rosterPending: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids that start within CONFIRM_HOURS with a published roster: n seats have not answered)
 //   logMissing: [{ id, team_id, raid_on, zone, title, event_title, logger_name }]   (PM wave 8: past raids whose Logger has not uploaded a log, 5 hours after the start)
@@ -298,6 +299,10 @@ function collect(input) {
   for (const row of input.applications || []) {
     if (!here('roster.edit', row.team_id)) continue;
     add('applications', { ...base('applications', row.team_id), count: row.n, id: `applications:${row.team_id}`, link: { name: 'applications' } }, [0]);
+  }
+  for (const row of input.teamRequests || []) {
+    if (!here('roster.edit', row.team_id)) continue;
+    add('team_requests', { ...base('team_requests', row.team_id), count: row.n, id: `team_requests:${row.team_id}`, link: { name: 'teamrequests' } }, [0]);
   }
   for (const row of input.trials) {
     if (!here('roster.edit', row.team_id)) continue;

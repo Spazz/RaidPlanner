@@ -32,6 +32,7 @@ import {
   removeCharacter, saveNotes,
 } from './routes/roster.js';
 import { deleteCharacterTeam, getTeamSignups, putCharacterTeam } from './routes/team-placement.js';
+import { approveTeamRequest, createTeamRequest, listTeamRequests, rejectTeamRequest, withdrawTeamRequest } from './routes/team-requests.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
 import { commitCsv, previewCsv } from './routes/roster-import-csv.js';
 import { closeIntent, deleteIntentPick, getIntent, openIntent, putIntentPick } from './routes/intent.js';
@@ -159,6 +160,12 @@ export const ROUTES = [
   { method: 'PUT', path: '/api/guild/:gid/roster/:pid/characters/:cid/team', auth: true, handler: putCharacterTeam },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/characters/:cid/team', auth: true, handler: deleteCharacterTeam },
   { method: 'GET', path: '/api/guild/:gid/roster/:pid/characters/:cid/team-signups', auth: true, handler: getTeamSignups },
+  // Team requests (lane B3, D6): a person asks for a character to be placed on a team; the team's leads and officers decide.
+  { method: 'GET', path: '/api/guild/:gid/team-requests', auth: true, handler: listTeamRequests },
+  { method: 'POST', path: '/api/guild/:gid/team-requests', auth: true, handler: createTeamRequest },
+  { method: 'DELETE', path: '/api/guild/:gid/team-requests/:trid', auth: true, handler: withdrawTeamRequest },
+  { method: 'POST', path: '/api/guild/:gid/team-requests/:trid/approve', auth: true, handler: approveTeamRequest },
+  { method: 'POST', path: '/api/guild/:gid/team-requests/:trid/reject', auth: true, handler: rejectTeamRequest },
   { method: 'GET', path: '/api/guild/:gid/raids', auth: true, handler: listRaids },
   { method: 'POST', path: '/api/guild/:gid/raids', auth: true, handler: createRaid },
   { method: 'GET', path: '/api/guild/:gid/raids/:rid', auth: true, handler: getRaid },
