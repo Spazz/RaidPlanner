@@ -73,13 +73,20 @@ function absorb(jar, response) {
   }
 }
 
-// A fetch the page's G.api.request can use: the Worker answers, the jar carries the session.
+// A fetch the page's G.api.request can use: the Worker answers, the jar carries the session. inFlight counts the requests not answered yet, so a page check
+// waits for the Worker instead of a fixed delay (a slow build machine missed a 5 ms wait).
+let inFlight = 0;
 const fetchFor = (world, jar) => async (urlPath, init = {}) => {
   const headers = { ...(init.headers || {}) };
   if (Object.keys(jar).length) headers.Cookie = Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
-  const response = await world.app.handle(new Request(`${ORIGIN}${urlPath}`, { method: init.method, headers, body: init.body }));
-  absorb(jar, response);
-  return response;
+  inFlight += 1;
+  try {
+    const response = await world.app.handle(new Request(`${ORIGIN}${urlPath}`, { method: init.method, headers, body: init.body }));
+    absorb(jar, response);
+    return response;
+  } finally {
+    inFlight -= 1;
+  }
 };
 
 async function signIn(world, person, servers) {
@@ -552,7 +559,8 @@ check('award page and Needs fixing (lane U2): the real pages draw the record, sa
   const first = committed.awards[0];
   const gd = s.guildData;
   const S = pageState(s, G, gd);
-  const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+  // Two quiet 5 ms slices in a row: every request the click started (and any it chained) has been answered and drawn.
+  const tick = async () => { for (let quiet = 0; quiet < 2;) { await new Promise((resolve) => setTimeout(resolve, 5)); quiet = inFlight ? 0 : quiet + 1; } };
   const el = (value, extra) => Object.assign({ value, checked: false, getAttribute: () => null }, extra || {});
   G.app.render = () => {};
 
