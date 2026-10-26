@@ -4,11 +4,12 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import {
-  BnetError, bnetSupport, fetchGuildRoster, guildSlug, isRealmSlug, realmSlugOf, rosterHttpError,
+  BnetError, assessRoster, bnetSupport, fetchGuildRosterBySlug, guildSlug, isRealmSlug, realmSlugOf, rosterHttpError, rosterInvalidHttpError,
 } from '../battlenet.js';
 import { MAX_RANK_LABEL, RANK_COUNT, loadBnetSettings, rankLabelOf, realmDisplayName } from '../bnet-store.js';
 import { newId } from '../ids.js';
 import { isGranted, loadGuildContext, requireAction } from '../permissions.js';
+import { loadPin } from '../roster-pin.js';
 import { SINGLE_LINE_STRIP, cleanCharacterName, nameKey } from '../roster-data.js';
 import { bad, resolveRealm } from './roster.js';
 import { checkNames, importRate, indexed, readDefaultStatus, requireTeamId, startImport, writeImport } from './roster-import.js';
@@ -21,11 +22,18 @@ export function requireBnetConfigured(env) {
   }
 }
 
-// What a roster read needs: the version's support, the realm slug and the in-game guild name.
-//   realm guilds use their own realm (the realms list's slug, else the realm name in slug form); ruleset guilds use the realm an officer saved.
-export function rosterTarget(guild, settings) {
+// What a roster read needs: the version's support, the realm slug and the in-game guild (name for display, slug for the URL).
+//   PINNED guilds (any pinned_* column set): the target is the pin and nothing else - never settings.guildName, guild.name or guild.realm_slug - and an
+//     incomplete pin is refused rather than completed from a display name (plan "Source/pin" rule 2).
+//   other guilds: realm guilds use their own realm (the realms list's slug, else the realm name in slug form); ruleset guilds use the realm an officer saved.
+export function rosterTarget(guild, settings, pin = null) {
   const support = bnetSupport(guild.game_version, guild.region);
   if (!support.supported) throw new HttpError(409, 'bnet_unsupported', support.message);
+  if (pin && pin.touched) {
+    if (!pin.target) throw new HttpError(409, 'bnet_pin_incomplete', "This guild's Battle.net link is incomplete. An owner has to finish setting it up.");
+    if (pin.namespace !== support.namespace) throw new HttpError(409, 'bnet_pin_mismatch', "This guild's Battle.net link does not match its game version and region.");
+    return { support, realmSlug: pin.realmSlug, guildName: null, guildSlug: pin.guildSlug, pinned: true };
+  }
   const realmSlug = guild.realm_kind === 'ruleset' ? settings.realmSlug : (guild.realm_slug || realmSlugOf(guild.realm));
   if (!realmSlug) {
     throw new HttpError(409, 'bnet_realm_missing', 'Battle.net needs the realm this guild lives on. Set it in Guild settings > Battle.net.');
@@ -34,7 +42,7 @@ export function rosterTarget(guild, settings) {
   if (!guildSlug(guildName)) {
     throw new HttpError(409, 'bnet_guild_missing', 'Battle.net needs the in-game guild name. Set it in Guild settings > Battle.net.');
   }
-  return { support, realmSlug, guildName };
+  return { support, realmSlug, guildName, guildSlug: guildSlug(guildName), pinned: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -116,14 +124,27 @@ export async function putBnetSettings(ctx) {
 // ---------------------------------------------------------------------------
 // Roster import
 
-// One roster fetch for the guild's saved settings -> { roster, target, settings }.
-async function readRoster(ctx, guildContext) {
+// The officer import is for guilds whose rank source is not the in-game roster: an 'ingame' guild's roster is the sync's (plan "Source/pin" rule 4).
+function requireHandImport(pin) {
+  if (pin && pin.rankSource === 'ingame') {
+    throw new HttpError(409, 'bnet_import_ingame', "This guild's roster comes from the in-game guild roster, so it is not imported by hand.");
+  }
+}
+
+// One roster fetch for the guild's pin (pinned) or saved settings -> { roster, target, settings }. The same validity rules as the sync decide whether
+// the answer can be trusted; an unpinned guild has no pin to compare ids with, so only the other rules apply.
+async function readRoster(ctx, guildContext, pin = null) {
   requireBnetConfigured(ctx.env);
   const guild = guildContext.guild;
   const settings = await loadBnetSettings(ctx.db, guild.id);
-  const target = rosterTarget(guild, settings);
+  const target = rosterTarget(guild, settings, pin);
   try {
-    const roster = await fetchGuildRoster(ctx, guild.region, target.support.namespace, target.realmSlug, target.guildName);
+    const roster = await fetchGuildRosterBySlug(ctx, guild.region, target.support.namespace, target.realmSlug, target.guildSlug, target.guildName || '');
+    const verdict = assessRoster(roster, pin && pin.complete ? { guildId: pin.blizzardGuildId, realmId: pin.blizzardRealmId } : null);
+    if (!verdict.good) {
+      ctx.log(`bnet roster: not good: ${verdict.reason}`);
+      throw rosterInvalidHttpError(verdict.reason);
+    }
     return { roster, target, settings };
   } catch (error) {
     if (error instanceof BnetError) {
@@ -147,8 +168,10 @@ export async function previewBnetRoster(ctx) {
   requireBnetConfigured(ctx.env);
   const { guildContext, team } = await startImport(ctx);
   const guild = guildContext.guild;
+  const pin = await loadPin(db, guild.id);
+  requireHandImport(pin);
   await importRate(ctx);
-  const { roster, settings } = await readRoster(ctx, guildContext);
+  const { roster, settings } = await readRoster(ctx, guildContext, pin);
 
   const resolved = roster.members.map((member) => ({ member, realm: memberRealm(guild, member) }));
   const result = await db.prepare(
@@ -200,8 +223,10 @@ export async function commitBnetRoster(ctx) {
   const { guildContext, team } = await startImport(ctx);
   const { db } = ctx;
   const guild = guildContext.guild;
+  const pin = await loadPin(db, guild.id);
+  requireHandImport(pin);
   await importRate(ctx);
-  const { roster } = await readRoster(ctx, guildContext);
+  const { roster, target } = await readRoster(ctx, guildContext, pin);
   const byKey = new Map(roster.members.map((member) => [memberKey(member), member]));
 
   const plan = { people: [], characters: [], nicknameUpdates: [], source: 'bnet', ref: 'guild' };
@@ -225,6 +250,54 @@ export async function commitBnetRoster(ctx) {
     entries.push({ name, realmKey: realm.key, index });
   });
   await checkNames(db, guild.id, entries);
+  const stamps = identityStamps(plan, wanted, byKey);
+  await requireIdentitiesFree(db, guild.id, target.support.namespace, stamps);
   const written = await writeImport(ctx, guildContext, team, plan);
+  await stampIdentities(ctx, guild.id, target.support.namespace, stamps);
   return jsonResponse(written.body, written.status);
+}
+
+// ---------------------------------------------------------------------------
+// Identity stamping: the commit records each imported character's Battle.net identity key (namespace + realm id + character id) from the SAME fetch
+// the members came from, so the character is bound to its roster entry from the start. characters has a partial unique index on the key.
+
+// -> [{ id: our character id, realmId, characterId }], in the order of plan.characters (= the order of the wanted members).
+function identityStamps(plan, wanted, byKey) {
+  return plan.characters.map((character, index) => {
+    const member = byKey.get(`${nameKey(wanted[index].name)}|${wanted[index].realmSlug}`);
+    return { id: character.id, realmId: member.realmId, characterId: member.characterId };
+  });
+}
+
+// A character of this guild already holds one of these identity keys (renamed in game since it was added): importing it again would collide with the
+// unique index, so refuse before anything is written.
+async function requireIdentitiesFree(db, guildId, namespace, stamps) {
+  if (!stamps.length) return;
+  const taken = await db.prepare(
+    `SELECT c.name FROM characters c
+      WHERE c.guild_id = ? AND c.namespace = ?
+        AND EXISTS (SELECT 1 FROM json_each(?) j WHERE json_extract(j.value, '$[0]') = c.blizzard_realm_id AND json_extract(j.value, '$[1]') = c.blizzard_char_id)
+      LIMIT 1`,
+  ).bind(guildId, namespace, JSON.stringify(stamps.map((stamp) => [stamp.realmId, stamp.characterId]))).first();
+  if (taken) {
+    throw new HttpError(409, 'roster_identity_taken', `${taken.name} is already on the roster under that Battle.net character. Load the roster again.`, { field: 'members' });
+  }
+}
+
+// After the batch that created the characters. A failure here leaves the characters without ids (the sync and the sign-in match stamp them later), so it
+// is logged, never turned into an error for an import that did succeed.
+async function stampIdentities(ctx, guildId, namespace, stamps) {
+  if (!stamps.length) return;
+  const json = JSON.stringify(stamps.map((stamp) => [stamp.id, stamp.realmId, stamp.characterId]));
+  try {
+    await ctx.db.prepare(
+      `UPDATE characters
+          SET namespace = ?,
+              blizzard_realm_id = (SELECT json_extract(j.value, '$[1]') FROM json_each(?) j WHERE json_extract(j.value, '$[0]') = characters.id),
+              blizzard_char_id = (SELECT json_extract(j.value, '$[2]') FROM json_each(?) j WHERE json_extract(j.value, '$[0]') = characters.id)
+        WHERE guild_id = ? AND blizzard_char_id IS NULL AND id IN (SELECT json_extract(value, '$[0]') FROM json_each(?))`,
+    ).bind(namespace, json, json, guildId, json).run();
+  } catch (error) {
+    ctx.log(`bnet import: could not stamp identities: ${error && error.message}`);
+  }
 }
