@@ -25,6 +25,9 @@
 // Steps 1-5 read the OLD guild_roster and so must run before step 6; they are the "character-side apply" and each one also requires
 // guilds.rank_source = 'ingame' INSIDE the batch (not in JS), so a sync that read the guild just before the flip can neither skip them after the flip
 // nor run them before it. Before the flip the batch therefore writes only guild_roster + roster_syncs + the guild's sync columns.
+// HAS_EVIDENCE: a raid that holds any evidence a roster change can move; the sync suite pins that the sync marks the same raids stale as roster.js's
+// rename path (markRaidsStale).
+import { HAS_EVIDENCE } from './attendance-store.js';
 import { BnetError, assessRoster, bnetSupport, fetchGuildRosterBySlug } from './battlenet.js';
 import { newId } from './ids.js';
 import { COMPLETE_PIN_SQL, PIN_SQL, pinOf } from './roster-pin.js';
@@ -91,14 +94,6 @@ export function replaceGuards(run) {
   };
 }
 
-// A mirror of attendance-store.js HAS_EVIDENCE (not exported there): a raid that holds any evidence a roster change can move. The sync suite pins that
-// this statement marks the same raids stale as roster.js's rename path does (markRaidsStale).
-const HAS_EVIDENCE = `(raids.log_mode = 'manual'
-    OR EXISTS (SELECT 1 FROM attendance x WHERE x.raid_id = raids.id)
-    OR EXISTS (SELECT 1 FROM raid_signups x WHERE x.raid_id = raids.id)
-    OR EXISTS (SELECT 1 FROM raid_plan x WHERE x.raid_id = raids.id)
-    OR EXISTS (SELECT 1 FROM raid_manual x WHERE x.raid_id = raids.id)
-    OR EXISTS (SELECT 1 FROM raid_reports x WHERE x.raid_id = raids.id))`;
 
 const NEW_ROSTER_FULL = `new_roster AS (SELECT json_extract(value, '$[0]') AS rid, json_extract(value, '$[1]') AS cid,
     json_extract(value, '$[2]') AS name, json_extract(value, '$[3]') AS nk FROM json_each(?))`;

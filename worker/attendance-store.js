@@ -76,7 +76,7 @@ export async function loadPolicyResolver(db, guild) {
 // Stale marking (rules or roster changed under stored results)
 
 // A raid that holds any evidence a roster change can move: results, sign-ups, a plan, manual ticks or a log.
-const HAS_EVIDENCE = `(raids.log_mode = 'manual'
+export const HAS_EVIDENCE = `(raids.log_mode = 'manual'
     OR EXISTS (SELECT 1 FROM attendance x WHERE x.raid_id = raids.id)
     OR EXISTS (SELECT 1 FROM raid_signups x WHERE x.raid_id = raids.id)
     OR EXISTS (SELECT 1 FROM raid_plan x WHERE x.raid_id = raids.id)
