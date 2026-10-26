@@ -611,6 +611,82 @@ function rankMapRows(s) {
 }
 const matchCall = (s, who, person, id) => s.call(who, 'POST', `/roster/${person.pid}/characters/${person.cid}/match`, { namespace: NS, blizzardRealmId: 4001, blizzardCharId: id });
 
+check('F5: Match to roster refuses (403 seniority) a roster row whose in-game rank maps to a role the actor does not strictly outrank; the Owner may, and rows of no elevated role stay open', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'] });
+  await s.officer('o1', 'Officerone');
+  await s.lead('tl', [s.tids[0]], 'Leadone');
+  rankMapRows(s);
+  rosterRows(s, [['Gmguy', 9100, 0], ['Officerguy', 9101, 1], ['Leadguy', 9102, 2], ['Plainguy', 9103, 4]]);
+  const squats = {};
+  for (const name of ['Squata', 'Squatb', 'Squatc', 'Squatd', 'Squate']) squats[name] = await s.person({ name });
+  const keyOf = (person) => sOne(s, 'SELECT blizzard_char_id AS id, name FROM characters WHERE id = ?', person.cid);
+
+  // The Officer (rank 1): the Guild Master row and an Officer row are not strictly below it.
+  for (const [squat, id] of [['Squata', 9100], ['Squatb', 9101]]) {
+    const res = await matchCall(s, 'o1', squats[squat], id);
+    assert.deepEqual([res.status, res.json && res.json.error], [403, 'seniority'], `${squat}: ${res.text}`);
+    assert.equal(keyOf(squats[squat]).id, null, `${squat} stays unbound`);
+  }
+  // ... a Team Lead row and a plain row are.
+  let res = await matchCall(s, 'o1', squats.Squatc, 9102);
+  assert.equal(res.status, 200, res.text);
+  res = await matchCall(s, 'o1', squats.Squatd, 9103);
+  assert.equal(res.status, 200, res.text);
+  // The Team Lead (rank 2, roster.edit on Alpha): a Team Lead row is its own rank.
+  rosterRows(s, [['Leadtwo', 9104, 2]]);
+  res = await matchCall(s, 'tl', squats.Squate, 9104);
+  assert.deepEqual([res.status, res.json && res.json.error], [403, 'seniority'], res.text);
+  // The Owner passes every row.
+  res = await matchCall(s, 'gm', squats.Squata, 9100);
+  assert.equal(res.status, 200, res.text);
+  assert.equal(keyOf(squats.Squata).id, 9100);
+  assert.equal(sOne(s, "SELECT COUNT(*) AS n FROM audit_log WHERE action = 'character.match_roster'").n, 3, 'only the applied matches are audited');
+});
+
+check('F9: the Match to roster write guard holds the character\'s specs and class as the officer saw them - an edit that lands between the read and the write is not overwritten (409 with the current record)', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'] });
+  rosterRows(s, [['Matchme', 9200, 4]]);
+  const squat = await s.person({ name: 'Handtyped', mainSpec: 'Fire', offSpec: null });
+  const inner = s.w.db.batch.bind(s.w.db);
+  let hooked = false;
+  s.w.db.batch = async (statements) => {
+    if (!hooked && statements.some((statement) => statement.values && statement.values.includes('character.match_roster'))) {
+      hooked = true;
+      sRun(s, "UPDATE characters SET main_spec = 'Arcane' WHERE id = ?", squat.cid); // somebody picks another spec between our read and our write
+    }
+    return inner(statements);
+  };
+  const res = await matchCall(s, 'gm', squat, 9200);
+  s.w.db.batch = inner;
+  assert(hooked, 'the match batch ran');
+  assert.equal(res.status, 409, res.text);
+  const row = sOne(s, 'SELECT main_spec, blizzard_char_id, name FROM characters WHERE id = ?', squat.cid);
+  assert.equal(row.main_spec, 'Arcane', 'the other edit is kept');
+  assert.equal(row.blizzard_char_id, null, 'and the match did not apply');
+  assert.equal(sOne(s, "SELECT COUNT(*) AS n FROM audit_log WHERE action = 'character.match_roster'").n, 0);
+  // Without the interference the same call applies.
+  const again = await matchCall(s, 'gm', squat, 9200);
+  assert.equal(again.status, 200, again.text);
+});
+
+check('F5 (part 2b pin): a Battle.net proof beats a squatted hand-added character that carries the Guild Master\'s name - the same character ends up keyed and proven on the Guild Master\'s person', async () => {
+  for (const squatterOwner of ['unowned', 'other account']) {
+    const w = await makeWorld();
+    const G = w.ingame(1, [['Aldric', 0], ['Brindle', 5]]);
+    if (squatterOwner === 'other account') w.raw.user(UID(5));
+    w.raw.person(PID(2), G, squatterOwner === 'unowned' ? {} : { userId: UID(5) });
+    w.raw.character(CID(2), G, PID(2), 'Aldric', { isMain: 1, key: false }); // hand-added by an officer: the Guild Master's name, no key
+    w.serve(['Aldric', 'Brindle']);
+    await bnetSignIn(w, BNET.ann);
+    const userId = userOf(w, BNET.ann);
+    const mine = personOf(w, userId, G);
+    assert(mine, `${squatterOwner}: the account has a person`);
+    const aldric = w.one("SELECT * FROM characters WHERE guild_id = ? AND name_key = 'aldric'", G);
+    assert.equal(aldric.id, CID(2), `${squatterOwner}: the SAME character (its evidence stays with it)`);
+    assert.deepEqual([aldric.blizzard_char_id, aldric.owner_proof, aldric.proof_user_id, aldric.player_id], [idOf('Aldric'), 'bnet', userId, mine.id], `${squatterOwner}: keyed, proven, on the account's person`);
+  }
+});
+
 // ---- F6: unblocking and the tombstones of the blocks a hit matched
 
 // ---- F7: the officer join and the daily cron
