@@ -30,7 +30,7 @@
   const ITEM_ID = /^[1-9][0-9]{0,9}$/;
   const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet', 'csv'];
   // Why a sign-in came back without signing in (/auth/callback and /auth/bnet/callback redirect to #/signin?error=..).
-  const SIGNIN_ERRORS = ['denied', 'state', 'discord', 'bnet', 'not_configured'];
+  const SIGNIN_ERRORS = ['denied', 'state', 'discord', 'bnet', 'not_configured', 'busy'];
   // Why a Discord or Battle.net link came back without linking (redirects to #/linked?error=..). 'taken' is a Battle.net account that belongs to
   // another account, 'discord_taken' the same for Discord; 'has_discord' a second Discord on an account that has one; 'roster_conflict' a Discord
   // ID that would put two roster people of one guild on the account.

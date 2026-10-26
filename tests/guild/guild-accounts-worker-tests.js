@@ -483,29 +483,31 @@ check('state per mode: Discord sign-in, Discord link, Battle.net link and Battle
   const dLink = stateOf(await w.req('GET', '/auth/login?mode=link', { jar: s.jars.erin }));
   const bLink = stateOf(await w.req('GET', '/auth/bnet/login', { jar: s.jars.erin }));
   const bSign = stateOf(await w.req('GET', '/auth/bnet/login?mode=signin'));
-  assert.match(dSign, /^[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/);
-  assert.match(dLink, /^link\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/);
-  assert.match(bLink, /^[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/);
-  assert.match(bSign, /^signin\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/);
+  // <nonce>.<issued ms>.<mac>, behind a mode prefix for two of them.
+  assert.match(dSign, /^[A-Za-z0-9_-]{22}\.\d{13}\.[A-Za-z0-9_-]{43}$/);
+  assert.match(dLink, /^link\.[A-Za-z0-9_-]{22}\.\d{13}\.[A-Za-z0-9_-]{43}$/);
+  assert.match(bLink, /^[A-Za-z0-9_-]{22}\.\d{13}\.[A-Za-z0-9_-]{43}$/);
+  assert.match(bSign, /^signin\.[A-Za-z0-9_-]{22}\.\d{13}\.[A-Za-z0-9_-]{43}$/);
   const session = await load('worker/session.js');
   const env = w.env;
+  const now = w.clock.now;
   assert.equal(session.discordStateMode(dSign), 'signin');
   assert.equal(session.discordStateMode(dLink), 'link');
   assert.equal(session.bnetStateMode(bLink), 'link');
   assert.equal(session.bnetStateMode(bSign), 'signin');
   // Each verifies only in its own mode, for its own member.
-  assert.equal(await session.verifyState(env, dSign), true);
-  assert.equal(await session.verifyState(env, dLink), false);
-  assert.equal(await session.verifyDiscordLinkState(env, s.ids.erin, dLink), true);
-  assert.equal(await session.verifyDiscordLinkState(env, s.ids.gina, dLink), false, 'bound to the member who started it');
-  assert.equal(await session.verifyDiscordLinkState(env, s.ids.erin, dSign), false);
-  assert.equal(await session.verifyBnetState(env, s.ids.erin, bLink), true);
-  assert.equal(await session.verifyBnetState(env, s.ids.erin, bSign), false);
-  assert.equal(await session.verifyBnetSigninState(env, bSign), true);
-  assert.equal(await session.verifyBnetSigninState(env, bLink), false);
-  assert.equal(await session.verifyBnetSigninState(env, dLink), false);
-  assert.equal(await session.verifyBnetSigninState({ ...env, BNET_CLIENT_SECRET: 'other' }, bSign), false);
-  assert.equal(await session.verifyDiscordLinkState({ ...env, DISCORD_CLIENT_SECRET: 'other' }, s.ids.erin, dLink), false);
+  assert.equal(await session.verifyState(env, dSign, now), true);
+  assert.equal(await session.verifyState(env, dLink, now), false);
+  assert.equal(await session.verifyDiscordLinkState(env, s.ids.erin, dLink, now), true);
+  assert.equal(await session.verifyDiscordLinkState(env, s.ids.gina, dLink, now), false, 'bound to the member who started it');
+  assert.equal(await session.verifyDiscordLinkState(env, s.ids.erin, dSign, now), false);
+  assert.equal(await session.verifyBnetState(env, s.ids.erin, bLink, now), true);
+  assert.equal(await session.verifyBnetState(env, s.ids.erin, bSign, now), false);
+  assert.equal(await session.verifyBnetSigninState(env, bSign, now), true);
+  assert.equal(await session.verifyBnetSigninState(env, bLink, now), false);
+  assert.equal(await session.verifyBnetSigninState(env, dLink, now), false);
+  assert.equal(await session.verifyBnetSigninState({ ...env, BNET_CLIENT_SECRET: 'other' }, bSign, now), false);
+  assert.equal(await session.verifyDiscordLinkState({ ...env, DISCORD_CLIENT_SECRET: 'other' }, s.ids.erin, dLink, now), false);
   // The login redirects carry the state and its cookie; a link needs a session, a sign-in does not.
   assert.equal(locationOf(await w.req('GET', '/auth/login?mode=link')), '/#/signin');
   assert.equal(locationOf(await w.req('GET', '/auth/bnet/login')), '/#/signin');
@@ -622,7 +624,7 @@ check('Battle.net sign-in callback: a missing, mismatched, forged or other-mode 
   const go = (query, jar) => w.req('GET', `/auth/bnet/callback?${query}`, { jar });
   w.bnet.state.requests.length = 0;
   const good = await start();
-  const forged = `signin.${'A'.repeat(22)}.${'B'.repeat(43)}`;
+  const forged = `signin.${'A'.repeat(22)}.${w.clock.now}.${'B'.repeat(43)}`;
   assert.equal(locationOf(await go(`code=abc&state=${encodeURIComponent(good)}`, {})), '/#/signin?error=state', 'no cookie');
   assert.equal(locationOf(await go(`code=abc&state=${encodeURIComponent(forged)}`, { '__Host-rs_bnet_state': forged })), '/#/signin?error=state', 'forged');
   // A link-mode state (a member's own) used in a signed-out sign-in is a LINK callback: it needs the session, so it goes to sign in.
@@ -714,11 +716,13 @@ check('link Discord: a Discord account that belongs to ANOTHER account is refuse
   const s = await scenario();
   const { w } = s;
   const holly = await signUpHolly(s);
-  const before = JSON.stringify(dumpAll(w.db));
+  // Every callback that gets past the MAC and age checks claims its state's nonce; nothing else may change.
+  const dumpWithoutNonces = () => { const all = dumpAll(w.db); delete all.oauth_state_nonces; return JSON.stringify(all); };
+  const before = dumpWithoutNonces();
   // Erin's Discord ID already has an account.
   const taken = await discordLink(w, holly, PEOPLE.erin, [plain(SERVER_A)]);
   assert.equal(locationOf(taken.callback), '/#/linked?error=discord_taken');
-  assert.equal(JSON.stringify(dumpAll(w.db)), before, 'not one row of the database changed');
+  assert.equal(dumpWithoutNonces(), before, 'not one row of the database changed');
   assert.equal((await w.rows('SELECT discord_id FROM users WHERE id = ?', s.ids.holly))[0].discord_id, null);
   assert.equal(await w.count('user_servers', 'user_id = ?', s.ids.holly), 0);
   assert.equal(await w.count('audit_log', "action = 'discord.link'"), 0);
@@ -737,7 +741,7 @@ check('link Discord: a Discord account that belongs to ANOTHER account is refuse
   assert.equal(locationOf(await w.req('GET', `/auth/callback?code=abc&state=${encodeURIComponent(dLink)}`, { jar: stolen })), '/#/linked?error=state');
   const signedOut = { '__Host-rs_state': dLink };
   assert.equal(locationOf(await w.req('GET', `/auth/callback?code=abc&state=${encodeURIComponent(dLink)}`, { jar: signedOut })), '/#/signin?error=state');
-  const forged = `link.${'A'.repeat(22)}.${'B'.repeat(43)}`;
+  const forged = `link.${'A'.repeat(22)}.${w.clock.now}.${'B'.repeat(43)}`;
   assert.equal(locationOf(await w.req('GET', `/auth/callback?code=abc&state=${forged}`, { jar: { ...s.jars.gina, '__Host-rs_state': forged } })), '/#/linked?error=state');
   assert.deepEqual(w.discord.calls, [], 'no outbound Discord call for any of them');
   assert.equal(locationOf((await discordLink(w, s.jars.gina, PEOPLE.gina, [plain(SERVER_A)])).callback), '/#/linked', 'the genuine state still works (Gina re-links her own Discord)');

@@ -342,17 +342,18 @@ check('link: login redirects to Battle.net with the scopes, the registered redir
   assert.equal(target.searchParams.get('response_type'), 'code');
   assert.equal(target.searchParams.get('redirect_uri'), `${ORIGIN}/auth/bnet/callback`);
   const state = target.searchParams.get('state');
-  assert.match(state, /^[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/);
+  assert.match(state, /^[A-Za-z0-9_-]{22}\.\d{13}\.[A-Za-z0-9_-]{43}$/);
   const cookie = res.headers.getSetCookie().find((line) => line.startsWith('__Host-rs_bnet_state='));
   assert(cookie.includes(`=${state};`) && /HttpOnly/.test(cookie) && /Secure/.test(cookie) && /SameSite=Lax/.test(cookie) && /Max-Age=600/.test(cookie));
   assert(!res.headers.getSetCookie().some((line) => line.startsWith('__Host-rs_session')), 'the session cookie is not touched');
   assert(!JSON.stringify(res.headers.getSetCookie()).includes('bnet-secret'));
   const { verifyBnetState } = await load('worker/session.js');
-  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, state), true);
-  assert.equal(await verifyBnetState(s.w.env, s.ids.gina, state), false, 'bound to the member who started it');
-  assert.equal(await verifyBnetState({ ...s.w.env, BNET_CLIENT_SECRET: 'other' }, s.ids.erin, state), false);
-  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, `${state.split('.')[0]}.${'A'.repeat(43)}`), false);
-  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, 'x'), false);
+  const now = s.w.clock.now;
+  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, state, now), true);
+  assert.equal(await verifyBnetState(s.w.env, s.ids.gina, state, now), false, 'bound to the member who started it');
+  assert.equal(await verifyBnetState({ ...s.w.env, BNET_CLIENT_SECRET: 'other' }, s.ids.erin, state, now), false);
+  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, `${state.split('.').slice(0, 2).join('.')}.${'A'.repeat(43)}`, now), false);
+  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, 'x', now), false);
 });
 
 check('link: starting the link is limited to 10 a window per member', async () => {
@@ -456,7 +457,7 @@ check('callback: a missing, mismatched, forged or other member\'s state never re
   const stolen = { ...s.jars.gina, '__Host-rs_bnet_state': stateE };
   assert.equal((await go('gina', `code=abc&state=${encodeURIComponent(stateE)}`, stolen)).headers.get('Location'), '/#/linked?error=state');
   // forged, both cookie and query agree
-  const forged = `${'A'.repeat(22)}.${'B'.repeat(43)}`;
+  const forged = `${'A'.repeat(22)}.${s.w.clock.now}.${'B'.repeat(43)}`;
   assert.equal((await go('erin', `code=abc&state=${forged}`, { ...s.jars.erin, '__Host-rs_bnet_state': forged })).headers.get('Location'), '/#/linked?error=state');
   // signed out
   assert.equal((await s.w.req('GET', `/auth/bnet/callback?code=abc&state=${encodeURIComponent(stateE)}`)).headers.get('Location'), '/#/signin');

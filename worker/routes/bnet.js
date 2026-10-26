@@ -12,11 +12,13 @@ import { bnetNameOf, findUserByBnet, hasDiscordSql, insertBnetAccountStatement }
 import { base64url, isId, newId } from '../ids.js';
 import { isOwnPlayer, ownPersonStatement } from '../membership.js';
 import { loadGuildContext } from '../permissions.js';
-import { checkRateLimit } from '../ratelimit.js';
+import {
+  BNET_CALLBACK_BUDGET, BNET_CALLBACK_BUDGET_KEY, BNET_CALLBACK_LIMIT, BNET_CALLBACK_WINDOW_MS, bnetCallbackKey, checkRateLimit, spendBudget,
+} from '../ratelimit.js';
 import { cleanCharacterName, nameKey } from '../roster-data.js';
 import {
-  BNET_STATE_COOKIE, bnetStateCookie, bnetStateMode, clearBnetStateCookie, hashToken, loadSession, newSessionToken, presentedToken, sessionCookie,
-  signBnetSigninState, signBnetState, startSessionStatements, verifyBnetSigninState, verifyBnetState,
+  BNET_STATE_COOKIE, FRESH_MODE, bnetStateCookie, bnetStateMode, claimStateNonce, clearBnetStateCookie, hashToken, loadSession, newSessionToken,
+  presentedToken, sessionCookie, signBnetSigninState, signBnetState, startSessionStatements, verifyBnetSigninState, verifyBnetState,
 } from '../session.js';
 import { applyPicks } from '../claim-apply.js';
 import { bad, resolveRealm } from './roster.js';
@@ -50,12 +52,12 @@ export async function bnetLogin(ctx) {
   const canonical = canonicalOrigin(env);
   if (url.origin !== canonical) return redirectResponse(`${canonical}/auth/bnet/login${signin ? '?mode=signin' : ''}`);
   if (signin) {
-    const state = await signBnetSigninState(env, base64url(ctx.randomBytes(16)));
+    const state = await signBnetSigninState(env, base64url(ctx.randomBytes(16)), ctx.now());
     return redirectResponse(authorizeUrl(env, state), [bnetStateCookie(state)]);
   }
   const limit = await checkRateLimit(db, session.user.id, ctx.now(), { key: `bnet:${session.user.id}`, limit: LINK_LIMIT, windowMs: LINK_WINDOW_MS });
   if (limit.limited) return redirectResponse(linkedRedirect('busy'));
-  const state = await signBnetState(env, session.user.id, base64url(ctx.randomBytes(16)));
+  const state = await signBnetState(env, session.user.id, base64url(ctx.randomBytes(16)), ctx.now());
   return redirectResponse(authorizeUrl(env, state), [bnetStateCookie(state)]);
 }
 
@@ -100,14 +102,32 @@ async function buildSnapshot(ctx, accessToken, guilds, now) {
   return snapshot;
 }
 
+// After the token exchange and user info, before the snapshot fan-out of Blizzard calls: one Blizzard account may come back BNET_CALLBACK_LIMIT times
+// per window (false = refuse it). Then the global budget is counted; it never refuses, and the call that takes the window past it logs the one
+// ALARM line the operator watches for (a gate here would let a few accounts stop everyone).
+async function callbackAllowed(ctx, bnetAccountId, now) {
+  const own = await checkRateLimit(ctx.db, bnetAccountId, now, {
+    key: bnetCallbackKey(bnetAccountId), limit: BNET_CALLBACK_LIMIT, windowMs: BNET_CALLBACK_WINDOW_MS,
+  });
+  if (own.limited) return false;
+  const budget = await spendBudget(ctx.db, now, { key: BNET_CALLBACK_BUDGET_KEY, limit: BNET_CALLBACK_BUDGET, windowMs: BNET_CALLBACK_WINDOW_MS });
+  if (budget.alarm) {
+    ctx.log(`ALARM bnet_callback_budget: more than ${BNET_CALLBACK_BUDGET} Battle.net callbacks in ${BNET_CALLBACK_WINDOW_MS / 60000} minutes (not refused)`);
+  }
+  return true;
+}
+
 // One callback for both modes. The mode comes from the state alone, and only a state whose MAC checked out for that mode is believed.
 export async function bnetCallback(ctx) {
   const { env, db } = ctx;
   const url = new URL(ctx.request.url);
   const state = url.searchParams.get('state');
   const mode = bnetStateMode(state);
+  const now = ctx.now();
   const clear = clearBnetStateCookie();
-  const fail = (reason) => redirectResponse((mode === 'signin' ? signinRedirect : linkedRedirect)(reason), [clear]);
+  const fail = (reason) => redirectResponse((mode === 'link' ? linkedRedirect : signinRedirect)(reason), [clear]);
+  // B6b seam: the fresh-auth callback replaces this refusal. Until then a fresh-shaped state ends here, before the session, the cookie or the MAC.
+  if (mode === FRESH_MODE) return fail('state');
   let session = null;
   if (mode === 'link') {
     session = await loadSession(ctx);
@@ -117,18 +137,20 @@ export async function bnetCallback(ctx) {
   if (!cookieState || !state || !safeEqual(state, cookieState)) return fail('state');
   if (!isConfigured(env)) return fail('not_configured');
   // A state this Worker did not sign for this flow (and, for a link, for THIS member) never reaches an outbound Battle.net call.
-  const genuine = mode === 'signin' ? await verifyBnetSigninState(env, state) : await verifyBnetState(env, session.user.id, state);
+  const genuine = mode === 'signin' ? await verifyBnetSigninState(env, state, now) : await verifyBnetState(env, session.user.id, state, now);
   if (!genuine) return fail('state');
   if (url.searchParams.get('error')) return fail('denied');
   const code = url.searchParams.get('code');
   if (!code || code.length > 512) return fail('state');
+  // Single use: a replayed state is refused here, before the first outbound call (the begin step wrote nothing, the first callback writes the row).
+  if (!(await claimStateNonce(db, state, now))) return fail('state');
 
   let info;
   let snapshot;
-  const now = ctx.now();
   try {
     const accessToken = await exchangeCode(ctx, code);
     info = await fetchUserInfo(ctx, accessToken);
+    if (!(await callbackAllowed(ctx, info.id, now))) return fail('busy');
     // Whose characters to look for: the member linking, or whoever already signs in with this Battle.net account (nobody yet: a new account).
     const userId = mode === 'link' ? session.user.id : await findUserByBnet(db, info.id);
     snapshot = await buildSnapshot(ctx, accessToken, userId ? await loadMemberGuilds(db, userId) : [], now);

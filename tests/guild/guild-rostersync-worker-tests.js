@@ -1050,6 +1050,7 @@ check('retention: fresh_act_markers older than 15 minutes, consumed dry_run_appr
   approval('a_used_recent', { used: T0 - 29 * DAY, expires: T0 - 29 * DAY });
   approval('a_unused_dead', { expires: T0 - 31 * DAY });
   approval('a_unused_live', { expires: T0 + 600000 });
+  s.sql('DELETE FROM oauth_state_nonces'); // the scenario's own Discord sign-ins each claimed one (B6a)
   const nonce = (hash, age) => s.sql('INSERT INTO oauth_state_nonces (nonce_hash, created_at, used_at) VALUES (?, ?, NULL)', hash, T0 - age);
   nonce('n_old', 10 * 60000 + 1); nonce('n_edge', 10 * 60000); nonce('n_new', 9 * 60000);
   const deleted = await rt.runRetention({ db: s.w.db, now: () => T0, log: () => {} });
@@ -1064,6 +1065,7 @@ check('retention: the daily cron runs the jobs, one failing rule does not stop t
   const s = await scenario();
   await s.sync();
   s.sql("INSERT INTO fresh_act_markers (act_id, session_token_hash, purpose, at) VALUES ('m_old', 'h', 'claim', ?)", T0 - DAY);
+  s.sql('DELETE FROM oauth_state_nonces'); // the scenario's own Discord sign-ins each claimed one (B6a)
   s.sql("INSERT INTO oauth_state_nonces (nonce_hash, created_at) VALUES ('n_old', ?)", T0 - DAY);
   const bnetPurge = await load('worker/bnet-purge.js');
   await bnetPurge.purgeExpiredBnetData(s.w.db, T0 + 400 * DAY);
