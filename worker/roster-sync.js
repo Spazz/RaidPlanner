@@ -33,7 +33,9 @@ import { todayIn } from './roster-data.js';
 export const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // The on-demand claim is allowed once next_sync_at <= now + (interval - gap): at least one hour since the last claim, whoever made it.
 export const ON_DEMAND_MIN_GAP_MS = 60 * 60 * 1000;
-export const SYNC_GUILDS_PER_RUN = 6;
+// One guild per */15 tick: the account runs on Workers Free (50 D1 queries per invocation; one sync is ~13 and the tick also runs
+// notifications and the Raid-Helper refresh). 96 ticks a day cover 24 guilds at the 6 h cadence; raise this on Workers Paid.
+export const SYNC_GUILDS_PER_RUN = 1;
 export const SYNC_TIME_BUDGET_MS = 20 * 1000;
 export const ROSTER_INSERT_CHUNK = 300;
 
