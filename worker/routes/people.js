@@ -43,7 +43,7 @@ async function loadModel(db, guildContext) {
       `SELECT ra.user_id, ra.role_id, ra.team_id, ra.source, r.name AS role_name
          FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ?`,
     ).bind(guildId),
-    db.prepare('SELECT user_id, blocked_by, reason, created_at FROM guild_blocks WHERE guild_id = ?').bind(guildId),
+    db.prepare('SELECT user_id, blocked_by, reason, created_at, pending_review FROM guild_blocks WHERE guild_id = ?').bind(guildId),
     // The roster entry (the Main) of each person linked to an account (by an officer's link, or by the Discord ID they carry).
     db.prepare(
       `SELECT p.id AS person_id, p.discord_user_id, p.user_id, m.name, m.class FROM players p
@@ -92,7 +92,11 @@ function hierarchyAllows(guildContext, entry) {
 function actionsFor(guildContext, entry, sync = false) {
   const canAccess = guildContext.can['guild.access'] === 'guild';
   const canRoles = guildContext.can['guild.roles'] === 'guild';
-  if (entry.block) return { restoreAccess: canAccess && hierarchyAllows(guildContext, entry) };
+  // keepBlock (only present when true): the block waits for review (a tombstone match wrote it) and this viewer may decide it.
+  if (entry.block) {
+    const allowed = canAccess && hierarchyAllows(guildContext, entry);
+    return { restoreAccess: allowed, ...(allowed && entry.block.pending_review === 1 ? { keepBlock: true } : {}) };
+  }
   const editable = canRoles && entry.isMember && entry.id !== guildContext.userId && entry.rank !== ROLE_RANK.guild_master;
   return {
     editRoles: editable,
@@ -135,6 +139,8 @@ function peopleResponse(model, guildContext, env) {
         removedBy: remover ? remover.person : null,
         removedAt: entry.block.created_at,
         reason: entry.block.reason ?? null,
+        // Only present when true: a tombstone match wrote this block and an officer has not reviewed it yet (POST .../block/keep, or restore access).
+        ...(entry.block.pending_review === 1 ? { pendingReview: true } : {}),
         actions: actionsFor(guildContext, entry),
       };
     });
@@ -581,4 +587,43 @@ export async function restorePerson(ctx) {
     if (still) throw conflict();
   }
   return peopleReply(ctx, guildContext, split.kept.length ? { tombstonesKept: split.kept.length } : {});
+}
+
+// POST /api/guild/:gid/people/:uid/block/keep (lane B7b): an officer decides a block a tombstone match wrote (guild_blocks.pending_review = 1: it ENFORCED from the first moment and
+// sat in the review queue, attention kind block_review). Keep makes it a block like any other: the officer becomes `blocked_by`, the account's OWN tombstones are written (the match
+// only enforced), the person leaves every team and the upcoming sign-ups are withdrawn (worker/block-effects.js: the match did none of it). Restoring access instead is the existing
+// DELETE .../block. The same gate and seniority as blocking: guild.access, strictly senior to the target (never yourself, never the Guild Master), and never the live Owner.
+// 404 when the person has no block waiting for review (no row, an unsuspended Owner whose row is ignored, or a block already kept); 409 `conflict` when it changed under the write.
+// One batch, every statement under the same guard, the UPDATE last (so the guards read the state before it). Answers like blockPerson: the People payload.
+export async function keepBlock(ctx) {
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
+  requireAction(guildContext, 'guild.access');
+  const model = await loadModel(ctx.db, guildContext);
+  const target = model.byId.get(ctx.params.uid);
+  if (!target || !target.block || target.block.pending_review !== 1) throw new HttpError(404, 'not_found', 'No block is waiting for review for that person.');
+  if (!hierarchyAllows(guildContext, target)) throw new HttpError(403, 'forbidden', 'You cannot decide that person\'s removal.');
+
+  const guildId = guildContext.guild.id;
+  const actorId = guildContext.userId;
+  const now = ctx.now();
+  const plan = await planTombstones(ctx.env, guildId, await accountKeys(ctx.db, target.id, guildId));
+  if (plan.missing) ctx.log(MISSING_KEY_LINE);
+  const guard = and(
+    { sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND pending_review = 1)', params: [guildId, target.id] },
+    actorHolds('guild.access', guildId, actorId),
+    actorOutranks(guildId, actorId, target.id),
+    { sql: `NOT ${ownerSql('?', '?')}`, params: [guildId, target.id, target.id] },
+  );
+  const results = await ctx.db.batch([
+    auditStatement(ctx, {
+      guildId, actorUserId: actorId, action: 'block.keep', entityType: 'user', entityId: target.id, before: { pendingReview: true }, after: { pendingReview: false },
+    }, guard),
+    ...tombstoneInsertStatements(ctx.db, { guildId, blockRef: accountBlockRef(target.id), plan, now, guard }),
+    ...(await blockEffectStatements(ctx.db, { guildId, target: { userId: target.id }, nowMs: now, guard })),
+    ctx.db.prepare(
+      `UPDATE guild_blocks SET pending_review = 0, blocked_by = ?, tombstone_missing = ? WHERE guild_id = ? AND user_id = ? AND pending_review = 1 AND ${guard.sql}`,
+    ).bind(actorId, plan.missing ? 1 : 0, guildId, target.id, ...guard.params),
+  ]);
+  if (results[results.length - 1].meta.changes !== 1) throw conflict();
+  return peopleReply(ctx, guildContext);
 }

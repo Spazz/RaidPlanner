@@ -570,6 +570,7 @@ const USER_SERVERS_ALLOWED = {
   'worker/routes/auth.js': { count: 3, reason: 'writes: a Discord sign-in or link replaces the account\'s server rows; servers that no longer have a guild are pruned' },
   'worker/routes/guild-data.js': { count: 1, reason: 'write: deleting a guild prunes the server rows of its Discord server' },
   'worker/routes/guild.js': { count: 2, reason: 'writes: creating or claiming a guild records its creator in the guild\'s server' },
+  'worker/users-list.js': { count: 2, reason: 'the Users list: the members of the guild\'s Discord server are CANDIDATES of the list and the Discord sign-in tag of a non-member; the member test itself is the reachesGuildSql fragment' },
 };
 
 const PLAYERS_USER_ID_ALLOWED = {
@@ -592,6 +593,7 @@ const PLAYERS_USER_ID_ALLOWED = {
   'worker/routes/roster.js': { count: 2, reason: 'the "already another person\'s" check of a Discord link and the list of members with no person yet (memberSql decides who is a member)' },
   'worker/routes/team-requests.js': { count: 1, reason: 'ownership: the asker\'s account still owns the character\'s person' },
   'worker/seniority.js': { count: 1, reason: 'the account of a person (players.user_id, else the Discord ID match): the Seniority guard' },
+  'worker/users-list.js': { count: 3, reason: 'the Users list: the accounts linked to a person are candidates of the list, the person an account is shown with (its Main), and the account-less persons (no players.user_id) are listed apart; the member test itself is the reachesGuildSql fragment' },
 };
 
 function touchesOutsideMembership(detector) {

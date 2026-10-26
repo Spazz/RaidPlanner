@@ -140,6 +140,8 @@ export const AUDIT_ACTIONS = [
   'fresh.failed',
   // Lane B6b part 2a: a sign-in identity (Discord or Battle.net) of an account was linked or disconnected; written in each guild the account is a member of, never pruned.
   'identity.change',
+  // Lane B7b: an officer kept a block that a tombstone match wrote (the review queue): it is a block like any other from then on. Never pruned.
+  'block.keep',
 ];
 
 // The PRUNABLE set (plan "Audit"): per-person detail of a sync run and failures. The daily job deletes these past AUDIT_PRUNE_AFTER_MS; every other row is

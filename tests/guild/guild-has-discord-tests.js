@@ -265,6 +265,7 @@ const SERVER_ID_FILES = {
   'worker/routes/raids.js': { how: 'guard', count: 3 },
   'worker/routes/roster-import.js': { how: 'guard', count: 3 },
   'worker/routes/roster.js': { how: 'fragment', count: 2 },
+  'worker/users-list.js': { how: 'fragment', count: 2 },
 };
 const FRAGMENT_USE = /\b(memberSql|inServerSql|memberCandidatesSql|boundMember|boundReaches|reachesGuildSql)\b/;
 const GUARD_IMPORT = /from '(\.\.?\/)+discord-guard\.js'/;

@@ -451,6 +451,7 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('block.match', 'user', 'u_erin', null, { refs: 1 }), 'Erin E matched an earlier block and was removed until an officer reviews it'],
     [row('block.match_held', 'user', 'u_erin', null, { reason: 'owner' }), 'Erin E matched an earlier block but was not removed (they hold the Owner seat or a Guild Master role); an officer needs to review it'],
     [row('block.match_held', 'user', 'u_erin', null, { reason: 'senior' }), 'Erin E matched an earlier block but was not removed (they rank the same as the officer who blocked, or above); an officer needs to review it'],
+    [row('block.keep', 'user', 'u_erin', { pendingReview: true }, { pendingReview: false }), 'Kept the removal of Erin E, which matched an earlier block'],
     [row('person.core_rank', 'person', 'p_thoren', { coreRank: 'trial' }, { coreRank: 'raider' }), 'Thoren went from Trial to Raider'],
     [row('person.ingame_rank', 'person', 'p_thoren', { rank: 4 }, { rank: 2 }), 'The in-game rank of Thoren went from 4 to 2'],
     [row('person.former', 'person', 'p_thoren'), 'Thoren left the in-game guild and is now Former'],

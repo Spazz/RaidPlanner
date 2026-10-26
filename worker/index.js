@@ -19,7 +19,8 @@ import { SHARE_PATH, handleShare, isSharePagePath, servePlannerPage } from './sh
 import { claimGuild, createGuild, getGuild, patchGuild } from './routes/guild.js';
 import { startFresh } from './routes/fresh.js';
 import { deleteGuild, dismissOnboarding, exportGuild } from './routes/guild-data.js';
-import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
+import { blockPerson, getPeople, keepBlock, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
+import { getUser, getUsers } from './routes/users.js';
 import { blockRosterPerson, unblockRosterPerson } from './routes/person-blocks.js';
 import { createRole, deleteRole, getRoles, resetRole, updateRole } from './routes/roles.js';
 import { getDiscord, putMaps, syncEveryone } from './routes/discord.js';
@@ -129,6 +130,10 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/people/:uid/sync', auth: true, handler: syncPerson },
   { method: 'POST', path: '/api/guild/:gid/people/:uid/block', auth: true, handler: blockPerson },
   { method: 'DELETE', path: '/api/guild/:gid/people/:uid/block', auth: true, handler: restorePerson },
+  // Lane B7b: an officer keeps a block a tombstone match wrote (it was waiting for review); the Users list (GET, rate limited per user) and the page of one user.
+  { method: 'POST', path: '/api/guild/:gid/people/:uid/block/keep', auth: true, handler: keepBlock },
+  { method: 'GET', path: '/api/guild/:gid/users', auth: true, handler: getUsers },
+  { method: 'GET', path: '/api/guild/:gid/users/:ukey', auth: true, handler: getUser },
   // B7a: blocking a roster person who has no account (a marker + tombstones; the same permission as the account block).
   { method: 'POST', path: '/api/guild/:gid/roster/:pid/block', auth: true, handler: blockRosterPerson },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/block', auth: true, handler: unblockRosterPerson },
