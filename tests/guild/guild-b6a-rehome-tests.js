@@ -1353,24 +1353,43 @@ check('query plans on a 1,200-member roster: a re-home callback, a collision bin
   for (const result of [first, second, third]) assert(result.statements <= 45, `${result.statements} statements`);
 });
 
-check('the sign-in match and the cap: the person\'s inserts stop at its ROWS while the characters_cap trigger counts retired placeholders (deferred `cap`, the batch does not fail), and the cap of a re-home counts visible characters only', async () => {
+check('the sign-in match and the cap (migration 0036): the retired placeholders use up none of the 20 - the match fills the person up to 20 VISIBLE characters (deferred `cap` for the rest, no batch fails on the trigger), and the cap of a re-home counts visible characters only', async () => {
+  // 17 visible characters and 3 placeholders: three roster characters fit although the person has 20 rows.
+  const fixture = async (w, roster) => {
+    const G = w.ingame(1, roster);
+    const account = await makeAccount(w, BNET.ann);
+    w.raw.person(PID(1), G, { userId: account.userId });
+    for (let i = 0; i < 17; i++) w.raw.character(CID(10 + i), G, PID(1), `Filler${String(i).padStart(2, '0')}`, { key: false, isMain: i === 0 ? 1 : 0 });
+    for (let i = 0; i < 3; i++) {
+      w.raw.character(CID(50 + i), G, PID(1), `Retired${i}`, { key: false, leftOn: '2026-12-01' });
+      w.run('UPDATE characters SET name_key = ? WHERE id = ?', `~ph:c_hold${i}`, CID(50 + i));
+    }
+    assert.equal(w.count('characters', 'player_id = ?', PID(1)), 20, '17 visible characters and 3 placeholders: 20 rows');
+    return { G, ...account };
+  };
+  const first = await makeWorld();
+  const { userId, jar } = await fixture(first, [['Aldric', 1], ['Brindle', 2], ['Cassia', 3], ['Dunmar', 4]]);
+  first.serve(['Aldric', 'Brindle', 'Cassia', 'Dunmar']);
+  first.logs.length = 0;
+  const result = await bnetSignIn(first, BNET.ann, jar);
+  assert.equal(locationOf(result.callback), '/#/');
+  assert.equal(first.count('characters', "player_id = ? AND name_key NOT LIKE '~ph:%'", PID(1)), 20, 'filled up to 20 visible characters');
+  assert.equal(first.count('characters', 'player_id = ?', PID(1)), 23, 'on top of the 20 rows it had');
+  assert.deepEqual(first.rows("SELECT name FROM characters WHERE player_id = ? AND name IN ('Aldric', 'Brindle', 'Cassia', 'Dunmar') ORDER BY name", PID(1)).map((row) => row.name), ['Aldric', 'Brindle', 'Cassia'], 'the best-ranked roster characters');
+  assert(logged(first, 'cap'), 'deferred: cap');
+  assert.deepEqual(first.logs.filter((line) => /failed/.test(line)), [], 'and no batch failed on the trigger');
+  void userId;
+
   const w = await makeWorld();
   const G = w.ingame(1, [['Aldric', 1], ['Brindle', 2]]);
-  const { userId, jar } = await makeAccount(w, BNET.ann);
-  w.raw.person(PID(1), G, { userId });
+  const account = await makeAccount(w, BNET.ann);
+  const userIdB = account.userId;
+  w.raw.person(PID(1), G, { userId: userIdB });
   for (let i = 0; i < 17; i++) w.raw.character(CID(10 + i), G, PID(1), `Filler${String(i).padStart(2, '0')}`, { key: false, isMain: i === 0 ? 1 : 0 });
   for (let i = 0; i < 3; i++) {
     w.raw.character(CID(50 + i), G, PID(1), `Retired${i}`, { key: false, leftOn: '2026-12-01' });
     w.run('UPDATE characters SET name_key = ? WHERE id = ?', `~ph:c_hold${i}`, CID(50 + i));
   }
-  assert.equal(w.count('characters', 'player_id = ?', PID(1)), 20, '17 visible characters and 3 placeholders: 20 rows');
-  w.serve(['Aldric', 'Brindle']);
-  w.logs.length = 0;
-  const result = await bnetSignIn(w, BNET.ann, jar);
-  assert.equal(locationOf(result.callback), '/#/');
-  assert.equal(w.count('characters', 'player_id = ?', PID(1)), 20, 'nothing was inserted');
-  assert(logged(w, 'cap'), 'deferred: cap');
-  assert.deepEqual(w.logs.filter((line) => /failed/.test(line)), [], 'and no batch failed on the trigger');
 
   // a re-home into that person is refused only by the VISIBLE count: 17 visible + 3 placeholders takes three more
   const bea = await makeAccount(w, BNET.bea);
@@ -1381,7 +1400,7 @@ check('the sign-in match and the cap: the person\'s inserts stop at its ROWS whi
   }
   const { rehomeStatements } = await load('worker/rehome.js');
   const move = async (characterId) => {
-    const plan = await rehomeStatements(w.db, { guildId: G, characterId, toPersonId: PID(1), actorUserId: userId, now: w.clock.now, reason: 'gm_claim', randomBytes: w.randomBytes });
+    const plan = await rehomeStatements(w.db, { guildId: G, characterId, toPersonId: PID(1), actorUserId: userIdB, now: w.clock.now, reason: 'gm_claim', randomBytes: w.randomBytes });
     const results = await w.db.batch(plan.statements);
     return results[plan.appliedIndex].meta.changes === 1;
   };

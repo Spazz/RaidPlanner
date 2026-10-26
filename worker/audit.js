@@ -210,12 +210,16 @@ export function failureAuditStatements(ctx, { guildId, userId, action, detail = 
   ];
 }
 
+// A daily run summarises at most this many counters (2 D1 statements each, plus the read): the rest wait for the next run, oldest first. A run is then at most
+// 1 + 2 * FLUSH_LIMIT = 201 statements (a flood of counters would have made it 1,001).
+export const FLUSH_LIMIT = 100;
+
 // The summary rows of the hours that saw more than one failure, for the daily job. deps: { db, now, randomBytes } -> number of summaries written.
 export async function flushFailureCounters({ db, now, randomBytes }) {
   const nowMs = now();
   const due = await db.prepare(
-    `SELECT key, window_start, count FROM rate_limits WHERE substr(key, 1, ${FAILURE_KEY_PREFIX.length}) = ? AND window_start <= ? ORDER BY window_start, key LIMIT 500`,
-  ).bind(FAILURE_KEY_PREFIX, nowMs - FAILURE_WINDOW_MS).all();
+    `SELECT key, window_start, count FROM rate_limits WHERE substr(key, 1, ${FAILURE_KEY_PREFIX.length}) = ? AND window_start <= ? ORDER BY window_start, key LIMIT ?`,
+  ).bind(FAILURE_KEY_PREFIX, nowMs - FAILURE_WINDOW_MS, FLUSH_LIMIT).all();
   let written = 0;
   for (const row of due.results) {
     const [action, guildId, userId] = row.key.slice(FAILURE_KEY_PREFIX.length).split(':');

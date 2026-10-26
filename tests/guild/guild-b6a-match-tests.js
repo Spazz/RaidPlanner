@@ -817,12 +817,14 @@ check('statement budget: a new account on one in-game roster with 10 characters,
   const { jar: dJar } = await makeAccount(d, BNET.ann);
   d.serve(['Aldric']);
   const signin = await bnetSignIn(d, BNET.ann, dJar);
-  assert(signin.statements - 2 <= STATEMENTS_BEFORE_MATCH.signin, `sign-in before the match: ${signin.statements - 2} > ${STATEMENTS_BEFORE_MATCH.signin}`);
+  // (The callback also runs the account-wide tombstone pass after the match - review fix F3: its keys read and its guild list, 3 statements when no guild has tombstones.)
+  const TOMBSTONE_PASS = 3;
+  assert(signin.statements - 2 - TOMBSTONE_PASS <= STATEMENTS_BEFORE_MATCH.signin, `sign-in before the match: ${signin.statements - 2 - TOMBSTONE_PASS} > ${STATEMENTS_BEFORE_MATCH.signin}`);
   const jar = await discordSignIn(d, DISCORD.eve);
   const link = await bnetLink(d, jar, BNET.bea);
-  assert(link.statements - 2 <= STATEMENTS_BEFORE_MATCH.link, `link before the match: ${link.statements - 2} > ${STATEMENTS_BEFORE_MATCH.link}`);
-  measured.baseSignin = signin.statements - 2;
-  measured.baseLink = link.statements - 2;
+  assert(link.statements - 2 - TOMBSTONE_PASS <= STATEMENTS_BEFORE_MATCH.link, `link before the match: ${link.statements - 2 - TOMBSTONE_PASS} > ${STATEMENTS_BEFORE_MATCH.link}`);
+  measured.baseSignin = signin.statements - 2 - TOMBSTONE_PASS;
+  measured.baseLink = link.statements - 2 - TOMBSTONE_PASS;
 });
 
 check('budget deferral: with no room the reads wait; with room for the guild batches but not for a join the join waits (`bnet match deferred: budget`), and the proof stamping still happens', async () => {
@@ -868,7 +870,9 @@ check('budget deferral after planning: a join whose lean batch does not fit is d
   // the loser has rows in four more tables: the lean batch grows by about eight statements
   w.raw.away('an_' + pad(1), G, PID(2));
   w.run("INSERT INTO rank_dismissals (guild_id, player_id, kind, to_rank, until, created_at) VALUES (?, ?, 'review', 'Raider', 9, 1)", G, PID(2));
-  w.run("INSERT INTO person_blocks (guild_id, player_id, created_at) VALUES (?, ?, 1)", G, PID(2));
+  // (A loser with a person_blocks row is never joined by the match - review fix F1 - so the fourth table is the launch funnel.)
+  w.run("INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES ('t_" + pad(1) + "', ?, 'Team', 25, 0, 1)", G);
+  w.run("INSERT INTO launch_status (guild_id, team_id, player_id, ready, updated_at) VALUES (?, 't_" + pad(1) + "', ?, 1, 1)", G, PID(2));
   w.run("INSERT INTO attention_dismissals (id, guild_id, item_id, kind, mode, fingerprint, created_at) VALUES ('ad_" + pad(1) + "', ?, ?, 'trial', 'dismiss', 'x', 1)", G, `trial:${PID(2)}`);
   const input = (spent) => ({ userId, bnetAccountId: BNET.ann.id, snapshot: snapshotFor(['Aldric', 'Brindle']), now: T0, spent });
   const before = dump(w);
@@ -1183,7 +1187,9 @@ async function blockedAccountComesBack(removePerson) {
   const route = await w.call(again.jar, 'GET', `/api/guild/${G}`);
   assert.deepEqual([route.status, route.json.error], [403, 'access_removed'], 'a pending block enforces');
   const audit = w.one("SELECT actor_user_id, entity_id, after FROM audit_log WHERE action = 'block.match'");
-  assert.deepEqual([audit.actor_user_id, audit.entity_id, JSON.parse(audit.after)], [null, newUserId, { refs: 1, kinds: ['bnet', 'idkey'] }]);
+  // (Delete my data left the old person unowned WITH a person_blocks marker - review fix F10 - and the new account's key matched that person's character too: a second
+  // hit of its own kind. When Delete my data removed the person as well there is the one tombstone ref.)
+  assert.deepEqual([audit.actor_user_id, audit.entity_id, JSON.parse(audit.after)], [null, newUserId, removePerson ? { refs: 1, kinds: ['bnet', 'idkey'] } : { refs: 2, kinds: ['bnet', 'idkey', 'person'] }]);
   assert.deepEqual(w.logs.filter((line) => /failed/.test(line)), []);
   // The sign-in itself held: the new Battle.net link exists, and the statements stay inside the budget (the tombstone hit reads up to 6).
   assert.equal(w.count('bnet_links', 'user_id = ?', newUserId), 1);

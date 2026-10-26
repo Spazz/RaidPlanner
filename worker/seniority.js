@@ -42,7 +42,37 @@ export function seniorityDeleteOk(guildId, actorId, personId, characterId = null
   };
 }
 
+// { sql, params }: true while a person block may be carried onto this ACCOUNT by this actor (the officer join: the block follows the person onto the account of the
+// person it is joined into). The actor must be the Owner or strictly senior to the account, and the account must be neither the Owner nor GM-tier: a block never lands
+// on an account that is not the actor's to block. Plain `?` placeholders only.
+export function blockCarryOk(guildId, actorId, accountId) {
+  const rank = (user) => `COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ${user}), ${ROLE_RANK.member})`;
+  return {
+    sql: `(NOT ${ownerSql('?', '?')} AND ${rank('?')} > ${ROLE_RANK.guild_master} AND (${ownerSql('?', '?')} OR ${rank('?')} < ${rank('?')}))`,
+    params: [guildId, accountId, accountId, guildId, accountId, guildId, actorId, actorId, guildId, actorId, guildId, accountId],
+  };
+}
+
+// The role rank (0 Guild Master .. 3 Member) the guild's rank map gives the in-game rank of a roster row; 3 for a rank with no map row or no elevated role. Plain `?`
+// placeholders: guild, namespace, realm id, character id.
+const ROSTER_ROW_ROLE_RANK_SQL = `COALESCE((SELECT CASE m.role_id WHEN 'guild_master' THEN 0 WHEN 'officer' THEN 1 WHEN 'team_lead' THEN 2 ELSE 3 END
+    FROM guild_roster rr JOIN source_rank_maps m ON m.guild_id = rr.guild_id AND m.source = 'ingame' AND m.team_id IS NULL AND m.source_key = CAST(rr.rank AS TEXT)
+   WHERE rr.guild_id = ? AND rr.namespace = ? AND rr.blizzard_realm_id = ? AND rr.blizzard_char_id = ?), ${ROLE_RANK.member})`;
+
+// { sql, params }: true while the actor may give a character the identity key of this roster row (Match to roster). A row whose in-game rank maps to an elevated role
+// (Guild Master, Officer, Team Lead) puts whoever owns that character at that rank once an account is linked, so it is the Owner's or a strictly more senior actor's;
+// every other row stays open to whoever may edit the character.
+export function rosterRowOk(guildId, actorId, key) {
+  const row = [guildId, key.namespace, key.realmId, key.charId];
+  const actorRank = `COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), ${ROLE_RANK.member})`;
+  return {
+    sql: `(${ROSTER_ROW_ROLE_RANK_SQL} >= ${ROLE_RANK.member} OR ${ownerSql('?', '?')} OR ${actorRank} < ${ROSTER_ROW_ROLE_RANK_SQL})`,
+    params: [...row, guildId, actorId, actorId, guildId, actorId, ...row],
+  };
+}
+
 export const SENIORITY_MESSAGE = 'That person\'s account ranks the same as you or above you, so only someone more senior can change them.';
+export const ROSTER_ROW_MESSAGE = 'That place on the in-game roster holds a rank above yours, so only someone more senior can give a character its key.';
 export const PROVEN_MESSAGE = 'That character is proven by Battle.net: only the Guild Master can remove it. It leaves the roster when it leaves the guild.';
 
 // Throws 403 `seniority` when the actor may not touch the person. `remove`: null for a change, 'person' for deleting the person, a character id for removing it.
@@ -57,4 +87,19 @@ export async function assertSenior(db, guildContext, personId, { remove = null }
   if (row.ok === 1) return;
   if (plain && row.plain === 1) throw new HttpError(403, 'seniority', PROVEN_MESSAGE);
   throw new HttpError(403, 'seniority', SENIORITY_MESSAGE);
+}
+
+// assertSenior for several persons in ONE statement (a route that touches two persons, the join): the same answer as one assertSenior per person, one D1 read.
+export async function assertSeniorAll(db, guildContext, personIds) {
+  const guildId = guildContext.guild.id;
+  const guards = personIds.map((personId) => seniorityOk(guildId, guildContext.userId, personId));
+  const row = await db.prepare(`SELECT ${guards.map((guard, index) => `${guard.sql} AS ok${index}`).join(', ')}`).bind(...guards.flatMap((guard) => guard.params)).first();
+  if (guards.some((_, index) => row[`ok${index}`] !== 1)) throw new HttpError(403, 'seniority', SENIORITY_MESSAGE);
+}
+
+// Throws 403 `seniority` when the actor may not give a character the key of this roster row (rosterRowOk).
+export async function assertMayMatchRow(db, guildContext, key) {
+  const guard = rosterRowOk(guildContext.guild.id, guildContext.userId, key);
+  const row = await db.prepare(`SELECT ${guard.sql} AS ok`).bind(...guard.params).first();
+  if (!row || row.ok !== 1) throw new HttpError(403, 'seniority', ROSTER_ROW_MESSAGE);
 }

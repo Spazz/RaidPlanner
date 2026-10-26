@@ -22,7 +22,7 @@
 //                   person has no proof: its Discord id and the identity keys Blizzard's roster gave its characters.
 import { auditStatement } from './audit.js';
 import { base64url, defaultRandomBytes } from './ids.js';
-import { ownerSql } from './owner.js';
+import { ownerGuard, ownerSql } from './owner.js';
 
 export const MIN_KEY_LENGTH = 16;
 export const MAX_VALUES = 100;
@@ -181,20 +181,41 @@ export function tombstoneDeleteStatement(db, { guildId, blockRefs, guard }) {
 // The refs whose tombstones the given keys hit (in every key version the guild's rows use): an unblock deletes these as well as its own ref, so lifting a
 // block really lifts it (a pending-review block, or a block moved to another ref by a person join, would otherwise match again at the next sign-in).
 export async function matchedRefsOf(db, env, guildId, keys) {
-  const hits = await findHits(db, env, guildId, keys);
+  const { hits } = await findHits(db, env, guildId, keys);
   return hits ? [...new Set(hits.rows.map((row) => row.block_ref))] : [];
+}
+
+// Which of the matched refs an unblock may lift: the Owner any; everyone else only the refs of a block made by someone STRICTLY junior to them (the actor_role snapshot
+// of the audit row that wrote it, blockerRanksOf). A ref the actor does not outrank keeps its tombstones - the block it belongs to is the senior one's to lift - so an
+// Officer lifting a pending match cannot wipe the memory of a Guild Master's block. -> { lift, kept, minBlockerRank } (minBlockerRank: the guard value of liftGuard).
+export async function splitLiftableRefs(db, guildId, refs, { owner, rank }) {
+  if (!refs.length) return { lift: [], kept: [], minBlockerRank: null };
+  if (owner) return { lift: [...refs], kept: [], minBlockerRank: null };
+  const { ranks } = await blockerRanksOf(db, guildId, refs);
+  const lift = refs.filter((ref) => rank < ranks.get(ref));
+  return { lift, kept: refs.filter((ref) => !lift.includes(ref)), minBlockerRank: lift.length ? Math.min(...lift.map((ref) => ranks.get(ref))) : null };
+}
+
+// The same test inside the batch: the actor is (still) the Owner or strictly senior to the most senior block among the refs being lifted.
+export function liftGuard(guildId, actorId, minBlockerRank) {
+  const owner = ownerGuard(guildId, actorId);
+  return {
+    sql: `(${owner.sql} OR COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), 3) < ?)`,
+    params: [...owner.params, guildId, actorId, minBlockerRank === null || minBlockerRank === undefined ? 0 : minBlockerRank],
+  };
 }
 
 // ---------------------------------------------------------------------------
 // The match
 
-// -> { rows: [{ block_ref, hmac }], kindOf: Map<hmac, kind> } or null (no keys / no tombstones / no key). `log` gets at most one operator line.
+// -> { hits: { rows: [{ block_ref, hmac }], kindOf: Map<hmac, kind> } | null, reads } (null: no keys / no tombstones / no key; reads: the D1 statements it ran, for a
+// caller with a statement budget). `log` gets at most one operator line.
 async function findHits(db, env, guildId, keys, log = null) {
   const values = typedValuesOf(keys);
-  if (!values.length) return null;
+  if (!values.length) return { hits: null, reads: 0 };
   const versionResult = await db.prepare('SELECT DISTINCT key_version FROM block_tombstones WHERE guild_id = ?').bind(guildId).all();
   const versions = versionResult.results.map((row) => row.key_version);
-  if (!versions.length) return null;
+  if (!versions.length) return { hits: null, reads: 1 };
   const ring = readKeyring(env);
   const kindOf = new Map();
   for (const version of versions) {
@@ -206,11 +227,11 @@ async function findHits(db, env, guildId, keys, log = null) {
     const key = await importKey(secret);
     for (const value of values) kindOf.set(await hmacWith(key, guildId, value), kindOfValue(value));
   }
-  if (!kindOf.size) return null;
+  if (!kindOf.size) return { hits: null, reads: 1 };
   const found = await db.prepare(
     'SELECT DISTINCT block_ref, hmac FROM block_tombstones WHERE guild_id = ? AND hmac IN (SELECT value FROM json_each(?)) LIMIT 50',
   ).bind(guildId, JSON.stringify([...kindOf.keys()])).all();
-  return { rows: found.results, kindOf };
+  return { hits: { rows: found.results, kindOf }, reads: 2 };
 }
 
 // Ranks, lower is more senior: what an audit row's actor_role snapshot means.
@@ -218,20 +239,33 @@ const SNAPSHOT_RANK = { owner: 0, guild_master: 0, officer: 1, team_lead: 2, mem
 const DEFAULT_BLOCKER_RANK = SNAPSHOT_RANK.officer; // a block with no readable snapshot (made before the snapshot existed) counts as an Officer's
 const HELD_REPEAT_MS = 24 * 60 * 60 * 1000;
 export const MATCH_REASON = 'Matched an earlier block of the same person';
+// The audit action that wrote the block a ref belongs to ('u:' = an account block, 'p:' = an account-less person's).
+const BLOCK_ACTION = { 'u:': 'access.remove', 'p:': 'person.block' };
 
-// The rank of the officer who made the block a ref belongs to, from the audit row that wrote it (the snapshot survives the blocker's own account deletion).
-async function blockerRankOf(db, guildId, ref) {
-  const kind = ref.slice(0, 2);
-  const action = kind === 'u:' ? 'access.remove' : kind === 'p:' ? 'person.block' : null;
-  if (!action) return DEFAULT_BLOCKER_RANK;
-  const row = await db.prepare('SELECT actor_role FROM audit_log WHERE guild_id = ? AND action = ? AND entity_id = ? ORDER BY created_at DESC LIMIT 1').bind(guildId, action, ref.slice(2)).first();
-  return row && Object.prototype.hasOwnProperty.call(SNAPSHOT_RANK, row.actor_role) ? SNAPSHOT_RANK[row.actor_role] : DEFAULT_BLOCKER_RANK;
+// The rank of the officer who made each block, from the audit row that wrote it (the snapshot survives the blocker's own account deletion). ONE statement for all
+// the refs, however many: -> { ranks: Map<ref, rank>, reads } (reads 0 when no ref names a block kind).
+export async function blockerRanksOf(db, guildId, refs) {
+  const ranks = new Map(refs.map((ref) => [ref, DEFAULT_BLOCKER_RANK]));
+  const wanted = refs.filter((ref) => BLOCK_ACTION[ref.slice(0, 2)]);
+  if (!wanted.length) return { ranks, reads: 0 };
+  const found = await db.prepare(
+    `SELECT action, entity_id, actor_role FROM audit_log
+      WHERE guild_id = ? AND action IN ('access.remove', 'person.block') AND entity_id IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT 500`,
+  ).bind(guildId, JSON.stringify(wanted.map((ref) => ref.slice(2)))).all();
+  const settled = new Set();
+  for (const row of found.results) {
+    const ref = `${row.action === 'access.remove' ? 'u:' : 'p:'}${row.entity_id}`;
+    if (!ranks.has(ref) || settled.has(ref)) continue; // the newest row of a ref decides
+    settled.add(ref);
+    if (Object.prototype.hasOwnProperty.call(SNAPSHOT_RANK, row.actor_role)) ranks.set(ref, SNAPSHOT_RANK[row.actor_role]);
+  }
+  return { ranks, reads: 1 };
 }
 
 const RANK_OF_ROLE_SQL = `CASE m.role_id WHEN 'guild_master' THEN 0 WHEN 'officer' THEN 1 WHEN 'team_lead' THEN 2 ELSE 3 END`;
 
 // The rank an account would have in the guild (A9-05): the hand roles of the account + the rank-map rank of its identity keys on the stored roster ('ingame'
-// guilds). -> { owner, rank } with rank 0..3, 3 = Member.
+// guilds). -> { owner, rank, reads } with rank 0..3, 3 = Member.
 export async function prospectiveRankOf(db, guildId, userId, identityKeys) {
   const account = await db.prepare(
     `SELECT ${ownerSql('?1', '?2')} AS owner,
@@ -240,6 +274,7 @@ export async function prospectiveRankOf(db, guildId, userId, identityKeys) {
             (SELECT rank_source FROM guilds WHERE id = ?1) AS source`,
   ).bind(guildId, userId).first();
   let rank = account.handRank;
+  let reads = 1;
   const identities = typedValuesOf({ identityKeys }).map((value) => value.split(':')).map(([, namespace, realm, char]) => ({ ns: namespace, realm: Number(realm), char: Number(char) }));
   if (account.source === 'ingame' && identities.length) {
     const mapped = await db.prepare(
@@ -249,60 +284,99 @@ export async function prospectiveRankOf(db, guildId, userId, identityKeys) {
                              AND gr.blizzard_realm_id = json_extract(k.value, '$.realm') AND gr.blizzard_char_id = json_extract(k.value, '$.char')
          JOIN source_rank_maps m ON m.guild_id = gr.guild_id AND m.source = 'ingame' AND m.source_key = CAST(gr.rank AS TEXT) AND m.team_id IS NULL`,
     ).bind(guildId, JSON.stringify(identities)).first();
+    reads++;
     if (mapped && mapped.rank !== null && mapped.rank < rank) rank = mapped.rank;
   }
-  return { owner: account.owner === 1, rank };
+  return { owner: account.owner === 1, rank, reads };
 }
 
-// The statements that record a tombstone match for ONE guild, to be run in a batch by the caller (sign-in / link / Battle.net proof). Nothing is written here.
-//   db, { guildId, userId (the matched account), keys (see typedValuesOf), env (the Worker env: the key source), now, randomBytes, log }  -> Promise<statement[]>
-//   no tombstone hit, or the account is already blocked here ......................... []
+// The most D1 statements planTombstoneMatch can run for ONE guild: the version list, the hits, the account's block, its rank (2) and the blockers' ranks = 6 reads,
+// and up to 2 statements for the caller's batch (the block and its audit row). A caller with a statement budget reserves this before it calls.
+export const TOMBSTONE_MATCH_READS = 6;
+export const TOMBSTONE_MATCH_STATEMENTS = TOMBSTONE_MATCH_READS + 2;
+
+// The plan of a tombstone match for ONE guild: the statements to run in a batch by the caller (sign-in / link / Battle.net proof) and how many D1 reads it took to
+// decide. Nothing is written here.
+//   db, { guildId, userId (the matched account), keys (see typedValuesOf), env (the Worker env: the key source), now, randomBytes, log,
+//         personBlocks: [player id] }  -> Promise<{ statements, reads }>
+//   personBlocks: persons of the guild that hold a person_blocks row and that the account's keys matched through the roster (the Battle.net match found a character
+//   of such a person for a key of the account). They are a hit like a tombstone's, with the ref 'p:<player id>'.
+//   no hit, or the account is already blocked here .................................... []
 //   a hit on the Owner or an account that holds a Guild Master role ................... audit 'block.match_held' (reason owner | gm), NO block
 //   a hit on an account equal or senior to the officer who made the block (A9-05) ..... audit 'block.match_held' (reason senior), NO block
 //   any other hit ..................................................................... a guild_blocks row (pending_review = 1, blocked_by NULL) + audit 'block.match'
 // A pending-review block ENFORCES (worker/membership.js treats any guild_blocks row as blocked) and shows in the officers' review queue (attention kind block_review).
-export async function tombstoneMatchStatements(db, { guildId, userId, keys, env, now = Date.now, randomBytes = defaultRandomBytes, log = null }) {
-  if (!guildId || !userId) return [];
-  const hits = await findHits(db, env, guildId, keys, log);
-  if (!hits || !hits.rows.length) return [];
+export async function planTombstoneMatch(db, { guildId, userId, keys, env, now = Date.now, randomBytes = defaultRandomBytes, log = null, personBlocks = [] }) {
+  if (!guildId || !userId) return { statements: [], reads: 0 };
+  const { hits, reads: hitReads } = await findHits(db, env, guildId, keys, log);
+  let reads = hitReads;
+  const tombstoneRows = hits ? hits.rows : [];
+  const heldPersons = [...new Set(personBlocks)];
+  if (!tombstoneRows.length && !heldPersons.length) return { statements: [], reads };
   const already = await db.prepare('SELECT 1 AS blocked FROM guild_blocks WHERE guild_id = ? AND user_id = ?').bind(guildId, userId).first();
-  if (already) return [];
+  reads++;
+  if (already) return { statements: [], reads };
   // The account's own ref is never a reason (an inconsistent leftover of its own block).
   const own = accountBlockRef(userId);
-  const refs = [...new Set(hits.rows.map((row) => row.block_ref).filter((ref) => ref !== own))];
-  if (!refs.length) return [];
-  const hitHmacs = [...new Set(hits.rows.map((row) => row.hmac))];
-  const kinds = [...new Set(hits.rows.map((row) => hits.kindOf.get(row.hmac)))].sort();
+  const refs = [...new Set([...tombstoneRows.map((row) => row.block_ref), ...heldPersons.map(personBlockRef)].filter((ref) => ref !== own))];
+  if (!refs.length) return { statements: [], reads };
+  const hitHmacs = [...new Set(tombstoneRows.map((row) => row.hmac))];
+  const kinds = [...new Set([...tombstoneRows.map((row) => hits.kindOf.get(row.hmac)), ...(heldPersons.length ? ['person'] : [])])].sort();
 
   const ctx = { db, now, randomBytes };
   const nowMs = now();
-  const stillMatches = { sql: 'EXISTS (SELECT 1 FROM block_tombstones WHERE guild_id = ? AND hmac IN (SELECT value FROM json_each(?)))', params: [guildId, JSON.stringify(hitHmacs)] };
+  // The hit is still there: the tombstones it matched, or the person blocks it matched (a block lifted since leaves the batch a no-op).
+  const still = [];
+  const stillParams = [];
+  if (hitHmacs.length) {
+    still.push('EXISTS (SELECT 1 FROM block_tombstones WHERE guild_id = ? AND hmac IN (SELECT value FROM json_each(?)))');
+    stillParams.push(guildId, JSON.stringify(hitHmacs));
+  }
+  if (heldPersons.length) {
+    still.push('EXISTS (SELECT 1 FROM person_blocks WHERE guild_id = ? AND player_id IN (SELECT value FROM json_each(?)))');
+    stillParams.push(guildId, JSON.stringify(heldPersons));
+  }
+  const stillMatches = { sql: `(${still.join(' OR ')})`, params: stillParams };
   const account = await prospectiveRankOf(db, guildId, userId, keys && keys.identityKeys);
-  const blockerRank = Math.min(...(await Promise.all(refs.map((ref) => blockerRankOf(db, guildId, ref)))));
+  reads += account.reads;
+  const blockers = await blockerRanksOf(db, guildId, refs);
+  reads += blockers.reads;
+  const blockerRank = Math.min(...blockers.ranks.values());
   const heldReason = account.owner ? 'owner' : account.rank === 0 ? 'gm' : account.rank <= blockerRank ? 'senior' : null;
 
   if (heldReason) {
     // One review item per account and day, however often it signs in.
-    return [auditStatement(ctx, {
-      guildId, actorUserId: null, action: 'block.match_held', entityType: 'user', entityId: userId, after: { reason: heldReason, refs: refs.length, kinds },
-    }, {
-      sql: `${stillMatches.sql} AND NOT EXISTS (SELECT 1 FROM audit_log WHERE guild_id = ? AND action = 'block.match_held' AND entity_id = ? AND created_at > ?)`,
-      params: [...stillMatches.params, guildId, userId, nowMs - HELD_REPEAT_MS],
-    })];
+    return {
+      reads,
+      statements: [auditStatement(ctx, {
+        guildId, actorUserId: null, action: 'block.match_held', entityType: 'user', entityId: userId, after: { reason: heldReason, refs: refs.length, kinds },
+      }, {
+        sql: `${stillMatches.sql} AND NOT EXISTS (SELECT 1 FROM audit_log WHERE guild_id = ? AND action = 'block.match_held' AND entity_id = ? AND created_at > ?)`,
+        params: [...stillMatches.params, guildId, userId, nowMs - HELD_REPEAT_MS],
+      })],
+    };
   }
   const notOwner = `NOT ${ownerSql('?', '?')}`;
-  return [
-    db.prepare(
-      `INSERT OR IGNORE INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at, pending_review, tombstone_missing)
-       SELECT ?, ?, NULL, ?, ?, 1, 0 WHERE ${stillMatches.sql} AND ${notOwner}`,
-    ).bind(guildId, userId, MATCH_REASON, nowMs, ...stillMatches.params, guildId, userId, userId),
-    auditStatement(ctx, {
-      guildId, actorUserId: null, action: 'block.match', entityType: 'user', entityId: userId, after: { refs: refs.length, kinds },
-    }, {
-      sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND pending_review = 1 AND blocked_by IS NULL AND created_at = ?)',
-      params: [guildId, userId, nowMs],
-    }),
-  ];
+  return {
+    reads,
+    statements: [
+      db.prepare(
+        `INSERT OR IGNORE INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at, pending_review, tombstone_missing)
+         SELECT ?, ?, NULL, ?, ?, 1, 0 WHERE ${stillMatches.sql} AND ${notOwner}`,
+      ).bind(guildId, userId, MATCH_REASON, nowMs, ...stillMatches.params, guildId, userId, userId),
+      auditStatement(ctx, {
+        guildId, actorUserId: null, action: 'block.match', entityType: 'user', entityId: userId, after: { refs: refs.length, kinds },
+      }, {
+        sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND pending_review = 1 AND blocked_by IS NULL AND created_at = ?)',
+        params: [guildId, userId, nowMs],
+      }),
+    ],
+  };
+}
+
+// The statements alone (the Discord sign-in and link callbacks, tests).
+export async function tombstoneMatchStatements(db, options) {
+  return (await planTombstoneMatch(db, options)).statements;
 }
 
 // ---------------------------------------------------------------------------
@@ -322,18 +396,38 @@ export async function candidateGuildIds(db, userId, discordId) {
   return result.results.map((row) => row.guild_id);
 }
 
+// The statements of a pass that reads the account's keys (2), lists the guilds (1) and matches ONE guild (the most planTombstoneMatch runs).
+export const MATCH_PASS_MIN_STATEMENTS = 3 + TOMBSTONE_MATCH_STATEMENTS;
+
 // Runs the match for an account in every guild with tombstones that it reaches, and batches the result. Never throws: a failure here is logged and the sign-in
 // goes on (the next sign-in matches again). ctx: { db, env, now, randomBytes, log }. -> number of guilds that got a statement.
-export async function matchAccountAtSignIn(ctx, userId) {
+//   options.budget .... the D1 statements the pass may run in all, reads and its one batch counted one by one (the Battle.net callbacks have what the sign-in match left
+//                       of their 45); a guild that does not fit waits for the next sign-in. Default: no budget (the Discord callbacks).
+//   options.skip ...... guild ids the caller has matched already (the Battle.net match does its in-game guilds itself)
+//   options.onDeferred  called once when a guild had to wait
+export async function matchAccountAtSignIn(ctx, userId, { budget = Infinity, skip = [], onDeferred = null } = {}) {
   try {
+    let left = budget;
+    if (left < MATCH_PASS_MIN_STATEMENTS) {
+      if (onDeferred) onDeferred();
+      return 0;
+    }
     const keys = await accountKeys(ctx.db, userId);
-    const guildIds = await candidateGuildIds(ctx.db, userId, keys.discordId);
+    left -= 2;
+    const skipped = new Set(skip);
+    const guildIds = (await candidateGuildIds(ctx.db, userId, keys.discordId)).filter((guildId) => !skipped.has(guildId));
+    left -= 1;
     const statements = [];
     let touched = 0;
     for (const guildId of guildIds) {
-      const mine = await tombstoneMatchStatements(ctx.db, { guildId, userId, keys, env: ctx.env, now: ctx.now, randomBytes: ctx.randomBytes, log: ctx.log });
-      if (mine.length) touched++;
-      statements.push(...mine);
+      if (left < TOMBSTONE_MATCH_STATEMENTS) {
+        if (onDeferred) onDeferred();
+        break;
+      }
+      const plan = await planTombstoneMatch(ctx.db, { guildId, userId, keys, env: ctx.env, now: ctx.now, randomBytes: ctx.randomBytes, log: ctx.log });
+      left -= plan.reads + plan.statements.length;
+      if (plan.statements.length) touched++;
+      statements.push(...plan.statements);
     }
     if (statements.length) await ctx.db.batch(statements);
     return touched;
@@ -349,7 +443,7 @@ export async function matchAccountAtSignIn(ctx, userId) {
 export const REPAIR_LIMIT = 25;
 
 // Writes the tombstones of blocks that have none (made before this build, or while TOMBSTONE_KEY was unset: tombstone_missing = 1) from the account's CURRENT
-// keys, REPAIR_LIMIT blocks a run in random order (so a block with no keys never starves the others). Pending-review blocks are not repaired: an officer decides
+// keys, REPAIR_LIMIT blocks a run (account and person blocks together) in random order (so a block with no keys never starves the others). Pending-review blocks are not repaired: an officer decides
 // them first. deps: { db, env, now, log } -> { repaired, noKeys } or null when the key is unset (one operator line). Logs counts when it did anything. Never throws.
 export async function repairTombstones({ db, env, now, log }) {
   try {
@@ -365,32 +459,32 @@ export async function repairTombstones({ db, env, now, log }) {
       log(`tombstone repair: TOMBSTONE_KEY is not set or not valid; ${waiting.n} block${waiting.n === 1 ? ' waits' : 's wait'} for tombstones${ring.problems.length ? ` (${ring.problems.join('; ')})` : ''}`);
       return null;
     }
-    const accounts = await db.prepare(
-      `SELECT gb.guild_id, gb.user_id FROM guild_blocks gb
-        WHERE gb.pending_review = 0 AND (gb.tombstone_missing = 1 OR NOT EXISTS
-                (SELECT 1 FROM block_tombstones t WHERE t.guild_id = gb.guild_id AND t.block_ref = 'u:' || gb.user_id))
-        ORDER BY RANDOM() LIMIT ?`,
-    ).bind(REPAIR_LIMIT).all();
-    const people = await db.prepare(
-      `SELECT pb.guild_id, pb.player_id FROM person_blocks pb
-        WHERE pb.tombstone_missing = 1 OR NOT EXISTS (SELECT 1 FROM block_tombstones t WHERE t.guild_id = pb.guild_id AND t.block_ref = 'p:' || pb.player_id)
+    // REPAIR_LIMIT blocks in all, account blocks and person blocks drawn together: a run is at most 2 + 4 * REPAIR_LIMIT D1 statements (the count, this read, and per
+    // block its keys (2) and its batch (2)), where two limits of their own would have made it twice that.
+    const due = await db.prepare(
+      `SELECT kind, guild_id, id FROM (
+         SELECT 'u' AS kind, gb.guild_id AS guild_id, gb.user_id AS id FROM guild_blocks gb
+          WHERE gb.pending_review = 0 AND (gb.tombstone_missing = 1 OR NOT EXISTS
+                  (SELECT 1 FROM block_tombstones t WHERE t.guild_id = gb.guild_id AND t.block_ref = 'u:' || gb.user_id))
+         UNION ALL
+         SELECT 'p', pb.guild_id, pb.player_id FROM person_blocks pb
+          WHERE pb.tombstone_missing = 1 OR NOT EXISTS (SELECT 1 FROM block_tombstones t WHERE t.guild_id = pb.guild_id AND t.block_ref = 'p:' || pb.player_id))
         ORDER BY RANDOM() LIMIT ?`,
     ).bind(REPAIR_LIMIT).all();
     const nowMs = now();
     let repaired = 0;
     let noKeys = 0;
-    const work = [
-      ...accounts.results.map((row) => ({
-        guildId: row.guild_id, ref: accountBlockRef(row.user_id), keys: () => accountKeys(db, row.user_id, row.guild_id),
-        exists: { sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)', params: [row.guild_id, row.user_id] },
-        clear: db.prepare('UPDATE guild_blocks SET tombstone_missing = 0 WHERE guild_id = ? AND user_id = ? AND tombstone_missing = 1').bind(row.guild_id, row.user_id),
-      })),
-      ...people.results.map((row) => ({
-        guildId: row.guild_id, ref: personBlockRef(row.player_id), keys: () => personKeys(db, row.guild_id, row.player_id),
-        exists: { sql: 'EXISTS (SELECT 1 FROM person_blocks WHERE guild_id = ? AND player_id = ?)', params: [row.guild_id, row.player_id] },
-        clear: db.prepare('UPDATE person_blocks SET tombstone_missing = 0 WHERE guild_id = ? AND player_id = ? AND tombstone_missing = 1').bind(row.guild_id, row.player_id),
-      })),
-    ];
+    const work = due.results.map((row) => (row.kind === 'u'
+      ? {
+        guildId: row.guild_id, ref: accountBlockRef(row.id), keys: () => accountKeys(db, row.id, row.guild_id),
+        exists: { sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)', params: [row.guild_id, row.id] },
+        clear: db.prepare('UPDATE guild_blocks SET tombstone_missing = 0 WHERE guild_id = ? AND user_id = ? AND tombstone_missing = 1').bind(row.guild_id, row.id),
+      }
+      : {
+        guildId: row.guild_id, ref: personBlockRef(row.id), keys: () => personKeys(db, row.guild_id, row.id),
+        exists: { sql: 'EXISTS (SELECT 1 FROM person_blocks WHERE guild_id = ? AND player_id = ?)', params: [row.guild_id, row.id] },
+        clear: db.prepare('UPDATE person_blocks SET tombstone_missing = 0 WHERE guild_id = ? AND player_id = ? AND tombstone_missing = 1').bind(row.guild_id, row.id),
+      }));
     for (const item of work) {
       const plan = await planTombstones(env, item.guildId, await item.keys());
       if (!plan.hmacs.length) {

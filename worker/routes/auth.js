@@ -452,6 +452,25 @@ export async function deleteMe(ctx) {
   statements.push(db.prepare('DELETE FROM raid_signups WHERE guest = 1 AND guest_user_id = ?').bind(userId));
   // Team requests still waiting go with the account (the decided rows stay, unlinked: requested_by and decided_by are ON DELETE SET NULL).
   statements.push(db.prepare("DELETE FROM team_requests WHERE requested_by = ? AND status = 'pending'").bind(userId));
+  // A BLOCK SURVIVES the account (sec A9-05 / A9-11). The tombstones keep what the account PROVED; the keys an officer attested on the person's characters (typed in,
+  // matched to the roster by an officer) are the person's, so in every guild where the account is blocked and has a person (linked, or carrying its Discord ID) that
+  // person gets a person_blocks marker with the block's blocked_by and reason, and a person.block audit row that keeps the original blocker's rank snapshot. The
+  // sign-in match honours the marker (worker/bnet-match.js). These run before the link below is cut and before the account row (and its guild_blocks) goes.
+  statements.push(
+    db.prepare(
+      `INSERT OR IGNORE INTO person_blocks (guild_id, player_id, blocked_by, reason, tombstone_missing, created_at)
+       SELECT b.guild_id, p.id, b.blocked_by, b.reason, b.tombstone_missing, b.created_at FROM guild_blocks b JOIN players p ON p.guild_id = b.guild_id AND (p.user_id = ?1 OR (p.discord_user_id IS NOT NULL AND p.discord_user_id = (SELECT du.discord_id FROM users du WHERE du.id = ?1))) WHERE b.user_id = ?1`,
+    ).bind(userId),
+    db.prepare(
+      `INSERT INTO audit_log (id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at, actor_short_id, actor_role)
+       SELECT 'al_' || lower(hex(randomblob(16))), b.guild_id, b.blocked_by, 'person.block', 'person', p.id, NULL, '{"blocked":true,"viaAccountDelete":true}', ?2,
+              a.actor_short_id, a.actor_role
+         FROM guild_blocks b JOIN players p ON p.guild_id = b.guild_id AND (p.user_id = ?1 OR (p.discord_user_id IS NOT NULL AND p.discord_user_id = (SELECT du.discord_id FROM users du WHERE du.id = ?1)))
+         LEFT JOIN audit_log a ON a.id = (SELECT x.id FROM audit_log x WHERE x.guild_id = b.guild_id AND x.action = 'access.remove' AND x.entity_id = b.user_id
+                                           ORDER BY x.created_at DESC LIMIT 1)
+        WHERE b.user_id = ?1 AND EXISTS (SELECT 1 FROM person_blocks pb WHERE pb.guild_id = b.guild_id AND pb.player_id = p.id)`,
+    ).bind(userId, now),
+  );
   // The roster people linked to this account stay (officers own the roster); the link goes. The version moves so an officer's open page sees it.
   statements.push(db.prepare(
     'UPDATE players SET user_id = NULL, version = version + 1, updated_at = ? WHERE user_id = ?',
