@@ -196,6 +196,47 @@ check('Make Main: the loser of a race (the same move already done) does not wipe
   await s.inSync('the losing Make Main');
 });
 
+// ---------------------------------------------------------------------------
+// 4. A custom signups.self role needs a character on the raid's team
+
+async function roleWorld() {
+  const s = await scenario();
+  const [alpha, bravo] = s.tids;
+  const uid = await s.member('member');
+  const p = await s.newPerson({ name: 'Alphaonly', linkUserId: uid });
+  const guildRole = (await s.ok('gm', 'POST', '/roles', { name: 'Everywhere signer', permissions: { 'signups.self': 'guild' } })).roles.find((r) => r.name === 'Everywhere signer').id;
+  const teamRole = (await s.ok('gm', 'POST', '/roles', { name: 'Bravo signer', permissions: { 'signups.self': 'team' } })).roles.find((r) => r.name === 'Bravo signer').id;
+  const raid = async (teamId, raidOn) => (await s.ok('gm', 'POST', '/raids', { teamId, raidOn, startTime: '20:00' }, 201)).raid.id;
+  return { s, alpha, bravo, uid, p, guildRole, teamRole, raid };
+}
+
+check('sign-up: a custom role with signups.self (guild or team scope) does not let a member without a character on the raid\'s team sign up', async () => {
+  const { s, alpha, bravo, uid, p, guildRole, teamRole, raid } = await roleWorld();
+  const bravoRaid = await raid(bravo, '2027-02-02');
+  const alphaRaid = await raid(alpha, '2027-02-03');
+  // The built-in Member role: only the own team's raid.
+  assert.equal((await s.call('member', 'PUT', `/raids/${bravoRaid}/signup`, { kind: 'signed' })).status, 403, 'a plain member');
+  // Guild scope.
+  await s.ok('gm', 'PUT', `/people/${uid}/roles`, { officer: false, teamLeadTeamIds: [], roles: [{ roleId: guildRole, teamId: null }] }, 200);
+  const refused = await s.call('member', 'PUT', `/raids/${bravoRaid}/signup`, { kind: 'signed' });
+  assert.equal(refused.status, 403, refused.text);
+  assert.equal((await s.call('member', 'DELETE', `/raids/${bravoRaid}/signup`)).status, 403, 'nor can they withdraw one');
+  assert.equal(await s.w.count('raid_signups', "source = 'raidsmith'"), 0, 'nothing was written');
+  // Team scope on the team they are not on.
+  await s.ok('gm', 'PUT', `/people/${uid}/roles`, { officer: false, teamLeadTeamIds: [], roles: [{ roleId: teamRole, teamId: bravo }] }, 200);
+  assert.equal((await s.call('member', 'PUT', `/raids/${bravoRaid}/signup`, { kind: 'signed' })).status, 403, 'team scope on Bravo');
+  assert.equal(await s.w.count('raid_signups', "source = 'raidsmith'"), 0);
+  // The team they are on still works, with any of their characters (U R4-Q1).
+  await s.ok('gm', 'PUT', `/people/${uid}/roles`, { officer: false, teamLeadTeamIds: [], roles: [{ roleId: guildRole, teamId: null }] }, 200);
+  const altId = await s.alt(p.pid, 'Alphaalt');
+  const ok = await s.ok('member', 'PUT', `/raids/${alphaRaid}/signup`, { kind: 'signed', characterId: altId }, 200);
+  assert.equal(ok.entries.find((e) => e.isMe).name, 'Alphaalt');
+  assert.equal((await s.rows("SELECT player_id FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith'", alphaRaid))[0].player_id, p.pid);
+  // Once their character is on Bravo's roster they may sign up there too.
+  s.exec(`UPDATE characters SET team_id = '${bravo}' WHERE id = '${altId}'`);
+  assert.equal((await s.call('member', 'PUT', `/raids/${bravoRaid}/signup`, { kind: 'signed' })).status, 200);
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of checks) {

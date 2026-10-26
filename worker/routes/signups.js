@@ -311,6 +311,10 @@ async function mySignupContext(ctx) {
   if (!allows(guildContext.can, 'signups.self', raid.team_id)) throw forbidden();
   const person = await ownPersonStatement(ctx.db, guildContext.guild.id, ctx.session.user.id).first();
   if (!person) throw forbidden();
+  // signups.self can be held at guild scope (a custom role): the person still needs a character on the raid's team roster (any of their characters is then
+  // pickable, U R4-Q1).
+  const onTeam = await ctx.db.prepare(`SELECT ${personOnTeamRosterSql('?1', '?2')} AS on_team`).bind(person.id, raid.team_id).first();
+  if (!onTeam.on_team) throw forbidden();
   const reason = closedReason(raid, ctx.now());
   if (reason) throw closedError(reason, raid);
   return { guildContext, raid, personId: person.id };

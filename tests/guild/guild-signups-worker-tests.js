@@ -1130,7 +1130,8 @@ check('budgets: D1 calls per sign-up route stay at the measured numbers', async 
 });
 
 // Measured 2026-10-17. Session + context + raid are in every number; a write adds the central write limit, two reads and the write batch; the view is one batch.
-const BUDGET = { view: 4, put: 8, del: 7, officer: 7, list: 3, lock: 6, sched: 4 };
+// A member's own write (put, del) reads one more since the R2 review: whether the person is on the raid's team roster (a custom signups.self role is not enough).
+const BUDGET = { view: 4, put: 9, del: 8, officer: 7, list: 3, lock: 6, sched: 4 };
 
 // ---------------------------------------------------------------------------
 
