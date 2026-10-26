@@ -233,6 +233,29 @@ async function recordAttempt(deps, row) {
   }
 }
 
+// Applies a GOOD roster whose hash differs from the stored one: ONE batch (rosterReplaceStatements), a failed batch rolls back whole. The one place that does it: the sync below and
+// the GM claim (worker/gm-claim.js, which trusts the one good response it fetched with the claimant's own request, U R5-Q6) both call it.
+// guild: the PIN_SQL row (time_zone), pin: pinOf(guild). fits(count) -> boolean: a caller with a statement budget says whether the batch of `count` statements may run.
+// -> { status: 'applied' | 'superseded' (a newer roster is stored already, or the pin changed: nothing was written) | 'failed' (logged) | 'skipped' (fits said no), statements: count }.
+export async function replaceStoredRoster(deps, { guildId, guild, pin, roster, hash, startedAt, syncId, fits = null }) {
+  const { db } = deps;
+  const { statements, syncIndex } = rosterReplaceStatements(db, {
+    guildId, blizzardGuildId: pin.blizzardGuildId, blizzardRealmId: pin.blizzardRealmId, namespace: pin.namespace,
+    fetchedAt: startedAt, startedAt, finishedAt: deps.now(), now: deps.now(), today: todayIn(guild.time_zone, deps.now()), timeZone: guild.time_zone, syncId, hash, roster,
+  });
+  const count = statements.length;
+  if (fits && !fits(count)) return { status: 'skipped', statements: 0 };
+  let results;
+  try {
+    results = await db.batch(statements);
+  } catch (error) {
+    deps.log(`roster sync: ${guildId}: the replace batch failed and rolled back: ${error && error.message}`);
+    return { status: 'failed', statements: count };
+  }
+  // A refused guard leaves every statement a no-op.
+  return { status: results[syncIndex].meta.changes === 1 ? 'applied' : 'superseded', statements: count };
+}
+
 const rosterCounts = (roster) => ({ entries: roster.entries, members: roster.members.length, nonTbc: roster.nonTbc, truncated: roster.truncated, problems: roster.problems });
 
 // deps: { db, env, fetch, now, randomBytes, log }. Syncs one pinned guild whose lease the caller holds. Never throws.
@@ -280,21 +303,9 @@ export async function syncGuild(deps, guildId) {
       return { status: 'unchanged', syncId, reason: null, members: roster.members.length };
     }
 
-    const { statements, syncIndex } = rosterReplaceStatements(db, {
-      guildId, blizzardGuildId: pin.blizzardGuildId, blizzardRealmId: pin.blizzardRealmId, namespace: pin.namespace,
-      fetchedAt: startedAt, startedAt, finishedAt: deps.now(), now: deps.now(), today: todayIn(guild.time_zone, deps.now()), timeZone: guild.time_zone, syncId, hash, roster,
-    });
-    let results;
-    try {
-      results = await db.batch(statements);
-    } catch (error) {
-      deps.log(`roster sync: ${guildId}: the replace batch failed and rolled back: ${error && error.message}`);
-      return await attempt(false, { reason: 'batch_failed', httpStatus: 200, counts: rosterCounts(roster) });
-    }
-    if (results[syncIndex].meta.changes !== 1) {
-      // The guard refused every statement: a newer roster is already stored (or the pin changed). Nothing was written.
-      return await attempt(false, { reason: 'superseded', httpStatus: 200, counts: rosterCounts(roster) });
-    }
+    const { status: outcome } = await replaceStoredRoster(deps, { guildId, guild, pin, roster, hash, startedAt, syncId });
+    // 'superseded': the guard refused every statement, a newer roster is already stored (or the pin changed). Nothing was written.
+    if (outcome !== 'applied') return await attempt(false, { reason: outcome === 'failed' ? 'batch_failed' : 'superseded', httpStatus: 200, counts: rosterCounts(roster) });
     return { status: 'applied', syncId, reason: null, members: roster.members.length };
   } catch (error) {
     try { deps.log(`roster sync: ${guildId}: failed: ${error && error.message}`); } catch { /* logging must not throw */ }

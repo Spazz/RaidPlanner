@@ -54,9 +54,15 @@ const UNMAPPED_RANKS_SQL = `SELECT g.rank AS rank, COUNT(*) AS members FROM guil
 // Blocks that wait for an officer (lane B7a), for the holders of guild.access only (?2 = 1 when the viewer holds it; anyone else gets none):
 //   pending: blocks a tombstone match inserted (pending_review = 1; they ENFORCE already)
 //   held: accounts that matched a block but were NOT blocked (the Owner, a Guild Master, an account ranking with or above the officer who blocked), the last 30 days
+// and, in the same statement (the Home read stays one statement longer for nobody), the Guild Master claim the viewer made (lane B6b part 2b; ?4 = the viewer): the newest
+// `guild.claim` row written by the viewer's claim, only while the viewer IS the Owner. The literal `action = 'guild.claim'` is what lets the partial index of migration 0037 serve it.
 const BLOCK_REVIEW_SQL = `SELECT
     (SELECT COUNT(*) FROM guild_blocks WHERE guild_id = ?1 AND pending_review = 1 AND ?2 = 1) AS pending,
-    (SELECT COUNT(DISTINCT entity_id) FROM audit_log WHERE guild_id = ?1 AND action = 'block.match_held' AND created_at > ?3 AND ?2 = 1) AS held`;
+    (SELECT COUNT(DISTINCT entity_id) FROM audit_log WHERE guild_id = ?1 AND action = 'block.match_held' AND created_at > ?3 AND ?2 = 1) AS held,
+    (SELECT c.id FROM audit_log c WHERE c.guild_id = ?1 AND c.action = 'guild.claim' AND c.actor_user_id = ?4 AND json_extract(c.after, '$.via') = 'gm_claim' AND ${ownerSql('?1', '?4')}
+      ORDER BY c.created_at DESC, c.id DESC LIMIT 1) AS claim_id,
+    (SELECT c.created_at FROM audit_log c WHERE c.guild_id = ?1 AND c.action = 'guild.claim' AND c.actor_user_id = ?4 AND json_extract(c.after, '$.via') = 'gm_claim' AND ${ownerSql('?1', '?4')}
+      ORDER BY c.created_at DESC, c.id DESC LIMIT 1) AS claim_at`;
 const BLOCK_REVIEW_DAYS = 30;
 
 // Everyone who gets the page: the viewer holds at least one of the editing rights somewhere.
@@ -270,7 +276,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
       weekFrom, weekTo,
     ),
     guestIdentityStatement(db, guild.id),
-    db.prepare(BLOCK_REVIEW_SQL).bind(guild.id, isGranted(can['guild.access']) ? 1 : 0, now - BLOCK_REVIEW_DAYS * DAY_MS),
+    db.prepare(BLOCK_REVIEW_SQL).bind(guild.id, isGranted(can['guild.access']) ? 1 : 0, now - BLOCK_REVIEW_DAYS * DAY_MS, guildContext.userId),
     // The setup checklist's flags, for the people who set the guild up (no statement for anyone else: `onboarding` is then undefined).
     ...[onboardingStatement(db, guildContext)].filter(Boolean),
   ]);
@@ -342,6 +348,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     teamRequests: teamRequests.results,
     unmappedRanks: unmappedRanks.results,
     blockReview: blockReview.results[0],
+    claimReview: blockReview.results[0] && blockReview.results[0].claim_id ? { id: blockReview.results[0].claim_id, at: blockReview.results[0].claim_at } : null,
     rosterPending: rosterPending.results,
     eventMoved: eventMoved.results,
     webhooksOff: webhooksOff.results,

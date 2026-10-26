@@ -13,7 +13,8 @@
 //                  const act = await beginFreshAct(ctx, { required, purpose, guildId, params });
 //                  const results = await db.batch([...act.statements, firstWrite.bind(..., act.guard), ...]);
 //                  if (!act.consumed(results)) throw freshRequiredError(purpose, params);
-//              Later acts (the flip in lane B9, in-game creation in B10, the GM claim in part 2b, pin and source switch in part 3) do the same.
+//              Later acts (the flip in lane B9, in-game creation in B10, pin and source switch in part 3) do the same. The GM claim (lane B6b part 2b) is the exception: it
+//              runs INSIDE the Battle.net callback that holds the user token and writes no grant (worker/gm-claim.js; checkFreshIdentity below is its identity check).
 //
 // IDENTITY RULE (a): for the purposes marked identityRule, an identity is accepted only if it is the account's FOUNDING identity (first linked within 60 s of users.created_at)
 // or was first linked at least 7 days ago. users.discord_linked_at and bnet_links.first_linked_at carry the first-link time (migration 0031; the link UPSERT never moves it, only
@@ -162,9 +163,10 @@ export const freshErrorRoute = (reason, purpose = null) => `${FRESH_ROUTE}?error
 
 // A failed check that looks like someone else at the keyboard (the provider returned another identity than the account's, or one that is too new): counted with the
 // coalescing helper of lane B7a (one audit row per user, guild and hour plus a counter) in the state's guild; an account act has no guild and is logged only. Best effort.
-export async function noteFreshFailure(ctx, { userId, guildId, purpose, reason }) {
+// `action`: 'guild.claim_failed' for a refused GM claim (worker/gm-claim.js), counted the same way.
+export async function noteFreshFailure(ctx, { userId, guildId, purpose, reason, action = 'fresh.failed' }) {
   try {
-    if (guildId) await ctx.db.batch(failureAuditStatements(ctx, { guildId, userId, action: 'fresh.failed', detail: `${purpose}:${reason}` }));
+    if (guildId) await ctx.db.batch(failureAuditStatements(ctx, { guildId, userId, action, detail: `${purpose}:${reason}` }));
     else ctx.log(`fresh-auth refused: ${purpose} ${reason}`);
   } catch (error) {
     ctx.log(`fresh-auth failure not counted: ${error && error.message}`);
@@ -210,16 +212,25 @@ export function identityGuard(provider, userId, identityId, { rule, nowMs }) {
   };
 }
 
-// The callback side: write the grant for a verified state. parsed: { purpose, guildId, paramsHash } from verifyFreshState. identityId: what the provider returned.
-// -> { ok: true } | { ok: false, reason: 'provider' | 'mismatch' | 'identity_new' }. Never touches the session's token, cookie or expiry.
-export async function writeFreshGrant(ctx, { session, provider, identityId, parsed, nowMs }) {
-  const spec = FRESH_PURPOSES[parsed.purpose];
+// The callback side, first half: did the provider return the identity linked to the signed-in account (and, for a purpose with rule (a), does it pass)? One read.
+// -> { ok: true, spec } | { ok: false, reason: 'provider' | 'mismatch' | 'identity_new' }. The GM claim (worker/gm-claim.js) checks the identity here and writes no grant at all.
+export async function checkFreshIdentity(ctx, { session, provider, identityId, purpose, nowMs }) {
+  const spec = FRESH_PURPOSES[purpose];
   if (!spec || !spec.providers.includes(provider)) return { ok: false, reason: 'provider' };
   const row = await loadIdentityRow(ctx.db, session.user.id);
   if (!row) return { ok: false, reason: 'mismatch' };
   const standing = identityStanding(row, provider, nowMs);
   if (!standing.held || standing.id !== identityId) return { ok: false, reason: 'mismatch' };
   if (spec.identityRule && !standing.passes) return { ok: false, reason: 'identity_new' };
+  return { ok: true, spec };
+}
+
+// The callback side: write the grant for a verified state. parsed: { purpose, guildId, paramsHash } from verifyFreshState. identityId: what the provider returned.
+// -> { ok: true } | { ok: false, reason: 'provider' | 'mismatch' | 'identity_new' }. Never touches the session's token, cookie or expiry.
+export async function writeFreshGrant(ctx, { session, provider, identityId, parsed, nowMs }) {
+  const checked = await checkFreshIdentity(ctx, { session, provider, identityId, purpose: parsed.purpose, nowMs });
+  if (!checked.ok) return checked;
+  const spec = checked.spec;
   // The identity is checked again inside the write: a swap between the read and the UPDATE grants nothing.
   const holds = identityGuard(provider, session.user.id, identityId, { rule: spec.identityRule, nowMs });
   const result = await ctx.db.prepare(

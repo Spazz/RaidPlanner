@@ -459,6 +459,8 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('guild.claim_failed', 'user', 'u_erin', null, { count: 3, coalesced: true }), 'A claim of the Guild Master seat failed 3 times in an hour'],
     [row('identity.change', 'user', 'u_erin', null, { provider: 'bnet', change: 'link' }), 'Connected the Battle.net sign-in of Erin E'],
     [row('identity.change', 'user', 'u_erin', null, { provider: 'discord', change: 'unlink' }), 'Disconnected the Discord sign-in of Erin E'],
+    [row('guild.succession', 'guild', 'g_1', { guildMasterUserId: 'u_bob' }, { guildMasterUserId: 'u_erin', rule: 'ingame_gm' }), 'The Owner seat passed from bob to Erin E (the Guild Master in game)'],
+    [row('guild.claim', 'guild', 'g_1', { guildMasterUserId: 'u_bob', suspended: true }, { guildMasterUserId: 'u_erin', via: 'gm_claim' }), 'Claimed the Owner seat from bob, who was suspended'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {

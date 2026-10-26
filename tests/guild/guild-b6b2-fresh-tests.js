@@ -121,6 +121,10 @@ check('start: an Owner act is asked for by the Owner only (an Officer, a member 
   assert.equal((await s.call('gm', 'POST', startPath(s), { purpose: 'guild_delete', provider: 'discord' })).status, 200);
   // A suspended Owner is not the Owner: the seat alone gives no fresh-auth for an Owner act.
   await s.bnetSignUp('ivy', BNET.ivy);
+  // The claim is asked for by someone who is not a member, but only for a guild that has an in-game seat to claim (lane B6b part 2b: claim_not_available otherwise).
+  const closed = await s.call('ivy', 'POST', startPath(s), { purpose: 'gm_claim', params: {} });
+  assert.deepEqual([closed.status, closed.json.error], [409, 'claim_not_available'], closed.text);
+  s.exec(`UPDATE guilds SET rank_source = 'ingame', pinned_guild_slug = 'writers-b3', pinned_realm_slug = 'nightslayer', pinned_namespace = 'profile-classicann-us', blizzard_guild_id = 3000, blizzard_realm_id = 4001 WHERE id = '${s.gid}'`);
   const claim = await s.call('ivy', 'POST', startPath(s), { purpose: 'gm_claim', params: {} });
   assert.equal(claim.status, 200, `${claim.text}: a claim is asked for by someone who is not a member`);
   assert.equal(claim.json.provider, 'bnet');

@@ -16,6 +16,7 @@ import { dryRunFlip } from './routes/flip.js';
 import { dryRunRankMap, getRankMap, putRankMap } from './routes/rank-map.js';
 import { runCron } from './scheduler.js';
 import { SHARE_PATH, handleShare, isSharePagePath, servePlannerPage } from './share.js';
+import { getClaimReview } from './routes/claim-review.js';
 import { claimGuild, createGuild, getGuild, patchGuild } from './routes/guild.js';
 import { startFresh } from './routes/fresh.js';
 import { deleteGuild, dismissOnboarding, exportGuild } from './routes/guild-data.js';
@@ -113,6 +114,8 @@ export const ROUTES = [
   // Guild settings > General: the Guild Master edits the name, the realm (not a ruleset) and the time zone.
   { method: 'PATCH', path: '/api/guild/:gid', auth: true, handler: patchGuild },
   { method: 'POST', path: '/api/guild/:gid/claim', auth: true, handler: claimGuild },
+  // The new Owner's review of what the previous Owner left live after the in-game Guild Master claimed the seat (lane B6b part 2b; the claim itself runs inside the Battle.net fresh-auth callback).
+  { method: 'GET', path: '/api/guild/:gid/claim-review', auth: true, handler: getClaimReview },
   // Fresh-auth (lane B6b part 2a, worker/fresh.js): a sign-in done just now before a sensitive act. The start step returns the provider's authorize URL; the grant is written by
   // the fresh mode of the OAuth callbacks. /api/fresh/start is for acts that belong to no guild (in-game creation, identity changes).
   { method: 'POST', path: '/api/guild/:gid/fresh/start', auth: true, handler: startFresh },

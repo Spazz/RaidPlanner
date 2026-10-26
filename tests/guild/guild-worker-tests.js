@@ -471,7 +471,7 @@ check('GET /auth/me: shape, the Discord id appears only inside avatar urls, avat
   assert.equal(me.json.user.avatarUrl, `https://cdn.discordapp.com/avatars/${PEOPLE.bob.id}/${hash}.png?size=64`);
   assert.deepEqual(me.json.user.prefs, { sidebarCollapsed: false, planSidebarCollapsed: true, lastGuildId: null });
   assert.deepEqual(me.json.create, { allowed: false, reason: 'no_server' }, 'no allowlist: open creation, and Bob manages no server');
-  assert.deepEqual(me.json.deleteImpact, { handOverFirst: [], guildsDeleted: [], autoPromote: [] });
+  assert.deepEqual(me.json.deleteImpact, { handOverFirst: [], guildsDeleted: [], autoPromote: [], succession: [] });
   assert.deepEqual(me.json.removedFrom, []);
   assert(ID.user.test(me.json.user.id));
 
@@ -1069,7 +1069,7 @@ check('delete my data: a solo Guild Master deletes the guild too, after the conf
   const guildId = created.json.guild.id;
   await w.call(jar, 'POST', `/api/guild/${guildId}/teams`, { name: 'Second' });
   const me = (await w.call(jar, 'GET', '/auth/me')).json;
-  assert.deepEqual(me.deleteImpact, { handOverFirst: [], guildsDeleted: [{ id: guildId, name: 'Ember' }], autoPromote: [] });
+  assert.deepEqual(me.deleteImpact, { handOverFirst: [], guildsDeleted: [{ id: guildId, name: 'Ember' }], autoPromote: [], succession: [] });
 
   for (const echo of [[], ['g_AAAAAAAAAAAAAAAAAAAAAA'], [guildId, 'g_AAAAAAAAAAAAAAAAAAAAAA']]) {
     const mismatch = await w.call(jar, 'DELETE', '/auth/me', { deleteGuildIds: echo });

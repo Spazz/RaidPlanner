@@ -2,18 +2,22 @@
 //   POST /api/guild/:gid/fresh/start   { purpose, params, provider? }   handover, guild_delete, pin, source_switch (the Owner), gm_claim (anyone; the claim itself decides)
 //   POST /api/fresh/start              { purpose, params, provider? }   ingame_create, identity_change (acts that belong to no guild)
 // -> 200 { authorizeUrl, provider, purpose, validForSeconds }. The browser then goes to authorizeUrl; the state cookie comes with this answer. The callback
-// (routes/auth.js discordFreshCallback, routes/bnet.js bnetFreshCallback) writes the grant and redirects to /#/fresh?done=<purpose> or /#/fresh?error=<reason>.
+// (routes/auth.js discordFreshCallback, routes/bnet.js bnetFreshCallback) writes the grant and redirects to /#/fresh?done=<purpose> or /#/fresh?error=<reason>. gm_claim writes no
+// grant: the Battle.net callback runs the claim itself (worker/gm-claim.js) and redirects to /#/fresh?done=gm_claim, or ?error=not_gm | conflict | provider | mismatch | ...
+// and &purpose=gm_claim.
 //   provider: 'bnet' | 'discord'. Battle.net for gm_claim, ingame_create, pin, source_switch; Battle.net OR Discord (the account's choice) for handover, guild_delete and
 //   identity_change. Left out, the account's only linked identity is used; with both linked, 400 provider_required.
 // Writes nothing (the state is stateless until its callback claims the nonce). One per account per 10 minutes x 10, FAIL CLOSED: a limiter that cannot answer refuses (503).
 // Errors: 400 bad_request (purpose, params, provider), 403 forbidden (not the Owner / not a member) or identity_too_new { provider, eligibleAt }, 404 not_found (gm_claim for a
-// guild that does not exist), 409 not_configured | identity_not_linked | wrong_origin, 429 / 503 rate_limited.
+// guild that does not exist), 409 not_configured | identity_not_linked | wrong_origin | claim_not_available (gm_claim: the guild's rank source is not 'ingame' or its pin is
+// incomplete) | already_owner (gm_claim: the caller holds the seat and is not suspended), 429 / 503 rate_limited.
 import { HttpError, jsonResponse } from '../http.js';
 import { authorizeUrl as bnetAuthorizeUrl, canonicalOrigin as bnetOrigin, isConfigured as bnetConfigured } from '../battlenet.js';
 import { authorizeUrl as discordAuthorizeUrl, canonicalOrigin as discordOrigin, isConfigured as discordConfigured } from '../discord.js';
 import {
   FRESH_PURPOSES, FRESH_START_LIMIT, FRESH_START_WINDOW_MS, freshHash, identityStanding, isFreshPurpose, loadIdentityRow, paramsProblem,
 } from '../fresh.js';
+import { claimPreflight } from '../gm-claim.js';
 import { base64url } from '../ids.js';
 import { requireOwner } from '../owner.js';
 import { loadGuildContext } from '../permissions.js';
@@ -50,8 +54,8 @@ export async function startFresh(ctx) {
     const guildContext = await loadGuildContext(db, userId, guildId, session.viewAs);
     await requireOwner(db, guildContext);
   } else if (purpose === 'gm_claim') {
-    const found = await db.prepare('SELECT id FROM guilds WHERE id = ?').bind(guildId).first();
-    if (!found) throw new HttpError(404, 'not_found', 'That guild does not exist.');
+    // Anyone may ask (the claim's authority is live Blizzard data, decided in the callback), but not for a guild that has no in-game seat to claim or whose seat is theirs.
+    await claimPreflight(db, { guildId, userId });
   }
 
   const row = await loadIdentityRow(db, userId);

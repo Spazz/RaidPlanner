@@ -12,7 +12,7 @@ import { addDays, localTimeToMs, weekStart } from './attendance-calendar.js';
 import { noticeOfRow, raidNoticeEffects } from './away.js';
 import { EXPECTED_KINDS, mergeSignups, roleGroup } from './signups-data.js';
 
-export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'team_requests', 'unmapped_ranks', 'block_review', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'log_missing', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
+export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'team_requests', 'unmapped_ranks', 'block_review', 'claim_review', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'log_missing', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
 export const INFO_KINDS = ['unlocked'];  // listed with severity 'info'
 // Readiness FACTS about a raid: the Week view builds the raid's sentence from them (or from `week`). They stay in `items`, marked `readiness: true`,
@@ -37,7 +37,9 @@ const DAY_MS = 86400000;
 //     loot_unmatched: the sorted unmatched winner keys (the count when the keys were not read) | signup_unmatched: the count
 //     event_moved: the Raid-Helper event's date | no_loot, log_missing: the raid id (so they never come back) | trial: the trial end date
 //     webhook_off: Discord's disabled status | watch: JSON { pct, raidId } (the % and the newest missed raid id when it was reviewed)
+//     claim_review: the audit id of the claim (a later claim brings the item back)
 export const DISMISS_RULES = Object.freeze({
+  claim_review: Object.freeze({ mode: 'dismiss', actions: ['guild.access'] }),
   loot_unmatched: Object.freeze({ mode: 'dismiss', actions: ['loot.edit', 'attendance.review'] }),
   signup_unmatched: Object.freeze({ mode: 'dismiss', actions: ['roster.edit'] }),
   event_moved: Object.freeze({ mode: 'dismiss', actions: ['raids.edit'] }),
@@ -90,6 +92,7 @@ function daysBetween(from, to) {
 //   teamRequests: [{ team_id, n }]   (pending team requests, per team: a person asked for a character to be placed on the team)
 //   blockReview: { pending, held }   (lane B7a: blocks a tombstone match inserted that wait for an officer, and matches that were held back; the route reads them ONLY for a holder of guild.access)
 //   unmappedRanks: [{ rank, members }]   (in-game ranks on the stored roster with no row in the rank map; the route reads them ONLY for the Owner of an 'ingame' guild)
+//   claimReview: { id, at } | null   (lane B6b part 2b: the audit row of the Guild Master claim that made the viewer the Owner, until they dismiss the item; the route reads it ONLY for the Owner who made the latest claim)
 //   rosterDeclined: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids with a published roster: n seats said "can't make it")
 //   rosterPending: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids that start within CONFIRM_HOURS with a published roster: n seats have not answered)
 //   logMissing: [{ id, team_id, raid_on, zone, title, event_title, logger_name }]   (PM wave 8: past raids whose Logger has not uploaded a log, 5 hours after the start)
@@ -321,6 +324,10 @@ function collect(input) {
     add('block_review', {
       ...base('block_review', null), count: pending + held, pending, held, id: 'block_review', link: { name: 'settings', tab: 'people' },
     }, [0], `${pending}:${held}`);
+  }
+  // The new Owner's review of what the previous Owner left live after a Guild Master claim (lane B6b part 2b, U R6-Q1): one item for the guild, dismissable (a later claim brings it back).
+  if (input.claimReview && input.granted('guild.access')) {
+    add('claim_review', { ...base('claim_review', null), id: 'claim_review', claimedAt: input.claimReview.at, link: { name: 'settings', tab: 'claimreview' } }, [0], input.claimReview.id);
   }
   // A Trial is per CHARACTER on its team (a Raider main on A can have a Trial alt on B): one item per Trial character. The id stays `trial:<person>` for the
   // main (what a snooze has always been keyed by) and adds the team for an alt.

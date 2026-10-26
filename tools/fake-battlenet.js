@@ -79,6 +79,10 @@ function createFakeBattlenet(options = {}) {
     data: { tbc: TBC_CHARACTERS.map((row) => row.slice()), era: ERA_CHARACTERS.map((row) => row.slice()), roster: ROSTER.map((row) => row.slice()), expiresIn: 86399 },
     // fail.<call> = an HTTP status makes that call answer with it (0 = no failure): token, userinfo, profile, roster.
     fail: { token: 0, userinfo: 0, profile: 0, roster: 0 },
+    // override.profile / override.roster: a JSON body (or a function of { account, namespace } / { realmSlug, guildSlug, namespace } that returns one) served INSTEAD of the generated
+    // answer, for a test that needs the account's characters and the guild's roster to name the same ids (the generated ones use 7000 + n and 8000 + n). Everything else (token
+    // checks, the requests log) stays.
+    override: { profile: null, roster: null },
     tokens: new Map(),
     requests: [],
     counter: 0,
@@ -155,6 +159,10 @@ function createFakeBattlenet(options = {}) {
         if (token.kind !== 'member') return forbidden(res);
         const match = /^profile-(classicann|classic1x)-(us|eu)$/.exec(url.searchParams.get('namespace') || '');
         if (!match) return notFound(res);
+        if (state.override.profile) {
+          const body = typeof state.override.profile === 'function' ? state.override.profile({ account: token.account, namespace: url.searchParams.get('namespace') }) : state.override.profile;
+          return send(res, 200, body);
+        }
         const realms = REALMS[match[2]];
         const list = (match[1] === 'classicann' ? state.data.tbc : state.data.era).map(([name, classId, level, realm], i) => characterEntry(name, classId, level, realms[realm], 7000 + i));
         // One character the account owns on a realm no list names, and one of a class Raidsmith does not know (a Death Knight).
@@ -170,6 +178,10 @@ function createFakeBattlenet(options = {}) {
         const guildSlug = decodeURIComponent(roster[2]);
         if (guildSlug === 'missing') return notFound(res);
         if (guildSlug === 'refused') return forbidden(res);
+        if (state.override.roster) {
+          const body = typeof state.override.roster === 'function' ? state.override.roster({ realmSlug, guildSlug, namespace: url.searchParams.get('namespace') }) : state.override.roster;
+          return send(res, 200, body);
+        }
         const realm = { id: 4001, slug: realmSlug };
         const members = state.data.roster.map(([name, classId, level, rank, slug], i) => ({
           character: {

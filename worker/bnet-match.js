@@ -43,6 +43,10 @@
 // RESERVED before they run (TOMBSTONE_MATCH_STATEMENTS); a guild with no tombstones and no blocked matched person reads nothing (MATCHES_SQL has_tombstones). The guilds
 // where the account still has to become a member go first, so the ones that wait for the next sign-in are not the same every time. After the match the callback runs the
 // account-wide tombstone pass (worker/routes/bnet.js) on what is left.
+// THE GM CLAIM (lane B6b part 2b, worker/gm-claim.js) builds the same person, bind, re-home and proof statements for ONE guild and ONE character into its own batch
+// (claimCharacterStatements, readClaimFacts at the end of this file): planGuild with claim: true treats a holder that is not the claimant's person as a person of another
+// account (the claim joins nobody and no person block holds it back), guildStatements takes a gate that ties every statement to the claim's marker, and rehomeParts gives the
+// re-home reason 'gm_claim' and lets the claimant's person be made or linked earlier in the same batch (worker/rehome.js toPlanned).
 // BLOCKS (review fixes): a matched holder with a person_blocks row (an officer blocked an account-less person) is never linked, joined or bound: it is a tombstone hit of
 // its own with the same held rules (the Owner, a Guild Master by role and an account equal or senior to the blocker are held, anyone else gets a pending-review block).
 // Every statement of the guild's batch, the re-home and the join carries notBlocked, so a hit written at the head of the batch leaves the account's person untouched.
@@ -75,6 +79,7 @@ const REHOME_MAX_STATEMENTS = 19;
 const MAX_RETIRES = 2;
 const CLASS_LIST = `(${CLASS_IDS.map((id) => `'${id}'`).join(', ')})`;
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
+const NO_GATE = { sql: '1 = 1', params: [] };
 const and = (...guards) => ({ sql: guards.map((guard) => `(${guard.sql})`).join(' AND '), params: guards.flatMap((guard) => guard.params) });
 const keyOf = (namespace, realmId, charId) => `${namespace}|${realmId}|${charId}`;
 const positive = (value) => Number.isInteger(value) && value > 0;
@@ -168,7 +173,7 @@ export function clearBnetProofStatement(db, userId, guard) {
 // drives it: each key is one guild_roster_identity lookup, then primary-key and unique-index lookups (no scan of guild_roster, characters or players). The collider is
 // found by the realm rule of the GUILD: a ruleset guild's characters have no realm and an empty realm_key, whatever realm the snapshot says. A person's
 // size and Main are its VISIBLE characters' (worker/character-visibility.js); a hidden Main is told apart (holder_hidden_main) because a new Main must replace it.
-const MATCHES_SQL = `SELECT g.id AS guild_id, g.time_zone, g.game_version, g.region, g.realm, g.realm_kind,
+const matchesSql = (guildFilter) => `SELECT g.id AS guild_id, g.time_zone, g.game_version, g.region, g.realm, g.realm_kind,
        EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = ?) AS blocked,
        EXISTS (SELECT 1 FROM block_tombstones bt WHERE bt.guild_id = g.id) AS has_tombstones,
        gr.namespace, gr.blizzard_realm_id AS realm_id, gr.blizzard_char_id AS char_id, gr.name, gr.name_key, gr.class, gr.rank,
@@ -185,12 +190,15 @@ const MATCHES_SQL = `SELECT g.id AS guild_id, g.time_zone, g.game_version, g.reg
        CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN EXISTS (SELECT 1 FROM person_blocks hb WHERE hb.guild_id = g.id AND hb.player_id = hp.id) END AS holder_blocked
   FROM json_each(?) j
   CROSS JOIN guild_roster gr ON gr.namespace = json_extract(j.value, '$[0]') AND gr.blizzard_realm_id = json_extract(j.value, '$[1]') AND gr.blizzard_char_id = json_extract(j.value, '$[2]')
-  JOIN guilds g ON g.id = gr.guild_id AND g.rank_source = 'ingame'
+  JOIN guilds g ON g.id = gr.guild_id AND g.rank_source = 'ingame'${guildFilter}
   LEFT JOIN characters ch ON ch.guild_id = gr.guild_id AND ch.namespace = gr.namespace AND ch.blizzard_realm_id = gr.blizzard_realm_id AND ch.blizzard_char_id = gr.blizzard_char_id
   LEFT JOIN characters co ON ch.id IS NULL AND co.guild_id = gr.guild_id AND co.name_key = gr.name_key
        AND co.realm_key = CASE WHEN g.realm_kind = 'ruleset' THEN '' ELSE json_extract(j.value, '$[3]') END
   LEFT JOIN players hp ON hp.id = COALESCE(ch.player_id, co.player_id)
  ORDER BY g.id, gr.rank, gr.name_key`;
+const MATCHES_SQL = matchesSql('');
+// The GM claim (worker/gm-claim.js) reads the same rows for ONE guild: its id is the last parameter (the character may sit on a stale roster of another guild too).
+const CLAIM_MATCHES_SQL = matchesSql(' AND g.id = ?');
 
 // The account (its Discord ID) and every person it is linked to, with the guild's source and the person's size (visible characters only).
 const ACCOUNT_SQL = `SELECT u.discord_id, p.id AS person_id, p.guild_id, p.version, g.rank_source, g.game_version, g.region, g.realm, g.realm_kind, g.time_zone,
@@ -232,12 +240,15 @@ const byRank = (a, b) => a.rank - b.rank || (a.name_key < b.name_key ? -1 : a.na
 // -> null (nothing to do in this guild) | { guild, invalid: true } | the plan: { guild, person: { id, kind: 'existing' | 'link' | 'create', ... } | null, inserts, retires, binds,
 // rehomes, keys, stamp, joinCandidates, personBlocks (the blocked persons the keys matched), deferred }. rehomes: the characters of other accounts' persons that move to the account's person (a batch of their own, at most one
 // per callback); binds: the unkeyed characters that take a matched key.
-function planGuild(rows, { account, mine, byKey, userId, ids }) {
+function planGuild(rows, { account, mine, byKey, userId, ids, claim = false }) {
   const guild = { id: rows[0].guild_id, time_zone: rows[0].time_zone, game_version: rows[0].game_version, region: rows[0].region, realm: rows[0].realm, realm_kind: rows[0].realm_kind };
   if (rows[0].blocked) return null;
   const deferred = new Set();
   const personId = mine ? mine.person_id : null;
   const classified = rows.map((row) => ({ row, ...classify(row, { userId, discordId: account.discord_id, personId }) }));
+  // The GM claim joins nobody and is never held back by a person block: a holder that is not the claimant's own person - unowned while the claimant has a person already, or
+  // blocked as a person - is treated like a person of another account, so the character is re-homed to the claimant and the holder keeps everything but it.
+  if (claim) for (const entry of classified) if (entry.kind === 'unowned' && (mine || entry.row.holder_blocked === 1)) entry.kind = 'other';
   if (classified.some((entry) => entry.kind === 'invalid')) return { guild, invalid: true, deferred };
   // A matched holder that carries a PERSON BLOCK (an officer blocked an account-less person) is a tombstone hit of the person's own: it is never linked, joined or
   // bound, and the tombstone match handles it with the same held rules (worker/block-tombstones.js planTombstoneMatch, personBlocks).
@@ -392,11 +403,12 @@ const hasNoPerson = (guildId, userId) => ({
 // -> { statements, personAt }: the write batch of one guild (the caller puts the tombstone statements in front of it). personAt = the position in `statements` of the
 // statement that makes the account's person (create / link), whose meta.changes is 1 when it happened; null for an existing person.
 // EVERY statement carries notBlocked: a tombstone hit written at the head of the same batch (a pending-review block) leaves the account's person untouched.
-function guildStatements(ctx, plan, { userId, bnetAccountId, now }) {
+// `gate` ({ sql, params }, default none): a condition ANDed into every statement, the way the GM claim ties them to its marker (worker/gm-claim.js).
+function guildStatements(ctx, plan, { userId, bnetAccountId, now, gate = NO_GATE }) {
   const { db } = ctx;
   const guildId = plan.guild.id;
   const P = plan.person.id;
-  const ingame = ingameGuard(guildId);
+  const ingame = and(ingameGuard(guildId), gate);
   const mine = and(ingame, personIsMine(P, guildId, userId), notBlocked(guildId, userId));
   const statements = [];
   let personAt = null;
@@ -517,13 +529,32 @@ async function writeBatch(ctx, statements) {
 // batch. candidate: { plan, personId, row, characterId, bind }. bind: the character is an unkeyed one with the matched name and realm (the name collision): the key binds
 // onto it inside the batch, after the re-home's opening row (so a refused re-home binds nothing). A bnet proof of another account on the character is superseded only
 // when this snapshot is newer (the monotonic rule), otherwise the whole re-home is refused. -> the D1 statements used (the read, and the batch when it ran).
+// The statements themselves are built by rehomeParts (the GM claim builds the same ones into its own batch).
 async function rehomeBatch(ctx, candidate, { userId, bnetAccountId, now, byKey, deferred, room }) {
+  const parts = await rehomeParts(ctx, candidate, { userId, bnetAccountId, now, byKey, deferred });
+  if (!parts) return 1;
+  if (!room(1 + parts.statements.length)) {
+    deferred.add('budget');
+    deferred.add('rehome');
+    return 1;
+  }
+  const results = await writeBatch(ctx, parts.statements);
+  if (!results || results[parts.rehome.appliedIndex].meta.changes !== 1) deferred.add('rehome');
+  return 1 + parts.statements.length;
+}
+
+// The statements of one re-home: the opening row, the bind of a name collision (right behind it), the move and its bookkeeping, and the proof stamps of the account's person.
+// -> { statements, rehome } (one read was spent), or null (the module refused: logged, 'rehome' deferred). candidate: { plan, personId, row, characterId, bind }.
+//   gate: ANDed into the opening row and the stamps (the GM claim's marker). reason: the audit sentence ('gm_claim'; left out: collision / bnet_beats_link by bind).
+//   toPlanned: the account's person is made or linked earlier in the same batch (see rehomeStatements).
+async function rehomeParts(ctx, candidate, { userId, bnetAccountId, now, byKey, deferred, gate = NO_GATE, reason = null, toPlanned = null }) {
   const { db } = ctx;
   const { plan, personId, row, characterId, bind } = candidate;
   const guildId = plan.guild.id;
   const fetchedAt = byKey.get(keyOf(row.namespace, row.realm_id, row.char_id)).fetchedAt;
   const guards = [
     ingameGuard(guildId),
+    gate,
     personIsMine(personId, guildId, userId),
     notBlocked(guildId, userId),
     {
@@ -536,13 +567,13 @@ async function rehomeBatch(ctx, candidate, { userId, bnetAccountId, now, byKey, 
   let rehome = null;
   try {
     rehome = await rehomeStatements(db, {
-      guildId, characterId, toPersonId: personId, actorUserId: userId, now, reason: bind ? 'collision' : 'bnet_beats_link', guards, randomBytes: ctx.randomBytes,
+      guildId, characterId, toPersonId: personId, actorUserId: userId, now, reason: reason || (bind ? 'collision' : 'bnet_beats_link'), guards, randomBytes: ctx.randomBytes, toPlanned,
     });
   } catch (error) {
     // The character is gone, the person has no room (20 characters), ...: leave it to the next sign-in or an officer.
     deferred.add('rehome');
     ctx.log(`bnet match: rehome refused: ${error && error.code ? error.code : error && error.message}`);
-    return 1;
+    return null;
   }
   const [opening, ...rest] = rehome.statements;
   const bound = bind
@@ -552,17 +583,55 @@ async function rehomeBatch(ctx, candidate, { userId, bnetAccountId, now, byKey, 
     : [];
   const stamps = proofStatements(db, {
     scope: { sql: 'characters.guild_id = ? AND characters.player_id = ?', params: [guildId, personId] },
-    guard: and(ingameGuard(guildId), personIsMine(personId, guildId, userId), notBlocked(guildId, userId)), actorUserId: userId, bnetAccountId, keys: plan.keys, now,
+    guard: and(ingameGuard(guildId), gate, personIsMine(personId, guildId, userId), notBlocked(guildId, userId)), actorUserId: userId, bnetAccountId, keys: plan.keys, now,
   });
-  const statements = [opening, ...bound, ...rest, ...stamps];
-  if (!room(1 + statements.length)) {
-    deferred.add('budget');
-    deferred.add('rehome');
-    return 1;
+  return { statements: [opening, ...bound, ...rest, ...stamps], rehome };
+}
+
+// ---------------------------------------------------------------------------
+// The GM claim (worker/gm-claim.js): the same match, for ONE guild and ONE character, built into the claim's own batch
+
+// One batch of two reads: the stored roster's row of the GM's key with whoever holds the key (or the name) in this guild, and the account with its persons.
+// item: the keyed character ({ namespace, realmId, charId, realmKey, ... }). -> { rows, account, persons }; rows is empty while the stored roster does not hold the key.
+export async function readClaimFacts(db, { guildId, userId, item }) {
+  const [matches, accountRows] = await db.batch([
+    db.prepare(CLAIM_MATCHES_SQL).bind(userId, JSON.stringify([[item.namespace, item.realmId, item.charId, item.realmKey]]), guildId),
+    db.prepare(ACCOUNT_SQL).bind(userId),
+  ]);
+  return { rows: matches.results, account: accountRows.results[0] || null, persons: accountRows.results.filter((row) => row.person_id) };
+}
+
+// The matches alone (after the roster was applied, the account rows are still good).
+export async function readClaimRows(db, { guildId, userId, item }) {
+  return (await db.prepare(CLAIM_MATCHES_SQL).bind(userId, JSON.stringify([[item.namespace, item.realmId, item.charId, item.realmKey]]), guildId).all()).results;
+}
+
+// The statements that put the GM's character on the claimant's person, for the claim's batch, every one tied to `gate` (the claim's marker): the claimant's person is made or
+// linked when there is none, a name typed in for the GM is bound to the key, a character on another person is RE-HOMED (reason 'gm_claim', worker/rehome.js) and the proof is
+// stamped. The claim has already deleted the claimant's block ahead of these (their notBlocked guards then hold), so the stored block is read as gone. One re-home read at most.
+// -> { statements, deferred: [reason], reads }. deferred: why nothing (or not everything) is built: 'roster' (the stored roster does not hold the key), 'collision' (the roster
+// holds two characters with that name and realm, or a class Raidsmith does not know), 'rehome' (the module refused: the person is full), 'cap'.
+export async function claimCharacterStatements(ctx, facts, { guildId, userId, bnetAccountId, item, now, gate }) {
+  const { rows, account, persons } = facts;
+  const deferred = new Set();
+  const none = () => ({ statements: [], deferred: [...deferred], reads: 0 });
+  if (!rows.length || !account) { deferred.add('roster'); return none(); }
+  const byKey = new Map([[keyOf(item.namespace, item.realmId, item.charId), item]]);
+  const ids = { person: () => newId('p', ctx.randomBytes), character: () => newId('c', ctx.randomBytes) };
+  const plan = planGuild(rows.map((row) => ({ ...row, blocked: 0 })), { account, mine: persons.find((person) => person.guild_id === guildId), byKey, userId, ids, claim: true });
+  if (!plan || plan.invalid || !plan.person) { deferred.add('collision'); return none(); }
+  for (const reason of plan.deferred) deferred.add(reason);
+  const base = guildStatements(ctx, plan, { userId, bnetAccountId, now, gate });
+  const statements = [...base.statements];
+  let reads = 0;
+  if (plan.rehomes.length) {
+    const toPlanned = plan.person.kind === 'create' ? { version: 1, characters: 0 }
+      : plan.person.kind === 'link' ? { version: plan.person.version + 1, characters: plan.person.characters } : null;
+    const parts = await rehomeParts(ctx, { plan, personId: plan.person.id, ...plan.rehomes[0] }, { userId, bnetAccountId, now, byKey, deferred, gate, reason: 'gm_claim', toPlanned });
+    reads = 1;
+    if (parts) statements.push(...parts.statements);
   }
-  const results = await writeBatch(ctx, statements);
-  if (!results || results[rehome.appliedIndex].meta.changes !== 1) deferred.add('rehome');
-  return 1 + statements.length;
+  return { statements, deferred: [...deferred], reads };
 }
 
 // ctx: { db, env, now, randomBytes, log }.   input: { userId, bnetAccountId, snapshot, now, spent }  spent = D1 statements the callback has used so far.

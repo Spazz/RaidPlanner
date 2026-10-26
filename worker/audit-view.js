@@ -67,6 +67,8 @@ export const ACTION_GROUP = Object.freeze({
   'fresh.failed': 'settings', 'guild.claim_failed': 'settings',
   // Lane B6b part 2a: a sign-in identity of an account was linked or disconnected (written in every guild the account is a member of).
   'identity.change': 'settings',
+  // Lane B6b part 2b: the Owner seat passed on when its holder's account was deleted.
+  'guild.succession': 'settings',
 });
 
 // Actions the Worker writes itself (no actor): the Activity log names "Raidsmith" for them instead of a former member.
@@ -197,7 +199,9 @@ export function describeRow(row, names = {}) {
       if (after.timeZone !== undefined) parts.push(`the time zone from ${before.timeZone === undefined ? 'its old zone' : before.timeZone} to ${after.timeZone}`);
       return parts.length ? `Changed ${list(parts)}` : 'Changed the guild settings';
     }
-    case 'guild.claim': return 'Claimed the guild as Guild Master';
+    case 'guild.claim':
+      if (after.via === 'gm_claim') return before.guildMasterUserId ? `Claimed the Owner seat from ${user(before.guildMasterUserId)}${before.suspended ? ', who was suspended' : ''}` : 'Claimed the vacant Owner seat';
+      return 'Claimed the guild as Guild Master';
     case 'guild.delete': return 'Deleted the guild';
     case 'guild.export': return 'Downloaded the guild data';
     case 'account.delete': return 'Deleted an account';
@@ -219,6 +223,12 @@ export function describeRow(row, names = {}) {
       return parts.length ? parts.join(' and ') : `Changed the roles of ${user(ent)}`;
     }
     case 'guild_master.transfer': return `Handed Guild Master to ${user(ent)}`;
+    case 'guild.succession': {
+      const how = { ingame_gm: 'the Guild Master in game', manual_officer: 'the longest-standing Officer with a character proved by Battle.net', officer: 'the longest-standing Officer' }[after.rule];
+      return after.guildMasterUserId
+        ? `The Owner seat passed from ${user(before.guildMasterUserId)} to ${user(after.guildMasterUserId)}${how ? ` (${how})` : ''}`
+        : `The Owner seat of ${user(before.guildMasterUserId)} is vacant until the Guild Master in game claims it`;
+    }
     case 'guild_master.auto_promote': return after.guildMasterUserId ? `Guild Master passed to ${user(after.guildMasterUserId)}` : 'The guild has no Guild Master';
     case 'access.remove': return `Removed the access of ${user(ent)}`;
     case 'access.restore': return `Restored the access of ${user(ent)}`;

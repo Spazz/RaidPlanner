@@ -140,6 +140,8 @@ export const AUDIT_ACTIONS = [
   'fresh.failed',
   // Lane B6b part 2a: a sign-in identity (Discord or Battle.net) of an account was linked or disconnected; written in each guild the account is a member of, never pruned.
   'identity.change',
+  // Lane B6b part 2b: the Owner seat passed to the next account when its holder's account was deleted (permanent; the GM claim writes 'guild.claim', also permanent).
+  'guild.succession',
 ];
 
 // The PRUNABLE set (plan "Audit"): per-person detail of a sync run and failures. The daily job deletes these past AUDIT_PRUNE_AFTER_MS; every other row is
@@ -164,13 +166,18 @@ const SNAPSHOT_SQL = `substr(?, 3, 8),
        ELSE COALESCE((SELECT ra.role_id FROM effective_roles ra JOIN roles r ON r.id = ra.role_id
                        WHERE ra.guild_id = ? AND ra.user_id = ? AND ra.role_id IN ('guild_master', 'officer', 'team_lead') ORDER BY r.rank LIMIT 1), 'member') END`;
 const snapshotParams = (actorUserId, guildId) => [actorUserId, actorUserId, guildId, guildId, actorUserId, actorUserId, guildId, actorUserId];
+// A row that records WHAT the actor became rather than what they were (the GM claim: the claimant takes the seat in the same batch, and a claimant whose character the batch has
+// not placed yet would read as suspended): the role is given, the short id still comes from the actor. Placeholders: actor, role.
+const FORCED_SNAPSHOT_SQL = 'substr(?, 3, 8), ?';
+const FORCED_ROLES = Object.freeze(['owner', 'guild_master', 'officer', 'team_lead', 'member']);
 
 // The audit INSERT, ready to go into the same DB.batch as the write it describes.
 // before/after hold internal IDs and flags only. A guard ({ sql, params }) makes the row
-// conditional (it is written only when the guarded write applied).
+// conditional (it is written only when the guarded write applied). entry.actorRole: the role to record instead of the one the database says (see FORCED_SNAPSHOT_SQL).
 export function auditStatement({ db, randomBytes, now }, entry, guard = null) {
   const actorUserId = entry.actorUserId ?? null;
   const guildId = entry.guildId ?? null;
+  if (entry.actorRole !== undefined && !FORCED_ROLES.includes(entry.actorRole)) throw new Error(`auditStatement: unknown actorRole ${entry.actorRole}`);
   const values = [
     entry.id || newId('al', randomBytes), // a caller that needs the row as a batch marker (worker/rehome.js) passes its own id
     guildId,
@@ -183,8 +190,10 @@ export function auditStatement({ db, randomBytes, now }, entry, guard = null) {
     now(),
   ];
   const where = guard ? ` WHERE ${guard.sql}` : '';
-  return db.prepare(`INSERT INTO audit_log (${COLUMNS}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ${SNAPSHOT_SQL}${where}`)
-    .bind(...values, ...snapshotParams(actorUserId, guildId), ...(guard ? guard.params : []));
+  const forced = entry.actorRole !== undefined;
+  const snapshotSql = forced ? FORCED_SNAPSHOT_SQL : SNAPSHOT_SQL;
+  return db.prepare(`INSERT INTO audit_log (${COLUMNS}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ${snapshotSql}${where}`)
+    .bind(...values, ...(forced ? [actorUserId, entry.actorRole] : snapshotParams(actorUserId, guildId)), ...(guard ? guard.params : []));
 }
 
 // One statement for a db.batch: the same audit row in EACH guild the actor is a member of right now (identity changes: plan "Identity-change protection" (c)). Put it BEFORE

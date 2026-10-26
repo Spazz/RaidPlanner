@@ -14,8 +14,9 @@ import {
 } from '../fresh.js';
 import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
-import { memberCandidatesSql, memberGuildsStatement, memberSql } from '../membership.js';
+import { memberGuildsStatement, memberSql } from '../membership.js';
 import { hasOwnerSql, ownedGuildsSql, ownerSql, seatHeldBySql } from '../owner.js';
+import { liveGmSql, officerSuccessorSql, othersExistSql, ruleOf, successionStatements } from '../succession.js';
 import { LIMITS } from '../limits.js';
 import { shapeRoles } from '../permissions.js';
 import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
@@ -269,21 +270,26 @@ const successorSql = (userExpr) => `SELECT so.user_id FROM effective_roles_store
       ORDER BY so.assigned_at, so.id LIMIT 1`;
 
 // Another member can use the guild: somebody besides `userExpr` whom the guild's rank source lets in and who is not blocked (worker/membership.js).
-const othersSql = (userExpr) => `EXISTS (SELECT 1 FROM (${memberCandidatesSql('g.id', 'g.discord_server_id')}) oc
-         WHERE oc.user_id != ${userExpr} AND ${memberSql('oc.user_id', 'g.id', 'g.discord_server_id')})`;
+const othersSql = (userExpr) => othersExistSql('g.id', 'g.discord_server_id', userExpr);
 
-// Guilds the person leads (the Owner of worker/owner.js: the seat holder, suspended or not, or the stored Guild Master of a guild before the flip), split three ways:
-//  - handOverFirst: others have joined and the person is still a current member, or HOLDS THE SEAT (a suspended Owner is not a member but still holds the guild): they must
-//                   hand over first (lane B6b part 2a; succession for a seat holder who cannot hand over is part 2b)
+// Guilds the person leads (the Owner of worker/owner.js: the seat holder, suspended or not, or the stored Guild Master of a guild before the flip), split four ways:
+//  - handOverFirst: others have joined and the person is a current member who does not hold the seat (a guild before the flip), or HOLDS THE SEAT AND IS NOT SUSPENDED: they must
+//                   hand over first (lane B6b part 2a)
+//  - succession:    others have joined and the person holds the seat but is SUSPENDED (an in-game guild, no character of theirs proved by Battle.net on the roster): they cannot hand
+//                   over, so the seat passes on inside the delete (worker/succession.js: the live in-game Guild Master, else the earliest live manual Officer, else vacant; lane
+//                   B6b part 2b). `to` names who takes it (null = vacant), `rule` why.
 //  - autoPromote:   others have joined but the person has left the server or is blocked and holds no seat (a guild before the flip); the earliest
 //                   Officer who is a current member takes over (to = null: no one can, the guild has no GM)
 //  - guildsDeleted: nobody else has joined
+// seatGuildIds: every guild whose seat the person holds that is not handOverFirst; the delete's batch repeats the succession for each of them (it does nothing unless somebody
+// else is a member when it runs). deletedServerIds: for the batch (never sent to the browser).
 async function deleteImpact(db, userId) {
   const result = await db.prepare(
-    `SELECT g.id, g.name, g.discord_server_id,
+    `SELECT g.id, g.name, g.discord_server_id, g.rank_source,
             ${othersSql('m.uid')} AS has_others,
             ${memberSql('m.uid', 'g.id', 'g.discord_server_id')} AS self_member,
             ${seatHeldBySql('g.id', 'm.uid')} AS seat_holder,
+            ${ownerSql('g.id', 'm.uid')} AS owner_live,
             (${successorSql('m.uid')}) AS successor_id
        FROM (SELECT ?1 AS uid) m
        JOIN (${ownedGuildsSql('?1')}) owned_by_me
@@ -291,7 +297,17 @@ async function deleteImpact(db, userId) {
       ORDER BY g.name, g.id`,
   ).bind(userId).all();
   const rows = result.results;
-  const successorIds = [...new Set(rows.map((row) => row.successor_id).filter(Boolean))];
+  // Who would take the seat of a SUSPENDED seat holder's guild: asked only for those guilds (one more statement for a suspended Owner, none for anyone else).
+  const suspendedIds = rows.filter((row) => row.has_others === 1 && row.seat_holder === 1 && row.owner_live !== 1).map((row) => row.id);
+  const successors = new Map();
+  if (suspendedIds.length) {
+    const found = await db.prepare(
+      `SELECT g.id, (${liveGmSql('g.id', 'g.discord_server_id', 'm.uid')}) AS gm_id, (${officerSuccessorSql('g.id', 'g.discord_server_id', 'm.uid')}) AS officer_id
+         FROM (SELECT ?1 AS uid) m JOIN guilds g ON g.id IN (SELECT value FROM json_each(?2))`,
+    ).bind(userId, JSON.stringify(suspendedIds)).all();
+    for (const row of found.results) successors.set(row.id, row);
+  }
+  const successorIds = [...new Set([...rows.map((row) => row.successor_id), ...[...successors.values()].flatMap((row) => [row.gm_id, row.officer_id])].filter(Boolean))];
   const people = new Map();
   if (successorIds.length) {
     const found = await db.prepare(
@@ -300,14 +316,25 @@ async function deleteImpact(db, userId) {
     for (const row of found.results) people.set(row.id, row);
   }
   const brief = (row) => ({ id: row.id, name: row.name });
+  const mustHandOver = (row) => row.has_others === 1 && (row.seat_holder === 1 ? row.owner_live === 1 : row.self_member === 1);
+  const successor = (row) => {
+    const { gm_id: gmId = null, officer_id: officerId = null } = successors.get(row.id) || {};
+    const toId = gmId || officerId || null;
+    return {
+      guild: brief(row),
+      to: toId && people.has(toId) ? { userId: toId, name: toPerson(people.get(toId)).displayName } : null,
+      rule: ruleOf({ gmId, officerId, rankSource: row.rank_source }),
+    };
+  };
   return {
-    handOverFirst: rows.filter((row) => row.has_others === 1 && (row.self_member === 1 || row.seat_holder === 1)).map(brief),
+    handOverFirst: rows.filter(mustHandOver).map(brief),
     guildsDeleted: rows.filter((row) => row.has_others !== 1).map(brief),
     autoPromote: rows.filter((row) => row.has_others === 1 && row.self_member !== 1 && row.seat_holder !== 1).map((row) => ({
       ...brief(row),
       to: row.successor_id && people.has(row.successor_id) ? toPerson(people.get(row.successor_id)) : null,
     })),
-    // Server ids of the deleted guilds, for the batch (never sent to the browser).
+    succession: rows.filter((row) => row.has_others === 1 && row.seat_holder === 1 && row.owner_live !== 1).map(successor),
+    seatGuildIds: rows.filter((row) => row.seat_holder === 1 && !mustHandOver(row)).map((row) => row.id),
     deletedServerIds: rows.filter((row) => row.has_others !== 1 && hasDiscordServerId(row.discord_server_id)).map((row) => row.discord_server_id),
   };
 }
@@ -397,7 +424,7 @@ export async function me(ctx) {
     },
     guilds,
     create,
-    deleteImpact: { handOverFirst: impact.handOverFirst, guildsDeleted: impact.guildsDeleted, autoPromote: impact.autoPromote },
+    deleteImpact: { handOverFirst: impact.handOverFirst, guildsDeleted: impact.guildsDeleted, autoPromote: impact.autoPromote, succession: impact.succession },
     removedFrom: removedResult.results.map((row) => ({ id: row.id, name: row.name })),
   });
 }
@@ -467,6 +494,8 @@ export async function deleteMe(ctx) {
     ...expected.map((guildId) => auditStatement(ctx, {
       guildId: null, actorUserId: userId, action: 'guild.delete', entityType: 'guild', entityId: guildId,
     }, noOthers(guildId))),
+    // A seat holder who is not handing over (suspended), or whose guild gained a member after the read, passes the seat on first (lane B6b part 2b, worker/succession.js).
+    ...impact.seatGuildIds.flatMap((guildId) => successionStatements(ctx, { guildId, departingUserId: userId })),
   ];
   if (expected.length) {
     statements.push(db.prepare(

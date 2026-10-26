@@ -305,9 +305,11 @@ check('role counts, the teams\' Team Lead lists, the setup checklist, My guilds 
   // The account-delete impact: the Owner leads the guild (hand over first); a derived Guild Master does not; a suspended Owner still holds the seat.
   const impact = async (key) => (await s.ok(key, 'GET', '/auth/me')).deleteImpact;
   assert.deepEqual((await impact('own')).handOverFirst.map((guild) => guild.id), [s.gid]);
-  assert.deepEqual(await impact('dgm'), { handOverFirst: [], guildsDeleted: [], autoPromote: [] });
+  assert.deepEqual(await impact('dgm'), { handOverFirst: [], guildsDeleted: [], autoPromote: [], succession: [] });
   s.suspend();
-  assert.deepEqual((await impact('own')).handOverFirst.map((guild) => guild.id), [s.gid], 'the seat is theirs while suspended');
+  // A suspended seat holder cannot hand over (they are not the Owner): the seat passes on inside the delete (lane B6b part 2b, tests/guild/guild-b6b3-succession-tests.js).
+  const suspended = await impact('own');
+  assert.deepEqual([suspended.handOverFirst, suspended.succession.map((entry) => entry.guild.id)], [[], [s.gid]], 'the seat is theirs while suspended and passes on');
 });
 
 check('the Discord role sync skips a Guild Master of any kind (the Owner, a derived one) and a stored discord row still counts as Discord\'s', async () => {

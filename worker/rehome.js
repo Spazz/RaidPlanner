@@ -2,10 +2,12 @@
 // joins another, WITHOUT the old person losing its history. Three triggers, one module: the Battle.net sign-in match ("Battle.net beats a link" and the name
 // collision, worker/bnet-match.js) and the Guild Master's claim (lane B6b).
 //
-//   rehomeStatements(db, { guildId, characterId, toPersonId, actorUserId, now, reason: 'bnet_beats_link' | 'collision' | 'gm_claim', guards?, randomBytes? })
+//   rehomeStatements(db, { guildId, characterId, toPersonId, actorUserId, now, reason: 'bnet_beats_link' | 'collision' | 'gm_claim', guards?, randomBytes?, toPlanned? })
 //     -> { statements, appliedIndex, auditId, fromPersonId, toPersonId, placeholderId, wasMain }      or throws HttpError
 //   statements ... for the caller's db.batch, in order (13 to 14). results[appliedIndex].meta.changes is 1 when the re-home applied and 0 when a guard refused it,
 //                  in which case EVERY statement was a no-op. One read (a single statement) happens before; nothing is written by the function itself.
+//   toPlanned .... { version, characters } when the new person is made or linked EARLIER IN THE SAME BATCH (the GM claim: the claimant may have no person yet): the read finds no
+//                  such person (or the version it has now), so the caller says what the person will be when the opening statement runs. Left out, the read decides.
 //   guards ....... [{ sql, params }] (anonymous `?` only) ANDed into the OPENING statement. The later statements ask for that statement's audit row instead of
 //                  repeating the guards (a batch is one transaction), so a refused opening makes the whole batch a no-op.
 //
@@ -57,16 +59,18 @@ SELECT ?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, NULL,
 
 // -> { statements, ... } (see the header).
 export async function rehomeStatements(db, {
-  guildId, characterId, toPersonId, actorUserId, now, reason, guards = [], randomBytes = defaultRandomBytes,
+  guildId, characterId, toPersonId, actorUserId, now, reason, guards = [], randomBytes = defaultRandomBytes, toPlanned = null,
 }) {
   if (!REHOME_REASONS.includes(reason)) throw new Error('rehomeStatements: reason is bnet_beats_link, collision or gm_claim');
   const row = (await db.prepare(READ_SQL).bind(characterId, guildId, toPersonId).first()) || null;
   if (!row) throw new HttpError(404, 'not_found', 'That character was not found.');
   if (isPlaceholderKey(row.name_key)) throw new HttpError(400, 'bad_request', 'A retired placeholder is not moved.');
-  if (row.to_version === null) throw new HttpError(404, 'not_found', 'That person was not found.');
+  const toVersion = toPlanned ? toPlanned.version : row.to_version;
+  const toCharacters = toPlanned ? toPlanned.characters : row.to_characters;
+  if (toVersion === null) throw new HttpError(404, 'not_found', 'That person was not found.');
   if (row.player_id === toPersonId) throw new HttpError(400, 'bad_request', 'That character already belongs to that person.');
-  if (row.to_characters >= LIMITS.charactersPerPerson) {
-    throw new HttpError(409, 'rehome_too_many_characters', `That person already has ${row.to_characters} characters, and a person can have at most ${LIMITS.charactersPerPerson}.`);
+  if (toCharacters >= LIMITS.charactersPerPerson) {
+    throw new HttpError(409, 'rehome_too_many_characters', `That person already has ${toCharacters} characters, and a person can have at most ${LIMITS.charactersPerPerson}.`);
   }
   const from = row.player_id;
   const to = toPersonId;
@@ -82,7 +86,7 @@ export async function rehomeStatements(db, {
           AND EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ?)
           AND (SELECT COUNT(*) FROM characters v ${BY_PERSON} WHERE v.guild_id = ? AND v.player_id = ? AND ${visibleCharacterSql('v')}) < ${LIMITS.charactersPerPerson}
           ${guards.map((guard) => `AND ${guard.sql}`).join(' ')}`,
-    params: [characterId, guildId, from, from, guildId, row.from_version, to, guildId, row.to_version, guildId, to, ...guards.flatMap((guard) => guard.params)],
+    params: [characterId, guildId, from, from, guildId, row.from_version, to, guildId, toVersion, guildId, to, ...guards.flatMap((guard) => guard.params)],
   };
   // Every later statement: the opening applied.
   const marker = { sql: 'EXISTS (SELECT 1 FROM audit_log WHERE id = ?)', params: [auditId] };

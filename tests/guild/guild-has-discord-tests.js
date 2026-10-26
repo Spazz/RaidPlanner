@@ -256,7 +256,8 @@ const SERVER_ID_FILES = {
   'worker/permissions.js': { how: 'fragment', count: 2 },
   'worker/roster-view.js': { how: 'fragment', count: 2 },
   'worker/routes/accounts.js': { how: 'fragment', count: 1 },
-  'worker/routes/auth.js': { how: 'guard', count: 18 },
+  'worker/succession.js': { how: 'fragment', count: 1 },
+  'worker/routes/auth.js': { how: 'guard', count: 19 }, // +1: the successor read of a suspended Owner's guild hands g.discord_server_id to the membership fragments (liveGmSql, officerSuccessorSql)
   'worker/routes/discord.js': { how: 'guard', count: 3 },
   'worker/routes/guild-data.js': { how: 'guard', count: 2 },
   'worker/routes/guild.js': { how: 'guard', count: 6 },

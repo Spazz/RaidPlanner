@@ -146,6 +146,7 @@ const ALLOWED = [
   ["worker/block-effects.js", "IN (SELECT team_id FROM characters WHERE guild_id = ? AND team_id IS NOT NULL", "team"],
   ["worker/block-tombstones.js", "SELECT DISTINCT ? FROM characters c WHERE c.proof_user_id = ? AND", "key"],
   ["worker/block-tombstones.js", "SELECT DISTINCT ? FROM characters c WHERE c.guild_id = ? AND c.player_id = ?", "key"],
+  ["worker/succession.js", "JOIN characters gc ON gc.guild_id = gr.guild_id AND", "key"],
   ["worker/bnet-match.js", "?), ? FROM characters INDEXED BY characters_player WHERE ? AND", "key"],
   ["worker/bnet-match.js", "NOT EXISTS (SELECT 1 FROM characters h WHERE h.guild_id = gr.guild_id AND", "key"],
   ["worker/bnet-match.js", "NOT EXISTS (SELECT 1 FROM characters h WHERE h.guild_id = ? AND h.namespace = ?", "id"],

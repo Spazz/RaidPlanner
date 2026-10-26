@@ -196,9 +196,14 @@ check('the plan\'s scenario: a Discord-first Owner links Battle.net in the sessi
   const founding = await s.fresh('gm', { purpose: 'handover', guildId: s.gid, params: { targetUserId: s.uids.mem }, provider: 'discord' });
   assert.equal(founding.location, '/#/fresh?done=handover');
   // The GM claim and in-game creation are exempt: their authority is live Blizzard data.
+  // (The guild must have an in-game seat to claim, lane B6b part 2b; the claim then runs inside the callback and writes no grant. The fake's roster has another rank-0 member than
+  // this account's characters, so the answer is not_gm: what matters is that the young Battle.net identity is never turned away: no identity_too_new at the start, no identity_new.)
+  s.exec(`UPDATE guilds SET rank_source = 'ingame', pinned_guild_slug = 'writers-b3', pinned_realm_slug = 'nightslayer', pinned_namespace = 'profile-classicann-us', blizzard_guild_id = 3000, blizzard_realm_id = 4001 WHERE id = '${s.gid}'`);
   const claim = await s.fresh('gm', { purpose: 'gm_claim', guildId: s.gid, provider: 'bnet', account: BNET.gm });
-  assert.equal(claim.location, '/#/fresh?done=gm_claim');
-  assert.equal((await s.grantOf('gm')).fresh_purpose, 'gm_claim');
+  assert.equal(claim.start.status, 200, claim.start.text);
+  assert.equal(claim.location, '/#/fresh?error=not_gm&purpose=gm_claim');
+  assert.notEqual((await s.grantOf('gm')).fresh_purpose, 'gm_claim', 'the claim leaves no grant behind');
+  s.exec(`UPDATE guilds SET rank_source = NULL, pinned_guild_slug = NULL, pinned_realm_slug = NULL, pinned_namespace = NULL, blizzard_guild_id = NULL, blizzard_realm_id = NULL WHERE id = '${s.gid}'`);
   await s.fresh('gm', { purpose: 'ingame_create', params: { realm: 'x' }, provider: 'bnet', account: BNET.gm });
   assert.equal((await s.grantOf('gm')).fresh_purpose, 'ingame_create');
   // After 7 days the Battle.net identity confirms an Owner act (pin and source switch are Battle.net acts). A request advances the test clock by 2 s first.

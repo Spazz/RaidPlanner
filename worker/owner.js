@@ -51,6 +51,10 @@ export const ownedGuildsSql = (userExpr) => `SELECT oug.id AS guild_id FROM guil
 export const hasOwnerSql = (guildExpr) => `(EXISTS (SELECT 1 FROM guilds hg WHERE hg.id = ${guildExpr} AND hg.owner_user_id IS NOT NULL)
     OR EXISTS (SELECT 1 FROM effective_roles_owner he WHERE he.guild_id = ${guildExpr}))`;
 
+// SQL: the account that holds the seat of the guild (suspended or not), NULL when it is vacant: for the writers of the seat that must name who it was or is (the Guild Master claim
+// and the succession on an account delete); every other reader asks ownerSql. The guild expression is used once.
+export const seatHolderSql = (guildExpr) => `(SELECT sho.owner_user_id FROM guilds sho WHERE sho.id = ${guildExpr})`;
+
 // SQL: true when the account holds the SEAT (guilds.owner_user_id) of the guild, suspended or not. Not "is the Owner" (ownerSql is): the seat is what a hand-over moves and what
 // Delete my data has to settle. Both expressions are used once.
 export const seatHeldBySql = (guildExpr, userExpr) => `EXISTS (SELECT 1 FROM guilds sh WHERE sh.id = ${guildExpr} AND sh.owner_user_id = ${userExpr})`;
@@ -76,11 +80,13 @@ export async function readSeat(db, guildId) {
 
 // One statement for a db.batch: move the seat (and nothing else) from `from` to `to`. Every seat write carries `AND owner_user_id IS <the expected current holder>`, so a write
 // that lost a race to another hand-over, a claim or a succession changes nothing (plan "Owner"). `guards`: [{ sql, params }] ANDed on (the recipient is live, the fresh-auth
-// marker, the actor is still the Owner, ...). Lanes B6b part 2b (claim, succession) write the seat through here too.
+// marker, the actor is still the Owner, ...). The hand-over, the GM claim and the succession on an account delete (lane B6b part 2b) all write the seat through here.
+// `to`: a user id, null (vacant), or { sql, params } for a target the statement works out itself (the succession: the successor is whoever qualifies when the batch runs).
 export function moveSeatStatement(db, { guildId, from, to, guards = [] }) {
   const extra = guards.map((guard) => ` AND (${guard.sql})`).join('');
-  return db.prepare(`UPDATE guilds SET owner_user_id = ? WHERE id = ? AND owner_user_id IS ?${extra}`)
-    .bind(to, guildId, from, ...guards.flatMap((guard) => guard.params));
+  const target = to !== null && typeof to === 'object' ? to : { sql: '?', params: [to] };
+  return db.prepare(`UPDATE guilds SET owner_user_id = ${target.sql} WHERE id = ? AND owner_user_id IS ?${extra}`)
+    .bind(...target.params, guildId, from, ...guards.flatMap((guard) => guard.params));
 }
 
 // { sql, params } for a guarded write inside a db.batch: the same test with the guild and the account bound (three placeholders: guild, user, user).

@@ -410,15 +410,17 @@ check('probe, the post-flip shape (seat set, no stored Guild Master row): the Ow
   const refused = await s.call('own', 'DELETE', '/auth/me', { deleteGuildIds: [] });
   assert.deepEqual([refused.status, refused.json.error], [409, 'hand_over_guild_master']);
   assert.equal(await s.w.count('users', 'id = ?', s.uids.own), 1);
-  // Even SUSPENDED (no longer a member by the Owner exemption) the seat holder still has to hand over: nobody else takes the seat (succession is part 2b).
+  // SUSPENDED (no longer a member by the Owner exemption) the seat holder cannot hand over, so the seat passes on inside the delete: to the live in-game Guild Master
+  // (lane B6b part 2b; tests/guild/guild-b6b3-succession-tests.js has the whole rule).
   s.exec(`DELETE FROM players WHERE id = '${s.people.own.pid}'`);
   s.suspend();
   const suspended = (await s.ok('own', 'GET', '/auth/me')).deleteImpact;
-  assert.deepEqual([suspended.handOverFirst.map((entry) => entry.id), suspended.autoPromote], [[s.gid], []]);
-  const stuck = await s.call('own', 'DELETE', '/auth/me', { deleteGuildIds: [] });
-  assert.deepEqual([stuck.status, stuck.json.error], [409, 'hand_over_guild_master']);
-  // The foreign key empties the seat when the account row goes by any other road.
-  s.exec(`DELETE FROM users WHERE id = '${s.uids.own}'`);
+  assert.deepEqual([suspended.handOverFirst, suspended.autoPromote, suspended.succession.map((entry) => [entry.guild.id, entry.to && entry.to.userId, entry.rule])], [[], [], [[s.gid, s.uids.dgm, 'ingame_gm']]]);
+  const passed = await s.call('own', 'DELETE', '/auth/me', { deleteGuildIds: [] });
+  assert.equal(passed.status, 200, passed.text);
+  assert.equal(await s.seat(), s.uids.dgm, 'the derived Guild Master holds the seat now');
+  // The foreign key empties a seat when the account row goes by any other road.
+  s.exec(`DELETE FROM users WHERE id = '${s.uids.dgm}'`);
   assert.equal(await s.seat(), null);
   const admin = (await signIn(s.w, { id: '118888888888888802', username: 'srvadmin', globalName: 'Srv Admin' }, [adminOf(s.serverId)])).jar;
   s.jars.srv = admin;

@@ -8,6 +8,7 @@ import {
   BnetError, authorizeUrl, bnetSupport, canonicalOrigin, exchangeCode, fetchAccountCharacters, fetchUserInfo, isConfigured,
 } from '../battlenet.js';
 import { matchAccountAtSignIn } from '../block-tombstones.js';
+import { runGmClaim } from '../gm-claim.js';
 import { CALLBACK_STATEMENT_BUDGET, clearBnetProofStatement, loadIngameCombos, runBnetMatch } from '../bnet-match.js';
 import {
   ALWAYS, allOf, beginIdentityChange, freshDoneRoute, freshErrorRoute, freshRequiredError, identityChangeBlocked, identityChangeStatements, isProtectedAccount, noteFreshFailure,
@@ -42,6 +43,9 @@ const LINK_WINDOW_MS = 10 * 60 * 1000;
 // D1 statements a callback has used by the time the sign-in match starts (nonce, rate limits, look-ups, the Battle.net reads of the callback and its own writes);
 // the match counts its own on top and stays inside CALLBACK_STATEMENT_BUDGET. tests/guild/guild-b6a-match-tests.js measures both modes and fails when one grows past this.
 export const STATEMENTS_BEFORE_MATCH = { signin: 12, link: 10 };
+// D1 statements the Battle.net fresh-auth callback has used when the GM claim starts (session and its last-seen touch, the nonce, the per-account and global callback counters; measured 4); the claim counts its own on top
+// and stays inside CALLBACK_STATEMENT_BUDGET (tests/guild/guild-b6b3-claim-tests.js measures it and fails when it grows past this).
+export const STATEMENTS_BEFORE_CLAIM = 5;
 
 // ---------------------------------------------------------------------------
 // Link
@@ -152,13 +156,19 @@ async function bnetFreshCallback(ctx, { url, state, now, clear }) {
   if (!code || code.length > 512) return fail('state', parsed.purpose);
   if (!(await claimStateNonce(db, state, now))) return fail('state', parsed.purpose);
   let info;
+  let accessToken;
   try {
-    const accessToken = await exchangeCode(ctx, code);
+    accessToken = await exchangeCode(ctx, code);
     info = await fetchUserInfo(ctx, accessToken);
     if (!(await callbackAllowed(ctx, info.id, now))) return fail('busy', parsed.purpose);
   } catch (error) {
     ctx.log(`fresh-auth: Battle.net step failed: ${error && error.message}`);
     return fail('provider', parsed.purpose);
+  }
+  // The GM claim runs HERE, with the token in hand, and writes no grant (worker/gm-claim.js says why and what it does instead).
+  if (parsed.purpose === 'gm_claim') {
+    const claimed = await runGmClaim(ctx, { session, parsed, accessToken, info, now, spent: STATEMENTS_BEFORE_CLAIM });
+    return claimed.ok ? redirectResponse(freshDoneRoute(parsed.purpose), [clear]) : fail(claimed.reason, parsed.purpose);
   }
   const granted = await writeFreshGrant(ctx, { session, provider: 'bnet', identityId: info.id, parsed, nowMs: now });
   if (!granted.ok) {

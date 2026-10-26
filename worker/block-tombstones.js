@@ -160,7 +160,21 @@ export async function planTombstones(env, guildId, keys) {
   return { missing: false, version: ring.current.version, hmacs, kinds: values.map(kindOfValue), problems: [] };
 }
 
-export const MISSING_KEY_LINE = 'block: TOMBSTONE_KEY is not set or not valid, so this block was written WITHOUT tombstones (flagged tombstone_missing); set the Worker secret and the daily repair will add them';
+// Every HMAC the given keys have in the guild under EVERY key version of the keyring (the current secret and the retired ones): what the GM claim deletes, since a tombstone
+// keeps the version it was written with. [] when there is no key at all (nothing could have been written that this Worker can match). Same derivation as planTombstones.
+export async function tombstoneHmacsAllVersions(env, guildId, keys) {
+  const values = typedValuesOf(keys);
+  const ring = readKeyring(env);
+  if (!values.length || !ring.keys.size) return [];
+  const out = new Set();
+  for (const secret of ring.keys.values()) {
+    const key = await importKey(secret);
+    for (const value of values) out.add(await hmacWith(key, guildId, value));
+  }
+  return [...out];
+}
+
+export const MISSING_KEY_LINE ='block: TOMBSTONE_KEY is not set or not valid, so this block was written WITHOUT tombstones (flagged tombstone_missing); set the Worker secret and the daily repair will add them';
 
 // One statement inserting a plan's tombstones under a block_ref, only while `guard` ({ sql, params }) holds (the block row this call wrote is there). [] when nothing to write.
 export function tombstoneInsertStatements(db, { guildId, blockRef, plan, now, guard }) {
