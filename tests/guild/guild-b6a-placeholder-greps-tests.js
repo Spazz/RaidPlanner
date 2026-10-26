@@ -150,6 +150,7 @@ const ALLOWED = [
   ["worker/bnet-match.js", "NOT EXISTS (SELECT 1 FROM characters h WHERE h.guild_id = gr.guild_id AND", "key"],
   ["worker/bnet-match.js", "NOT EXISTS (SELECT 1 FROM characters h WHERE h.guild_id = ? AND h.namespace = ?", "id"],
   ["worker/bnet-match.js", "at FROM json_each(?) j JOIN characters c ON c.guild_id = json_extract(j.value,", "key"],
+  ["worker/bnet-match.js", "(EXISTS (SELECT 1 FROM characters bc WHERE bc.id = ? AND bc.guild_id = ? AND bc.blizzard_char_id IS NULL", "id"],
   ["worker/bnet-match.js", "EXISTS (SELECT 1 FROM characters pc WHERE pc.id = ? AND", "key"],
   ["worker/bnet-store.js", "FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1", "person"],
   ["worker/bnet-store.js", "AS home_team_id FROM characters c JOIN players p ON p.id = c.player_id JOIN", "key"],

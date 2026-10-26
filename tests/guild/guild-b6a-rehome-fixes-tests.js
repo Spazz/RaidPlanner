@@ -450,6 +450,102 @@ check('F9: the same for an account-less person - an Officer lifting a person blo
   assert.equal(lifted.json.tombstonesKept, undefined);
 });
 
+// ---- M3, L4, L5: the sign-in match and the name collision (worker/bnet-match.js)
+
+const logged = (world, text) => world.logs.includes(`bnet match deferred: ${text}`);
+const auditCount = (world, action) => world.count('audit_log', 'action = ?', action);
+
+check('M3: a ruleset in-game guild stores an empty realm_key - the name collision finds the typed character there (the key binds, its person is linked) instead of failing the guild batch on the unique name index at every sign-in', async () => {
+  const w = await makeWorld();
+  const G = w.ingame(1, [['Aldric', 1], ['Dunmar', 4]], { realmKind: 'ruleset' });
+  w.raw.person(PID(1), G, { created: 10 });
+  w.raw.character(CID(1), G, PID(1), 'Aldric', { key: false, isMain: 1, proof: 'hand', ruleset: true });
+  w.serve(['Aldric']);
+  w.logs.length = 0;
+  await bnetSignIn(w, BNET.ann);
+  const annId = userOf(w, BNET.ann);
+  assert.equal(w.one('SELECT user_id FROM players WHERE id = ?', PID(1)).user_id, annId, 'the typed character\'s person is the account\'s now');
+  const aldric = w.one('SELECT * FROM characters WHERE id = ?', CID(1));
+  assert.deepEqual([aldric.blizzard_char_id, aldric.owner_proof, aldric.proof_user_id, aldric.realm_key, aldric.player_id], [idOf('Aldric'), 'bnet', annId, '', PID(1)], 'bound, proved, still without a realm');
+  assert.equal(w.count('characters', "name_key = 'aldric'"), 1, 'no second Aldric');
+  assert(!logged(w, 'race'), 'and no failed guild batch');
+  assert.deepEqual(w.logs.filter((line) => /bnet match/.test(line)), []);
+
+  // The name given up: the typed Aldric holds a key that left the roster, a NEW Aldric is on it - the old one retires (Former, a reserved key, a dated alias) and the new one is created.
+  const w2 = await makeWorld();
+  const G2 = w2.ingame(1, [['Aldric', 1], ['Dunmar', 4]], { realmKind: 'ruleset' });
+  w2.raw.person(PID(1), G2, { created: 10 });
+  w2.raw.character(CID(1), G2, PID(1), 'Aldric', { key: false, isMain: 1, proof: 'officer', ruleset: true, blizzardId: 6001 });
+  w2.serve(['Aldric']);
+  w2.logs.length = 0;
+  await bnetSignIn(w2, BNET.ann);
+  const old = w2.one('SELECT * FROM characters WHERE id = ?', CID(1));
+  assert.equal(old.name_key, `~was:${CID(1)}`, 'the old Aldric gave the name up');
+  assert(old.left_on, 'and is Former');
+  assert.deepEqual(w2.rows('SELECT name_key, realm_key, character_id FROM character_name_aliases'), [{ name_key: 'aldric', realm_key: '', character_id: CID(1) }]);
+  const created = w2.one("SELECT * FROM characters WHERE name_key = 'aldric'");
+  assert.deepEqual([created.owner_proof, created.blizzard_char_id, created.realm_key], ['bnet', idOf('Aldric'), ''], 'the new Aldric is created from the roster row');
+  assert.equal(created.proof_user_id, userOf(w2, BNET.ann));
+  assert(!logged(w2, 'race'));
+});
+
+check('L4: the key bind of a name collision follows the account\'s person - a link that lost its race binds nothing, and the next sign-in does both', async () => {
+  const w = await makeWorld();
+  const G = w.ingame(1, [['Aldric', 1], ['Dunmar', 4]]);
+  w.raw.person(PID(1), G, { created: 10 });
+  w.raw.character(CID(1), G, PID(1), 'Aldric', { key: false, isMain: 1, proof: 'hand' });
+  w.serve(['Aldric']);
+  // The unowned person is edited (its version moves) between the Worker's read and its write: the link (version-guarded) changes nothing.
+  const done = beforeBatch(w.db, (statement) => statement.sql.includes('UPDATE players SET user_id = ?'), () => w.run('UPDATE players SET version = version + 1 WHERE id = ?', PID(1)));
+  w.logs.length = 0;
+  const first = await bnetSignIn(w, BNET.ann);
+  assert(done(), 'the race fired');
+  assert.equal(w.one('SELECT user_id FROM players WHERE id = ?', PID(1)).user_id, null, 'the link lost');
+  const aldric = w.one('SELECT * FROM characters WHERE id = ?', CID(1));
+  assert.deepEqual([aldric.blizzard_char_id, aldric.owner_proof, aldric.proof_user_id], [null, 'hand', null], 'so the key did not bind to a person that is nobody\'s');
+  assert.equal(auditCount(w, 'character.match_roster'), 0, 'and no bind was audited');
+  // The next sign-in redoes the match.
+  await bnetSignIn(w, BNET.ann, first.jar);
+  const annId = userOf(w, BNET.ann);
+  assert.equal(w.one('SELECT user_id FROM players WHERE id = ?', PID(1)).user_id, annId);
+  const bound = w.one('SELECT blizzard_char_id, owner_proof FROM characters WHERE id = ?', CID(1));
+  assert.deepEqual([bound.blizzard_char_id, bound.owner_proof], [idOf('Aldric'), 'bnet']);
+});
+
+check('L5: the collision re-home needs the bind to be possible - a typed character that changed after the read (it left, took another key) stays on its person, nothing moves', async () => {
+  const w = await makeWorld();
+  const G = w.ingame(1, [['Aldric', 1], ['Brindle', 2]]);
+  const bea = await makeAccount(w, BNET.bea);
+  w.raw.person(PID(1), G, { userId: bea.userId, created: 10 });
+  w.raw.character(CID(1), G, PID(1), 'Brindle', { isMain: 1, proof: 'officer' });
+  w.raw.character(CID(2), G, PID(1), 'Aldric', { key: false, proof: 'hand' });
+  w.serve(['Aldric']);
+  const done = beforeBatch(w.db, (statement) => statement.values.includes('character.rehome'), () => w.run("UPDATE characters SET left_on = '2026-12-31' WHERE id = ?", CID(2)));
+  w.logs.length = 0;
+  await bnetSignIn(w, BNET.ann);
+  assert(done(), 'the typed character changed between the re-home\'s read and its batch');
+  const aldric = w.one('SELECT * FROM characters WHERE id = ?', CID(2));
+  assert.deepEqual([aldric.player_id, aldric.blizzard_char_id], [PID(1), null], 'it did not move, unbound, to the account\'s person');
+  assert.equal(w.count('characters', "name_key LIKE '~ph:%'"), 0, 'no placeholder');
+  assert.equal(auditCount(w, 'character.rehome'), 0);
+  assert(logged(w, 'rehome'), 'the re-home waits for the next sign-in');
+
+  // The same when the key was taken in between (someone else bound it): the guard holds the key free.
+  const w2 = await makeWorld();
+  const G2 = w2.ingame(1, [['Aldric', 1], ['Brindle', 2]]);
+  const carol = await makeAccount(w2, BNET.bea);
+  w2.raw.person(PID(1), G2, { userId: carol.userId, created: 10 });
+  w2.raw.character(CID(1), G2, PID(1), 'Brindle', { isMain: 1, proof: 'officer' });
+  w2.raw.character(CID(2), G2, PID(1), 'Aldric', { key: false, proof: 'hand' });
+  w2.serve(['Aldric']);
+  const done2 = beforeBatch(w2.db, (statement) => statement.values.includes('character.rehome'), () => w2.run(
+    'UPDATE characters SET namespace = ?, blizzard_realm_id = 4001, blizzard_char_id = ? WHERE id = ?', NS, idOf('Aldric'), CID(2)));
+  await bnetSignIn(w2, BNET.ann);
+  assert(done2());
+  assert.equal(w2.one('SELECT player_id FROM characters WHERE id = ?', CID(2)).player_id, PID(1), 'the character that took the key meanwhile stays where it is');
+  assert.equal(auditCount(w2, 'character.rehome'), 0);
+});
+
 // ==== more checks above this line
 
 // ---------------------------------------------------------------------------
