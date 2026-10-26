@@ -855,6 +855,55 @@ check('F7 (join trim): every KEYED table of the person join cascades from player
 
 // ---- B4b F4: the rank-map PUT and the characters it moves
 
+check('B4b F4: the rank-map PUT recomputes the approved transitions INSIDE the batch - a character that changes after the check and before the batch is not moved without approval (409 approval_stale, nothing applied); a fresh dry run then applies', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'] });
+  s.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.gid}'`);
+  const bound = async (name, id) => {
+    const made = await s.person({ name });
+    s.exec(`UPDATE characters SET namespace = '${NS}', blizzard_realm_id = 4001, blizzard_char_id = ${id} WHERE id = '${made.cid}'`);
+    return made;
+  };
+  await bound('Aone', 9000);
+  await bound('Btwo', 9001);
+  rosterRows(s, [['Aone', 9000, 0], ['Btwo', 9001, 5]]);
+  const RANKS = [
+    { rank: 0, label: 'Guild Master', coreRank: 'raider', roleId: 'guild_master' },
+    { rank: 5, label: 'Member', coreRank: 'social', roleId: null },
+  ];
+  const dry = await s.ok('gm', 'POST', '/rank-map/dry-run', { ranks: RANKS }, 200);
+  assert.deepEqual(dry.changes.characters.transitions, [{ from: 'raider', to: 'social', count: 1 }], 'the dry run approves one character: Btwo goes Social');
+  const snapshot = () => JSON.stringify([sAll(s, 'SELECT name, core_rank FROM characters ORDER BY id'), sAll(s, 'SELECT source_key FROM source_rank_maps'), sOne(s, 'SELECT used_at FROM dry_run_approvals')]);
+  const before = snapshot();
+
+  // Between the Worker's check of the token and its batch, Aone's rank is edited: its transition (Trial -> Raider) was never shown to the Owner.
+  const inner = s.w.db.batch.bind(s.w.db);
+  let hooked = false;
+  s.w.db.batch = async (statements) => {
+    if (!hooked && statements.some((statement) => /UPDATE dry_run_approvals SET used_at/.test(statement.sql))) {
+      hooked = true;
+      sRun(s, "UPDATE characters SET core_rank = 'trial' WHERE name = 'Aone'");
+    }
+    return inner(statements);
+  };
+  const raced = await s.call('gm', 'PUT', '/rank-map', { ranks: RANKS, token: dry.token });
+  s.w.db.batch = inner;
+  assert(hooked, 'the apply batch ran');
+  assert.deepEqual([raced.status, raced.json && raced.json.error], [409, 'approval_stale'], raced.text);
+  assert.equal(sOne(s, "SELECT core_rank FROM characters WHERE name = 'Btwo'").core_rank, 'raider', 'Btwo was not moved');
+  assert.equal(sOne(s, "SELECT core_rank FROM characters WHERE name = 'Aone'").core_rank, 'trial', 'and the edited character was not moved back either');
+  assert.equal(sAll(s, 'SELECT source_key FROM source_rank_maps').length, 0, 'the map was not replaced');
+  assert.equal(sOne(s, 'SELECT used_at FROM dry_run_approvals').used_at, null, 'the token was not consumed');
+  assert.notEqual(snapshot(), before, 'only the edit itself changed');
+
+  // The state is different now, so the old token is stale; a new dry run shows both changes and applies.
+  assert.deepEqual([(await s.call('gm', 'PUT', '/rank-map', { ranks: RANKS, token: dry.token })).json.error], ['approval_stale']);
+  const dry2 = await s.ok('gm', 'POST', '/rank-map/dry-run', { ranks: RANKS }, 200);
+  assert.equal(dry2.changes.characters.changed, 2);
+  const applied = await s.call('gm', 'PUT', '/rank-map', { ranks: RANKS, token: dry2.token });
+  assert.equal(applied.status, 200, applied.text);
+  assert.deepEqual(sAll(s, 'SELECT name, core_rank FROM characters ORDER BY name').map((row) => ({ ...row })), [{ name: 'Aone', core_rank: 'raider' }, { name: 'Btwo', core_rank: 'social' }]);
+});
+
 // ---------------------------------------------------------------------------
 // Runner
 

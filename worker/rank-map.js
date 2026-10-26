@@ -205,6 +205,21 @@ export function mapChanges(stored, proposed) {
   return out.sort((a, b) => a.rank - b.rank);
 }
 
+// The characters the map would change, recomputed INSIDE the apply batch (review fix, B4b F4). The JS check of the token reads the state a moment before the batch runs;
+// a character that changes in between would be moved without having been approved. The consume statement therefore carries this guard: the transitions of the proposed
+// map over the guild's characters AT THE TIME OF THE BATCH, as one canonical text, must equal the text the dry run showed the Owner (`transitions`, the order of
+// TRANSITIONS_SQL). Counts are what the approval binds (the same as mapStateHash), so a swap of one character for another in the same transition is the same approval.
+// {sql, params}: true while they are equal; its placeholders: the proposed map (JSON), the guild, the approved text.
+const TRANSITIONS_TEXT_SQL = `(WITH ${PROPOSED_MAP_CTE}
+  SELECT COALESCE(json_group_array(json_array(from_rank, to_rank, n)), '[]')
+    FROM (SELECT from_rank, to_rank, COUNT(*) AS n
+            FROM (SELECT c.core_rank AS from_rank, ${newCoreRankSql('c')} AS to_rank FROM characters c WHERE c.guild_id = ?)
+           WHERE from_rank != to_rank GROUP BY from_rank, to_rank ORDER BY from_rank, to_rank))`;
+export function approvedTransitionsGuard(guildId, map, transitions) {
+  const json = JSON.stringify(map.map((row) => ({ rank: row.rank, coreRank: row.coreRank })));
+  return { sql: `${TRANSITIONS_TEXT_SQL} = ?`, params: [json, guildId, JSON.stringify(transitions.map((entry) => [entry.from, entry.to, entry.count]))] };
+}
+
 // What a token for a map change is bound to: the purpose, the map as stored now, the map proposed, and the characters it would change. A token minted for any
 // other pair of maps, or after the characters moved under it, no longer matches (the apply recomputes this and refuses on a difference).
 export async function mapStateHash(stored, proposed, preview) {
