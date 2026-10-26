@@ -62,7 +62,7 @@ export const ACTION_GROUP = Object.freeze({
   'join.create': 'signups', 'join.revoke': 'signups', 'signup.guest': 'signups', 'signup.guest_remove': 'signups', 'signup.guest_resolve': 'signups',
   'signup.guests_clear': 'signups', 'signup.open': 'signups', 'signup.open_withdraw': 'signups',
   // Lane B7a: blocks and tombstone matches sit with access.remove; the per-person detail of a sync run is roster history; failures are settings.
-  'person.block': 'settings', 'person.unblock': 'settings', 'block.match': 'settings', 'block.match_held': 'settings',
+  'person.block': 'settings', 'person.unblock': 'settings', 'block.match': 'settings', 'block.match_held': 'settings', 'block.keep': 'settings',
   'person.core_rank': 'roster', 'person.ingame_rank': 'roster', 'person.former': 'roster',
   'fresh.failed': 'settings', 'guild.claim_failed': 'settings',
   // Lane B6b part 2a: a sign-in identity of an account was linked or disconnected (written in every guild the account is a member of).
@@ -234,6 +234,7 @@ export function describeRow(row, names = {}) {
     case 'access.restore': return `Restored the access of ${user(ent)}`;
     case 'person.block': return `Removed the access of ${person(ent)}, who has no account yet`;
     case 'person.unblock': return `Restored the access of ${person(ent)}`;
+    case 'block.keep': return `Kept the removal of ${user(ent)}, which matched an earlier block`;
     case 'block.match': return `${user(ent)} matched an earlier block and was removed until an officer reviews it`;
     case 'block.match_held': return `${user(ent)} matched an earlier block but was not removed (${after.reason === 'senior' ? 'they rank the same as the officer who blocked, or above' : 'they hold the Owner seat or a Guild Master role'}); an officer needs to review it`;
     case 'person.core_rank': return `${person(ent)} went from ${CORE_RANK_LABEL[before.coreRank] || 'one rank'} to ${CORE_RANK_LABEL[after.coreRank] || 'another'}`;

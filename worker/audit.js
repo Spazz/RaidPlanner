@@ -142,6 +142,8 @@ export const AUDIT_ACTIONS = [
   'identity.change',
   // Lane B6b part 2b: the Owner seat passed to the next account when its holder's account was deleted (permanent; the GM claim writes 'guild.claim', also permanent).
   'guild.succession',
+  // Lane B7b: an officer kept a block that a tombstone match wrote (the review queue): it is a block like any other from then on. Never pruned.
+  'block.keep',
 ];
 
 // The PRUNABLE set (plan "Audit"): per-person detail of a sync run and failures. The daily job deletes these past AUDIT_PRUNE_AFTER_MS; every other row is

@@ -135,11 +135,14 @@ class D1Fake {
     if (values.length !== statement.parameterCount) {
       throw d1Error(`Wrong number of parameter bindings for SQL query: expected ${statement.parameterCount}, got ${values.length}`);
     }
-    this.statementLog.push({ sql, values });
+    // rowsRead: the rows the statement RETURNED (the stand-in's rows_read; the budget suites sum it per request). Set once the statement ran.
+    const logged = { sql, values, rowsRead: 0 };
+    this.statementLog.push(logged);
     try {
       const prepared = this.sqlite.prepare(sql);
       const before = this.sqlite.prepare('SELECT total_changes() AS n').get().n;
       const rows = prepared.all(...values).map((row) => ({ ...row }));
+      logged.rowsRead = rows.length;
       const after = this.sqlite.prepare('SELECT total_changes() AS n').get().n;
       // changes() counts the statement's own rows only. total_changes() also counts foreign-key
       // cascades, which D1 does not report in meta.changes. changes() is stale after a SELECT, so a

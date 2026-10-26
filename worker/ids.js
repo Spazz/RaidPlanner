@@ -92,5 +92,7 @@ export const PARAM_SOURCE = {
   // A Needs attention item id (DELETE .../attention/dismissals/:itemid): 'claims', 'no_loot:r_..', 'watch:t_..:p_..'; the colons may arrive as %3A. The handler decodes it.
   itemid: '[a-z_]+(?:(?::|%3[Aa])[A-Za-z0-9_-]{1,40}){0,2}',
   sid: '[0-9]{1,9}',
+  // A row of the Users list (GET .../users/:ukey): an account (u_...), an account-less person (p_...) or a name seen but not on the roster ('n_' + the hex of its lower-cased key).
+  ukey: '(?:[up]_[A-Za-z0-9_-]{22}|n_[0-9a-f]{2,512})',
   dataset: '[a-z]{3,12}\\.(?:csv|json)',
 };

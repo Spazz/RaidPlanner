@@ -261,6 +261,8 @@ const ALLOWED = [
   ["worker/team-place.js", "NOT EXISTS (SELECT 1 FROM characters lc WHERE lc.guild_id = ? AND lc.player_id =", "team"],
   ["worker/team-roster.js", "EXISTS (SELECT 1 FROM characters rc WHERE rc.player_id = ? AND ?)", "team"],
   ["worker/team-roster.js", "(SELECT rc.core_rank FROM characters rc WHERE rc.player_id = ? AND ? ORDER BY", "team"],
+  ["worker/users-list.js", "FROM characters lc CROSS JOIN loot_awards la ON la.guild_id = ? AND la.winner_name_key = lc.name_key", "key"],
+  ["worker/users-list.js", "NOT EXISTS (SELECT 1 FROM characters ch WHERE ch.guild_id = ? AND ch.name_key = ?)", "key"],
   ["worker/viewer.js", "c.team_id, c.is_main FROM characters c WHERE c.guild_id = ?1 AND ?", "team"],
 ];
 
