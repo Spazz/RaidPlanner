@@ -1,12 +1,13 @@
 // Guild lifecycle routes (Phase 8): the Guild Master's copy of the guild's data and the guild's deletion, plus dismissing the setup checklist.
 //   GET    /api/guild/:gid/export                 (Guild Master)  the guild's data as one JSON file (worker/guild-export.js says what is and is not in it)
-//   DELETE /api/guild/:gid                        (Guild Master)  body { confirmName }: the guild's name, typed; deletes the guild and everything in it
+//   DELETE /api/guild/:gid                        (Owner)         body { confirmName }: the guild's name, typed; deletes the guild and everything in it
 //   POST   /api/guild/:gid/onboarding/dismiss     (whoever sets the guild up)  hides the checklist card on Home for everyone
 import { HttpError, SECURITY_HEADERS, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { hasDiscord } from '../discord-guard.js';
 import { buildGuildExport } from '../guild-export.js';
 import { sees } from '../onboarding.js';
+import { requireOwner } from '../owner.js';
 import { loadGuildContext } from '../permissions.js';
 import { EXPORT_LIMIT, EXPORT_WINDOW_MS, enforceRateLimit } from '../ratelimit.js';
 import { todayIn } from '../roster-data.js';
@@ -37,7 +38,8 @@ export async function exportGuild(ctx) {
 export async function deleteGuild(ctx) {
   const { db, session, body } = ctx;
   const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid, session.viewAs);
-  requireGuildMaster(guildContext);
+  // An Owner act (plan "Owner-only acts"): a Guild Master by role who does not hold the Owner seat cannot delete the guild.
+  await requireOwner(db, guildContext, 'Only the Owner of the guild can delete it.');
   const guild = guildContext.guild;
   const typed = typeof body.confirmName === 'string' ? body.confirmName.trim() : '';
   if (typed !== guild.name) {

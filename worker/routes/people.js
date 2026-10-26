@@ -1,6 +1,7 @@
 import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';
+import { requireOwner } from '../owner.js';
 import { boundMember, memberCandidatesSql, reachesGuildSql } from '../membership.js';
 import { botConfigured } from '../discord-bot.js';
 import { requireDiscord } from '../discord-guard.js';
@@ -369,7 +370,8 @@ export async function syncPerson(ctx) {
 export async function makeGuildMaster(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
-  if (!guildContext.isGuildMaster) throw new HttpError(403, 'forbidden', 'Only the Guild Master can hand over the guild.');
+  // An Owner act (plan "Owner-only acts"): a Guild Master by role who does not hold the Owner seat cannot hand the guild over.
+  await requireOwner(ctx.db, guildContext, 'Only the Owner of the guild can hand it over.');
   const model = await loadModel(ctx.db, guildContext);
   const target = findRoleTarget(model, ctx.params.uid, guildContext);
   if (!isCurrentMember(target)) throw notFound();

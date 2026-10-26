@@ -11,6 +11,7 @@
 //
 // B6b (the effective-roles view) changes only where RANK_SQL and OWNER_SQL read from; the interface (seniorityOk, seniorityDeleteOk, assertSenior) stays.
 import { HttpError } from './http.js';
+import { ownerSql } from './owner.js';
 import { ROLE_RANK } from './permissions.js';
 
 // The account of a person, as a scalar subquery on the bound person id and guild id (two placeholders: person, guild).
@@ -18,8 +19,7 @@ const ACCOUNT_OF_PERSON_SQL = `SELECT COALESCE(tp.user_id, (SELECT du.id FROM us
 
 // The three expressions below take a COLUMN of the derived row s (s.gid, s.aid, s.tid), never a bare `?`.
 const RANK_SQL = (user) => `COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = s.gid AND ra.user_id = ${user}), ${ROLE_RANK.member})`;
-const OWNER_SQL = (user) => `EXISTS (SELECT 1 FROM guilds og WHERE og.id = s.gid AND (og.owner_user_id = ${user}
-    OR (og.owner_user_id IS NULL AND EXISTS (SELECT 1 FROM role_assignments gm WHERE gm.guild_id = og.id AND gm.user_id = ${user} AND gm.role_id = 'guild_master'))))`;
+const OWNER_SQL = (user) => ownerSql('s.gid', user); // the ONE Owner seat test (worker/owner.js)
 const GM_TIER_SQL = (user) => `(${OWNER_SQL(user)} OR ${RANK_SQL(user)} = ${ROLE_RANK.guild_master})`;
 
 const MAY_ACT_SQL = `s.tid IS NULL OR s.tid = s.aid OR ${OWNER_SQL('s.aid')}
