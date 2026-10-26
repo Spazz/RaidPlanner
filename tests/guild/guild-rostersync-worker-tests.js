@@ -294,7 +294,7 @@ check('rosterHash: equal whatever order Blizzard lists the members in, different
 // ---------------------------------------------------------------------------
 // The sync
 
-check('a good sync stores the roster; two consecutive good syncs keep every member; an unchanged answer writes only a roster_syncs row', async () => {
+check('a good sync stores the roster; two consecutive good syncs keep every member; an unchanged answer writes a roster_syncs row and moves only the guard value', async () => {
   const s = await scenario();
   const first = await s.sync();
   assert.deepEqual([first.status, first.members], ['applied', 12]);
@@ -319,15 +319,19 @@ check('a good sync stores the roster; two consecutive good syncs keep every memb
   assert.equal(snap.roster.find((r) => r.blizzard_char_id === 9004).rank, 9);
   assert.equal(snap.guild.last_good_sync_id, second.syncId);
 
-  // Unchanged answer: only the roster_syncs row.
+  // Unchanged answer: the roster_syncs row, and the guard value moves to this fetch; the roster, hash and sync pointer (the dry-run token's) stay.
   s.advance(6 * HOUR);
   const before = await s.snap();
   const mark = s.w.db.statementLog.length;
   const third = await s.sync();
   assert.deepEqual([third.status, third.members], ['unchanged', 13]);
-  assert.deepEqual(await s.snap(), before, 'roster, hash and sync pointers untouched');
+  const after = await s.snap();
+  assert.equal(after.guild.last_good_fetched_at, T0 + 12 * HOUR, 'the guard value advanced to this fetch');
+  assert.deepEqual({ ...after, guild: { ...after.guild, last_good_fetched_at: null } }, { ...before, guild: { ...before.guild, last_good_fetched_at: null } },
+    'roster, hash, sync pointer and everything else untouched');
+  assert.equal(after.guild.last_good_sync_id, second.syncId);
   const writes = s.w.db.statementLog.slice(mark).filter((entry) => !/^\s*(SELECT|WITH\s+\w+\s+AS\s*\(\s*SELECT)/i.test(entry.sql)).map((entry) => entry.sql.trim().split(/\s+/).slice(0, 3).join(' '));
-  assert.deepEqual(writes, ['INSERT INTO roster_syncs']);
+  assert.deepEqual(writes, ['INSERT INTO roster_syncs', 'UPDATE guilds SET']);
   const rows = await s.syncRows();
   assert.deepEqual(rows.map((r) => [r.good, r.reason]), [[1, null], [1, null], [1, null]]);
   assert.equal(JSON.parse(rows[2].counts).unchanged, true);
@@ -470,11 +474,44 @@ check('a 1,200-member roster fits the D1 limits: a fixed number of statements, n
   assert(log.every((entry) => entry.values.length <= 100 && Buffer.byteLength(entry.sql) < 100_000));
   assert.equal(rs.ROSTER_INSERT_CHUNK * 4, 1200);
   assert.equal((await s.snap()).roster.length, 1200);
-  // An unchanged 1,200-member answer: the pin read and the roster_syncs insert, nothing else.
+  // An unchanged 1,200-member answer: the pin read and one batch of two (the roster_syncs insert, the guard-value update), nothing else.
   s.advance(6 * HOUR);
   const mark2 = s.w.db.statementLog.length;
+  spy.sizes.length = 0;
   assert.equal((await s.sync({ db: spy.db })).status, 'unchanged');
-  assert.equal(s.w.db.statementLog.length - mark2, 2);
+  assert.equal(s.w.db.statementLog.length - mark2, 3);
+  assert.deepEqual(spy.sizes, [2]);
+});
+
+check('a newer UNCHANGED fetch advances the guard value, so an older changed fetch applied after it changes nothing (roster_hash and last_good_sync_id stay)', async () => {
+  const s = await scenario();
+  const first = await s.sync({ now: () => T0 + 1000 });
+  assert.equal(first.status, 'applied');
+  const stored = await s.snap();
+  const older = rosterBody(14, { edit: (b) => { b.members[3].rank = 7; } });
+  const gates = {};
+  const base = s.net.calls.length;
+  s.net.roster = (call) => new Promise((resolve) => { gates[call.n] = () => resolve(call.n === base ? older : rosterBody(12)); });
+  const a = s.sync({ now: () => T0 + 3000 });
+  await until(() => gates[base], 'the older, changed fetch');
+  const b = s.sync({ now: () => T0 + 5000 });
+  await until(() => gates[base + 1], 'the newer, unchanged fetch');
+  gates[base + 1]();
+  assert.equal((await b).status, 'unchanged');
+  const afterUnchanged = await s.snap();
+  assert.equal(afterUnchanged.guild.last_good_fetched_at, T0 + 5000, 'the guard value moved to the newer fetch');
+  assert.equal(afterUnchanged.guild.last_good_sync_id, first.syncId, 'the dry-run token\'s sync id did not move');
+  assert.equal(afterUnchanged.guild.roster_hash, stored.guild.roster_hash);
+  assert.deepEqual(afterUnchanged.roster, stored.roster);
+  gates[base]();
+  const ra = await a;
+  assert.deepEqual([ra.status, ra.reason], ['superseded', 'superseded']);
+  assert.deepEqual(await s.snap(), afterUnchanged, 'the older changed fetch, applied last, changed nothing');
+  assert.equal(afterUnchanged.roster.length, 12);
+  // An older UNCHANGED fetch never moves the guard value backwards.
+  s.net.roster = rosterBody(12);
+  assert.equal((await s.sync({ now: () => T0 + 4000 })).status, 'unchanged');
+  assert.equal((await s.snap()).guild.last_good_fetched_at, T0 + 5000);
 });
 
 check('before the flip the batch writes only guild_roster, roster_syncs and the guild\'s sync columns; characters, aliases and raids stay as they were', async () => {

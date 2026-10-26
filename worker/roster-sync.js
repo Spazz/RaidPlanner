@@ -6,7 +6,8 @@
 // ONE ATTEMPT (syncGuild), after the caller won the lease (claimSyncLease):
 //   fetch (pin target only) -> assessRoster (GOOD?) -> hash
 //     not GOOD / Blizzard error ..... one roster_syncs row (good 0, reason, http status), nothing else changes
-//     GOOD, hash = guilds.roster_hash  one roster_syncs row (good 1, counts.unchanged), nothing else changes
+//     GOOD, hash = guilds.roster_hash  one batch: the roster_syncs row (good 1, counts.unchanged) + guilds.last_good_fetched_at moved to this fetch (only
+//                                      if newer). guild_roster, roster_hash and last_good_sync_id stay, so the dry-run token survives an unchanged sync.
 //     GOOD, hash differs ............. ONE db.batch (below); a failed batch rolls back whole and leaves one roster_syncs row (good 0, 'batch_failed')
 //
 // THE BATCH (rosterReplaceStatements), in this order. EVERY statement carries the monotonic guard, so a fetch that is older than the roster already
@@ -218,11 +219,17 @@ export function rosterReplaceStatements(db, run) {
 // ---------------------------------------------------------------------------
 // One sync attempt
 
+const attemptStatement = (deps, row) => deps.db.prepare(
+  `INSERT INTO roster_syncs (id, guild_id, started_at, finished_at, good, http_status, reason, counts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+).bind(row.id, row.guildId, row.startedAt, deps.now(), row.good ? 1 : 0, row.httpStatus ?? null, row.reason ?? null, JSON.stringify(row.counts || {}));
+
+// An unchanged sync still proves the stored roster is current as of this fetch: it moves ONLY the monotonic guard's value, so an older fetch that
+// lands afterwards cannot put an earlier roster back. roster_hash and last_good_sync_id stay (the dry-run token binds to the sync id).
+const ADVANCE_FETCHED_SQL = 'UPDATE guilds SET last_good_fetched_at = ? WHERE id = ? AND (last_good_fetched_at IS NULL OR last_good_fetched_at < ?)';
+
 async function recordAttempt(deps, row) {
   try {
-    await deps.db.prepare(
-      `INSERT INTO roster_syncs (id, guild_id, started_at, finished_at, good, http_status, reason, counts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(row.id, row.guildId, row.startedAt, deps.now(), row.good ? 1 : 0, row.httpStatus ?? null, row.reason ?? null, JSON.stringify(row.counts || {})).run();
+    await attemptStatement(deps, row).run();
   } catch (error) {
     // The guild may have been deleted while the fetch ran (FK): there is nothing to record against.
     try { deps.log(`roster sync: could not record the attempt: ${error && error.message}`); } catch { /* logging must not throw */ }
@@ -266,7 +273,14 @@ export async function syncGuild(deps, guildId) {
 
     const hash = await rosterHash(roster);
     if (hash === guild.roster_hash) {
-      return await attempt(true, { status: 'unchanged', httpStatus: 200, counts: { members: roster.members.length, nonTbc: roster.nonTbc, unchanged: true }, members: roster.members.length });
+      const row = { id: syncId, guildId, startedAt, good: true, httpStatus: 200, counts: { members: roster.members.length, nonTbc: roster.nonTbc, unchanged: true } };
+      try {
+        await db.batch([attemptStatement(deps, row), db.prepare(ADVANCE_FETCHED_SQL).bind(startedAt, guildId, startedAt)]);
+      } catch (error) {
+        deps.log(`roster sync: ${guildId}: the unchanged-roster batch failed and rolled back: ${error && error.message}`);
+        return await attempt(false, { reason: 'batch_failed', httpStatus: 200, counts: rosterCounts(roster) });
+      }
+      return { status: 'unchanged', syncId, reason: null, members: roster.members.length };
     }
 
     const { statements, syncIndex } = rosterReplaceStatements(db, {
