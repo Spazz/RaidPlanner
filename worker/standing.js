@@ -6,7 +6,7 @@
 // The rules, per upcoming raid of a team and per standing entry of that team on the raid's weekday:
 //   - the person has NO sign-up on the raid, of either source, and no Away notice covers its date -> a Raidsmith sign-up is created (standing = 1);
 //   - a Raidsmith row with standing = 1 exists and the entry is gone, or an Away notice now covers the raid, or the person cannot be signed up any more
-//     (inactive, or no character on the team) -> the row is deleted; if the entry's kind or character changed, the row follows it;
+//     (no character on the team's roster any more) -> the row is deleted; if the entry's kind or character changed, the row follows it;
 //   - a row with standing = 0 (the member edited it: every write of the sign-up routes resets the flag) and any Raid-Helper row are never touched.
 // The lock and the deadline are for members' own writes: the system ignores them, but it never touches a raid that has started.
 // Taking a standing row away through the sign-up routes (DELETE .../signup, DELETE .../signups/:pid) turns it into the person's explicit Absence
@@ -17,20 +17,20 @@ import { weekdayOf } from './attendance-calendar.js';
 import { displayCharacter } from './attendance-view.js';
 import { noticeCovers, noticeOfRow } from './away.js';
 import { recomputeRaid } from './attendance-store.js';
-import { legacyColumnsSql } from './person-legacy.js';
 import { isSpecOf } from './roster-data.js';
 import { raidHelperClassName, raidHelperSpecKey } from './signups-data.js';
+import { isTeamRosterRow } from './team-roster.js';
 
 export const STANDING_KINDS = ['signed', 'late'];
 const CHUNK = 100;           // rows per statement (the rows travel as one JSON text)
 const RAID_SCAN_LIMIT = 2000;
 const RECOMPUTE_LIMIT = 20;  // raids with a log or hand-entered attendance recalculated in the request; the rest keep the stale mark
 
-// The character a standing entry signs up with on a team: the chosen one while it is still the person's and on that team, else the person's usual one there.
+// The character a standing entry signs up with on a team: the chosen one while it is still the person's, else the person's usual one for the team (the Main
+// there, else the Main elsewhere). Any of the person's characters may be chosen, placed on the team or not (U R4-Q1): the person is the team member.
 export function standingCharacter(entry, teamId, characters) {
-  const onTeam = characters.filter((character) => character.team_id === teamId);
-  const chosen = entry.characterId ? onTeam.find((character) => character.id === entry.characterId) : null;
-  return chosen || displayCharacter(onTeam, teamId);
+  const chosen = entry.characterId ? characters.find((character) => character.id === entry.characterId) : null;
+  return chosen || displayCharacter(characters, teamId);
 }
 
 // The Raid-Helper-worded columns of a standing sign-up of `character`: class name and spec key (its main spec, when that is a spec of the class).
@@ -44,10 +44,10 @@ function wording(character) {
 //   raids     [{ id, teamId, raidOn }]                                           the upcoming raids in scope
 //   signups   [{ raidId, personId, source, standing, kind, characterId }]        the people's real sign-ups on those raids (both sources)
 //   notices   [{ personId, from, to, weekday }]                                  the Away-kind notices of the people with entries
-//   statuses  Map personId -> 'raider' | 'trial' | 'reserve' | 'inactive'
-//   characters Map personId -> [character rows { id, team_id, name, class, main_spec, off_spec, is_main }]
+//   characters Map personId -> [character rows { id, team_id, name, class, main_spec, off_spec, is_main, core_rank, left_on }]: ALL the person's characters;
+//             the person can be signed up for a team while one of them is on the team's roster (worker/team-roster.js)
 // } -> { creates: [{ raidId, personId, kind, characterId, className, specName }], updates: [same], deletes: [{ raidId, personId }] }
-export function planStanding({ entries, raids, signups, notices, statuses, characters }) {
+export function planStanding({ entries, raids, signups, notices, characters }) {
   const entryAt = new Map(entries.map((entry) => [`${entry.teamId}|${entry.personId}|${entry.weekday}`, entry]));
   const byTeamDay = new Map();
   for (const entry of entries) {
@@ -82,7 +82,8 @@ export function planStanding({ entries, raids, signups, notices, statuses, chara
     for (const entry of byTeamDay.get(`${raid.teamId}|${weekday}`) || []) {
       const existing = have.get(`${raid.id}|${entry.personId}`) || { raidsmith: null, raidHelper: false };
       const covered = (noticesOf.get(entry.personId) || []).some((notice) => noticeCovers(notice, raid.raidOn));
-      const character = (statuses.get(entry.personId) || 'inactive') === 'inactive' ? null : standingCharacter(entry, raid.teamId, characters.get(entry.personId) || []);
+      const own = characters.get(entry.personId) || [];
+      const character = own.some((row) => row.team_id === raid.teamId && isTeamRosterRow(row)) ? standingCharacter(entry, raid.teamId, own) : null;
       const usable = !!character && !covered;
       const ours = existing.raidsmith && existing.raidsmith.standing === 1 ? existing.raidsmith : null;
       if (ours) {
@@ -135,23 +136,20 @@ export async function reconcileStanding(ctx, guild, { teamIds = null, personId =
         WHERE guild_id = ?1 AND kind = 'away' AND player_id IN (${ENTRIES_IN_SCOPE})`,
     ),
     scoped(
-      `SELECT c.id, c.player_id, c.team_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, ${legacyColumnsSql('p', 'status')} FROM characters c JOIN players p ON p.id = c.player_id
+      `SELECT c.id, c.player_id, c.team_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, c.core_rank, c.left_on FROM characters c
         WHERE c.guild_id = ?1 AND c.player_id IN (${ENTRIES_IN_SCOPE})`,
     ),
   ]);
   const characters = new Map();
-  const statuses = new Map();
   for (const row of characterResult.results) {
     if (!characters.has(row.player_id)) characters.set(row.player_id, []);
     characters.get(row.player_id).push(row);
-    statuses.set(row.player_id, row.status);
   }
   const plan = planStanding({
     entries: entryResult.results.map((row) => ({ teamId: row.team_id, personId: row.player_id, weekday: row.weekday, kind: row.kind, characterId: row.character_id })),
     raids: raidResult.results.map((row) => ({ id: row.id, teamId: row.team_id, raidOn: row.raid_on })),
     signups: signupResult.results.map((row) => ({ raidId: row.raid_id, personId: row.player_id, source: row.source, standing: row.standing, kind: row.kind, characterId: row.character_id })),
     notices: noticeResult.results.map(noticeOfRow),
-    statuses,
     characters,
   });
   const { creates, updates, deletes } = plan;

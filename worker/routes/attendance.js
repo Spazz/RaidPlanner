@@ -16,14 +16,14 @@ import { isId, newId } from '../ids.js';
 import { isOwnPlayer } from '../membership.js';
 import { winnerNameKeySql } from '../name-alias.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
-import { legacyColumnsSql, syncCharacterRanksStatement } from '../person-legacy.js';
+import { characterRankColumns, trialDatesFollowMainStatements } from '../person-legacy.js';
 import { characterOfRow, homeTeamId } from '../person-rank.js';
 import { CLASS_IDS, CREATE_STATUSES, cleanCharacterName, DEFAULT_WCL_FLAVOUR, isRealDate, nameKey } from '../roster-data.js';
-import { guildToday, viewerOf } from '../roster-view.js';
+import { guildToday, personColumnsOf, viewerOf } from '../roster-view.js';
 import { listWclReports, requireWclConfigured } from '../sources.js';
 import { isTeamRosterRow } from '../team-roster.js';
 import {
-  bad, constraintOf, errorText, findNameOwner, insertCharacter, LIMIT_KINDS, limitError, makeMainStatements, nameTaken, requireTarget, resolveRealm,
+  bad, constraintOf, errorText, findNameOwner, insertCharacter, LIMIT_KINDS, limitError, nameTaken, newMainStatements, requireTarget, resolveRealm,
 } from './roster.js';
 import { loadRaid, raidFetchRate, recomputeAndReply } from './raids.js';
 
@@ -418,7 +418,6 @@ export async function postUnmatched(ctx) {
   const now = ctx.now();
   const statements = [];
   let mainIndex = -1;
-  let syncPersonId = null; // the person whose character columns follow the players row (dual write, worker/person-legacy.js)
   const stale = markRaidsStale(db, guild.id, [keyName], raid.id, body.action === 'guest' ? [] : [raid.team_id]);
 
   if (body.action === 'guest') {
@@ -444,7 +443,6 @@ export async function postUnmatched(ctx) {
     const trialStart = status === 'trial' ? joinedOn : null;
     const playerId = newId('p', ctx.randomBytes);
     const characterId = newId('c', ctx.randomBytes);
-    syncPersonId = playerId;
     statements.push(
       db.prepare(
         `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, version, notes_version, created_by, created_at, updated_at)
@@ -453,7 +451,7 @@ export async function postUnmatched(ctx) {
       stale,
       insertCharacter(db, guild.id, {
         id: characterId, playerId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: characterClass,
-        mainSpec: null, offSpec: null, isMain: true,
+        mainSpec: null, offSpec: null, isMain: true, rank: characterRankColumns({ status, trialStart }),
       }, now),
       auditStatement(ctx, {
         guildId: guild.id, actorUserId: ctx.session.user.id, action: 'person.create', entityType: 'person', entityId: playerId,
@@ -476,16 +474,20 @@ export async function postUnmatched(ctx) {
     ).bind(body.personId, guild.id).first();
     if (!home) throw new HttpError(404, 'not_found', 'That person was not found.');
     if (!allows(guildContext.can, 'roster.edit', home.team_id)) throw forbidden();
+    // A new alt starts on no team (U R3-Q1/R4-Q1); only a new Main takes the raid's team, and another character on it refuses the request.
+    if (body.makeMain === true) {
+      const taken = await db.prepare('SELECT 1 AS x FROM characters WHERE guild_id = ? AND player_id = ? AND team_id = ? AND id != ? LIMIT 1').bind(guild.id, body.personId, team.id, home.main_id).first();
+      if (taken) throw new HttpError(409, 'team_taken', 'That person already has a character on the raid team.', { field: 'personId' });
+    }
     const name = cleanCharacterName(presence.name, guild.game_version);
     const realm = resolveRealm(guild, presence.realm);
     if (!name) throw bad('That name cannot be added as a character.', 'key');
     if (!characterClass) throw bad('Pick this character\'s class.', 'class');
     if (!realm) throw bad('That realm is not valid for this guild.', 'key');
     const characterId = newId('c', ctx.randomBytes);
-    syncPersonId = body.personId;
     statements.push(
       insertCharacter(db, guild.id, {
-        id: characterId, playerId: body.personId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: characterClass,
+        id: characterId, playerId: body.personId, teamId: null, name, realm: realm.realm, realmKey: realm.key, class: characterClass,
         mainSpec: null, offSpec: null, isMain: false,
       }, now),
       stale,
@@ -500,17 +502,19 @@ export async function postUnmatched(ctx) {
       bumpRaidStatement(db, guild.id, raid.id),
     );
     if (body.makeMain === true) {
+      const main = newMainStatements(db, { playerId: body.personId, characterId, previousMain: { id: home.main_id, team_id: home.team_id }, teamId: team.id, now });
+      mainIndex = statements.length + main.swapAt;
       statements.push(
-        ...makeMainStatements(db, body.personId, characterId, now, { homeTeamId: home.team_id, targetTeamId: team.id }),
+        ...main.statements,
         auditStatement(ctx, {
           guildId: guild.id, actorUserId: ctx.session.user.id, action: 'character.main', entityType: 'character', entityId: characterId,
           before: { mainCharacterId: home.main_id }, after: { mainCharacterId: characterId },
         }),
+        // The trial dates sit on the Main character: they move with it.
+        ...trialDatesFollowMainStatements(db, home.main_id, characterId),
       );
-      mainIndex = statements.length - 2;
     }
   }
-  if (syncPersonId) statements.push(syncCharacterRanksStatement(db, guild.id, syncPersonId));
   let results;
   try {
     results = await db.batch(statements);
@@ -585,7 +589,7 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
     bind(`SELECT raid_id, player_id, outcome, credit, signup_kind, attended, needs_review, via_raid_id, flags FROM attendance WHERE guild_id = ?1 AND team_id = ?2`),
     bind(`SELECT a.raid_id, a.player_id, r.raid_on, r.team_id AS host_team_id FROM attendance a JOIN raids r ON r.id = a.raid_id
            WHERE a.guild_id = ?1 AND a.credit_team_id = ?2 AND a.credit = 1 AND a.outcome = 'fill_in'`),
-    bind(`SELECT p.id, ${legacyColumnsSql('p', 'status')}, p.joined_on, ${legacyColumnsSql('p', 'leftOn')}, p.discord_user_id, p.user_id, p.rank, p.rank_on FROM players p WHERE p.guild_id = ?1
+    bind(`SELECT p.id, p.joined_on, p.discord_user_id, p.user_id, p.rank, p.rank_on FROM players p WHERE p.guild_id = ?1
              AND (p.id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR p.id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
     bind(`SELECT id, player_id, name, class, team_id, is_main, core_rank, left_on FROM characters WHERE guild_id = ?1
              AND (player_id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR player_id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
@@ -612,6 +616,8 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
 
   const raids = raidResult.results;
   const charactersByPlayer = groupBy(characterResult.results, 'player_id');
+  // The person's status and left date come from their characters (the main's rank), not from the players row (lane B2).
+  for (const row of peopleResult.results) Object.assign(row, personColumnsOf((charactersByPlayer.get(row.id) || []).map(characterOfRow)));
   const metrics = teamMetrics({
     people: peopleResult.results.map((row) => ({ id: row.id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on })),
     raids: raids.map(metricsRaid),
@@ -739,8 +745,8 @@ export async function getPersonAttendance(ctx) {
   const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, personId);
   const [policyResult, playerResult, characterResult, rowResult, raidResult, borrowedResult, teamResult, hostResult, decisionResult, dismissalResult] = await ctx.db.batch([
     policyRowsStatement(ctx.db, guild.id),
-    bind(`SELECT id, ${legacyColumnsSql('players', 'status')}, joined_on, ${legacyColumnsSql('players', 'leftOn')}, discord_user_id, user_id, rank, rank_on FROM players WHERE guild_id = ?1 AND id = ?2`),
-    bind('SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
+    bind('SELECT id, joined_on, discord_user_id, user_id, rank, rank_on FROM players WHERE guild_id = ?1 AND id = ?2'),
+    bind('SELECT id, player_id, name, class, team_id, is_main, core_rank, left_on FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind('SELECT * FROM attendance WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
                  (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
@@ -758,6 +764,7 @@ export async function getPersonAttendance(ctx) {
   const decisionByRaid = new Map(decisionResult.results.map((row) => [row.raid_id, row]));
   const player = playerResult.results[0];
   if (!player) throw new HttpError(404, 'not_found', 'That person was not found.');
+  Object.assign(player, personColumnsOf(characterResult.results.map(characterOfRow)));
   const resolver = makePolicyResolver(guild, policyResult.results);
   const resetDay = resolver.resetDay();
   const today = guildToday(guild, ctx.now());

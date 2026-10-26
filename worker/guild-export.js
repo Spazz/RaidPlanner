@@ -9,7 +9,7 @@
 //     unless they may edit loot, sign-up notes (never).
 // The people and raids keep their Raidsmith ids so the lists in the file refer to each other.
 import { allows } from './permissions.js';
-import { legacyPersonColumnsSql } from './person-legacy.js';
+import { characterOfRow, personFields } from './person-rank.js';
 
 export const EXPORT_FORMAT = 'raidsmith-guild-export';
 export const EXPORT_VERSION = 1;
@@ -47,11 +47,12 @@ export async function buildGuildExport(db, guildContext, nowMs) {
     db.prepare('SELECT id, name, size, archived, created_at FROM teams WHERE guild_id = ? ORDER BY created_at, id').bind(gid),
     db.prepare('SELECT team_id, weekday, start_time, zone, title FROM team_schedules WHERE guild_id = ? ORDER BY team_id, weekday').bind(gid),
     db.prepare(
-      `SELECT id, ${legacyPersonColumnsSql('players')}, joined_on, notes, rank, rank_on, created_at
+      `SELECT id, joined_on, notes, rank, rank_on, created_at
          FROM players WHERE guild_id = ? ORDER BY created_at, id`,
     ).bind(gid),
+    // The rank columns are not exported per character; the person's status and dates are worked out from them (worker/person-rank.js personFields).
     db.prepare(
-      `SELECT id, player_id, team_id, name, realm, class, main_spec, off_spec, is_main
+      `SELECT id, player_id, team_id, name, realm, class, main_spec, off_spec, is_main, core_rank, left_on, left_reason, trial_start, trial_end
          FROM characters WHERE guild_id = ? ORDER BY player_id, is_main DESC, name_key, id`,
     ).bind(gid),
     db.prepare(
@@ -117,14 +118,15 @@ export async function buildGuildExport(db, guildContext, nowMs) {
     people: players.map((player) => {
       const homeTeam = homeTeamOf(player.id);
       const notesAllowed = homeTeam !== undefined && allows(can, 'roster.notes.view', homeTeam);
+      const fields = personFields({ characters: (charactersByPlayer.get(player.id) || []).map(characterOfRow) });
       return {
         id: player.id,
-        status: player.status,
+        status: fields.status,
         joinedOn: player.joined_on,
-        trialStart: player.trial_start,
-        trialEnd: player.trial_end,
-        leftOn: player.left_on,
-        leftReason: player.left_reason,
+        trialStart: fields.trialStart,
+        trialEnd: fields.trialEnd,
+        leftOn: fields.leftOn,
+        leftReason: fields.leftReason,
         ...(player.rank ? { rank: player.rank, rankOn: player.rank_on } : {}), // PM wave 7: the rank id (the names are in the attendance policy's ladder)
         ...(notesAllowed && player.notes ? { notes: player.notes } : {}),
         characters: (charactersByPlayer.get(player.id) || []).map((row) => ({

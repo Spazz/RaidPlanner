@@ -11,8 +11,8 @@ import { isId } from '../ids.js';
 import { LEVEL_BANDS, funnelRow, funnelTotals, launchEnabled } from '../launch-data.js';
 import { ownPersonStatement } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
-import { legacyColumnsSql, notInactiveSql } from '../person-legacy.js';
 import { targetsOf } from '../recruit-data.js';
+import { personOnTeamRosterSql, rosterRankOnTeamSql } from '../team-roster.js';
 import { bad } from './roster.js';
 
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
@@ -45,8 +45,8 @@ export async function funnelPayload(ctx, guildContext, team) {
   if (!enabled) return { ...base, rows: [], totals: null, round: null };
   const [peopleResult, characterResult, roundResult, statusResult, claimResult] = await db.batch([
     db.prepare(
-      `SELECT p.id, ${legacyColumnsSql('p', 'status')}, m.name, m.class FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ? AND ${notInactiveSql('p')} AND EXISTS (SELECT 1 FROM characters c WHERE c.player_id = p.id AND c.team_id = ?)
+      `SELECT p.id, ${rosterRankOnTeamSql('p.id', '?2')} AS status, m.name, m.class FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
+        WHERE p.guild_id = ?1 AND ${personOnTeamRosterSql('p.id', '?2')}
         ORDER BY m.name_key, p.id`,
     ).bind(guild.id, team.id),
     db.prepare('SELECT player_id, class FROM characters WHERE guild_id = ? AND team_id = ?').bind(guild.id, team.id),
@@ -105,12 +105,12 @@ export async function putLaunchStatus(ctx) {
   const guild = guildContext.guild;
   const team = await loadTeam(db, guild.id, body.teamId);
   if (!launchEnabled(guild, team)) throw new HttpError(409, 'launch_off', 'The Launch funnel is not on for this team.');
-  const person = await db.prepare(`SELECT id, ${legacyColumnsSql('players', 'status')} FROM players WHERE id = ? AND guild_id = ?`).bind(ctx.params.pid, guild.id).first();
+  const person = await db.prepare('SELECT id FROM players WHERE id = ? AND guild_id = ?').bind(ctx.params.pid, guild.id).first();
   if (!person) throw new HttpError(404, 'not_found', 'That person was not found.');
   const own = await viewerPerson(ctx, guildContext);
   if (own !== person.id && !allows(guildContext.can, 'roster.edit', team.id)) throw forbidden();
-  const onTeam = await db.prepare('SELECT 1 AS x FROM characters WHERE player_id = ? AND team_id = ? LIMIT 1').bind(person.id, team.id).first();
-  if (person.status === 'inactive' || !onTeam) throw new HttpError(409, 'not_on_team', 'Only people on this team are in its funnel.');
+  const onTeam = await db.prepare(`SELECT ${personOnTeamRosterSql('?1', '?2')} AS on_team`).bind(person.id, team.id).first();
+  if (!onTeam.on_team) throw new HttpError(409, 'not_on_team', 'Only people on this team are in its funnel.');
   const existing = await db.prepare('SELECT level_band, ready FROM launch_status WHERE team_id = ? AND player_id = ?').bind(team.id, person.id).first();
   const levelBand = body.levelBand === undefined ? (existing ? existing.level_band : null) : body.levelBand;
   const ready = body.ready === undefined ? (existing ? existing.ready : 0) : (body.ready ? 1 : 0);

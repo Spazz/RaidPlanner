@@ -813,6 +813,7 @@ check('ladder (a person on two teams): judged on the team of their Main; the per
   // Cora also has an alt on Bravo (not her Main).
   const alt = await s.call('gm', 'POST', `/roster/${s.ppl.Cora}/characters`, { teamId: bravo, name: 'Coraalt', class: 'MAGE', mainSpec: 'Fire', offSpec: null });
   assert.equal(alt.status, 201, alt.text);
+  s.exec('UPDATE characters SET team_id = ? WHERE name = ?', bravo, 'Coraalt'); // a new alt starts on no team (B2); the team routes that place it come with B3
   const bravoPage = s.byName(await s.call('gm', 'GET', `/attendance/team?team=${bravo}`));
   assert.equal(bravoPage.Coraalt.rankSuggestion, undefined, 'her suggestion belongs to the team of her Main');
   assert.equal(bravoPage.Coraalt.rank.id, 'raider');

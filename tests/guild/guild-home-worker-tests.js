@@ -334,14 +334,14 @@ check('route: the client sends the item id only -- a sent until, mode or fingerp
   assert.ok(!seen.items.some((i) => i.id === id));
   assert.deepEqual(seen.hidden.filter((h) => h.item.id === id).map((h) => [h.mode, h.until, h.by.name]), [['snooze', t0 + 3 * DAY, 'Officerhome']]);
   // The trial end moves: the item is back before the 3 days are up.
-  s.sql('UPDATE players SET trial_end = ? WHERE id = ?', '2027-01-19', trial);
+  s.sql('UPDATE characters SET trial_end = ? WHERE player_id = ? AND is_main = 1', '2027-01-19', trial); // the trial dates are on the main character (R2)
   seen = await s.attention('gm');
   assert.ok(seen.items.some((i) => i.id === id), 'a changed end date brings it back early');
   // ... and with the date back where it was, the snooze applies again until it runs out.
-  s.sql('UPDATE players SET trial_end = ? WHERE id = ?', '2027-01-17', trial);
+  s.sql('UPDATE characters SET trial_end = ? WHERE player_id = ? AND is_main = 1', '2027-01-17', trial);
   assert.ok(!(await s.attention('gm')).items.some((i) => i.id === id));
   s.w.clock.now = t0 + 3 * DAY + 1;
-  s.sql('UPDATE players SET trial_end = ? WHERE id = ?', '2027-01-17', trial);
+  s.sql('UPDATE characters SET trial_end = ? WHERE player_id = ? AND is_main = 1', '2027-01-17', trial);
   assert.ok((await s.attention('gm')).items.some((i) => i.id === id), 'a snooze that ran out comes back');
 });
 

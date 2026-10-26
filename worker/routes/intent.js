@@ -13,10 +13,11 @@ import { auditStatement } from '../audit.js';
 import { isId, newId } from '../ids.js';
 import { ownPersonStatement } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
-import { legacyColumnsSql, notInactiveSql } from '../person-legacy.js';
+import { personStatusSql } from '../person-rank-sql.js';
 import { pickTotals, raidRoleOf, targetsOf } from '../recruit-data.js';
 import { MULTI_LINE_STRIP, SPECS, isRealDate, isSpecOf } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
+import { personOnTeamRosterSql, rosterRankOnTeamSql } from '../team-roster.js';
 import { bad, readClass } from './roster.js';
 
 export const INTENT_TITLE_MAX = 80;
@@ -91,15 +92,16 @@ async function boardPayload(ctx, guildContext, team, roundRow, viewerPersonId) {
   }
   const [pickResult, peopleResult] = await db.batch([
     db.prepare(
-      `SELECT k.player_id, k.kind, k.class, k.spec, k.role, k.note, ${legacyColumnsSql('p', 'status')}, m.name AS main_name, m.class AS main_class
+      `SELECT k.player_id, k.kind, k.class, k.spec, k.role, k.note, COALESCE(${rosterRankOnTeamSql('p.id', '?3')}, ${personStatusSql('p.id')}) AS status,
+              m.name AS main_name, m.class AS main_class
          FROM intent_picks k JOIN players p ON p.id = k.player_id AND p.guild_id = k.guild_id
          LEFT JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE k.round_id = ? AND k.guild_id = ? ORDER BY k.kind, m.name_key, k.player_id`,
-    ).bind(roundRow.id, guildId),
-    // The people of the team who may still pick: not inactive, with a character on the team.
+        WHERE k.round_id = ?1 AND k.guild_id = ?2 ORDER BY k.kind, m.name_key, k.player_id`,
+    ).bind(roundRow.id, guildId, team.id),
+    // The people of the team who may still pick: on the team's roster (a character placed on it, still here, in a raiding rank).
     db.prepare(
-      `SELECT p.id, ${legacyColumnsSql('p', 'status')}, m.name, m.class FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ? AND ${notInactiveSql('p')} AND EXISTS (SELECT 1 FROM characters c WHERE c.player_id = p.id AND c.team_id = ?)
+      `SELECT p.id, ${rosterRankOnTeamSql('p.id', '?2')} AS status, m.name, m.class FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
+        WHERE p.guild_id = ?1 AND ${personOnTeamRosterSql('p.id', '?2')}
         ORDER BY m.name_key, p.id`,
     ).bind(guildId, team.id),
   ]);
@@ -211,16 +213,16 @@ export async function closeIntent(ctx) {
   return jsonResponse(await boardPayload(ctx, guildContext, team, row, await viewerPerson(ctx, guildContext)));
 }
 
-// The person a pick is for: in this guild, not inactive, with a character on the round's team. The caller must be that person or edit the team.
+// The person a pick is for: in this guild, on the round's team roster. The caller must be that person or edit the team.
 async function loadPickPerson(ctx, guildContext, round, team) {
   const guildId = guildContext.guild.id;
-  const person = await ctx.db.prepare(`SELECT id, ${legacyColumnsSql('players', 'status')} FROM players WHERE id = ? AND guild_id = ?`).bind(ctx.params.pid, guildId).first();
+  const person = await ctx.db.prepare('SELECT id FROM players WHERE id = ? AND guild_id = ?').bind(ctx.params.pid, guildId).first();
   if (!person) throw notFound('That person was not found.');
   const own = await viewerPerson(ctx, guildContext);
   if (own !== person.id && !allows(guildContext.can, 'roster.edit', team.id)) throw forbidden();
   if (round.status !== 'open') throw new HttpError(409, 'intent_closed', 'This round is closed.');
-  const onTeam = await ctx.db.prepare('SELECT 1 AS x FROM characters WHERE player_id = ? AND team_id = ? LIMIT 1').bind(person.id, team.id).first();
-  if (person.status === 'inactive' || !onTeam) throw new HttpError(409, 'not_on_team', 'Only people on this team can pick.');
+  const onTeam = await ctx.db.prepare(`SELECT ${personOnTeamRosterSql('?1', '?2')} AS on_team`).bind(person.id, team.id).first();
+  if (!onTeam.on_team) throw new HttpError(409, 'not_on_team', 'Only people on this team can pick.');
   return { person, own };
 }
 

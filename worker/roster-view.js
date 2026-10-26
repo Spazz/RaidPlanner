@@ -4,7 +4,7 @@
 import { isOwnPlayer, memberSql } from './membership.js';
 import { allows, isGranted } from './permissions.js';
 import { toPerson } from './person.js';
-import { legacyColumnSql, legacyColumnsSql, legacyPersonColumnsSql, onTrialSql } from './person-legacy.js';
+import { characterOfRow, personFields } from './person-rank.js';
 import { raidRoleOf } from './recruit-data.js';
 import { roleOf, todayIn, trialFlag } from './roster-data.js';
 import { isTeamRosterRow, onTeamRosterSql } from './team-roster.js';
@@ -20,6 +20,14 @@ export function guildToday(guild, nowMs) {
 }
 
 const byName = (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+
+// The five person fields in the shape the players row had (status, trial_start, trial_end, left_on, left_reason), worked out from the person's characters
+// (worker/person-rank.js personFields): the API still shows them on a person, the players row no longer decides them (lane B2). characters: shaped
+// characters (characterOfRow).
+export function personColumnsOf(characters) {
+  const fields = personFields({ characters });
+  return { status: fields.status, trial_start: fields.trialStart, trial_end: fields.trialEnd, left_on: fields.leftOn, left_reason: fields.leftReason };
+}
 
 // A teamless character (team_id NULL, from lane B2 on) has team { id: null, name: null, archived: false }: the shape stays, the id is null.
 export function characterView(row) {
@@ -42,15 +50,15 @@ export function characterView(row) {
 // (what the Discord line of the record shows), accountUser the account the person belongs to (the link arm first).
 export async function loadPersonData(db, guildId, personId) {
   const [playerResult, characterResult, userResult, editorResult] = await db.batch([
-    // Every players column, the five legacy person fields (status, trial and left dates) through worker/person-legacy.js.
+    // Every players column except the five person fields (status, trial and left dates): those come from the characters below.
     db.prepare(
       `SELECT id, guild_id, joined_on, discord_user_id, discord_nickname, notes, notes_updated_by, notes_updated_at, version, notes_version,
-              created_by, created_at, updated_at, user_id, rank, rank_on, ${legacyPersonColumnsSql('players')}
+              created_by, created_at, updated_at, user_id, rank, rank_on
          FROM players WHERE id = ? AND guild_id = ?`,
     ).bind(personId, guildId),
     db.prepare(
-      `SELECT c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main,
-              t.name AS team_name, t.archived AS team_archived
+      `SELECT c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, c.core_rank, c.left_on, c.left_reason, c.trial_start, c.trial_end,
+              c.blizzard_char_id, t.name AS team_name, t.archived AS team_archived
          FROM characters c LEFT JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
         WHERE c.player_id = ? AND c.guild_id = ?`,
     ).bind(personId, guildId),
@@ -69,6 +77,7 @@ export async function loadPersonData(db, guildId, personId) {
   ]);
   const player = playerResult.results[0];
   if (!player) return null;
+  Object.assign(player, personColumnsOf(characterResult.results.map(characterOfRow)));
   const characters = characterResult.results.map((row) => ({ row, view: characterView(row) }));
   characters.sort((a, b) => (b.row.is_main - a.row.is_main) || byName(a.view, b.view));
   const accounts = userResult.results;
@@ -113,7 +122,8 @@ export function buildPersonRecord(guildContext, data, today, viewer) {
   const home = homeTeamOf(data);
   const can = guildContext.can;
   const edit = !!home && allows(can, 'roster.edit', home.id);
-  const teamIds = [...new Set(data.characters.map((entry) => entry.view.team.id))];
+  // The teams a delete must be allowed on: each character's own team; a character on no team is covered by the person's home team (as in deletePerson).
+  const teamIds = [...new Set(data.characters.map((entry) => (entry.view.team.id === null && home ? home.id : entry.view.team.id)))];
   return {
     today,
     can: {
@@ -167,9 +177,10 @@ export async function loadRosterFlags(db, guildContext, today) {
   const guildId = guildContext.guild.id;
   const [teamResult, trialResult] = await db.batch([
     db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guildId),
+    // A trial flag counts for the team of the person's main.
     db.prepare(
-      `SELECT m.team_id, ${legacyColumnsSql('p', 'status', 'trialEnd')} FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ? AND ${onTrialSql('p')} AND ${legacyColumnSql('p', 'trialEnd')} IS NOT NULL`,
+      `SELECT m.team_id, m.core_rank AS status, m.trial_end FROM characters m
+        WHERE m.guild_id = ? AND m.is_main = 1 AND m.core_rank = 'trial' AND m.trial_end IS NOT NULL`,
     ).bind(guildId),
   ]);
   const flags = {};
@@ -230,8 +241,9 @@ const isOnRoster = (row) => isTeamRosterRow({ team_id: row.team_id, left_on: row
 // come with them (the Main, the alt count). options.inactive (GET /roster?team=&status=inactive): the team's placed Social / Former people instead.
 export async function loadRosterRows(db, guildContext, team, today, viewer, { inactive = false } = {}) {
   const guildId = guildContext.guild.id;
-  const rowsSql = `SELECT p.id AS player_id, ${legacyPersonColumnsSql('p')}, p.joined_on, p.discord_user_id, p.user_id, p.version,
+  const rowsSql = `SELECT p.id AS player_id, p.joined_on, p.discord_user_id, p.user_id, p.version,
               c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, c.core_rank AS character_core_rank, c.left_on AS character_left_on,
+              c.left_reason AS character_left_reason, c.trial_start AS character_trial_start, c.trial_end AS character_trial_end,
               t.name AS team_name, t.archived AS team_archived
          FROM players p JOIN characters c ON c.player_id = p.id LEFT JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
         WHERE p.guild_id = ?1 AND p.id IN (${inactive ? INACTIVE_MEMBERS_SQL : ROSTER_MEMBERS_SQL})`;
@@ -255,17 +267,22 @@ export async function loadRosterRows(db, guildContext, team, today, viewer, { in
     if (!main) continue;
     const onTeam = characters.filter((entry) => entry.row.team_id === team.id && (inactive || isOnRoster(entry.row)));
     if (!onTeam.length) continue;
+    // The person's status and dates come from ALL their characters (the main's rank), not from the one that put them on this list.
+    const fields = personColumnsOf(characters.map((entry) => characterOfRow({
+      id: entry.row.id, team_id: entry.row.team_id, is_main: entry.row.is_main, core_rank: entry.row.character_core_rank, left_on: entry.row.character_left_on,
+      left_reason: entry.row.character_left_reason, trial_start: entry.row.character_trial_start, trial_end: entry.row.character_trial_end,
+    })));
     const shownEntry = onTeam.find((entry) => entry.row.is_main === 1) || onTeam.sort((a, b) => byName(a.view, b.view))[0];
     const shown = shownEntry.view;
     people.push({
       id: player.player_id,
-      status: player.status,
+      status: fields.status,
       joinedOn: player.joined_on,
-      trialStart: player.trial_start,
-      trialEnd: player.trial_end,
-      leftOn: player.left_on,
-      leftReason: player.left_reason,
-      trialFlag: trialFlag(player.status, player.trial_end, today),
+      trialStart: fields.trial_start,
+      trialEnd: fields.trial_end,
+      leftOn: fields.left_on,
+      leftReason: fields.left_reason,
+      trialFlag: trialFlag(fields.status, fields.trial_end, today),
       version: player.version,
       raidRole: shown.mainSpec ? raidRoleOf(shown.class, shown.mainSpec) : null,
       shown: { id: shown.id, name: shown.name, class: shown.class, mainSpec: shown.mainSpec, offSpec: shown.offSpec, role: shown.role, isMain: shown.isMain },

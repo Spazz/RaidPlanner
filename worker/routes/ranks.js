@@ -8,7 +8,6 @@ import { auditStatement } from '../audit.js';
 import { makePolicyResolver, policyRowsStatement } from '../attendance-store.js';
 import { isId } from '../ids.js';
 import { allows, loadGuildContext } from '../permissions.js';
-import { legacyColumnsSql } from '../person-legacy.js';
 import { DISMISS_DAYS, ladderOf } from '../rank-ladder.js';
 import { guildToday } from '../roster-view.js';
 
@@ -22,7 +21,7 @@ async function loadTarget(ctx) {
   const teamId = ctx.body.teamId;
   if (!isId('t', teamId)) throw bad('Pick a team.', 'teamId');
   const [personResult, teamResult, characterResult, policyResult] = await ctx.db.batch([
-    ctx.db.prepare(`SELECT id, ${legacyColumnsSql('players', 'status')}, rank, rank_on FROM players WHERE id = ? AND guild_id = ?`).bind(ctx.params.pid, guild.id),
+    ctx.db.prepare('SELECT id, rank, rank_on FROM players WHERE id = ? AND guild_id = ?').bind(ctx.params.pid, guild.id),
     ctx.db.prepare('SELECT id, name FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
     ctx.db.prepare('SELECT 1 AS found FROM characters WHERE player_id = ? AND team_id = ? AND guild_id = ? LIMIT 1').bind(ctx.params.pid, teamId, guild.id),
     policyRowsStatement(ctx.db, guild.id),

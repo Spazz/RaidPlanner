@@ -6,7 +6,7 @@ import { CLAIM_BLOCKED_TEXT, planClaims } from '../bnet-store.js';
 import { isId, newId } from '../ids.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { toPerson } from '../person.js';
-import { coreRankOfPersonSql, syncCharacterRanksStatement } from '../person-legacy.js';
+import { RANK_COLUMNS_SQL, characterRankColumns, rankBinds } from '../person-legacy.js';
 import { CREATE_STATUSES } from '../roster-data.js';
 import { markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
 import { canSeeAvatars, guildToday, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
@@ -73,7 +73,8 @@ const JOIN_GUARD_ERRORS = {
   guild_characters_cap: () => limitError('guild_characters_cap'),
 };
 
-// Body: { expectedKind, teamId (add_alt and new_person), status (new_person: raider | trial | reserve) }.
+// Body: { expectedKind, teamId (new_person: the main's team, none = no team), status (new_person: raider | trial | reserve) }. An alt (add_alt) starts on no team
+// (U R3-Q1/R4-Q1): a teamId sent with it is ignored.
 export async function approveClaim(ctx) {
   const { db, body } = ctx;
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
@@ -94,38 +95,39 @@ export async function approveClaim(ctx) {
   const writes = [];
   let team = null;
   let personId = plan.person ? plan.person.id : null;
-  // core_rank from the person's players row (dual write, worker/person-legacy.js); the writes end with syncCharacterRanksStatement for the rest.
-  const insertCharacter = (playerId, isMain) => db.prepare(
-    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at, core_rank)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ${coreRankOfPersonSql('?')} WHERE ${pending.sql}`,
-  ).bind(newId('c', ctx.randomBytes), guild.id, playerId, team.id, claim.name, claim.name_key, claim.realm, claim.realm_key, claim.class,
-    isMain ? 1 : 0, now, now, playerId, ...pending.params);
+  // The rank columns: `rank` (characterRankColumns) for the first character of a new person, else the person's main (worker/person-legacy.js RANK_COLUMNS_SQL).
+  const insertCharacter = (playerId, isMain, rank, teamId) => db.prepare(
+    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at,
+                             core_rank, left_on, left_reason, trial_start, trial_end)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ${RANK_COLUMNS_SQL} WHERE ${pending.sql}`,
+  ).bind(newId('c', ctx.randomBytes), guild.id, playerId, teamId, claim.name, claim.name_key, claim.realm, claim.realm_key, claim.class,
+    isMain ? 1 : 0, now, now, ...rankBinds(rank, playerId), ...pending.params);
 
   if (plan.kind === 'add_alt') {
-    team = await requireTarget(db, guild.id, body.teamId);
-    if (!allows(guildContext.can, 'roster.edit', team.id)) throw forbidden();
-    writes.push(insertCharacter(plan.person.id, false), syncCharacterRanksStatement(db, guild.id, plan.person.id));
+    writes.push(insertCharacter(plan.person.id, false, null, null));
+    writes.push(markRaidsStale(db, guild.id, [claim.name_key], null, []));
   } else if (plan.kind === 'new_person') {
-    team = await requireTarget(db, guild.id, body.teamId);
-    if (!allows(guildContext.can, 'roster.edit', team.id)) throw forbidden();
+    team = body.teamId === undefined || body.teamId === null ? null : await requireTarget(db, guild.id, body.teamId);
+    if (!allows(guildContext.can, 'roster.edit', team ? team.id : null)) throw forbidden();
     const status = body.status === undefined ? 'trial' : body.status;
     if (!CREATE_STATUSES.includes(status)) throw bad('Pick raider, trial or reserve.', 'status');
     personId = newId('p', ctx.randomBytes);
     const today = guildToday(guild, now);
+    const trialStart = status === 'trial' ? today : null;
     writes.push(db.prepare(
       `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, discord_nickname, user_id, version, notes_version, created_by, created_at, updated_at)
        SELECT ?, ?, ?, ?, ?, NULL, ?, NULL, ?, 1, 0, ?, ?, ? WHERE ${pending.sql}`,
-    ).bind(personId, guild.id, status, today, status === 'trial' ? today : null, claim.discord_id, claim.user_id, userId, now, now, ...pending.params));
-    writes.push(insertCharacter(personId, true), syncCharacterRanksStatement(db, guild.id, personId));
+    ).bind(personId, guild.id, status, today, trialStart, claim.discord_id, claim.user_id, userId, now, now, ...pending.params));
+    writes.push(insertCharacter(personId, true, characterRankColumns({ status, trialStart }), team ? team.id : null));
+    writes.push(markRaidsStale(db, guild.id, [claim.name_key], null, team ? [team.id] : []));
   } else if (plan.kind === 'link_person') {
     writes.push(db.prepare(
       `UPDATE players SET discord_user_id = ?, user_id = ?, discord_nickname = NULL, version = version + 1, updated_at = ?
         WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL AND user_id IS NULL AND ${pending.sql}
-          AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)`,
+          AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)`,
     ).bind(claim.discord_id, claim.user_id, now, plan.person.id, guild.id, ...pending.params, plan.homeTeamId));
     writes.push(markPersonRaidsStale(db, guild.id, plan.person.id));
   }
-  if (team) writes.push(markRaidsStale(db, guild.id, [claim.name_key], null, [team.id]));
 
   // The decision lands only if the claim is still pending and (for a link) the person really belongs to the claimant's account now.
   const linked = plan.kind === 'link_person'

@@ -6,7 +6,7 @@
 // so the result never depends on the order the rows arrived in (tests/guild/guild-person-rank-tests.js runs every case with the rows reversed).
 //
 //   person    { playerId, characters: [ character ] }
-//   character { id, key, teamId, isMain, coreRank, leftOn, trialStart, trialEnd }   (characterOfRow(row) shapes a characters row)
+//   character { id, key, teamId, isMain, coreRank, leftOn, leftReason, trialStart, trialEnd }   (characterOfRow(row) shapes a characters row)
 //
 //   expectedOnTeam(person, T, ranks)  the person's character placed on T is on the team roster (worker/team-roster.js) and its core_rank is in the
 //                                     policy's expected set (ranks): "Raider main on A + teamless Social alt" is expected on A only
@@ -17,6 +17,8 @@
 //                                     character without one is here while its rank is a raiding rank (Social without a date is not)
 //   hasCharacterHereOn(person, T, day) a character placed on T that is still here on `day` (the "No sign-up" row)
 //   trialReviews(person)              one entry per roster character in Trial, each on its own team: "Raider main on A + Trial alt on B" lists B only
+//   personFields(person)              the five fields the API still shows on a person (status, trial and left dates), worked out from the characters
+//                                     (lane B2: the readers no longer look at the players row)
 import { TEAM_ROSTER_RANKS, isTeamRosterCharacter } from './team-roster.js';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value));
@@ -31,6 +33,7 @@ export function characterOfRow(row) {
     isMain: row.is_main === 1 || row.is_main === true,
     coreRank: row.core_rank,
     leftOn: row.left_on === undefined ? null : row.left_on,
+    leftReason: row.left_reason === undefined ? null : row.left_reason,
     trialStart: row.trial_start === undefined ? null : row.trial_start,
     trialEnd: row.trial_end === undefined ? null : row.trial_end,
   };
@@ -89,4 +92,25 @@ export function trialReviews(person) {
     .filter((character) => character.coreRank === 'trial' && isTeamRosterCharacter(character))
     .sort((a, b) => byText(text(a.teamId), text(b.teamId)) || byIdentity(a, b))
     .map((character) => ({ characterId: character.id, teamId: character.teamId, trialStart: character.trialStart, trialEnd: character.trialEnd }));
+}
+
+// The five fields a person still shows in the API (roster rows, the person record, the export, attendance metrics), from ALL the characters:
+//   status       the main's core_rank, 'social' shown as 'inactive' (the rank ladder reads the main); the lowest identity when there is no main;
+//                'inactive' when the person has no character
+//   trialStart / trialEnd   the main's, only while the main is in Trial
+//   leftOn       leftOn(person): every character has left, the latest date; leftReason is the reason on the character that holds that date
+// A break or an "other" reason is not a leaving: no character carries it (migration 0030's mapping), so it shows as null.
+export function personFields(person) {
+  const characters = charactersOf(person);
+  const main = mainCharacter(person) || [...characters].sort(byIdentity)[0] || null;
+  const left = leftOn(person);
+  const leftCharacter = left === null ? null : [...characters].filter((character) => character.leftOn === left).sort(byIdentity)[0];
+  const trial = !!main && main.coreRank === 'trial';
+  return {
+    status: !main ? 'inactive' : (main.coreRank === 'social' ? 'inactive' : main.coreRank),
+    trialStart: trial ? main.trialStart || null : null,
+    trialEnd: trial ? main.trialEnd || null : null,
+    leftOn: left,
+    leftReason: leftCharacter ? leftCharacter.leftReason || null : null,
+  };
 }

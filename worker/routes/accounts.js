@@ -185,7 +185,8 @@ export async function setPersonAccount(ctx) {
   }
   const { player } = data;
   const now = ctx.now();
-  const onHomeTeam = { sql: 'EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)', params: [home.id] };
+  // `IS ?` matches a Main on no team (home.id null) too; `= ?` would match nothing and the write would silently do nothing.
+  const onHomeTeam = { sql: 'EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)', params: [home.id] };
 
   if (body.userId === null) {
     if (!player.user_id) return jsonResponse(await personReply(ctx, guildContext, player.id));

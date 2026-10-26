@@ -1,15 +1,14 @@
 /**
- * Raidsmith guild tracker - the CI greps of the user-hierarchy build, lane B1a-1 (dual write R1 -> R2)
+ * Raidsmith guild tracker - the CI greps of the user-hierarchy build (dual write R1 -> R2 in lane B1a-1, readers moved to the characters in lane B2)
  * Run: node tests/guild/guild-legacy-columns-tests.js
  *
  * Static checks over worker/*.js (no database):
  *   1. every INSERT INTO characters names core_rank (migration 0030 defaults it to 'raider', which must never be what a writer gets by accident);
- *   2. core_rank is written only by the allowed paths (ALLOWED_CORE_RANK_WRITERS: the dual write and the three character inserts);
- *   3. the legacy person fields (players.status, trial_start, trial_end, left_on, left_reason) are READ only in worker/person-legacy.js
- *      (LEGACY_READ_ALLOWLIST); every other reader asks that module for a SQL fragment. Lane R2 switches the readers to the character
- *      columns inside that one module and empties the allowlist;
- *   4. every file that writes players.status / trial_start / trial_end / left_on / left_reason also appends the character-column sync
- *      (syncCharacterRanksStatement), so a new writer cannot forget the dual write.
+ *   2. core_rank is written only by the allowed paths (ALLOWED_CORE_RANK_WRITERS);
+ *   3. the legacy person fields (players.status, trial_start, trial_end, left_on, left_reason) are READ nowhere: since R2 every reader works from the
+ *      character columns (LEGACY_READ_ALLOWLIST is empty). Writers of the mirror stay allowed until lane B4b deletes the mirror;
+ *   4. every file that writes a legacy players field also writes the character rank columns (characterRankColumns): characters first, players as the mirror;
+ *   5. writer guards on the home or target team use `IS ?`: a character or Main on no team must not make a write silently match nothing.
  * The detectors run on seeded SQL first, so a broken detector fails here instead of passing everything.
  */
 const assert = require('node:assert/strict');
@@ -18,12 +17,12 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 
-// Files that may READ the legacy players fields. R1: the shared helper only. R2 empties this list.
-const LEGACY_READ_ALLOWLIST = ['worker/person-legacy.js'];
+// Files that may READ the legacy players fields. R1: the shared helper only; R2 (lane B2) emptied this list.
+const LEGACY_READ_ALLOWLIST = [];
 
 // Files that may WRITE characters.core_rank, and how. Later lanes add applyRankMap and the officer rank edit here, on purpose.
 const ALLOWED_CORE_RANK_WRITERS = {
-  'worker/person-legacy.js': 'the dual write: UPDATE characters ... from players (syncCharacterRanksStatement)',
+  'worker/person-legacy.js': 'a status change: the person-wide UPDATE of the rank columns (setCharacterRanksStatement)',
   'worker/routes/roster.js': 'insertCharacter (person create, add character, application accept, attendance link)',
   'worker/routes/bnet-claims.js': 'approving a Battle.net claim (new person, alt)',
   'worker/routes/roster-import.js': 'writeImport (Raid-Helper, Warcraft Logs, CSV and Battle.net roster imports)',
@@ -138,8 +137,10 @@ function sqlLiterals(rel) {
 const isWrite = (sql) => /^\s*(INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql);
 
 // A READ of a legacy players field: a field qualified by a players alias, or a bare field in a statement that selects from players, or players.*.
-function readsLegacyField(sql) {
-  if (isWrite(sql)) return false;
+function readsLegacyField(sqlText) {
+  if (isWrite(sqlText)) return false;
+  // `<expression> AS status` names a result column (the roster rows keep the key the API always had); it reads nothing.
+  const sql = sqlText.replace(new RegExp(`\\bAS\\s+(${FIELDS.join('|')})\\b`, 'gi'), 'AS alias');
   const aliases = new Set(PLAYER_ALIASES);
   const SKIP = /^(WHERE|JOIN|ON|LEFT|INNER|SET|GROUP|ORDER|LIMIT|USING|CROSS|AND|OR|UNION|SELECT)$/i;
   for (const match of sql.matchAll(/\b(?:FROM|JOIN)\s+players\b(?:\s+(?:AS\s+)?(\w+))?/gi)) if (match[1] && !SKIP.test(match[1])) aliases.add(match[1]);
@@ -196,6 +197,7 @@ check('the detectors flag what they must and nothing else (seeded SQL)', () => {
     'SELECT x.id FROM players AS x WHERE x.left_on IS NULL',
     'SELECT c.id FROM characters c JOIN players pl ON pl.id = c.player_id WHERE pl.left_reason = \'kicked\'',
     'SELECT ap.status FROM something s',
+    'SELECT p.status AS status FROM players p',
   ];
   for (const sql of reads) assert(readsLegacyField(sql), `should flag: ${sql}`);
   const quiet = [
@@ -207,6 +209,7 @@ check('the detectors flag what they must and nothing else (seeded SQL)', () => {
     'INSERT INTO players (id, guild_id, status, trial_start) VALUES (?, ?, ?, ?)',
     'SELECT id, name FROM characters WHERE guild_id = ?',
     'SELECT cl.status FROM character_claims cl WHERE cl.guild_id = ?',
+    'SELECT p.id, (SELECT mr.core_rank FROM characters mr WHERE mr.player_id = p.id) AS status, p.joined_on FROM players p WHERE p.guild_id = ?',
   ];
   for (const sql of quiet) assert(!readsLegacyField(sql), `should not flag: ${sql}`);
 
@@ -251,7 +254,7 @@ check('every INSERT INTO characters in worker/ names core_rank', () => {
     const raw = fs.readFileSync(path.join(ROOT, rel), 'utf8');
     const mentions = (raw.match(/INTO\s+characters\b/gi) || []).length;
     const literal = sqlLiterals(rel).filter(({ sql }) => /^\s*INSERT\s+(OR\s+\w+\s+)?INTO\s+characters\b/i.test(sql)).length;
-    const inComments = raw.split('\n').filter((l) => /^\s*\/\//.test(l) && /INTO\s+characters\b/i.test(l)).length;
+    const inComments = raw.split(/\r?\n/).filter((l) => /^\s*\/\//.test(l) && /INTO\s+characters\b/i.test(l)).length;
     assert.equal(mentions - inComments, literal, `${rel}: an INSERT INTO characters outside a plain SQL literal`);
   }
   assert.equal(seen, 3, 'the three character inserts today: roster.js insertCharacter, bnet-claims.js, roster-import.js writeImport');
@@ -270,51 +273,65 @@ check('core_rank is written only by the allowed paths', () => {
   for (const rel of Object.keys(ALLOWED_CORE_RANK_WRITERS)) assert(writers.has(rel), `${rel} is on the allowlist but writes no core_rank (remove the entry)`);
 });
 
-check('the legacy players fields are read only in the allowlisted shared helper', () => {
+check('the legacy players fields are read nowhere (R2: the allowlist is empty)', () => {
+  assert.deepEqual(LEGACY_READ_ALLOWLIST, [], 'the allowlist went to zero with lane B2');
   const violations = [];
-  const used = new Set();
   for (const rel of workerFiles()) {
     for (const { line, sql } of sqlLiterals(rel)) {
-      if (!readsLegacyField(sql)) continue;
-      if (LEGACY_READ_ALLOWLIST.includes(rel)) used.add(rel);
-      else violations.push(`${rel}:${line}: ${sql.replace(/\s+/g, ' ').slice(0, 110)}`);
+      if (readsLegacyField(sql)) violations.push(`${rel}:${line}: ${sql.replace(/\s+/g, ' ').slice(0, 110)}`);
     }
   }
-  assert.deepEqual(violations, [], `route these reads through worker/person-legacy.js:\n${violations.join('\n')}`);
-  // The allowlist names real files that really read the legacy fields: a stale entry would hide a future violation.
-  for (const rel of LEGACY_READ_ALLOWLIST) assert(fs.existsSync(path.join(ROOT, rel)), `${rel} does not exist`);
-  assert.deepEqual([...used], LEGACY_READ_ALLOWLIST, 'the helper still holds the legacy reads');
+  assert.deepEqual(violations, [], `read the character columns instead (worker/person-rank.js, worker/person-rank-sql.js, worker/team-roster.js):\n${violations.join('\n')}`);
 });
 
-check('every writer of players.status / trial_start / trial_end / left_on / left_reason also appends the character-column sync', () => {
+check('every writer of players.status / trial_start / trial_end / left_on / left_reason also writes the character rank columns (characters first, the players row is the mirror)', () => {
   const writers = [];
   for (const rel of workerFiles()) {
-    if (LEGACY_READ_ALLOWLIST.includes(rel)) continue;
     const lines = sqlLiterals(rel).filter(({ sql }) => writesLegacyField(sql)).map(({ line }) => line);
     if (lines.length) writers.push({ rel, lines });
   }
-  // Today: roster.js (create, patch), applications.js (accept), attendance.js (unmatched -> person), bnet-claims.js (new person), roster-import.js (imports).
+  // The mirror writers today: roster.js (create, patch), applications.js (accept), attendance.js (unmatched -> person), bnet-claims.js (new person), roster-import.js (imports).
   assert.deepEqual(writers.map((w) => w.rel), [
     'worker/routes/applications.js', 'worker/routes/attendance.js', 'worker/routes/bnet-claims.js', 'worker/routes/roster-import.js', 'worker/routes/roster.js',
   ]);
   for (const { rel, lines } of writers) {
     const source = fs.readFileSync(path.join(ROOT, rel), 'utf8');
-    assert(/\bsyncCharacterRanksStatement\(/.test(source), `${rel}:${lines.join(',')}: writes a legacy person field without syncCharacterRanksStatement`);
+    assert(/\bcharacterRankColumns\(/.test(source), `${rel}:${lines.join(',')}: writes a legacy person field without writing the character rank columns (characterRankColumns)`);
   }
 });
 
-check('the legacy-field helpers name exactly the columns the CI watches', async () => {
+check('writer guards on the home or target team use IS ?, never = ? (a character or Main on no team must not make a write silently match nothing)', () => {
+  const GUARDED = ['worker/routes/roster.js', 'worker/routes/accounts.js', 'worker/routes/bnet-claims.js'];
+  const hits = [];
+  for (const rel of GUARDED) {
+    for (const { line, sql } of sqlLiterals(rel)) {
+      if (/\bis_main\b/.test(sql) && /\b(?:AND|WHERE)\s+team_id\s*=\s*\?/i.test(sql)) hits.push(`${rel}:${line}: ${sql.replace(/\s+/g, ' ').slice(0, 120)}`);
+      if (/\bteam_id\s+NOT\s+IN\b/i.test(sql) && !/\bteam_id\s+IS\s+NOT\s+NULL\b/i.test(sql)) hits.push(`${rel}:${line}: NOT IN without the NULL case`);
+    }
+  }
+  assert.deepEqual(hits, []);
+});
+
+check('the status mapping and the person-level SQL name exactly what the readers and writers use', async () => {
   const { pathToFileURL } = require('node:url');
-  const helper = await import(pathToFileURL(path.join(ROOT, 'worker/person-legacy.js')).href);
-  assert.deepEqual(helper.LEGACY_FIELDS, ['status', 'trialStart', 'trialEnd', 'leftOn', 'leftReason']);
-  assert.equal(helper.legacyPersonColumnsSql('p'), 'p.status, p.trial_start, p.trial_end, p.left_on, p.left_reason');
-  assert.equal(helper.legacyColumnsSql('p', 'status', 'leftOn'), 'p.status, p.left_on');
-  assert.equal(helper.legacyColumnSql('players', 'trialEnd'), 'players.trial_end');
-  assert.equal(helper.notInactiveSql('p'), "p.status != 'inactive'");
-  assert.equal(helper.raidingSql('p'), "p.status IN ('raider', 'trial')");
-  assert.equal(helper.onTrialSql('p'), "p.status = 'trial'");
-  assert.throws(() => helper.legacyColumnSql('p', 'nope'), /Unknown person field/);
-  for (const column of FIELDS) assert(helper.legacyPersonColumnsSql('p').includes(column), column);
+  const legacy = await import(pathToFileURL(path.join(ROOT, 'worker/person-legacy.js')).href);
+  assert.deepEqual(Object.keys(legacy).sort(), ['IMPORTED_RANK_COLUMNS_SQL', 'RANK_COLUMNS_SQL', 'characterRankColumns', 'rankBinds', 'setCharacterRanksStatement', 'trialDatesFollowMainStatements']);
+  const map = legacy.characterRankColumns;
+  assert.deepEqual(map({ status: 'raider', leftOn: '2027-01-01', leftReason: 'left', trialStart: '2027-01-01', trialEnd: '2027-02-01' }), { coreRank: 'raider', leftOn: null, leftReason: null, trialStart: null, trialEnd: null });
+  assert.deepEqual(map({ status: 'trial', trialStart: '2027-01-01', trialEnd: '2027-02-01' }), { coreRank: 'trial', leftOn: null, leftReason: null, trialStart: '2027-01-01', trialEnd: '2027-02-01' });
+  assert.deepEqual(map({ status: 'reserve' }), { coreRank: 'reserve', leftOn: null, leftReason: null, trialStart: null, trialEnd: null });
+  assert.deepEqual(map({ status: 'inactive', leftOn: '2027-01-01', leftReason: 'kicked' }), { coreRank: 'social', leftOn: '2027-01-01', leftReason: 'kicked', trialStart: null, trialEnd: null });
+  assert.deepEqual(map({ status: 'inactive', leftOn: '2027-01-01', leftReason: 'break' }), { coreRank: 'social', leftOn: null, leftReason: null, trialStart: null, trialEnd: null });
+  assert.deepEqual(map({ status: 'inactive', leftOn: '2027-01-01' }), { coreRank: 'social', leftOn: null, leftReason: null, trialStart: null, trialEnd: null });
+  assert.deepEqual(legacy.rankBinds(null, 'p1'), [null, 'p1', null, 'p1', null, 'p1', null, null]);
+  assert.deepEqual(legacy.rankBinds(map({ status: 'trial', trialStart: '2027-01-01' }), 'p1'), ['trial', 'p1', null, 'p1', null, 'p1', '2027-01-01', null]);
+  assert.equal((legacy.RANK_COLUMNS_SQL.match(/\?/g) || []).length, 8, 'eight placeholders, one per bind of rankBinds');
+  const sqlHelpers = await import(pathToFileURL(path.join(ROOT, 'worker/person-rank-sql.js')).href);
+  assert.match(sqlHelpers.personRankSql('p.id'), /^\(SELECT mr\.core_rank FROM characters mr WHERE mr\.player_id = p\.id ORDER BY mr\.is_main DESC, mr\.id LIMIT 1\)$/);
+  assert.match(sqlHelpers.personStatusSql('p.id'), /CASE mr\.core_rank WHEN 'social' THEN 'inactive' ELSE mr\.core_rank END/);
+  const roster = await import(pathToFileURL(path.join(ROOT, 'worker/team-roster.js')).href);
+  assert.match(roster.personOnTeamRosterSql('p.id', '?2'), /^EXISTS \(SELECT 1 FROM characters rc WHERE rc\.player_id = p\.id AND \(rc\.team_id = \?2 AND \(rc\.team_id IS NOT NULL AND rc\.left_on IS NULL/);
+  assert.match(roster.rosterRankOnTeamSql('p.id', '?2'), /^\(SELECT rc\.core_rank FROM characters rc WHERE rc\.player_id = p\.id AND .* ORDER BY rc\.is_main DESC, rc\.id LIMIT 1\)$/);
 });
 
 (async () => {

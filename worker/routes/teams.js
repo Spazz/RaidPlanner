@@ -3,7 +3,7 @@ import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
-import { notInactiveSql } from '../person-legacy.js';
+import { teamRosterSql } from '../team-roster.js';
 import { LIMITS, TEAM_LIMIT_MESSAGE } from '../limits.js';
 import { RAID_SIZES, defaultTeamSize, isRaidSize } from '../raid-zones.js';
 
@@ -38,10 +38,10 @@ export async function loadTeams(db, guildId) {
           AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ra.guild_id AND b.user_id = ra.user_id)
         ORDER BY u.username, u.id`,
     ).bind(guildId),
-    // People who are not inactive with at least one character on the team (archived teams too).
+    // People with a character on the team's roster (worker/team-roster.js: placed, still here, a raiding rank), archived teams too.
     db.prepare(
-      `SELECT c.team_id, COUNT(DISTINCT c.player_id) AS n FROM characters c JOIN players p ON p.id = c.player_id
-        WHERE c.guild_id = ? AND ${notInactiveSql('p')} GROUP BY c.team_id`,
+      `SELECT c.team_id, COUNT(DISTINCT c.player_id) AS n FROM characters c
+        WHERE c.guild_id = ? AND ${teamRosterSql('c')} GROUP BY c.team_id`,
     ).bind(guildId),
   ]);
   const counts = new Map(countResult.results.map((row) => [row.team_id, row.n]));

@@ -8,6 +8,7 @@ import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { specChoices } from '../signups-data.js';
 import { STANDING_KINDS, reconcileStanding } from '../standing.js';
+import { isTeamRosterRow } from '../team-roster.js';
 import { bad } from './roster.js';
 
 const MAX_SLOTS = 7; // one per weekday
@@ -20,7 +21,8 @@ const OWN_GUARD = `EXISTS (SELECT 1 FROM players ap WHERE ap.id = ? AND ap.guild
 const characterView = (row) => ({ id: row.id, name: row.name, class: row.class, mainSpec: row.main_spec, isMain: row.is_main === 1, specs: specChoices(row) });
 
 // The viewer's standing entries as the API shows them, for the teams they can sign up for that have a weekly schedule: not archived teams only, where the
-// viewer holds signups.self and has a character. onlyTeamId narrows it to one team (which is then listed even without a schedule). -> [{ teamId, teamName, slots, characters, mine }]
+// viewer holds signups.self and a character of theirs is on the team's roster; the characters offered are ALL of theirs (U R4-Q1). onlyTeamId narrows it to
+// one team (which is then listed even without a schedule). -> [{ teamId, teamName, slots, characters, mine }]
 async function readTeams(ctx, guildContext, personId, onlyTeamId = null) {
   const guildId = guildContext.guild.id;
   const [teamResult, slotResult, characterResult, standingResult] = await ctx.db.batch([
@@ -29,14 +31,14 @@ async function readTeams(ctx, guildContext, personId, onlyTeamId = null) {
           AND (? IS NOT NULL OR EXISTS (SELECT 1 FROM team_schedules s WHERE s.team_id = t.id)) ORDER BY t.created_at, t.id`,
     ).bind(guildId, onlyTeamId, onlyTeamId, onlyTeamId),
     ctx.db.prepare('SELECT team_id, weekday, start_time, zone, title FROM team_schedules WHERE guild_id = ? ORDER BY team_id, weekday').bind(guildId),
-    ctx.db.prepare('SELECT id, name, class, main_spec, off_spec, is_main, team_id FROM characters WHERE guild_id = ? AND player_id = ?').bind(guildId, personId),
+    ctx.db.prepare('SELECT id, name, class, main_spec, off_spec, is_main, team_id, core_rank, left_on FROM characters WHERE guild_id = ? AND player_id = ?').bind(guildId, personId),
     ctx.db.prepare('SELECT team_id, weekday, kind, character_id FROM standing_signups WHERE guild_id = ? AND player_id = ? ORDER BY team_id, weekday').bind(guildId, personId),
   ]);
   const teams = [];
   for (const team of teamResult.results) {
     if (!allows(guildContext.can, 'signups.self', team.id)) continue;
-    const characters = characterResult.results.filter((row) => row.team_id === team.id).sort(byMainThenName);
-    if (!characters.length) continue;
+    if (!characterResult.results.some((row) => row.team_id === team.id && isTeamRosterRow(row))) continue;
+    const characters = [...characterResult.results].sort(byMainThenName);
     teams.push({
       teamId: team.id,
       teamName: team.name,
@@ -63,7 +65,7 @@ export async function getStanding(ctx) {
 }
 
 // PUT /teams/:tid/standing { slots: [{ weekday, kind, characterId? }] }: replaces the viewer's set for the team. A weekday must be one of the team's schedule
-// days, used once; kind is signed or late; characterId one of the viewer's characters on the team (left out / null = their usual one). -> the team's entry.
+// days, used once; kind is signed or late; characterId any one of the viewer's characters (left out / null = their usual one). -> the team's entry.
 export async function putStanding(ctx) {
   const { body, db } = ctx;
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
@@ -77,9 +79,9 @@ export async function putStanding(ctx) {
 
   const [slotResult, characterResult] = await db.batch([
     db.prepare('SELECT weekday FROM team_schedules WHERE team_id = ?').bind(team.id),
-    db.prepare('SELECT id, name, class, main_spec, off_spec, is_main, team_id FROM characters WHERE guild_id = ? AND player_id = ? AND team_id = ?').bind(guild.id, personId, team.id),
+    db.prepare('SELECT id, name, class, main_spec, off_spec, is_main, team_id, core_rank, left_on FROM characters WHERE guild_id = ? AND player_id = ?').bind(guild.id, personId),
   ]);
-  if (!characterResult.results.length) throw forbidden();
+  if (!characterResult.results.some((row) => row.team_id === team.id && isTeamRosterRow(row))) throw forbidden();
   if (!Array.isArray(body.slots) || body.slots.length > MAX_SLOTS) throw bad(`Send a list of at most ${MAX_SLOTS} slots.`, 'slots');
   const days = new Set(slotResult.results.map((row) => row.weekday));
   const mine = new Set(characterResult.results.map((row) => row.id));
@@ -92,7 +94,7 @@ export async function putStanding(ctx) {
     seen.add(slot.weekday);
     if (typeof slot.kind !== 'string' || !STANDING_KINDS.includes(slot.kind)) throw fail('Pick signed or late.', 'kind');
     if (slot.characterId !== undefined && slot.characterId !== null && (!isId('c', slot.characterId) || !mine.has(slot.characterId))) {
-      throw fail('Pick one of your characters on this team.', 'characterId');
+      throw fail('Pick one of your characters.', 'characterId');
     }
     return { id: newId('sg', ctx.randomBytes), weekday: slot.weekday, kind: slot.kind, characterId: slot.characterId || null };
   });

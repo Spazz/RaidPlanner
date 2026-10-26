@@ -184,6 +184,7 @@ const GUILD_BODY = { serverId: SERVER_A, gameVersion: 'tbc', region: 'US', realm
 // Erin, Gina, Hank (Members) sign in.
 async function scenario({ teams = 1, guildBody = {}, who = ['bob', 'carol', 'dave', 'erin', 'gina', 'hank'] } = {}) {
   const w = await makeWorld({ allowlist: [PEOPLE.alice.id, PEOPLE.frank.id] });
+  w.db.sqlite.exec('DROP INDEX IF EXISTS characters_team_person'); // see addAlt below
   const alice = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
   const body = { ...GUILD_BODY, ...guildBody };
   if (teams > 1) { body.multipleTeams = true; body.teamNames = ['Alpha', 'Bravo', 'Charlie'].slice(0, teams); }
@@ -208,7 +209,13 @@ async function addPerson(s, who, teamId, name, extra = {}) {
   assert.equal(r.status, 201, JSON.stringify(r.json));
   return r.json;
 }
-const addAlt = (s, who, pid, teamId, name, extra = {}) => s.call(who, 'POST', `/roster/${pid}/characters`, { name, class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId, makeMain: false, ...extra });
+// A new alt starts on no team (B2: U R3-Q1/R4-Q1); placing it is the team routes' job (B3). These checks are about alts ON teams, so they place the alt with the
+// column itself, in a world without migration 0032's unique (team, person) index (until it is applied a team can hold several characters of one person).
+async function addAlt(s, who, pid, teamId, name, extra = {}) {
+  const res = await s.call(who, 'POST', `/roster/${pid}/characters`, { name, class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId, makeMain: false, ...extra });
+  if (res.status === 201 && teamId && !extra.makeMain) s.w.db.sqlite.exec(`UPDATE characters SET team_id = '${teamId}' WHERE player_id = '${pid}' AND name_key = '${name.toLowerCase()}'`);
+  return res;
+}
 
 const exec = (w, sql) => w.db.sqlite.exec(sql);
 const signUp = (id, userId, name, className, specName, position = id) => ({ id, userId, name, className, specName, status: 'primary', position });
@@ -3700,11 +3707,11 @@ check('standing: GET lists the teams the viewer can sign up for that have a sche
   const alpha = mine.json.teams[0];
   assert.deepEqual(Object.keys(alpha).sort(), ['characters', 'mine', 'slots', 'teamId', 'teamName']);
   assert.deepEqual(alpha.slots, [{ weekday: 2, startTime: '20:00', zone: null, title: null }, { weekday: 4, startTime: '20:00', zone: null, title: null }]);
-  assert.deepEqual(alpha.characters.map((c) => [c.name, c.class, c.mainSpec, c.isMain]), [['Eliora', 'PRIEST', 'Holy', true], ['Mirabel', 'HUNTER', 'Marksmanship', false]], 'only the characters on that team, the Main first');
+  assert.deepEqual(alpha.characters.map((c) => [c.name, c.class, c.mainSpec, c.isMain]), [['Eliora', 'PRIEST', 'Holy', true], ['Mirabel', 'HUNTER', 'Marksmanship', false], ['Wanderfell', 'DRUID', 'Restoration', false]], 'every character of the person (U R4-Q1), the Main first');
   assert.deepEqual(Object.keys(alpha.characters[0]).sort(), ['class', 'id', 'isMain', 'mainSpec', 'name', 'specs']);
   assert(alpha.characters[0].specs.includes('Holy') && alpha.characters[0].specs[0] === 'Holy');
   assert.deepEqual(alpha.mine, []);
-  assert.deepEqual(mine.json.teams[1].characters.map((c) => c.name), ['Wanderfell']);
+  assert.deepEqual(mine.json.teams[1].characters.map((c) => c.name), ['Eliora', 'Mirabel', 'Wanderfell']);
   // Gina is only on Alpha; Hank and Dave have no roster person; a team without a schedule is not listed.
   assert.deepEqual((await s.call('gina', 'GET', '/standing')).json.teams.map((team) => team.teamName), ['Alpha']);
   for (const who of ['hank', 'dave']) assert.deepEqual((await s.call(who, 'GET', '/standing')).json, { personId: null, teams: [] }, who);
@@ -3716,7 +3723,7 @@ check('standing: GET lists the teams the viewer can sign up for that have a sche
   const put = await s.stand('erin', s.A, [{ weekday: 4, kind: 'late', characterId: s.c.mirabel }, { weekday: 2, kind: 'signed' }]);
   assert.equal(put.status, 200, JSON.stringify(put.json));
   assert.deepEqual(put.json.mine, [{ weekday: 2, kind: 'signed', characterId: null }, { weekday: 4, kind: 'late', characterId: s.c.mirabel }]);
-  assert.deepEqual([put.json.teamId, put.json.teamName, put.json.slots.length, put.json.characters.length], [s.A, 'Alpha', 2, 2]);
+  assert.deepEqual([put.json.teamId, put.json.teamName, put.json.slots.length, put.json.characters.length], [s.A, 'Alpha', 2, 3]);
   assert.deepEqual((await s.call('erin', 'GET', '/standing')).json.teams[0].mine, put.json.mine);
 
   // Validation: 400 with the field, the index and the slot field; nothing changes.
@@ -3725,7 +3732,6 @@ check('standing: GET lists the teams the viewer can sign up for that have a sche
     [{ weekday: 3, kind: 'signed' }, 'weekday'], [{ weekday: 'Tuesday', kind: 'signed' }, 'weekday'], [{ weekday: 7, kind: 'signed' }, 'weekday'], [{ kind: 'signed' }, 'weekday'],
     [{ weekday: 2, kind: 'tentative' }, 'kind'], [{ weekday: 2, kind: 'absence' }, 'kind'], [{ weekday: 2, kind: 'standby' }, 'kind'], [{ weekday: 2 }, 'kind'],
     [{ weekday: 2, kind: 'signed', characterId: s.c.gorrim }, 'characterId'],   // someone else's character
-    [{ weekday: 2, kind: 'signed', characterId: s.c.wanderfell }, 'characterId'], // mine, but on the other team
     [{ weekday: 2, kind: 'signed', characterId: 'nope' }, 'characterId'],
   ];
   for (const [slot, field] of bads) {
@@ -3958,10 +3964,10 @@ check('standing: a character change - the unedited rows follow the entry (kind, 
   assert.deepEqual(await s.reconcile({ personId: s.p.eliora }), { created: 0, updated: 1, deleted: 0 });
   assert.equal((await s.signups())[0].character, s.c.mirabel);
   // An inactive person is signed out of the rows the system made; a person with no character left on the team too.
-  exec(s.w, `UPDATE players SET status = 'inactive' WHERE id = '${s.p.eliora}'`);
+  exec(s.w, `UPDATE characters SET core_rank = 'social' WHERE player_id = '${s.p.eliora}'`);
   assert.deepEqual(await s.reconcile({ personId: s.p.eliora }), { created: 0, updated: 0, deleted: 1 });
   assert.deepEqual((await s.signups()).map((r) => r.standing), [0], 'only the edited row is left');
-  exec(s.w, `UPDATE players SET status = 'raider' WHERE id = '${s.p.eliora}'`);
+  exec(s.w, `UPDATE characters SET core_rank = 'raider' WHERE player_id = '${s.p.eliora}'`);
   assert.deepEqual(await s.reconcile({ personId: s.p.eliora }), { created: 1, updated: 0, deleted: 0 });
   exec(s.w, `UPDATE characters SET team_id = '${s.B}' WHERE id IN ('${s.c.eliora}', '${s.c.mirabel}')`);
   assert.deepEqual(await s.reconcile({ personId: s.p.eliora }), { created: 0, updated: 0, deleted: 1 });

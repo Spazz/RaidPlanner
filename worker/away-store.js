@@ -4,16 +4,17 @@
 // Dates are guild-local YYYY-MM-DD and bounds are inclusive.
 import { noticeOfRow, raidNoticeEffects } from './away.js';
 import { ownPlayerSql } from './membership.js';
-import { notInactiveSql } from './person-legacy.js';
+import { personOnTeamRosterSql } from './team-roster.js';
 
-// The notices that can touch the dates from..to of the people who have a character on the team and are not inactive. `own` marks the viewer's own person.
+// The notices that can touch the dates from..to of the people on the team's roster (a character placed on it that is still here, in a raiding rank:
+// worker/team-roster.js). `own` marks the viewer's own person.
 export function teamNoticesStatement(db, guildId, teamId, userId, from, to) {
   return db.prepare(
     `SELECT n.id, n.player_id, n.kind, n.at_time, n.starts_on, n.ends_on, n.weekday, n.created_at,
             n.player_id IN (SELECT id FROM players WHERE guild_id = ?1 AND ${ownPlayerSql('players', '?5')}) AS own
-       FROM away_notices n JOIN players p ON p.id = n.player_id AND p.guild_id = n.guild_id
-      WHERE n.guild_id = ?1 AND ${notInactiveSql('p')} AND n.starts_on <= ?3 AND (n.ends_on IS NULL OR n.ends_on >= ?2)
-        AND n.player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?4)`,
+       FROM away_notices n
+      WHERE n.guild_id = ?1 AND n.starts_on <= ?3 AND (n.ends_on IS NULL OR n.ends_on >= ?2)
+        AND ${personOnTeamRosterSql('n.player_id', '?4')}`,
   ).bind(guildId, from, to, teamId, userId);
 }
 

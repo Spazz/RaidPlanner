@@ -27,6 +27,9 @@ function check(name, fn) { checks.push({ name, fn }); }
 async function scenario(members = []) {
   const w = await makeWorld({});
   w.clock.now = NOW;
+  // These checks put several characters of one person on one team: the shape the data has until migration 0032's unique (team, person) index is applied (B2
+  // ships first). The predicate must still be right for it, so the index is left out of this world.
+  w.db.sqlite.exec('DROP INDEX IF EXISTS characters_team_person');
   const jars = { gm: (await signIn(w, P.gm, [adminOf(SERVER)])).jar };
   const made = await w.call(jars.gm, 'POST', '/api/guild', {
     serverId: SERVER, name: 'Roster Predicate', gameVersion: 'tbc', region: 'US', realm: 'Nightslayer', timeZone: 'America/New_York',
@@ -54,9 +57,12 @@ async function scenario(members = []) {
       const res = await s.ok('gm', 'POST', '/roster', { teamId: team, name, class: cls, mainSpec: spec, offSpec: null, status, joinedOn: '2026-09-01', ...(link ? { linkUserId: uids[link] } : {}) });
       return { pid: res.person.id, cid: res.characters[0].id, version: res.person.version };
     },
+    // A new alt starts on no team (B2); the team routes that place it come with B3, so the test places it with the column itself.
     async alt(pid, name, { team = alpha } = {}) {
       const res = await s.ok('gm', 'POST', `/roster/${pid}/characters`, { teamId: team, name, class: 'ROGUE', mainSpec: 'Combat', offSpec: null });
-      return res.characters.find((c) => c.name === name).id;
+      const id = res.characters.find((c) => c.name === name).id;
+      await s.exec('UPDATE characters SET team_id = ? WHERE id = ?', team, id);
+      return id;
     },
     // The person goes Inactive through the API (the dual write makes every character Social); leftOn makes them Former.
     async inactive(p, extra = {}) { return s.ok('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: p.version, status: 'inactive', ...extra }); },

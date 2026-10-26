@@ -404,14 +404,16 @@ async function signupWorld() {
     if (discord) exec(s.w, `UPDATE players SET discord_user_id = '${discord}' WHERE id = '${made.person.id}'`);
     s.c[key] = (await s.w.rows('SELECT id FROM characters WHERE player_id = ? AND is_main = 1', made.person.id))[0].id;
   };
-  const alt = async (key, pid, teamId, name, extra) => {
+  // A new alt starts on no team (B2). `place` puts it on the team with the column itself (the team routes that do it come with B3).
+  const alt = async (key, pid, teamId, name, extra, place = false) => {
     const r = await addAlt(s, 'bob', pid, teamId, name, extra);
     assert.equal(r.status, 201, JSON.stringify(r.json));
     s.c[key] = (await s.w.rows('SELECT id FROM characters WHERE name = ?', name))[0].id;
+    if (place) exec(s.w, `UPDATE characters SET team_id = '${teamId}' WHERE id = '${s.c[key]}'`);
   };
   await person('eliora', A, 'Eliora', { class: 'PRIEST', mainSpec: 'Holy', offSpec: 'Discipline' }, PEOPLE.erin.id);
   await alt('mirabel', s.p.eliora, A, 'Mirabel', { class: 'HUNTER', mainSpec: 'Marksmanship', offSpec: null });
-  await alt('wanderfell', s.p.eliora, B, 'Wanderfell', { class: 'DRUID', mainSpec: 'Restoration', offSpec: null });
+  await alt('wanderfell', s.p.eliora, B, 'Wanderfell', { class: 'DRUID', mainSpec: 'Restoration', offSpec: null }, true);
   await person('gorrim', A, 'Gorrim', { class: 'PALADIN', mainSpec: 'Protection', offSpec: 'Holy' }, PEOPLE.gina.id);
   await person('nodisc', A, 'Nodisc', { class: 'ROGUE', mainSpec: 'Combat', offSpec: null }, null);
   const raid = await s.call('bob', 'POST', '/raids', { teamId: A, raidOn: UPCOMING, startTime: '20:00' });
@@ -466,7 +468,8 @@ check('self: a member signs themselves up; defaults are the Main on the team and
   assert.deepEqual(v.raid, { id: s.raidId, teamId: s.A, startsAt: s.startsAt, timeKnown: true, upcoming: true, locked: false, closed: null, closesAt: s.startsAt, closeHours: 0, closeHoursOverride: null, teamCloseHours: 0, size: 25, sizeOverride: null });
   assert.deepEqual(v.can, { edit: false, self: true, seeList: true, seeNicknames: false });
   assert.equal(v.roster, null, 'the officers\' picker is for officers');
-  assert.deepEqual(v.me.characters.map((c) => [c.name, c.isMain]), [['Eliora', true], ['Mirabel', false]], 'only the characters on the raid\'s team, the Main first');
+  assert.deepEqual(v.me.characters.map((c) => [c.name, c.isMain]), [['Eliora', true], ['Mirabel', false], ['Wanderfell', false]],
+    'every character of the person (U R4-Q1): the Main first, an alt on no team, an alt on another team');
   assert.deepEqual(v.me.characters[0].specs, ['Holy', 'Discipline', 'Shadow'], 'main, off spec, then the rest of the class');
   assert.deepEqual([v.me.defaultCharacterId, v.me.canChange, v.me.closed, v.me.personId], [s.c.eliora, true, null, s.p.eliora]);
   assert.deepEqual(v.me.signup, v.entries[0]);
@@ -515,13 +518,18 @@ check('self: the input is checked - kind, character, spec, note', async () => {
   await refused({ kind: 'maybe' }, 'kind');
   await refused({ kind: 5 }, 'kind');
   await refused({ kind: 'signed', characterId: 'nope' }, 'characterId');
-  await refused({ kind: 'signed', characterId: s.c.wanderfell }, 'characterId'); // her alt on the other team
   await refused({ kind: 'signed', characterId: s.c.gorrim }, 'characterId');     // someone else's
   await refused({ kind: 'signed', spec: 'Fury' }, 'spec');                       // not a Priest spec
   await refused({ kind: 'signed', spec: 7 }, 'spec');
   await refused({ kind: 'signed', note: 'x'.repeat(121) }, 'note');
   await refused({ kind: 'signed', note: 5 }, 'note');
-  assert.equal(await s.w.count('raid_signups'), 0, 'nothing was written');
+  assert.equal(await s.w.count('raid_signups'), 0, 'nothing was written by a refused input');
+  // Any of her own characters is fine (U R4-Q1): the alt on the other team and the alt on no team.
+  for (const key of ['wanderfell', 'mirabel']) {
+    const alt = await s.mine({ kind: 'signed', characterId: s.c[key] });
+    assert.equal(alt.status, 200, JSON.stringify(alt.json));
+    assert.equal((await s.w.rows("SELECT character_id FROM raid_signups WHERE source = 'raidsmith'"))[0].character_id, s.c[key]);
+  }
   const ok = await s.mine({ kind: 'signed', note: 'x'.repeat(120) });
   assert.equal(ok.status, 200);
   const clean = await s.mine({ kind: 'signed', note: 'a‮b\u0007c​d ' });

@@ -945,7 +945,7 @@ check('csv import commit: people and characters in one batch with their own team
   const chars = await s.rows('SELECT c.name, c.team_id, c.is_main, c.main_spec, c.player_id, p.status, p.joined_on, p.trial_start FROM characters c JOIN players p ON p.id = c.player_id ORDER BY c.name');
   const byName = Object.fromEntries(chars.map((c) => [c.name, c]));
   assert.deepEqual([byName.Newwarr.team_id, byName.Newwarr.is_main, byName.Newwarr.main_spec, byName.Newwarr.status, byName.Newwarr.joined_on, byName.Newwarr.trial_start], [s.tid, 1, 'Protection', 'trial', '2026-10-01', '2026-10-01']);
-  assert.deepEqual([byName.Newmage.team_id, byName.Newmage.is_main, byName.Newmage.player_id === byName.Newwarr.player_id], [s.tids[1], 0, true], 'an alt on the other team, on the new person');
+  assert.deepEqual([byName.Newmage.team_id, byName.Newmage.is_main, byName.Newmage.player_id === byName.Newwarr.player_id], [null, 0, true], 'an alt on the new person, on no team (a new alt starts teamless whatever the row says)');
   assert.deepEqual([byName.Lonelyalt.player_id === s.thorn.pid, byName.Lonelyalt.is_main], [true, 0]);
   assert.deepEqual([byName.Orphanalt.team_id, byName.Orphanalt.status, byName.Orphanalt.is_main], [s.tids[1], 'raider', 1]);
   assert.equal(byName.Orphanalt.joined_on, '2027-01-15', 'no date: joined today (the guild\'s)');
@@ -977,7 +977,7 @@ check('csv import commit: every row is checked again - names, classes, specs, te
   await refuse('officer', [{ ...base, spec: 'Holy' }], 400, 'spec');
   await refuse('officer', [{ ...base, realm: 'Nowhere' }], 400, 'realm');
   await refuse('officer', [{ ...base, teamId: 't_AAAAAAAAAAAAAAAAAAAAAA' }], 400, 'teamId');
-  await refuse('officer', [{ ...base, status: 'inactive' }], 400, 'status');
+  await refuse('officer', [{ ...base, status: 'gone' }], 400, 'status');
   await refuse('officer', [{ ...base, joinedOn: '2026-13-40' }], 400, 'joinedOn');
   await refuse('officer', [{ ...base, action: 'alt' }], 400, 'personId');
   await refuse('officer', [{ ...base, action: 'alt', withLine: 99 }], 400, 'personId');

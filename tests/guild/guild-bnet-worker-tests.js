@@ -752,7 +752,7 @@ check('claims list: the plan covers linking an unlinked person, a claim already 
 // ---------------------------------------------------------------------------
 // Claims: approve and reject
 
-check('approve: an Alt joins the claimant\'s person on the team the officer picks, in one write, and the claim is closed', async () => {
+check('approve: an Alt joins the claimant\'s person on NO team (new alts start teamless; a teamId sent with it is ignored), in one write, and the claim is closed', async () => {
   const s = await scenario();
   const ids = await seedRoster(s);
   await link(s, 'erin');
@@ -762,13 +762,13 @@ check('approve: an Alt joins the claimant\'s person on the team the officer pick
   assert.deepEqual([res.json.claim, res.json.outcome, res.json.personId], [{ id: claim.id, status: 'approved' }, 'add_alt', ids.aldric]);
   assert.deepEqual(res.json.rosterFlags && typeof res.json.rosterFlags, 'object');
   const [character] = await s.w.rows("SELECT player_id, team_id, name, realm, realm_key, class, main_spec, is_main FROM characters WHERE name = 'Eliora'");
-  assert.deepEqual(character, { player_id: ids.aldric, team_id: s.B, name: 'Eliora', realm: 'Dreamscythe', realm_key: 'dreamscythe', class: 'PALADIN', main_spec: null, is_main: 0 });
+  assert.deepEqual(character, { player_id: ids.aldric, team_id: null, name: 'Eliora', realm: 'Dreamscythe', realm_key: 'dreamscythe', class: 'PALADIN', main_spec: null, is_main: 0 });
   const [row] = await s.w.rows('SELECT status, team_id, decided_by, decided_at FROM character_claims');
-  assert.deepEqual(row, { status: 'approved', team_id: s.B, decided_by: s.ids.bob, decided_at: s.w.clock.now });
+  assert.deepEqual(row, { status: 'approved', team_id: null, decided_by: s.ids.bob, decided_at: s.w.clock.now });
   assert.deepEqual((await s.call('bob', 'GET', '/claims')).json.claims, []);
   await assertOneMain(s.w);
   const audit = await s.w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, after FROM audit_log WHERE action = 'claim.approve'");
-  assert.deepEqual(audit.map((a) => [a.guild_id, a.actor_user_id, a.entity_type, a.entity_id, JSON.parse(a.after)]), [[s.guildId, s.ids.bob, 'claim', claim.id, { outcome: 'add_alt', teamId: s.B, personId: ids.aldric }]]);
+  assert.deepEqual(audit.map((a) => [a.guild_id, a.actor_user_id, a.entity_type, a.entity_id, JSON.parse(a.after)]), [[s.guildId, s.ids.bob, 'claim', claim.id, { outcome: 'add_alt', teamId: null, personId: ids.aldric }]]);
   const view = (await s.w.call(s.jars.erin, 'GET', '/auth/bnet')).json.guilds[0].characters.find((c) => c.name === 'Eliora');
   assert.deepEqual([view.state, view.claim.status, view.claimable], ['yours', 'approved', false]);
 });
@@ -861,18 +861,13 @@ check('approve: permissions follow roster.edit by team, a lost race is a 409, an
   const approve = (who, id, body) => s.call(who, 'POST', `/claims/${id}/approve`, body);
   assert.equal((await approve('erin', eliora[0].id, approveBody('add_alt', { teamId: s.A }))).status, 403, 'a member cannot approve');
   assert.equal((await approve('dave', eliora[0].id, approveBody('add_alt', { teamId: s.B }))).status, 403, 'Aldric\'s home team is Alpha');
-  assert.equal((await approve('carol', eliora[0].id, approveBody('add_alt', { teamId: s.B }))).status, 403, 'and Carol does not reach Bravo');
-  assert.equal((await approve('carol', galdor.id, approveBody('new_person', { teamId: s.B }))).status, 403);
+  assert.equal((await approve('carol', galdor.id, approveBody('new_person', { teamId: s.B }))).status, 403, 'Carol does not reach Bravo');
   assert.equal((await approve('bob', eliora[0].id, {})).status, 400, 'no expectedKind');
-  assert.equal((await approve('bob', eliora[0].id, approveBody('add_alt'))).status, 400, 'no team');
-  assert.equal((await approve('bob', eliora[0].id, approveBody('add_alt', { teamId: 'nope' }))).status, 400);
+  assert.equal((await approve('bob', galdor.id, approveBody('new_person', { teamId: 'nope' }))).status, 400, 'a new person needs a real team, or none');
   assert.equal((await approve('bob', eliora[0].id, approveBody('link_person', { teamId: s.A }))).json.error, 'claim_changed');
-  assert.equal((await approve('carol', eliora[0].id, approveBody('add_alt', { teamId: s.A }))).status, 200, 'Carol leads Alpha');
+  assert.equal((await approve('carol', eliora[0].id, approveBody('add_alt'))).status, 200, 'Carol leads Alpha, the home team of Aldric: an alt needs no team');
   assert.equal((await approve('carol', eliora[0].id, approveBody('add_alt', { teamId: s.A }))).json.error, 'claim_decided');
   assert.equal((await approve('dave', galdor.id, approveBody('new_person', { teamId: s.B }))).status, 200, 'Dave can place a new person on Bravo');
-  // archived team
-  assert.equal((await s.w.call(s.jars.alice, 'PATCH', `${s.guildPath}/teams/${s.B}`, { archived: true })).status, 200);
-  assert.equal((await approve('bob', eliora[1].id, approveBody('add_alt', { teamId: s.B }))).status, 400, 'an archived team takes no one');
   assert.equal((await approve('bob', 'cl_nope', approveBody('add_alt', { teamId: s.A }))).status, 404);
   assert.equal((await approve('bob', `cl_${'x'.repeat(22)}`, approveBody('add_alt', { teamId: s.A }))).status, 404);
   assert.equal((await approve('bob', eliora[1].id, approveBody('add_alt', { teamId: s.A }))).status, 200);

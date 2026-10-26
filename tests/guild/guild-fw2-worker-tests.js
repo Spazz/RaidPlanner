@@ -33,7 +33,7 @@ async function scenario() {
   return s;
 }
 
-check('me.mainTeamId and me.teamIds: the team of the Main, every team a character is on; null and [] for an account on no roster', async () => {
+check('me.mainTeamId and me.teamIds: the team of the Main, every team a character is on (a new alt is on none); null and [] for an account on no roster', async () => {
   const s = await scenario();
   const second = await s.call('alice', 'POST', '/teams', { name: 'Weekend team' });
   assert.equal(second.status, 201, second.text);
@@ -41,7 +41,7 @@ check('me.mainTeamId and me.teamIds: the team of the Main, every team a characte
   assert(weekendId, JSON.stringify(second.json));
   const me = async (who) => (await s.call(who, 'GET', '')).json.me;
   assert.deepEqual([(await me('bob')).mainTeamId, (await me('bob')).teamIds], [null, []], 'on no roster yet');
-  // Bob's Main is on the second team; he has an Alt on the first.
+  // Bob's Main is on the second team; he has an Alt, which starts on no team (U R3-Q1/R4-Q1), so the first team is not his.
   const added = await s.call('alice', 'POST', '/roster', { teamId: weekendId, name: 'Thornwick', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' });
   assert.equal(added.status, 201, added.text);
   const pid = added.json.person.id;
@@ -51,7 +51,10 @@ check('me.mainTeamId and me.teamIds: the team of the Main, every team a characte
   const bob = await me('bob');
   assert.equal(bob.personId, pid);
   assert.equal(bob.mainTeamId, weekendId, 'the Main\'s team, not the first team');
-  assert.deepEqual([...bob.teamIds].sort(), [s.teamId, weekendId].sort());
+  assert.deepEqual([...bob.teamIds].sort(), [weekendId], 'the teamless alt adds no team');
+  // Placed on the first team (a team route, B3), the alt adds it: simulated here with the column itself.
+  s.w.db.sqlite.exec(`UPDATE characters SET team_id = '${s.teamId}' WHERE name = 'Thornalt'`);
+  assert.deepEqual([...(await me('bob')).teamIds].sort(), [s.teamId, weekendId].sort());
   assert.deepEqual([(await me('carol')).mainTeamId, (await me('carol')).teamIds], [null, []], 'another account is on no team');
   assert.equal((await s.call('alice', 'GET', '')).json.me.mainTeamId, null, 'the Guild Master who linked it is not on the roster');
 });

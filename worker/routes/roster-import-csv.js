@@ -9,11 +9,14 @@ import { isId, newId } from '../ids.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { allows } from '../permissions.js';
 import { CSV_MAX_ROWS, findColumns, mapRows, planRows, readCsvText } from '../csv-roster.js';
-import { isRealDate, isSpecOf, nameKey } from '../roster-data.js';
+import { CREATE_STATUSES, isRealDate, isSpecOf, nameKey } from '../roster-data.js';
 import {
   checkNames, importRate, indexed, loadGuildKeys, loadNicknameIndex, readDefaultStatus, requireTeamId, startImport, writeImport,
 } from './roster-import.js';
 import { bad, readClass, readName, resolveRealm } from './roster.js';
+
+// A row may start Social (status 'inactive': the characters take core_rank 'social'); the file-wide starting status stays Raider / Trial / Reserve.
+const CSV_STATUSES = [...CREATE_STATUSES, 'inactive'];
 
 const forbidden = (extra) => new HttpError(403, 'forbidden', 'You do not have permission to add to that team.', extra);
 
@@ -125,7 +128,7 @@ export async function commitCsv(ctx) {
     const teamId = row.teamId === undefined || row.teamId === null ? team.id : row.teamId;
     if (!isId('t', teamId) || !activeTeams.has(teamId)) throw bad('That team does not exist in this guild.', 'teamId', extra);
     if (!allows(guildContext.can, 'roster.edit', teamId)) throw forbidden(extra);
-    const status = readDefaultStatus(row.status, 'status', 'raider', extra);
+    const status = readDefaultStatus(row.status, 'status', 'raider', extra, CSV_STATUSES);
     if (row.joinedOn !== undefined && row.joinedOn !== null && !isRealDate(row.joinedOn)) throw bad('Joined needs a date.', 'joinedOn', extra);
     read.set(index, { name, classId, mainSpec, realm, teamId, status, joinedOn: row.joinedOn || null });
     nameEntries.push({ name, realmKey: realm.key, index });

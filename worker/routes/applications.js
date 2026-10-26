@@ -22,7 +22,7 @@ import { checkRateLimit } from '../ratelimit.js';
 import {
   APPLY_STATUSES, CONTACT_MAX, MAX_QUESTIONS, NOTES_MAX, manyLines, oneLine, questionsOf, readAnswers, readQuestions,
 } from '../apply-data.js';
-import { syncCharacterRanksStatement } from '../person-legacy.js';
+import { characterRankColumns } from '../person-legacy.js';
 import { isSpecOf, nameKey, rosterOptions } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
 import { loadSession, hashToken } from '../session.js';
@@ -361,6 +361,7 @@ export async function acceptApplication(ctx) {
       ).bind(playerId, guild.id, today, today, trialEnd, linkUser, ctx.session.user.id, now, now),
       insertCharacter(db, guild.id, {
         id: characterId, playerId, teamId: team.id, name: row.char_name, realm: row.realm, realmKey: realmKeyValue, class: row.class, mainSpec, offSpec: null, isMain: true,
+        rank: characterRankColumns({ status: 'trial', trialStart: today, trialEnd }),
       }, now),
       db.prepare(
         `UPDATE applications SET status = 'accepted', player_id = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? WHERE id = ? AND guild_id = ? AND status IN ('new', 'reviewing')`,
@@ -370,7 +371,6 @@ export async function acceptApplication(ctx) {
         after: { personId: playerId, teamId: team.id, linked: !!linkUser, trialEnd },
       }, { sql: 'changes() = 1', params: [] }),
       markRaidsStale(db, guild.id, [key], null, [team.id]),
-      syncCharacterRanksStatement(db, guild.id, playerId),
     ]);
   } catch (error) {
     const kind = constraintOf(error);

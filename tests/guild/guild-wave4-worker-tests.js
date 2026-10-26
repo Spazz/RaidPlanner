@@ -376,7 +376,7 @@ check('no-reply reminders: the raiders and trials with no sign-up and no notice,
   await s.person({ name: 'Trialist', status: 'trial' });                    // trials are asked too
   await s.person({ name: 'Reserve', status: 'reserve' });                   // not asked
   const gone = await s.person({ name: 'Gone' });                           // not asked: inactive
-  s.w.db.sqlite.prepare("UPDATE players SET status = 'inactive' WHERE id = ?").run(gone.pid);
+  s.w.db.sqlite.prepare("UPDATE characters SET core_rank = 'social' WHERE player_id = ?").run(gone.pid); // Inactive = Social, on the characters (R2)
   const otherTeamId = (await s.ok('gm', 'POST', '/teams', { name: 'Other' })).team.id;
   await s.person({ name: 'Stranger', team: otherTeamId }); // another team's raider
   const rid = await s.raidAt(at(40), { title: 'Sunday' });

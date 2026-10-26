@@ -21,9 +21,10 @@ import { winnerNameKeySql } from '../name-alias.js';
 import { announceLoot } from '../notify-run.js';
 import { teamNotifyStatement } from '../notify-store.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
-import { legacyColumnsSql } from '../person-legacy.js';
+import { personStatusSql } from '../person-rank-sql.js';
 import { allowsSurname, cleanCharacterName, nameKey, realmKey } from '../roster-data.js';
 import { guildToday, viewerOf } from '../roster-view.js';
+import { rosterRankOnTeamSql } from '../team-roster.js';
 import { windowStartFor } from './attendance.js';
 import { loadNames, parseJson } from './audit.js';
 import { loadRaid } from './raids.js';
@@ -483,7 +484,8 @@ const balanceStatements = (bind, db, guild) => [
     policyRowsStatement(db, guild.id),
     bind('SELECT id, raid_on FROM raids WHERE guild_id = ?1 AND team_id = ?2'),
     bind('SELECT raid_id, player_id, outcome, attended, credit FROM attendance WHERE guild_id = ?1 AND team_id = ?2'),
-    bind(`SELECT p.id, ${legacyColumnsSql('p', 'status')} FROM players p WHERE p.guild_id = ?1
+    // The people with a character on the team, whatever its rank; `status` is their rank on the team's roster, 'inactive' for a person who is not on it.
+    bind(`SELECT p.id, COALESCE(${rosterRankOnTeamSql('p.id', '?2')}, 'inactive') AS status FROM players p WHERE p.guild_id = ?1
             AND p.id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`),
     bind(`SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1
             AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`),
@@ -607,7 +609,7 @@ export async function getPersonLoot(ctx) {
   const personId = ctx.params.pid;
   const bind = (sql) => db.prepare(sql).bind(guild.id, personId);
   const [playerResult, characterResult, awardResult, policyResult, guestResult] = await db.batch([
-    bind(`SELECT id, ${legacyColumnsSql('players', 'status')}, discord_user_id, user_id FROM players WHERE guild_id = ?1 AND id = ?2`),
+    bind(`SELECT id, ${personStatusSql('players.id')} AS status, discord_user_id, user_id FROM players WHERE guild_id = ?1 AND id = ?2`),
     bind('SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`${AWARD_SELECT} WHERE a.guild_id = ?1 AND EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.player_id = ?2
             AND c.name_key = ${winnerNameKeySql('a')} AND c.realm_key = a.winner_realm_key) ORDER BY a.awarded_at DESC, a.id LIMIT ${LOOT_LIST_CAP}`),

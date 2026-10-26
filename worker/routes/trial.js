@@ -1,13 +1,15 @@
 // The trial review card: GET /roster/:pid/trial gathers what an officer weighs when a trial ends - attendance since the trial began, the loot
 // the person received, fill-ins and an excerpt of the officer notes - into one answer. The buttons on the card (Promote, Extend, End) are the
-// existing person PATCH; nothing here writes. For people who may edit the person's home team (roster.edit); each block is left out
-// (null) when the viewer lacks the right to that data.
+// existing person PATCH; nothing here writes. The card is about the team the person is on trial on: the Trial character on a team roster that the viewer
+// may edit (worker/person-rank.js trialReviews: a Raider main on A with a Trial alt on B is reviewed on B), else the person's home team. For people who
+// may edit that team (roster.edit); each block is left out (null) when the viewer lacks the right to that data.
 import { HttpError, jsonResponse } from '../http.js';
 import { summarizeCells, teamMetrics } from '../attendance-metrics.js';
 import { makePolicyResolver, policyRowsStatement } from '../attendance-store.js';
 import { lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver } from '../loot-store.js';
 import { winnerNameKeySql } from '../name-alias.js';
 import { allows, loadGuildContext } from '../permissions.js';
+import { characterOfRow, trialReviews } from '../person-rank.js';
 import { trialFlag } from '../roster-data.js';
 import { guildToday, homeTeamOf, loadPersonData, notesView } from '../roster-view.js';
 import { metricsRaid, metricsRow } from './attendance.js';
@@ -33,12 +35,20 @@ export async function getTrialReview(ctx) {
   const guild = guildContext.guild;
   const data = await loadPersonData(db, guild.id, ctx.params.pid);
   if (!data) throw new HttpError(404, 'not_found', 'That person was not found.');
-  const home = homeTeamOf(data);
-  if (!home || !allows(guildContext.can, 'roster.edit', home.id)) throw forbidden();
+  const homeTeam = homeTeamOf(data);
+  if (!homeTeam) throw forbidden();
   const { player } = data;
+  const editable = (teamId) => allows(guildContext.can, 'roster.edit', teamId);
+  const reviews = trialReviews({ characters: data.characters.map((entry) => characterOfRow(entry.row)) });
+  const review = reviews.find((entry) => entry.teamId === homeTeam.id && editable(entry.teamId)) || reviews.find((entry) => editable(entry.teamId)) || null;
+  const home = review ? data.characters.find((entry) => entry.row.id === review.characterId).view.team : homeTeam;
+  if (!editable(home.id)) throw forbidden();
+  const status = review ? 'trial' : player.status;
+  const trialStart = review ? review.trialStart : player.trial_start;
+  const trialEnd = review ? review.trialEnd : player.trial_end;
   const today = guildToday(guild, ctx.now());
-  const since = player.trial_start || player.joined_on || null;
-  const seeAttendance = allows(guildContext.can, 'attendance.view', home.id);
+  const since = trialStart || player.joined_on || null;
+  const seeAttendance = home.id !== null && allows(guildContext.can, 'attendance.view', home.id);
   const [policyResult, raidResult, rowResult, borrowedResult, lootPolicyResult, lootResult] = await db.batch([
     policyRowsStatement(db, guild.id),
     db.prepare(
@@ -66,7 +76,7 @@ export async function getTrialReview(ctx) {
     const resolver = makePolicyResolver(guild, policyResult.results);
     const policy = resolver.resolved(home.id);
     const metrics = teamMetrics({
-      people: [{ id: player.id, status: player.status, joinedOn: player.joined_on, leftOn: player.left_on }],
+      people: [{ id: player.id, status, joinedOn: player.joined_on, leftOn: player.left_on }],
       raids: raidResult.results.map(metricsRaid),
       rows: rowResult.results.map((row) => metricsRow(row)),
       borrowed: borrowedResult.results.map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
@@ -96,8 +106,8 @@ export async function getTrialReview(ctx) {
   return jsonResponse({
     today,
     person: {
-      id: player.id, name: main ? main.view.name : 'Unknown', status: player.status, joinedOn: player.joined_on, trialStart: player.trial_start,
-      trialEnd: player.trial_end, trialFlag: trialFlag(player.status, player.trial_end, today), version: player.version,
+      id: player.id, name: main ? main.view.name : 'Unknown', status, joinedOn: player.joined_on, trialStart,
+      trialEnd, trialFlag: trialFlag(status, trialEnd, today), version: player.version,
     },
     since,
     attendance,

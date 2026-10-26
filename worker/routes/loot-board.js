@@ -9,7 +9,7 @@ import { LIST_SOURCES, buildBoard, expectedPeople, isListSource, readListRows } 
 import { LOOT_TAGS } from '../loot-policy.js';
 import { AWARD_SELECT, lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver, viewAwards } from '../loot-store.js';
 import { allows, loadGuildContext } from '../permissions.js';
-import { notInactiveSql } from '../person-legacy.js';
+import { onTeamRosterSql } from '../team-roster.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { winnerNameKeySql } from '../name-alias.js';
 import { allowsSurname, cleanCharacterName, nameKey, realmKey } from '../roster-data.js';
@@ -37,8 +37,7 @@ async function boardFor(ctx, guildContext, raid, access) {
     db.prepare('SELECT source, player_id, kind, standby, guest, nickname, class_name, spec_name FROM raid_signups WHERE raid_id = ? AND (player_id IS NOT NULL OR guest = 1)').bind(raid.id),
     db.prepare('SELECT player_id, outcome FROM attendance WHERE raid_id = ? AND guild_id = ?').bind(raid.id, guild.id),
     db.prepare(
-      `SELECT p.id AS player_id FROM players p WHERE p.guild_id = ?1 AND ${notInactiveSql('p')}
-          AND EXISTS (SELECT 1 FROM characters c WHERE c.player_id = p.id AND c.guild_id = ?1 AND c.team_id = ?2)`,
+      `SELECT DISTINCT c.player_id FROM characters c WHERE c.guild_id = ?1 AND ${onTeamRosterSql('c', '?2')}`,
     ).bind(guild.id, raid.team_id),
     // match_name_key: the winner's name as the characters carry it today (worker/name-alias.js), so an award to a renamed character still finds it.
     db.prepare(

@@ -290,6 +290,8 @@
   function charTeamFieldHtml(gd, selectedId, character) {
     const active = G.shell.activeTeams(gd.teams);
     if (active.length < 2) return '';
+    // A character on no team has no Team to edit here: saving the form must not place it (the Worker leaves its team alone; placing is a team route's job).
+    if (character && !(character.team && character.team.id)) return '';
     const items = active.map(function (t) { return { value: t.id, label: t.name }; });
     if (character && character.team && character.team.id && !items.some(function (i) { return i.value === character.team.id; })) {
       items.push({ value: character.team.id, label: character.team.name + ' (archived)' });

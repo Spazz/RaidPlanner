@@ -248,7 +248,12 @@ async function addPerson(s, who, teamId, name, extra = {}) {
   assert.equal(r.status, 201, JSON.stringify(r.json));
   return r.json;
 }
-const addAlt = (s, who, pid, teamId, name, extra = {}) => s.call(who, 'POST', `/roster/${pid}/characters`, { name, class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId, makeMain: false, ...extra });
+// A new alt starts on no team (B2); placing it on a team is the team routes' job (B3), so these tests place it with the column itself.
+const addAlt = async (s, who, pid, teamId, name, extra = {}) => {
+  const res = await s.call(who, 'POST', `/roster/${pid}/characters`, { name, class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId, makeMain: false, ...extra });
+  if (res.status === 201 && teamId && !extra.makeMain) exec(s.w, `UPDATE characters SET team_id = '${teamId}' WHERE name = '${name}'`);
+  return res;
+};
 
 // A letters-only name for number n (Aa, Ab, ... Aaa ...).
 function nameFor(n) {
@@ -688,7 +693,7 @@ check('recompute: an event refresh keeps decisions; a change in the flags reopen
   assert.equal(await s.w.count('raid_signups'), 0);
 });
 
-check('unmatched: link as an Alt (new character on the raid\'s team, other raids with that name marked stale), or mark a guest; both audited', async () => {
+check('unmatched: link as an Alt (a new character on no team, other raids with that name marked stale), or mark a guest; both audited', async () => {
   const s = await raidWorld();
   const { id } = await fullRaid(s);
   // A second raid (team B, another night) whose log also holds Zorgax.
@@ -711,7 +716,7 @@ check('unmatched: link as an Alt (new character on the raid\'s team, other raids
   assert.equal(linked.json.raid.raid.openFlags, 3);
   assert.equal(linked.json.attendanceFlags[s.A], 3, 'the badge counts open FLAGS: the 3 on the raid above');
   const character = (await s.w.rows("SELECT team_id, class, is_main, player_id FROM characters WHERE name = 'Zorgax'"))[0];
-  assert.deepEqual([character.team_id, character.class, character.is_main, character.player_id], [s.A, 'ROGUE', 0, s.p.fenwick]);
+  assert.deepEqual([character.team_id, character.class, character.is_main, character.player_id], [null, 'ROGUE', 0, s.p.fenwick], 'a new alt starts teamless (U R3-Q1/R4-Q1)');
   assert.equal((await s.call('bob', 'GET', `/raids?team=${s.B}`)).json.raids[0].stale, true);
   assert.equal((await s.call('bob', 'POST', s.raid(other.json.raid.id, '/recompute'), {})).json.raid.stale, false);
   // A guest: ignored entirely.

@@ -6,8 +6,8 @@
  * alts, characters left at the migration's defaults (= drift), then:
  *   - mismatch.sql answers one row of five counts (core_rank, left_on, left_reason, trial_start, trial_end), nonzero for the drifted data;
  *   - rederive.sql brings all five to 0, changes nothing else, and is idempotent;
- *   - what it writes equals an independent JS statement of the 0030 mapping, the migration 0030 backfill itself, and the Worker's dual write
- *     (syncCharacterRanksStatement);
+ *   - what it writes equals an independent JS statement of the 0030 mapping, the migration 0030 backfill itself, and the Worker's own mapping
+ *     (characterRankColumns + setCharacterRanksStatement, the writers of lane B2);
  *   - after a seeded drift (one character per field) the counts are exactly one per field, and rederive heals them.
  */
 const assert = require('node:assert/strict');
@@ -143,17 +143,30 @@ check('rederive.sql writes the 0030 mapping: every status, reason and trial-date
   assert.deepEqual(get('p_kicked_main'), { core_rank: 'social', left_on: '2026-09-21', left_reason: 'kicked', trial_start: null, trial_end: null });
 });
 
-check('the Worker\'s dual write (syncCharacterRanksStatement) and rederive.sql give the same rows', async () => {
-  const { syncCharacterRanksStatement } = await import(pathToFileURL(path.join(ROOT, 'worker/person-legacy.js')).href);
+check('the Worker\'s mapping (characterRankColumns + setCharacterRanksStatement) and rederive.sql give the same rows', async () => {
+  const { characterRankColumns, setCharacterRanksStatement } = await import(pathToFileURL(path.join(ROOT, 'worker/person-legacy.js')).href);
+  const columnsOf = ([, status, reason, leftOn, trialStart, trialEnd]) => characterRankColumns({ status, leftReason: reason, leftOn, trialStart, trialEnd });
   const viaSql = freshDb();
   await rederive(viaSql);
   const viaWorker = freshDb();
-  await viaWorker.batch([syncCharacterRanksStatement(viaWorker, 'g1', PEOPLE.map((p) => p[0]))]);
+  await viaWorker.batch(PEOPLE.map((person) => setCharacterRanksStatement(viaWorker, 'g1', person[0], columnsOf(person))));
   assert.deepEqual(fiveFields(viaWorker), fiveFields(viaSql));
   assert.deepEqual(await mismatch(viaWorker), ZERO);
-  // One person at a time, and a person that does not exist, change only what they should.
+  // The pure mapping on its own, against the independent statement of it above.
+  for (const person of PEOPLE) {
+    const main = columnsOf(person);
+    const want = expected(person, 1);
+    assert.deepEqual([main.coreRank, main.leftOn, main.leftReason, main.trialStart, main.trialEnd], [want.core_rank, want.left_on, want.left_reason, want.trial_start, want.trial_end], person[0]);
+  }
+  // One person at a time, a person that does not exist and a person of another guild change only what they should; a failed guard changes nothing.
   const one = freshDb();
-  await one.batch([syncCharacterRanksStatement(one, 'g1', 'p_trial'), syncCharacterRanksStatement(one, 'g1', 'p_nobody'), syncCharacterRanksStatement(one, 'other-guild', ['p_left'])]);
+  const trialPerson = PEOPLE.find((person) => person[0] === 'p_trial');
+  await one.batch([
+    setCharacterRanksStatement(one, 'g1', 'p_trial', columnsOf(trialPerson)),
+    setCharacterRanksStatement(one, 'g1', 'p_nobody', columnsOf(trialPerson)),
+    setCharacterRanksStatement(one, 'other-guild', 'p_left', columnsOf(trialPerson)),
+    setCharacterRanksStatement(one, 'g1', 'p_reserve', columnsOf(PEOPLE.find((person) => person[0] === 'p_reserve')), { sql: '0 = 1', params: [] }),
+  ]);
   const touched = fiveFields(one).filter((row) => row.core_rank !== 'raider' || row.trial_start);
   assert.deepEqual(touched.map((row) => row.id), ['p_trial_alt1', 'p_trial_alt2', 'p_trial_main']);
   assert.deepEqual((await mismatch(one)).core_rank, 3 * (PEOPLE.filter((p) => p[1] !== 'raider').length - 1));

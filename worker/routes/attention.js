@@ -29,11 +29,12 @@ import { ATTENTION_VIEW_ACTIONS, LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIA
 import { winnerNameKeySql } from '../name-alias.js';
 import { onboardingStatement, shapeOnboarding } from '../onboarding.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
-import { legacyColumnSql, legacyColumnsSql, onTrialSql, raidingSql } from '../person-legacy.js';
+import { characterOfRow } from '../person-rank.js';
+import { personRankSql } from '../person-rank-sql.js';
 import { LOG_GRACE_HOURS, LOG_NUDGE_LOOKBACK_DAYS, RAID_DURATION_HOURS } from '../duties.js';
 import { CONFIRM_HOURS } from '../notify.js';
 import { effectiveRaidSize } from '../raid-zones.js';
-import { guildToday } from '../roster-view.js';
+import { guildToday, personColumnsOf } from '../roster-view.js';
 import { MERGED_ROWS } from './raids.js';
 import { metricsRaid, metricsRow } from './attendance.js';
 
@@ -123,9 +124,9 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     bind("SELECT COUNT(*) AS n FROM character_claims WHERE guild_id = ? AND status = 'pending'"),
     // A main with no team (c.team_id NULL) has no team to review the trial: buildAttention leaves it out, as it leaves out an archived team's.
     bind(
-      `SELECT p.id, ${legacyColumnsSql('p', 'trialEnd')}, c.name, c.class, c.team_id FROM players p JOIN characters c ON c.player_id = p.id AND c.is_main = 1
-        WHERE p.guild_id = ? AND ${onTrialSql('p')} AND ${legacyColumnSql('p', 'trialEnd')} IS NOT NULL AND ${legacyColumnSql('p', 'trialEnd')} <= ?
-        ORDER BY ${legacyColumnSql('p', 'trialEnd')}, p.id LIMIT ${READ_CAP}`,
+      `SELECT c.player_id AS id, c.trial_end, c.name, c.class, c.team_id FROM characters c
+        WHERE c.guild_id = ? AND c.is_main = 1 AND c.core_rank = 'trial' AND c.trial_end IS NOT NULL AND c.trial_end <= ?
+        ORDER BY c.trial_end, c.player_id LIMIT ${READ_CAP}`,
       trialUntil,
     ),
     // Raids of the last two weeks that happened (a log or hand-entered attendance) with no loot imported, in a team that has imported loot before.
@@ -164,10 +165,11 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
         WHERE a.guild_id = ? AND a.credit_team_id IN (SELECT value FROM json_each(?)) AND a.credit = 1 AND a.outcome = 'fill_in'`,
       watchJson,
     ),
-    bind(`SELECT id, ${legacyColumnsSql('players', 'status')}, joined_on, ${legacyColumnsSql('players', 'leftOn')}, rank, rank_on FROM players WHERE guild_id = ? AND ${raidingSql('players')}`),
+    // The raiding people (their main is a Raider or on Trial); status and left date come from their characters below.
+    bind(`SELECT id, joined_on, rank, rank_on FROM players WHERE guild_id = ? AND ${personRankSql('players.id')} IN ('raider', 'trial')`),
     bind(
-      `SELECT player_id, name, class, team_id, is_main FROM characters
-        WHERE guild_id = ?1 AND player_id IN (SELECT id FROM players WHERE guild_id = ?1 AND ${raidingSql('players')})`,
+      `SELECT id, player_id, name, class, team_id, is_main, core_rank, left_on, left_reason, trial_start, trial_end FROM characters
+        WHERE guild_id = ?1 AND ${personRankSql('characters.player_id')} IN ('raider', 'trial')`,
     ),
     // Upcoming raids with a published roster where someone said they cannot make it.
     bind(
@@ -269,7 +271,8 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     const onTeam = new Set([...teamRows.map((row) => row.player_id), ...characters.results.filter((row) => row.team_id === teamId).map((row) => row.player_id)]);
     const members = [...onTeam].filter((id) => playersById.has(id)).map((id) => {
       const row = playersById.get(id);
-      return { id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on, rank: row.rank, rankOn: row.rank_on };
+      const fields = personColumnsOf((charactersByPlayer.get(id) || []).map(characterOfRow));
+      return { id, status: fields.status, joinedOn: row.joined_on, leftOn: fields.left_on, rank: row.rank, rankOn: row.rank_on };
     });
     const policy = resolver.resolved(teamId);
     const input = {

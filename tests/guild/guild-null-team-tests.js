@@ -7,7 +7,7 @@
  *   - ownTeamIds drops NULL: a teamless character grants no team scope (own_teams), a placed one still does;
  *   - the person record, the roster rows, the person attendance and loot pages, the guild payload's flags, the export and the Home attention list
  *     answer 200 with the teamless character in the right place (or left out where a team roster is meant), never as a team called null.
- * Writers that need a team (patch character, delete person guards) are lane B2's and are not exercised here.
+ * The writers that must work for a character on no team (patch character, delete person, make main, ...) are exercised in guild-b2-writers-tests.js.
  */
 const assert = require('node:assert/strict');
 const { load, adminOf, memberOf, makeWorld, signIn } = require('../guild-world');
@@ -52,9 +52,15 @@ async function scenario() {
       const res = await s.ok('gm', 'POST', '/roster', { teamId: tids[0], class: 'MAGE', mainSpec: 'Fire', offSpec: null, ...body });
       return { pid: res.person.id, cid: res.characters[0].id, version: res.person.version, today: res.today };
     },
+    // A new alt starts on no team (lane B2); the team routes that place it come with B3, so a test that wants it placed (teamId given, or the first team) does it
+    // with the column itself, as long as the person has no character on that team yet (one per person per team).
     async addCharacter(pid, body) {
       const res = await s.ok('gm', 'POST', `/roster/${pid}/characters`, { teamId: tids[0], class: 'ROGUE', mainSpec: 'Combat', offSpec: null, ...body });
-      return res.characters.find((c) => c.name === body.name).id;
+      const id = res.characters.find((c) => c.name === body.name).id;
+      const teamId = body.teamId === undefined ? tids[0] : body.teamId;
+      w.db.sqlite.exec(`UPDATE characters SET team_id = '${teamId}' WHERE id = '${id}'
+                        AND NOT EXISTS (SELECT 1 FROM characters o WHERE o.player_id = '${pid}' AND o.team_id = '${teamId}')`);
+      return id;
     },
     teamless: (characterId) => w.db.sqlite.exec(`UPDATE characters SET team_id = NULL WHERE id = '${characterId}'`),
     async me(who) { return (await s.ok(who, 'GET', '')).me; },
@@ -106,11 +112,11 @@ check('the person record and the roster rows keep a teamless alt (LEFT JOIN team
   const row = roster.people.find((x) => x.id === p.pid);
   assert.deepEqual([row.altCount, row.names, row.main.team.id], [1, ['Mainwith'], s.tids[0]], 'the teamless alt counts as an alt but is not on the team');
 
-  // A team lead of Alpha may edit the person (the main is on Alpha) but not delete them: one character is on no team, which only the whole guild covers.
+  // A team lead of Alpha may edit the person (the main is on Alpha) and delete them: the character on no team is covered by the person's home team.
   const leadId = await s.member('lead');
   await s.ok('gm', 'PUT', `/people/${leadId}/roles`, { officer: false, teamLeadTeamIds: [s.tids[0]] }, 200);
   const asLead = await s.ok('lead', 'GET', `/roster/${p.pid}`);
-  assert.deepEqual([asLead.can.edit, asLead.can.delete], [true, false]);
+  assert.deepEqual([asLead.can.edit, asLead.can.delete], [true, true]);
 });
 
 check('a main without a team: the person has no home team, the whole-guild editor still reaches them, a team lead does not', async () => {

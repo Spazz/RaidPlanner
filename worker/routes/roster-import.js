@@ -7,7 +7,7 @@ import { isId, newId } from '../ids.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { memberSql } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
-import { CORE_RANK_OF_IMPORTED_CHARACTER_SQL, syncCharacterRanksStatement } from '../person-legacy.js';
+import { IMPORTED_RANK_COLUMNS_SQL, characterRankColumns } from '../person-legacy.js';
 import { IMPORT_LIMIT, IMPORT_WINDOW_MS, WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, enforceRateLimit } from '../ratelimit.js';
 import {
   CREATE_STATUSES, RAID_HELPER_CLASS, RAID_HELPER_SPEC, WCL_CLASS, cleanCharacterName, cleanNickname, isSpecOf, nameKey,
@@ -62,9 +62,10 @@ function readRows(body, field) {
   return rows;
 }
 
-export function readDefaultStatus(raw, field, fallback, extra = {}) {
+// `allowed`: the statuses a row may start with. A CSV row may also be Social (status 'inactive': the characters get core_rank 'social').
+export function readDefaultStatus(raw, field, fallback, extra = {}, allowed = CREATE_STATUSES) {
   const status = raw === undefined ? fallback : raw;
-  if (!CREATE_STATUSES.includes(status)) throw bad('Pick raider, trial or reserve.', field, extra);
+  if (!allowed.includes(status)) throw bad(allowed.includes('inactive') ? 'Pick raider, trial, reserve or social.' : 'Pick raider, trial or reserve.', field, extra);
   return status;
 }
 
@@ -276,9 +277,11 @@ export async function checkNames(db, guildId, entries) {
   }
 }
 
-// plan: { people: [{ id, status, discord, nickname, joinedOn? }], characters: [{ id, playerId, name, realm, realmKey, class, mainSpec, offSpec, isMain, teamId? }],
-//         nicknameUpdates: [{ id, nickname }], source, ref }
-// joinedOn (a person's join date) and teamId (a character's team) are optional: without them the person joined today and the character is on `team`.
+// plan: { people: [{ id, status, discord, nickname, joinedOn? }], characters: [{ id, playerId, name, realm, realmKey, class, mainSpec, offSpec, isMain, teamId?,
+//         identity?: { namespace, realmId, characterId } }], nicknameUpdates: [{ id, nickname }], source, ref }
+// joinedOn (a person's join date) and teamId (a character's team) are optional: without them the person joined today and the Main is on `team`. An ALT starts
+// on no team (U R3-Q1/R4-Q1), whatever teamId says. The rank columns of a character: its new person's status (the Main carries the trial dates), else its
+// person's main (worker/person-legacy.js). identity (a Battle.net import) binds the character to its roster entry in the same INSERT.
 export async function writeImport(ctx, guildContext, team, plan) {
   const { db } = ctx;
   const guild = guildContext.guild;
@@ -299,19 +302,31 @@ export async function writeImport(ctx, guildContext, team, plan) {
     ).bind(guild.id, today, today, ctx.session.user.id, now, now, JSON.stringify(plan.people)));
   }
   if (plan.characters.length) {
+    const newPerson = new Map(plan.people.map((person) => [person.id, person]));
     statements.push(db.prepare(
-      `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at, core_rank)
-       SELECT json_extract(value, '$.id'), ?, json_extract(value, '$.playerId'), COALESCE(json_extract(value, '$.teamId'), ?), json_extract(value, '$.name'), json_extract(value, '$.nameKey'),
-              json_extract(value, '$.realm'), json_extract(value, '$.realmKey'), json_extract(value, '$.class'), json_extract(value, '$.mainSpec'),
-              json_extract(value, '$.offSpec'), json_extract(value, '$.isMain'), ?, ?, ${CORE_RANK_OF_IMPORTED_CHARACTER_SQL}
-         FROM json_each(?)`,
-    ).bind(guild.id, team.id, now, now, JSON.stringify(plan.characters.map((character) => ({
-      ...character, nameKey: nameKey(character.name), isMain: character.isMain ? 1 : 0,
-    })))));
+      `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at,
+                               namespace, blizzard_realm_id, blizzard_char_id, core_rank, left_on, left_reason, trial_start, trial_end)
+       SELECT json_extract(j.value, '$.id'), ?, json_extract(j.value, '$.playerId'),
+              CASE WHEN json_extract(j.value, '$.isMain') = 1 THEN COALESCE(json_extract(j.value, '$.teamId'), ?) END,
+              json_extract(j.value, '$.name'), json_extract(j.value, '$.nameKey'), json_extract(j.value, '$.realm'), json_extract(j.value, '$.realmKey'),
+              json_extract(j.value, '$.class'), json_extract(j.value, '$.mainSpec'), json_extract(j.value, '$.offSpec'), json_extract(j.value, '$.isMain'), ?, ?,
+              json_extract(j.value, '$.namespace'), json_extract(j.value, '$.blizzardRealmId'), json_extract(j.value, '$.blizzardCharId'),
+              ${IMPORTED_RANK_COLUMNS_SQL}
+         FROM json_each(?) j`,
+    ).bind(guild.id, team.id, now, now, JSON.stringify(plan.characters.map((character) => {
+      const person = newPerson.get(character.playerId);
+      const rank = person ? characterRankColumns({
+        status: person.status, trialStart: character.isMain ? (person.joinedOn || today) : null,
+      }) : {};
+      return {
+        ...character, nameKey: nameKey(character.name), isMain: character.isMain ? 1 : 0,
+        namespace: character.identity ? character.identity.namespace : null,
+        blizzardRealmId: character.identity ? character.identity.realmId : null,
+        blizzardCharId: character.identity ? character.identity.characterId : null,
+        ...rank,
+      };
+    }))));
   }
-  // Dual write (worker/person-legacy.js): the character columns of every person the import touches follow their players rows.
-  const personIds = [...new Set([...plan.people.map((person) => person.id), ...plan.characters.map((character) => character.playerId)])];
-  if (personIds.length) statements.push(syncCharacterRanksStatement(db, guild.id, personIds));
   if (plan.nicknameUpdates.length) {
     const json = JSON.stringify(plan.nicknameUpdates);
     statements.push(db.prepare(
@@ -339,6 +354,9 @@ export async function writeImport(ctx, guildContext, team, plan) {
     }
     if (kind === 'discord') {
       throw new HttpError(409, 'already_on_roster', 'Someone in this import joined the roster while you were working. Preview again.');
+    }
+    if (kind === 'identity_taken') {
+      throw new HttpError(409, 'roster_identity_taken', 'A character with one of those Battle.net identities joined the roster while you were importing. Load the roster again.', { field: 'members' });
     }
     if (kind === 'foreign_key') throw new HttpError(404, 'not_found', 'A person or team in this import no longer exists.');
     throw error;

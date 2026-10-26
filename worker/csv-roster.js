@@ -140,10 +140,12 @@ export function specOfText(classId, text) {
   return alias && SPECS[classId].includes(alias) ? alias : null;
 }
 
+// Social is a core rank of its own (a member who does not raid): a row that says so becomes a Social person, whose status is 'inactive' (the roster's word for it).
 const STATUS_WORDS = {
   raider: 'raider', core: 'raider', member: 'raider', active: 'raider', main: 'raider',
   trial: 'trial', trialist: 'trial', probation: 'trial', recruit: 'trial', initiate: 'trial',
-  reserve: 'reserve', bench: 'reserve', backup: 'reserve', standby: 'reserve', social: 'reserve',
+  reserve: 'reserve', bench: 'reserve', backup: 'reserve', standby: 'reserve',
+  social: 'inactive',
 };
 export const statusOfText = (text) => STATUS_WORDS[String(text).trim().toLowerCase()] || null;
 
@@ -216,7 +218,7 @@ export function mapRows(records, layout, context, firstLine) {
     let status = context.defaultStatus;
     if (rawStatus) {
       status = statusOfText(rawStatus);
-      if (!status) problems.push(`The status "${rawStatus.slice(0, 20)}" is not Raider, Trial or Reserve.`);
+      if (!status) problems.push(`The status "${rawStatus.slice(0, 20)}" is not Raider, Trial, Reserve or Social.`);
     }
 
     const rawJoined = cell('joined');

@@ -399,7 +399,7 @@ check('CSV import: the page previews a pasted file against the real roster, asks
   const chars = await s.rows("SELECT c.name, c.team_id, c.is_main, c.player_id, p.status, p.joined_on FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name IN ('Newwarr', 'Newmage', 'Lonelyalt') ORDER BY c.name");
   const by = Object.fromEntries(chars.map((c) => [c.name, c]));
   assert.deepEqual([by.Newwarr.team_id, by.Newwarr.status, by.Newwarr.joined_on, by.Newwarr.is_main], [s.teamId, 'trial', '2026-10-01', 1]);
-  assert.deepEqual([by.Newmage.team_id, by.Newmage.player_id === by.Newwarr.player_id, by.Newmage.is_main], [s.teamIds[1], true, 0]);
+  assert.deepEqual([by.Newmage.team_id, by.Newmage.player_id === by.Newwarr.player_id, by.Newmage.is_main], [null, true, 0], 'an alt starts on no team, whatever team the row names');
   assert.deepEqual([by.Lonelyalt.player_id === s.people.Thoren, by.Lonelyalt.is_main], [true, 0]);
   const audit = (await s.rows("SELECT after FROM audit_log WHERE action = 'roster.import'"))[0];
   assert.equal(JSON.parse(audit.after).source, 'csv');

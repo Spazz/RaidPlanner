@@ -1,12 +1,12 @@
 /**
- * Raidsmith guild tracker - the dual write R1 -> R2 (user-hierarchy build, lane B1a-1)
+ * Raidsmith guild tracker - the writers of the person fields: characters first, the players row as the mirror (user-hierarchy build, lanes B1a-1 and B2)
  * Run: node tests/guild/guild-dual-write-tests.js
  *
- * Every Worker writer of players.status / trial_start / trial_end / left_on / left_reason also writes characters.core_rank / left_on / left_reason /
- * trial_start / trial_end in the same batch (worker/person-legacy.js). The mapping of migration 0030: raider / trial / reserve -> that core_rank on every
- * character of the person, inactive -> social; left_on + left_reason only when inactive and the reason is left or kicked; trial dates only on the main
- * while trial. After each writer the re-derive tool's mismatch query (tools/hierarchy/mismatch.sql) must say 0 in all five fields, and the values are
- * pinned by name.
+ * Every Worker writer of a person's rank writes characters.core_rank / left_on / left_reason / trial_start / trial_end (worker/person-legacy.js) and mirrors the
+ * players row (status, trial and left dates) in the same batch, so a code rollback to R1, which reads players, stays correct. The mapping of migration 0030:
+ * raider / trial / reserve -> that core_rank on every character of the person, inactive -> social; left_on + left_reason only when inactive and the reason is
+ * left or kicked; trial dates only on the main while trial. After each writer the re-derive tool's mismatch query (tools/hierarchy/mismatch.sql) must say 0 in
+ * all five fields, and the values are pinned by name.
  *
  * Writers covered: create person, add character (+ make main), make main, patch person (status and dates), application accept, attendance "add as a
  * person / alt" (unmatched), Battle.net claim approval (new person, alt), CSV roster import (writeImport, shared by all four imports).
@@ -210,7 +210,7 @@ check('Battle.net claim approval: a new person and an alt take the status the pe
   await s.inSync('claim -> alt');
 });
 
-check('CSV roster import (writeImport): people, alts of new people and alts of existing people take their person\'s rank; one sync for the whole batch', async () => {
+check('CSV roster import (writeImport): people, alts of new people and alts of existing people take their person\'s rank in the one INSERT (no separate sync statement)', async () => {
   const s = await scenario();
   const existing = await s.newPerson({ name: 'Existingdual', status: 'reserve' });
   const rows = [
@@ -226,7 +226,8 @@ check('CSV roster import (writeImport): people, alts of new people and alts of e
   s.w.db.batch = realBatch;
   const writes = batches.filter((statements) => statements.some((sql) => /INSERT INTO players/.test(sql)));
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].filter((sql) => /^UPDATE characters SET\s+core_rank/.test(sql)).length, 1, 'one sync statement, whatever the size');
+  assert.equal(writes[0].filter((sql) => /^INSERT INTO characters/.test(sql)).length, 1, 'one character INSERT carries the rank columns, whatever the size');
+  assert.equal(writes[0].filter((sql) => /^UPDATE characters SET\s+core_rank/.test(sql)).length, 0, 'and no separate sync statement follows it');
   const trialPerson = (await s.rows("SELECT player_id FROM characters WHERE name = 'Csvtrial'"))[0].player_id;
   const trialChars = await s.chars(trialPerson);
   assert.deepEqual([cols(trialChars.Csvtrial), cols(trialChars.Csvalt)], [['trial', null, null, '2026-12-01', null], ['trial', null, null, null, null]]);

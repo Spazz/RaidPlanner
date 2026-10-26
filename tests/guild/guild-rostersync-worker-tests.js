@@ -861,8 +861,19 @@ check('officer roster import: an unpinned legacy guild\'s commit stamps namespac
   s.net.roster = here();
   const team = s.tids[0];
   const commit = (names) => s.call('officer', 'POST', '/roster/import/bnet/commit', { teamId: team, defaultStatus: 'raider', members: names.map((name) => ({ name, realmSlug: 'nightslayer' })) });
+  // The identity key goes in with the character (lane B2): one atomic batch holds the INSERT that carries it, and no separate UPDATE follows.
+  const batches = [];
+  const prepared = [];
+  const realBatch = s.w.db.batch.bind(s.w.db);
+  const realPrepare = s.w.db.prepare.bind(s.w.db);
+  s.w.db.batch = async (statements) => { batches.push(statements.map((statement) => statement.sql)); return realBatch(statements); };
+  s.w.db.prepare = (sql) => { prepared.push(sql); return realPrepare(sql); };
   const done = await commit([nameOf(2), nameOf(3)]);
+  s.w.db.batch = realBatch;
+  s.w.db.prepare = realPrepare;
   assert.equal(done.status, 201, done.text);
+  assert.equal(prepared.filter((sql) => /^\s*UPDATE characters\s+SET\s+namespace/i.test(sql)).length, 0, 'no separate identity UPDATE');
+  assert.equal(batches.filter((statements) => statements.some((sql) => /INSERT INTO characters[^]*blizzard_char_id/.test(sql))).length, 1, 'the identity travels in the characters INSERT, in one batch');
   const rows = await s.rows('SELECT name, namespace, blizzard_realm_id, blizzard_char_id FROM characters WHERE guild_id = ? ORDER BY name', s.gid);
   assert.deepEqual(rows, [
     { name: nameOf(2), namespace: NS, blizzard_realm_id: 4002, blizzard_char_id: idOf(2) },

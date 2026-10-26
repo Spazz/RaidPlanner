@@ -5,7 +5,7 @@ import { isId, newId } from '../ids.js';
 import { memberCandidatesSql, memberSql } from '../membership.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
-import { coreRankOfPersonSql, syncCharacterRanksStatement } from '../person-legacy.js';
+import { RANK_COLUMNS_SQL, characterRankColumns, rankBinds, setCharacterRanksStatement, trialDatesFollowMainStatements } from '../person-legacy.js';
 import {
   CLASS_IDS, CREATE_STATUSES, LEFT_REASONS, allowsSurname, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
 } from '../roster-data.js';
@@ -42,6 +42,8 @@ export function constraintOf(error) {
     if (/characters\.name_key|characters_guild_name/.test(text)) return 'character_name';
     if (/players\.discord_user_id|players_guild_discord/.test(text)) return 'discord';
     if (/players\.user_id|players_guild_user/.test(text)) return 'account';
+    if (/characters\.blizzard_char_id|characters_identity/.test(text)) return 'identity_taken';
+    if (/characters\.team_id, characters\.player_id|characters_team_person/.test(text)) return 'team_taken';
     if (/characters\.player_id|characters_one_main/.test(text)) return 'one_main';
   }
   if (/FOREIGN KEY constraint failed/i.test(text)) return 'foreign_key';
@@ -158,34 +160,38 @@ export async function resolveLinkUser(db, guildContext, userId, exceptPlayerId =
   return user;
 }
 
-// The core rank comes from the person's players row (dual write R1 -> R2, worker/person-legacy.js); the caller's batch ends with
-// syncCharacterRanksStatement for the other four columns (left and trial dates).
+// The rank columns come from row.rank for the first character of a new person (characterRankColumns of the status it starts with) and from the person's
+// main for every later one (worker/person-legacy.js RANK_COLUMNS_SQL, in the same statement). row.teamId may be null: the character sits on no team.
 export function insertCharacter(db, guildId, row, now) {
   return db.prepare(
-    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at, core_rank)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${coreRankOfPersonSql('?')})`,
-  ).bind(row.id, guildId, row.playerId, row.teamId, row.name, nameKey(row.name), row.realm, row.realmKey,
-    row.class, row.mainSpec, row.offSpec, row.isMain ? 1 : 0, now, now, row.playerId);
+    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at,
+                             core_rank, left_on, left_reason, trial_start, trial_end)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${RANK_COLUMNS_SQL})`,
+  ).bind(row.id, guildId, row.playerId, row.teamId || null, row.name, nameKey(row.name), row.realm, row.realmKey,
+    row.class, row.mainSpec, row.offSpec, row.isMain ? 1 : 0, now, now, ...rankBinds(row.rank, row.playerId));
 }
 
 // The two statements that move the Main (spec: "The Main invariant").
 // homeTeamId / targetTeamId repeat the authorization inside the writes: the old Main must still be on the home
-// team and the new Main still on the team the caller was authorized against.
+// team and the new Main still on the team the caller was authorized against. Either may be null (a character on no team): `IS ?` matches NULL, `= ?` never does.
 export function makeMainStatements(db, playerId, characterId, now, { homeTeamId, targetTeamId }) {
   return [
     db.prepare(
-      `UPDATE characters SET is_main = 0, updated_at = ? WHERE player_id = ? AND is_main = 1 AND team_id = ?
-         AND EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id = ?)`,
+      `UPDATE characters SET is_main = 0, updated_at = ? WHERE player_id = ? AND is_main = 1 AND team_id IS ?
+         AND EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ?)`,
     ).bind(now, playerId, homeTeamId, characterId, playerId, targetTeamId),
     db.prepare(
-      `UPDATE characters SET is_main = 1, updated_at = ? WHERE id = ? AND player_id = ? AND team_id = ?
+      `UPDATE characters SET is_main = 1, updated_at = ? WHERE id = ? AND player_id = ? AND team_id IS ?
          AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND is_main = 1)`,
     ).bind(now, characterId, playerId, targetTeamId, playerId),
   ];
 }
 
+// The team a write on this character is authorized against: its own, else the home team of its person (an alt on no team is edited by whoever edits the person).
+const editTeamOf = (row, home) => (row.team_id !== null && row.team_id !== undefined ? row.team_id : home.id);
+
 // Person writes below repeat the authorization inside the statement (SQL is written out, never interpolated):
-// "AND EXISTS (... is_main = 1 AND team_id = ?)" = the Main is still on the home team the caller was authorized against.
+// "AND EXISTS (... is_main = 1 AND team_id IS ?)" = the Main is still on the home team the caller was authorized against (NULL for a Main on no team).
 
 function audit(ctx, guildContext, action, entityType, entityId, before, after, guard = null) {
   return auditStatement(ctx, {
@@ -199,9 +205,13 @@ async function conflict(ctx, guildContext, personId, message, pick = (record) =>
   throw new HttpError(409, 'conflict', message, { current: pick(record) });
 }
 
+// One character per person per team (unique index characters_team_person, migration 0032; the writers below check first, the index is the backstop).
+const teamTaken = () => new HttpError(409, 'team_taken', 'That person already has a character on that team.', { field: 'teamId' });
+
 function mapCreateError(error) {
   const kind = constraintOf(error);
   if (LIMIT_KINDS.includes(kind)) throw limitError(kind);
+  if (kind === 'team_taken') throw teamTaken();
   if (kind === 'discord' || kind === 'account') throw new HttpError(409, 'already_linked', 'That member is already linked to another person.', { field: 'linkUserId' });
   if (kind === 'foreign_key') throw notFound('That person or team no longer exists.');
   throw error;
@@ -289,8 +299,9 @@ export async function createPerson(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
   const guild = guildContext.guild;
-  const team = await requireTarget(db, guild.id, body.teamId);
-  requireEdit(guildContext, team.id);
+  // No teamId = a person whose main sits on no team (D1: an officer may do that; roster.edit for the whole guild is what allows(…, null) asks).
+  const team = body.teamId === undefined || body.teamId === null ? null : await requireTarget(db, guild.id, body.teamId);
+  requireEdit(guildContext, team ? team.id : null);
   const name = readName(body.name, 'name', {}, guild.game_version);
   const classId = readClass(body.class);
   const { mainSpec, offSpec } = readSpecs(body.mainSpec, body.offSpec, classId);
@@ -320,20 +331,21 @@ export async function createPerson(ctx) {
   const characterId = newId('c', ctx.randomBytes);
   try {
     await db.batch([
+      // The players row (its status and dates are the mirror of the main's rank, worker/person-legacy.js) has to exist before its first character does.
       db.prepare(
         `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, version, notes_version, created_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
       ).bind(playerId, guild.id, status, joinedOn, trialStart, trialEnd, link ? link.discord_id : (fromSignup ? fromSignup.discordId : null), ctx.session.user.id, now, now),
       insertCharacter(db, guild.id, {
-        id: characterId, playerId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: classId, mainSpec, offSpec, isMain: true,
+        id: characterId, playerId, teamId: team ? team.id : null, name, realm: realm.realm, realmKey: realm.key, class: classId, mainSpec, offSpec, isMain: true,
+        rank: characterRankColumns({ status, trialStart, trialEnd }),
       }, now),
       audit(ctx, guildContext, 'person.create', 'person', playerId, null, {
-        status, joinedOn, trialStart, trialEnd, version: 1, linked: !!link, characterId, teamId: team.id, class: classId, mainSpec, offSpec,
+        status, joinedOn, trialStart, trialEnd, version: 1, linked: !!link, characterId, teamId: team ? team.id : null, class: classId, mainSpec, offSpec,
       }),
       // Raids whose logs name this character show "Recalculate".
-      markRaidsStale(db, guild.id, [nameKey(name)], null, [team.id]),
+      markRaidsStale(db, guild.id, [nameKey(name)], null, team ? [team.id] : []),
       ...(fromSignup ? [linkSignupsStatement(db, guild.id, playerId, fromSignup.discordId, fromSignup.raidId, fromSignup.signupId), markPersonRaidsStale(db, guild.id, playerId)] : []),
-      syncCharacterRanksStatement(db, guild.id, playerId),
     ]);
   } catch (error) {
     if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realm);
@@ -398,6 +410,8 @@ export async function patchPerson(ctx) {
   } else {
     next.leftOn = leftOn === undefined ? player.left_on : leftOn;
     next.leftReason = body.leftReason === undefined ? player.left_reason : body.leftReason;
+    // A break keeps no left date on the characters: switching it to Left or Kicked without a date starts today, as entering Inactive does.
+    if (leftOn === undefined && !next.leftOn && (next.leftReason === 'left' || next.leftReason === 'kicked')) next.leftOn = guildToday(guildContext.guild, ctx.now());
   }
   if (next.trialStart && next.trialEnd && next.trialEnd < next.trialStart) {
     throw bad('The trial end must be on or after the trial start.', 'trialEnd');
@@ -427,29 +441,41 @@ export async function patchPerson(ctx) {
       status: player.status, joinedOn: player.joined_on, trialStart: player.trial_start, trialEnd: player.trial_end,
       leftOn: player.left_on, leftReason: player.left_reason, discordUserId: player.discord_user_id,
     });
+    // The interim status contract (user-hierarchy build): a change of status, trial dates or left date writes the person's rank on EVERY character first
+    // (Inactive = Social; the dates by migration 0030's mapping), and the players row follows as the mirror a rollback to R1 reads. Both statements carry
+    // the same optimistic checks (version, the main still on the home team), so a lost race changes neither.
+    const statements = [];
+    if (changed.some((key) => ['status', 'trialStart', 'trialEnd', 'leftOn', 'leftReason'].includes(key))) {
+      const unchanged = {
+        sql: `EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ?)
+              AND EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND is_main = 1 AND team_id IS ?)`,
+        params: [player.id, guildContext.guild.id, player.version, player.id, home.id],
+      };
+      statements.push(setCharacterRanksStatement(db, guildContext.guild.id, player.id, characterRankColumns(next), unchanged));
+    }
+    const playersAt = statements.length;
+    statements.push(
+      db.prepare(
+        `UPDATE players SET status = ?, joined_on = ?, trial_start = ?, trial_end = ?, left_on = ?, left_reason = ?, discord_user_id = ?, discord_nickname = ?,
+                version = version + 1, updated_at = ?
+          WHERE id = ? AND guild_id = ? AND version = ?
+            AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)`,
+      ).bind(next.status, next.joinedOn, next.trialStart, next.trialEnd, next.leftOn, next.leftReason, next.discordUserId, next.nickname, now,
+        player.id, guildContext.guild.id, player.version, home.id),
+      audit(ctx, guildContext, 'person.update', 'person', player.id,
+        { ...before, version: player.version },
+        { ...snapshot(next), version: player.version + 1, changed },
+        CHANGED_ONE),
+      // Status, join and left dates and the Discord link decide who is expected and which sign-ups are theirs: their teams' raids need recalculating.
+      ...(changed.some((key) => ['status', 'joinedOn', 'leftOn', 'link'].includes(key)) ? [markPersonRaidsStale(db, guildContext.guild.id, player.id)] : []),
+    );
     let results;
     try {
-      results = await db.batch([
-        db.prepare(
-          `UPDATE players SET status = ?, joined_on = ?, trial_start = ?, trial_end = ?, left_on = ?, left_reason = ?, discord_user_id = ?, discord_nickname = ?,
-                  version = version + 1, updated_at = ?
-            WHERE id = ? AND guild_id = ? AND version = ?
-              AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)`,
-        ).bind(next.status, next.joinedOn, next.trialStart, next.trialEnd, next.leftOn, next.leftReason, next.discordUserId, next.nickname, now,
-          player.id, guildContext.guild.id, player.version, home.id),
-        audit(ctx, guildContext, 'person.update', 'person', player.id,
-          { ...before, version: player.version },
-          { ...snapshot(next), version: player.version + 1, changed },
-          CHANGED_ONE),
-        // Status, join and left dates and the Discord link decide who is expected and which sign-ups are theirs: their teams' raids need recalculating.
-        ...(changed.some((key) => ['status', 'joinedOn', 'leftOn', 'link'].includes(key)) ? [markPersonRaidsStale(db, guildContext.guild.id, player.id)] : []),
-        // Dual write: the character columns follow the players row this batch just wrote (a lost version race changed nothing, so this changes nothing).
-        syncCharacterRanksStatement(db, guildContext.guild.id, player.id),
-      ]);
+      results = await db.batch(statements);
     } catch (error) {
       mapCreateError(error);
     }
-    if (results[0].meta.changes !== 1) {
+    if (results[playersAt].meta.changes !== 1) {
       return conflict(ctx, guildContext, player.id, 'Someone else changed this person. The page now shows their version.');
     }
   }
@@ -481,7 +507,7 @@ export async function saveNotes(ctx) {
     db.prepare(
       `UPDATE players SET notes = ?, notes_updated_by = ?, notes_updated_at = ?, notes_version = notes_version + 1, updated_at = ?
         WHERE id = ? AND guild_id = ? AND notes_version = ?
-          AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)`,
+          AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)`,
     ).bind(text || null, ctx.session.user.id, now, now, player.id, guildContext.guild.id, player.notes_version, home.id),
     audit(ctx, guildContext, 'person.notes', 'person', player.id, { notesVersion: player.notes_version },
       { notesVersion: player.notes_version + 1 },
@@ -497,12 +523,15 @@ export async function deletePerson(ctx) {
   const { db } = ctx;
   const { data, home } = await loadEditable(ctx, guildContext);
   const teamIds = [...new Set(data.characters.map((entry) => entry.view.team.id))];
-  for (const teamId of teamIds) requireEdit(guildContext, teamId);
+  // A character on no team is covered by the person's home team (editTeamOf): whoever may edit the Main may delete its alts.
+  for (const teamId of new Set(data.characters.map((entry) => editTeamOf(entry.row, home)))) requireEdit(guildContext, teamId);
   const { player } = data;
-  // The write repeats the authorization: the Main is still on the home team and every character is still on a team
-  // the caller was authorized against.
-  const stillAuthorized = 'EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?) AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND team_id NOT IN (SELECT value FROM json_each(?)))';
-  const guardParams = [home.id, JSON.stringify(teamIds)];
+  // The write repeats the authorization: the Main is still on the home team (which may be none) and every character that sits on a team is still on a
+  // team the caller was authorized against.
+  const placedTeamIds = teamIds.filter((teamId) => teamId !== null);
+  const stillAuthorized = `EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)
+    AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND team_id IS NOT NULL AND team_id NOT IN (SELECT value FROM json_each(?)))`;
+  const guardParams = [home.id, JSON.stringify(placedTeamIds)];
   const exists = {
     sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND ' + stillAuthorized + ')',
     params: [player.id, guildContext.guild.id, ...guardParams],
@@ -512,8 +541,8 @@ export async function deletePerson(ctx) {
       { status: player.status, version: player.version, teamIds, homeTeamId: home.id, characterCount: data.characters.length }, null, exists),
     db.prepare(
       `DELETE FROM players WHERE id = ? AND guild_id = ?
-          AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)
-          AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND team_id NOT IN (SELECT value FROM json_each(?)))
+          AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)
+          AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND team_id IS NOT NULL AND team_id NOT IN (SELECT value FROM json_each(?)))
         RETURNING id`,
     ).bind(player.id, guildContext.guild.id, ...guardParams),
     markRaidsStale(db, guildContext.guild.id, data.characters.map((entry) => nameKey(entry.row.name)), null, teamIds),
@@ -541,18 +570,42 @@ async function characterMoved(ctx, guildContext, personId, characterId) {
   return conflict(ctx, guildContext, personId, 'Someone moved this character. The page now shows the current record.');
 }
 
+// After a new character was inserted as an alt (on no team): the statements that make it the person's Main on `teamId` (null = no team). The Main swap comes
+// first and everything after it only acts when the swap happened (the previous Main is an alt by then; the new character is the Main), so a lost race changes
+// nothing. One character per person per team: the previous Main steps off the team when it sits there (an alt from now on, and alts start teamless); the caller
+// has refused the request when another character holds the team. -> { statements, swapAt } (swapAt: the write whose changes() says the swap happened).
+export function newMainStatements(db, { playerId, characterId, previousMain, teamId, now }) {
+  const statements = makeMainStatements(db, playerId, characterId, now, { homeTeamId: previousMain.team_id, targetTeamId: null });
+  const swapAt = statements.length - 1;
+  if (teamId) {
+    if (previousMain.team_id === teamId) {
+      statements.push(db.prepare('UPDATE characters SET team_id = NULL, updated_at = ? WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ?')
+        .bind(now, previousMain.id, playerId, teamId));
+    }
+    statements.push(db.prepare('UPDATE characters SET team_id = ?, updated_at = ? WHERE id = ? AND player_id = ? AND is_main = 1 AND team_id IS NULL')
+      .bind(teamId, now, characterId, playerId));
+  }
+  return { statements, swapAt };
+}
+
+// A new character joins a person. It starts on NO team (U R3-Q1/R4-Q1: new alts start teamless; placing it on a team is the team routes' job) whatever teamId
+// says, except a new MAIN: it takes the team asked for (none = no team), and the previous Main, an alt from now on, steps off that team when it sits there.
+// Another character on the asked-for team refuses the request (one character per person per team).
 export async function addCharacter(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
   const guild = guildContext.guild;
   const { data, home } = await loadEditable(ctx, guildContext);
-  const team = await requireTarget(db, guild.id, body.teamId);
-  requireEdit(guildContext, team.id);
   requireEdit(guildContext, home.id);
+  if (body.makeMain !== undefined && typeof body.makeMain !== 'boolean') throw bad('makeMain must be true or false.', 'makeMain');
+  const makeMain = body.makeMain === true;
+  // A teamId that is sent must name a team of this guild that takes people; only a new Main uses it.
+  const asked = body.teamId === undefined || body.teamId === null ? null : await requireTarget(db, guild.id, body.teamId);
+  const team = makeMain ? asked : null;
+  if (team) requireEdit(guildContext, team.id);
   const name = readName(body.name, 'name', {}, guild.game_version);
   const classId = readClass(body.class);
   const { mainSpec, offSpec } = readSpecs(body.mainSpec, body.offSpec, classId);
-  if (body.makeMain !== undefined && typeof body.makeMain !== 'boolean') throw bad('makeMain must be true or false.', 'makeMain');
   const realm = realmColumns(guild);
   const owner = await findNameOwner(db, guild.id, nameKey(name), realm.key);
   if (owner) throw nameTaken(name, owner);
@@ -560,21 +613,27 @@ export async function addCharacter(ctx) {
   const now = ctx.now();
   const player = data.player;
   const characterId = newId('c', ctx.randomBytes);
+  const previous = data.characters.find((entry) => entry.row.is_main === 1).row;
+  if (team && data.characters.some((entry) => entry.row.team_id === team.id && entry.row.id !== previous.id)) throw teamTaken();
   const statements = [
     insertCharacter(db, guild.id, {
-      id: characterId, playerId: player.id, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: classId, mainSpec, offSpec, isMain: false,
+      id: characterId, playerId: player.id, teamId: null, name, realm: realm.realm, realmKey: realm.key, class: classId, mainSpec, offSpec, isMain: false,
     }, now),
     audit(ctx, guildContext, 'character.create', 'character', characterId, null,
-      { personId: player.id, teamId: team.id, class: classId, mainSpec, offSpec, makeMain: body.makeMain === true }),
+      { personId: player.id, teamId: team ? team.id : null, class: classId, mainSpec, offSpec, makeMain }),
   ];
-  if (body.makeMain === true) {
+  let mainAt = -1;
+  if (makeMain) {
+    const main = newMainStatements(db, { playerId: player.id, characterId, previousMain: previous, teamId: team ? team.id : null, now });
+    mainAt = statements.length + main.swapAt;
     statements.push(
-      ...makeMainStatements(db, player.id, characterId, now, { homeTeamId: home.id, targetTeamId: team.id }),
-      audit(ctx, guildContext, 'character.main', 'character', characterId,
-        { mainCharacterId: data.characters.find((entry) => entry.row.is_main === 1).row.id }, { mainCharacterId: characterId }),
+      ...main.statements,
+      audit(ctx, guildContext, 'character.main', 'character', characterId, { mainCharacterId: previous.id }, { mainCharacterId: characterId }),
+      // The trial dates sit on the Main character: they move with it.
+      ...trialDatesFollowMainStatements(db, previous.id, characterId),
     );
   }
-  statements.push(markRaidsStale(db, guild.id, [nameKey(name)], null, [team.id]), syncCharacterRanksStatement(db, guild.id, player.id));
+  statements.push(markRaidsStale(db, guild.id, [nameKey(name)], null, team ? [team.id] : []));
   let results;
   try {
     results = await db.batch(statements);
@@ -582,7 +641,7 @@ export async function addCharacter(ctx) {
     if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realm);
     mapCreateError(error);
   }
-  if (body.makeMain === true && results[3].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The Main could not be changed. Reload and try again.');
+  if (makeMain && results[mainAt].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The Main could not be changed. Reload and try again.');
   return jsonResponse(await personReply(ctx, guildContext, player.id), 201);
 }
 
@@ -590,24 +649,31 @@ export async function patchCharacter(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
   const guild = guildContext.guild;
-  const { data } = await loadEditable(ctx, guildContext);
+  const { data, home } = await loadEditable(ctx, guildContext);
   const entry = findCharacter(data, ctx.params.cid);
   const current = entry.row;
-  requireEdit(guildContext, current.team_id);
+  requireEdit(guildContext, editTeamOf(current, home));
   const keys = ['name', 'class', 'mainSpec', 'offSpec', 'teamId'];
   if (!keys.some((key) => body[key] !== undefined)) throw bad('Send a field to change.', 'name');
 
   const name = body.name === undefined ? current.name : readName(body.name, 'name', {}, guild.game_version);
   const classId = body.class === undefined ? current.class : readClass(body.class);
+  // A character bound to its Battle.net identity keeps the name and class the game gives it (a paid rename arrives through the roster sync).
+  if (current.blizzard_char_id !== null && current.blizzard_char_id !== undefined) {
+    if (name !== current.name) throw bad('This character is linked to Battle.net: its name comes from the game and cannot be changed here.', 'name');
+    if (classId !== current.class) throw bad('This character is linked to Battle.net: its class comes from the game and cannot be changed here.', 'class');
+  }
   const specs = readSpecs(
     body.mainSpec === undefined ? current.main_spec : body.mainSpec,
     body.offSpec === undefined ? current.off_spec : body.offSpec,
     classId,
   );
+  // A character on a team may move to another; a character on NO team is never placed here (placing is the team routes' job), so its teamId is left alone.
   let teamId = current.team_id;
-  if (body.teamId !== undefined && body.teamId !== current.team_id) {
+  if (current.team_id !== null && body.teamId !== undefined && body.teamId !== current.team_id) {
     const team = await requireTarget(db, guild.id, body.teamId);
     requireEdit(guildContext, team.id);
+    if (data.characters.some((other) => other.row.id !== current.id && other.row.team_id === team.id)) throw teamTaken();
     teamId = team.id;
   }
   if (name !== current.name) {
@@ -628,14 +694,15 @@ export async function patchCharacter(ctx) {
       results = await db.batch([
         db.prepare(
           `UPDATE characters SET name = ?, name_key = ?, class = ?, main_spec = ?, off_spec = ?, team_id = ?, updated_at = ?
-            WHERE id = ? AND player_id = ? AND guild_id = ? AND team_id = ?`,
+            WHERE id = ? AND player_id = ? AND guild_id = ? AND team_id IS ?`,
         ).bind(name, nameKey(name), classId, specs.mainSpec, specs.offSpec, teamId, now, current.id, data.player.id, guild.id, current.team_id),
         audit(ctx, guildContext, 'character.update', 'character', current.id,
           { teamId: current.team_id, class: current.class, mainSpec: current.main_spec, offSpec: current.off_spec },
           { teamId, class: classId, mainSpec: specs.mainSpec, offSpec: specs.offSpec, changed },
           CHANGED_ONE),
         // A rename or a move changes which raids' results depend on this character.
-        ...(changed.includes('name') || changed.includes('teamId') ? [markRaidsStale(db, guild.id, [nameKey(current.name), nameKey(name)], null, [current.team_id, teamId])] : []),
+        ...(changed.includes('name') || changed.includes('teamId')
+          ? [markRaidsStale(db, guild.id, [nameKey(current.name), nameKey(name)], null, [current.team_id, teamId].filter(Boolean))] : []),
       ]);
     } catch (error) {
       if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realmColumns(guild, current.realm));
@@ -653,7 +720,7 @@ export async function makeMain(ctx) {
   const entry = findCharacter(data, ctx.params.cid);
   const target = entry.row;
   requireEdit(guildContext, home.id);
-  requireEdit(guildContext, target.team_id);
+  requireEdit(guildContext, editTeamOf(target, home));
   if (target.is_main === 1) return jsonResponse(await personReply(ctx, guildContext, data.player.id));
   const previous = data.characters.find((candidate) => candidate.row.is_main === 1).row;
   const now = ctx.now();
@@ -662,7 +729,7 @@ export async function makeMain(ctx) {
     audit(ctx, guildContext, 'character.main', 'character', target.id, { mainCharacterId: previous.id }, { mainCharacterId: target.id },
       CHANGED_ONE),
     // The trial dates sit on the main character: they move with it.
-    syncCharacterRanksStatement(db, guildContext.guild.id, data.player.id),
+    ...trialDatesFollowMainStatements(db, previous.id, target.id),
   ]);
   if (results[1].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, target.id);
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));
@@ -671,20 +738,20 @@ export async function makeMain(ctx) {
 export async function removeCharacter(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { db } = ctx;
-  const { data } = await loadEditable(ctx, guildContext);
+  const { data, home } = await loadEditable(ctx, guildContext);
   const entry = findCharacter(data, ctx.params.cid);
   const target = entry.row;
-  requireEdit(guildContext, target.team_id);
+  requireEdit(guildContext, editTeamOf(target, home));
   const removable = {
-    sql: 'EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id = ?)',
+    sql: 'EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ?)',
     params: [target.id, data.player.id, target.team_id],
   };
   const results = await db.batch([
     audit(ctx, guildContext, 'character.delete', 'character', target.id,
       { personId: data.player.id, teamId: target.team_id, class: target.class, mainSpec: target.main_spec, offSpec: target.off_spec }, null, removable),
-    db.prepare('DELETE FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id = ? RETURNING id')
+    db.prepare('DELETE FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ? RETURNING id')
       .bind(target.id, data.player.id, target.team_id),
-    markRaidsStale(db, guildContext.guild.id, [nameKey(target.name)], null, [target.team_id]),
+    markRaidsStale(db, guildContext.guild.id, [nameKey(target.name)], null, target.team_id ? [target.team_id] : []),
   ]);
   if (results[1].results.length !== 1) {
     const reread = await loadPersonData(db, guildContext.guild.id, data.player.id);

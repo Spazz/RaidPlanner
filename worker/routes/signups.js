@@ -9,7 +9,6 @@ import { displayCharacter } from '../attendance-view.js';
 import { isId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
-import { legacyColumnsSql, notInactiveSql } from '../person-legacy.js';
 import { raidSizeFields } from '../raid-zones.js';
 import { SINGLE_LINE_STRIP, isSpecOf, nameKey } from '../roster-data.js';
 import {
@@ -17,6 +16,7 @@ import {
   signUpSpecLabel, specChoices, storedKind, windowFieldsOf,
 } from '../signups-data.js';
 import { SLOT_TIME_SQL } from '../signup-window.js';
+import { personOnTeamRosterSql, rosterRankOnTeamSql } from '../team-roster.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { bad, readName, readClass, readSpec } from './roster.js';
 
@@ -96,10 +96,10 @@ export async function buildView(ctx, guildContext, raid) {
   const awayAt = statements.length + (edit ? 1 : 0);
   if (edit) {
     statements.push(db.prepare(
-      `SELECT p.id AS person_id, ${legacyColumnsSql('p', 'status')}, c.id, c.player_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, c.team_id
+      `SELECT p.id AS person_id, ${rosterRankOnTeamSql('p.id', '?2')} AS status, c.id, c.player_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, c.team_id
          FROM players p JOIN characters c ON c.player_id = p.id
-        WHERE p.guild_id = ? AND ${notInactiveSql('p')} AND p.id IN (SELECT player_id FROM characters WHERE guild_id = ? AND team_id = ?)`,
-    ).bind(guild.id, guild.id, teamId));
+        WHERE p.guild_id = ?1 AND ${personOnTeamRosterSql('p.id', '?2')}`,
+    ).bind(guild.id, teamId));
   }
   if (upcoming) {
     statements.push(
@@ -134,7 +134,8 @@ export async function buildView(ctx, guildContext, raid) {
 
   let me = null;
   if (self && myPlayerId) {
-    const mine = (charactersByPlayer.get(myPlayerId) || []).filter((row) => row.team_id === teamId).sort(byMainThenName);
+    // Any of the person's characters (U R4-Q1): a team member signs up an alt that sits on no team, or on another one, for their own team's raid.
+    const mine = [...(charactersByPlayer.get(myPlayerId) || [])].sort(byMainThenName);
     const shown = displayCharacter(mine, teamId);
     me = {
       personId: myPlayerId,
@@ -239,13 +240,14 @@ export async function writeSignup(ctx, guildContext, raid, personId, input, self
   ]);
   const all = characterResult.results;
   if (!all.length) throw new HttpError(404, 'not_found', 'That person is not on this guild\'s roster.');
-  // A member signs up with a character on the raid's team; an officer may pick any character of the person.
-  const allowed = self ? all.filter((row) => row.team_id === teamId) : all;
+  // Any character of the person, for a member and an officer alike (U R4-Q1): the route already required a character on the raid's team roster
+  // (signups.self), and the attendance goes to the person, whichever of their characters they bring.
+  const allowed = all;
   const existing = existingResult.results[0] || null;
   let character;
   if (input.hasCharacter && input.characterId) {
     character = allowed.find((row) => row.id === input.characterId);
-    if (!character) throw bad(self ? 'Pick one of your characters on this team.' : 'Pick one of this person\'s characters.', 'characterId');
+    if (!character) throw bad(self ? 'Pick one of your characters.' : 'Pick one of this person\'s characters.', 'characterId');
   } else {
     character = (!input.hasCharacter && existing && existing.character_id ? allowed.find((row) => row.id === existing.character_id) : null)
       || displayCharacter(allowed, teamId);

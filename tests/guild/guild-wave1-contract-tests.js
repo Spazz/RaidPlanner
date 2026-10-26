@@ -439,7 +439,8 @@ check('trial review: the card draws the real numbers, the buttons PATCH the pers
 
   // End: Inactive, reason Other; the note goes to the end of the officer notes as "Trial ended <today>: <note>".
   const ended = await G.api.trial.update(s.gid, s.p.Veyla, { expectedVersion: record.person.version, status: 'inactive', leftReason: 'other' });
-  assert.deepEqual([ended.person.status, ended.person.leftReason], ['inactive', 'other']);
+  // A reason of Other (or Break) is not a leaving, so no character carries it (migration 0030's mapping): the record reads Inactive with no reason.
+  assert.deepEqual([ended.person.status, ended.person.leftReason], ['inactive', null]);
   assert(ended.can.notesEdit && ended.notes, 'the record carries the notes version the append needs');
   S.person = { gid: s.gid, pid: s.p.Veyla, record: ended };
   // The note the End dialog collects goes onto the end of the officer notes through the real notes route (the dialog itself needs a DOM).

@@ -26,10 +26,11 @@ export function raidState(raid, reports, resolver = null) {
 
 export const isStale = (state) => state === 'stale';
 
-// The character a person is shown as on a team: the Main there, else the first by name there, else their Main elsewhere.
+// The character a person is shown as on a team: the Main there, else the first by name there, else their Main elsewhere. No team (null, as the person pages
+// ask) prefers none: a character on no team is not "on" it.
 export function displayCharacter(characters, teamId) {
   const byName = (a, b) => a.name.localeCompare(b.name);
-  const onTeam = characters.filter((character) => character.team_id === teamId).sort((a, b) => (b.is_main - a.is_main) || byName(a, b));
+  const onTeam = !teamId ? [] : characters.filter((character) => character.team_id === teamId).sort((a, b) => (b.is_main - a.is_main) || byName(a, b));
   if (onTeam.length) return onTeam[0];
   return characters.find((character) => character.is_main === 1) || [...characters].sort(byName)[0] || null;
 }

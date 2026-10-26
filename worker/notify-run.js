@@ -4,7 +4,7 @@
 // ctx: { db, env, fetch, now, randomBytes, log }. Nothing here throws.
 import { raidAwayEffects, readNotices, teamNoticesStatement } from './away-store.js';
 import { canonicalOrigin } from './discord.js';
-import { raidingSql } from './person-legacy.js';
+import { rosterRankOnTeamSql } from './team-roster.js';
 import { LOG_NUDGE_LOOKBACK_DAYS, RAID_DURATION_HOURS, LOG_GRACE_HOURS, loadDuties, shortDay } from './duties.js';
 import {
   MAX_GUILDS_PER_RUN, MAX_MESSAGES_PER_RUN, NOREPLY_HOURS, confirmBody, dedupeKeyOf, dueKinds, logNudgeBody, lootBody, noReplyBody, raidLink, reminderBody, rosterBody,
@@ -50,8 +50,7 @@ export async function noReplyPeople(ctx, raid) {
       `SELECT p.id, ${MENTION_COLUMNS},
               (SELECT c.name FROM characters c WHERE c.player_id = p.id AND c.team_id = ?2 ORDER BY c.is_main DESC, c.id LIMIT 1) AS name
          FROM players p
-        WHERE p.guild_id = ?1 AND ${raidingSql('p')}
-          AND EXISTS (SELECT 1 FROM characters c WHERE c.player_id = p.id AND c.team_id = ?2)
+        WHERE p.guild_id = ?1 AND ${rosterRankOnTeamSql('p.id', '?2')} IN ('raider', 'trial')
           AND NOT EXISTS (SELECT 1 FROM raid_signups s WHERE s.raid_id = ?3 AND s.player_id = p.id AND s.source IN ('raid_helper', 'raidsmith'))
         ORDER BY name, p.id`,
     ).bind(raid.guild_id, raid.team_id, raid.id),

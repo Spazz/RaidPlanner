@@ -197,6 +197,7 @@ const GUILD_BODY = { serverId: SERVER_A, gameVersion: 'tbc', region: 'US', realm
 // the second team, when there is one) and Erin (Member) sign in. Frank runs a second guild on SERVER_B.
 async function scenario({ teams = 1, guildBody = {} } = {}) {
   const w = await makeWorld({ allowlist: [PEOPLE.alice.id, PEOPLE.frank.id] });
+  w.db.sqlite.exec('DROP INDEX IF EXISTS characters_team_person'); // see addAlt below
   const alice = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
   const body = { ...GUILD_BODY, ...guildBody };
   if (teams > 1) { body.multipleTeams = true; body.teamNames = ['Alpha', 'Bravo', 'Charlie'].slice(0, teams); }
@@ -243,7 +244,18 @@ async function addPerson(s, who, teamId, name, extra = {}) {
   assert.equal(r.status, 201, JSON.stringify(r.json));
   return r.json;
 }
-const addAlt = (s, who, pid, teamId, name, extra = {}) => s.call(who, 'POST', `/roster/${pid}/characters`, { name, class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId, makeMain: false, ...extra });
+// A new alt starts on no team (B2: U R3-Q1/R4-Q1); placing it on a team is the team routes' job (B3). The checks below that are about alts ON teams place them
+// with the column itself (and the reply is read again so it shows the placement), in a world without migration 0032's unique (team, person) index: until that
+// is applied a team can hold several characters of one person, and the Worker must be right for that data too.
+async function addAlt(s, who, pid, teamId, name, extra = {}) {
+  const res = await s.call(who, 'POST', `/roster/${pid}/characters`, { name, class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId, makeMain: false, ...extra });
+  if (res.status !== 201 || !teamId || extra.makeMain) return res;
+  s.w.db.sqlite.exec(`UPDATE characters SET team_id = '${teamId}' WHERE player_id = '${pid}' AND name = '${res.json.characters.find((c) => c.name.toLowerCase() === name.toLowerCase()).name}'`);
+  const fresh = await s.call(who, 'GET', `/roster/${pid}`);
+  return { ...res, json: { ...fresh.json, rosterFlags: res.json.rosterFlags } };
+}
+// The same call without the placement: what the Worker really does.
+const addAltRaw = (s, who, pid, teamId, name, extra = {}) => s.call(who, 'POST', `/roster/${pid}/characters`, { name, class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId, makeMain: false, ...extra });
 
 // A letters-only name for number n (Aa, Ab, ... Aaa ...).
 function nameFor(n) {
@@ -571,7 +583,7 @@ check('update person: status, dates and trial history; no-op writes change nothi
   const leave = await patch({ expectedVersion: 1, status: 'raider' });
   assert.equal(leave.status, 200, JSON.stringify(leave.json));
   assert.deepEqual([leave.json.person.status, leave.json.person.trialStart, leave.json.person.trialEnd, leave.json.person.trialFlag, leave.json.person.version],
-    ['raider', '2027-01-10', '2027-01-18', null, 2], 'leaving trial keeps the dates as history; the flag only applies to trial');
+    ['raider', null, null, null, 2], 'the trial dates sit on a Trial main (migration 0030): leaving trial clears them; the flag only applies to trial');
   assert.deepEqual(leave.json.rosterFlags, { [s.teamId]: 0 });
   const back = await patch({ expectedVersion: 2, status: 'trial', trialEnd: '2027-01-14' });
   assert.deepEqual([back.json.person.trialFlag, back.json.rosterFlags[s.teamId]], [{ kind: 'ended', days: -1 }, 1]);
@@ -631,8 +643,8 @@ check('notes: saved with their own version, text cleaned and capped, "Last edite
 });
 
 check('characters: add, edit (class change needs valid specs), Make Main, remove; the Main is never removable', async () => {
-  const s = await scenario({ teams: 2 });
-  const [alpha, bravo] = s.teams;
+  const s = await scenario({ teams: 3 });
+  const [alpha, bravo, charlie] = s.teams;
   const pid = (await addPerson(s, 'bob', alpha, 'Aldric')).person.id;
   const base = `/roster/${pid}/characters`;
   const added = await addAlt(s, 'bob', pid, bravo, 'Brindle', { offSpec: 'Frost' });
@@ -661,8 +673,10 @@ check('characters: add, edit (class change needs valid specs), Make Main, remove
   assert.equal((await edit(alt.id, { teamId: 't_AAAAAAAAAAAAAAAAAAAAAA' })).json.field, 'teamId');
   assert.equal((await edit(alt.id, { class: 'NOPE' })).json.field, 'class');
   assert.equal((await edit('c_AAAAAAAAAAAAAAAAAAAAAA', { name: 'Zed' })).status, 404);
-  const moved = await edit(alt.id, { teamId: alpha });
-  assert.equal(moved.json.characters.find((c) => c.id === alt.id).team.name, 'Alpha');
+  const taken = await edit(alt.id, { teamId: alpha });
+  assert.deepEqual([taken.status, taken.json.error, taken.json.field], [409, 'team_taken', 'teamId'], 'one character per person per team: Aldric is on Alpha');
+  const moved = await edit(alt.id, { teamId: charlie });
+  assert.equal(moved.json.characters.find((c) => c.id === alt.id).team.name, 'Charlie');
   assert.equal(await s.w.count('audit_log', "action = 'character.update'"), 3);
 
   // Make Main
@@ -732,12 +746,13 @@ check('update person: Inactive records an optional reason and a left-on date; re
   // Inactive with nothing else: left on defaults to today in the guild's time zone, no reason.
   const gone = await patch({ expectedVersion: 1, status: 'inactive' });
   assert.equal(gone.status, 200, JSON.stringify(gone.json));
-  assert.deepEqual([gone.json.person.status, gone.json.person.leftOn, gone.json.person.leftReason, gone.json.person.version], ['inactive', today, null, 2]);
+  // (An Inactive person with no reason is Social: the characters carry no left date, only a Left or Kicked person has one.)
+  assert.deepEqual([gone.json.person.status, gone.json.person.leftOn, gone.json.person.leftReason, gone.json.person.version], ['inactive', null, null, 2]);
   const listed = (await s.call('bob', 'GET', `/roster?team=${s.teamId}`)).json.people.find((p) => p.id === pid);
   assert.equal(listed, undefined, 'an inactive person is Social: the default team list does not mix them in (U R6-Q2)');
   // The Inactive filter keeps working until the Users page ships (R4): the same rows as before, with both fields.
   const inactiveListed = (await s.call('bob', 'GET', `/roster?team=${s.teamId}&status=inactive`)).json.people.find((p) => p.id === pid);
-  assert.deepEqual([inactiveListed.leftOn, inactiveListed.leftReason, inactiveListed.status], [today, null, 'inactive'], 'the Inactive list carries both fields');
+  assert.deepEqual([inactiveListed.leftOn, inactiveListed.leftReason, inactiveListed.status], [null, null, 'inactive'], 'the Inactive list carries both fields');
 
   // Changing them while inactive: reason alone keeps the date; an explicit null clears the date.
   const kicked = await patch({ expectedVersion: 2, leftReason: 'kicked' });
@@ -767,13 +782,16 @@ check('update person: Inactive records an optional reason and a left-on date; re
 
   // Straight into Inactive with both values; then straight out again, with the values still in the audit trail.
   const both = await patch({ expectedVersion: 6, status: 'inactive', leftOn: '2027-01-05', leftReason: 'break' });
-  assert.deepEqual([both.json.person.leftOn, both.json.person.leftReason], ['2027-01-05', 'break']);
+  assert.deepEqual([both.json.person.leftOn, both.json.person.leftReason], [null, null], 'a break is not a leaving: no character carries it (it stays on the players row for a rollback)');
+  assert.deepEqual((await s.w.rows('SELECT left_on, left_reason FROM players WHERE id = ?', pid))[0], { left_on: '2027-01-05', left_reason: 'break' });
   assert.equal((await patch({ expectedVersion: 7, status: 'reserve' })).status, 200);
   const trail = (await s.w.rows("SELECT before, after FROM audit_log WHERE action = 'person.update' ORDER BY rowid")).map((row) => [JSON.parse(row.before), JSON.parse(row.after)]);
   assert.deepEqual([trail[0][0].leftOn, trail[0][1].leftOn, trail[0][1].leftReason], [null, today, null]);
-  assert.deepEqual([trail[1][1].leftReason, trail[1][1].changed], ['kicked', ['leftReason']]);
+  assert.deepEqual([trail[1][1].leftReason, trail[1][1].changed], ['kicked', ['leftOn', 'leftReason']], 'a Kicked with no date starts today (the Inactive-with-no-reason person had none)');
+  const into = trail[trail.length - 2];
+  assert.deepEqual([into[1].leftOn, into[1].leftReason], ['2027-01-05', 'break'], 'the values the officer sent stay in the audit trail');
   const outOf = trail[trail.length - 1];
-  assert.deepEqual([outOf[0].leftOn, outOf[0].leftReason, outOf[1].leftOn, outOf[1].leftReason], ['2027-01-05', 'break', null, null]);
+  assert.deepEqual([outOf[1].leftOn, outOf[1].leftReason], [null, null]);
   await assertOneMain(s.w);
 });
 
@@ -933,10 +951,10 @@ check('permissions: every role x request in the spec table (Guild Master, Office
   await matrix('save notes (home A)', async (who) => s.call(who, 'PUT', `/roster/${(await person(A)).pid}/notes`, { text: 'x', expectedNotesVersion: 0 }), ['alice', 'bob', 'carol']);
   await matrix('delete a person on A only', async (who) => s.call(who, 'DELETE', `/roster/${(await person(A)).pid}`, {}), ['alice', 'bob', 'carol']);
   await matrix('delete a person with characters on A and B (every team needed)', async (who) => s.call(who, 'DELETE', `/roster/${(await person(A, B)).pid}`, {}), ['alice', 'bob']);
-  await matrix('add an Alt on A to a person homed on A', async (who) => addAlt(s, who, (await person(A)).pid, A, fresh()), ['alice', 'bob', 'carol'], 201);
-  await matrix('add an Alt on B to a person homed on A (needs both teams)', async (who) => addAlt(s, who, (await person(A)).pid, B, fresh()), ['alice', 'bob'], 201);
-  await matrix('add an Alt on A to a person homed on B (a Team Lead cannot attach to a foreign person)', async (who) => addAlt(s, who, (await person(B)).pid, A, fresh()), ['alice', 'bob'], 201);
-  await matrix('add an Alt on B to a person homed on B', async (who) => addAlt(s, who, (await person(B)).pid, B, fresh()), ['alice', 'bob', 'dave'], 201);
+  await matrix('add an Alt on A to a person homed on A', async (who) => addAltRaw(s, who, (await person(A)).pid, A, fresh()), ['alice', 'bob', 'carol'], 201);
+  await matrix('add an Alt "on B" to a person homed on A (the alt starts on no team: only the home team decides)', async (who) => addAltRaw(s, who, (await person(A)).pid, B, fresh()), ['alice', 'bob', 'carol'], 201);
+  await matrix('add an Alt "on A" to a person homed on B (the alt starts on no team: a Team Lead of A cannot attach to a foreign person, the lead of B can)', async (who) => addAltRaw(s, who, (await person(B)).pid, A, fresh()), ['alice', 'bob', 'dave'], 201);
+  await matrix('add an Alt on B to a person homed on B', async (who) => addAltRaw(s, who, (await person(B)).pid, B, fresh()), ['alice', 'bob', 'dave'], 201);
   await matrix('edit a character on A', async (who) => {
     const p = await person(A);
     return s.call(who, 'PATCH', `/roster/${p.pid}/characters/${p.main.id}`, { name: fresh() });
@@ -1227,10 +1245,10 @@ check('People and roles: `roster` is null or { personId, name, class } (the Main
 });
 
 check('archived teams: the roster opens read/edit, but nothing new can target them; characters on them can be moved out', async () => {
-  const s = await scenario({ teams: 2 });
-  const [A, B] = s.teams;
+  const s = await scenario({ teams: 3 });
+  const [A, B, C] = s.teams;
   const person = await addPerson(s, 'bob', B, 'Aldric');
-  const alt = (await addAlt(s, 'bob', person.person.id, A, 'Brindle')).json.characters.find((c) => !c.isMain);
+  const alt = (await addAlt(s, 'bob', person.person.id, C, 'Brindle')).json.characters.find((c) => !c.isMain);
   assert.equal((await s.call('alice', 'PATCH', `/teams/${B}`, { archived: true })).status, 200);
   const list = await s.call('erin', 'GET', `/roster?team=${B}`);
   assert.equal(list.status, 200);
@@ -1456,7 +1474,7 @@ check('Raid-Helper commit: re-fetches the event; Discord IDs and nicknames come 
   assert.deepEqual(chars.map((c) => [c.name, c.is_main, c.class, c.main_spec]), [
     ['Guest', 1, 'ROGUE', null], ['Mendra', 0, 'SHAMAN', null], ['Solhand', 1, 'PALADIN', 'Holy'], ['Thornwick', 1, 'WARRIOR', 'Arms'],
   ]);
-  assert(chars.every((c) => c.realm === 'Nightslayer' && c.realm_key === 'nightslayer' && c.team_id === s.teamId));
+  assert(chars.every((c) => c.realm === 'Nightslayer' && c.realm_key === 'nightslayer' && c.team_id === (c.is_main ? s.teamId : null)), 'a Main is on the import team, an alt on no team');
   const audit = await s.w.rows("SELECT action, entity_type, entity_id, after FROM audit_log WHERE action = 'roster.import'");
   assert.equal(audit.length, 1);
   assert.deepEqual([audit[0].entity_type, audit[0].entity_id, JSON.parse(audit[0].after)], ['team', s.teamId, { source: 'raid_helper', ref: EVENT_ID, people: 3, characters: 4 }]);
@@ -1566,7 +1584,7 @@ check('Raid-Helper commit: a 100-row commit under 64 KB (above the 16 KB cap of 
   assert.deepEqual([r.json.people, r.json.characters], [100, 500]);
   const writes = batches.filter((statements) => statements.some((sql) => /INSERT INTO players/.test(sql)));
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].length, 5, 'players, characters, the character-column sync (dual write), the stale mark, one audit row: a handful of statements whatever the size');
+  assert.equal(writes[0].length, 4, 'players, characters (rank columns in the INSERT), the stale mark, one audit row: a handful of statements whatever the size');
   assert.equal(await s.w.count('characters', 'is_main = 1'), 100);
   // The other routes keep the 16 KB cap, and the commit cap is 64 KB.
   assert.equal((await s.w.call(s.jars.bob, 'POST', `${s.guildPath}/roster/import/raid-helper/preview`, undefined, { rawBody: body })).status, 413);
@@ -1919,7 +1937,7 @@ check('Warcraft Logs commit: alt / new / skip in one batch; fields validated lik
   const wander = (await s.w.rows("SELECT p.status, c.realm, c.realm_key FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Wanderfell'"))[0];
   assert.deepEqual(wander, { status: 'reserve', realm: 'Dreamscythe', realm_key: 'dreamscythe' });
   const pyrelo = (await s.w.rows("SELECT is_main, player_id, team_id, realm_key FROM characters WHERE name = 'Pyrelo'"))[0];
-  assert.deepEqual(pyrelo, { is_main: 0, player_id: quinzel.person.id, team_id: A, realm_key: 'nightslayer' });
+  assert.deepEqual(pyrelo, { is_main: 0, player_id: quinzel.person.id, team_id: null, realm_key: 'nightslayer' }, 'an alt starts on no team');
   const audit = await s.w.rows("SELECT entity_type, entity_id, after FROM audit_log WHERE action = 'roster.import'");
   assert.deepEqual([audit.length, audit[0].entity_type, audit[0].entity_id, JSON.parse(audit[0].after)], [1, 'team', A, { source: 'wcl', ref: `fresh:${REPORT}`, people: 2, characters: 3 }]);
   assert.equal((await s.w.rows("SELECT COUNT(*) AS n FROM audit_log WHERE after LIKE '%Mendra%' OR after LIKE '%Wanderfell%'"))[0].n, 0);

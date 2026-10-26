@@ -244,60 +244,34 @@ export async function commitBnetRoster(ctx) {
     if (!name) throw bad('That character name cannot be added to a roster.', 'members', indexed(index));
     const playerId = newId('p', ctx.randomBytes);
     plan.people.push({ id: playerId, status, discord: null, nickname: null });
+    // The identity key (namespace + realm id + character id) comes from the SAME fetch the members came from and is written with the character, so it is bound to its
+    // roster entry from the start (writeImport puts it in the INSERT: one atomic batch).
     plan.characters.push({
       id: newId('c', ctx.randomBytes), playerId, name, realm: realm.realm, realmKey: realm.key, class: member.class, mainSpec: null, offSpec: null, isMain: true,
+      identity: { namespace: target.support.namespace, realmId: member.realmId, characterId: member.characterId },
     });
     entries.push({ name, realmKey: realm.key, index });
   });
   await checkNames(db, guild.id, entries);
-  const stamps = identityStamps(plan, wanted, byKey);
-  await requireIdentitiesFree(db, guild.id, target.support.namespace, stamps);
+  await requireIdentitiesFree(db, guild.id, target.support.namespace, plan.characters.map((character) => character.identity));
   const written = await writeImport(ctx, guildContext, team, plan);
-  await stampIdentities(ctx, guild.id, target.support.namespace, stamps);
   return jsonResponse(written.body, written.status);
 }
 
 // ---------------------------------------------------------------------------
-// Identity stamping: the commit records each imported character's Battle.net identity key (namespace + realm id + character id) from the SAME fetch
-// the members came from, so the character is bound to its roster entry from the start. characters has a partial unique index on the key.
-
-// -> [{ id: our character id, realmId, characterId }], in the order of plan.characters (= the order of the wanted members).
-function identityStamps(plan, wanted, byKey) {
-  return plan.characters.map((character, index) => {
-    const member = byKey.get(`${nameKey(wanted[index].name)}|${wanted[index].realmSlug}`);
-    return { id: character.id, realmId: member.realmId, characterId: member.characterId };
-  });
-}
+// Identity keys
 
 // A character of this guild already holds one of these identity keys (renamed in game since it was added): importing it again would collide with the
-// unique index, so refuse before anything is written.
-async function requireIdentitiesFree(db, guildId, namespace, stamps) {
-  if (!stamps.length) return;
+// unique index, so refuse before anything is written. identities: [{ realmId, characterId }].
+async function requireIdentitiesFree(db, guildId, namespace, identities) {
+  if (!identities.length) return;
   const taken = await db.prepare(
     `SELECT c.name FROM characters c
       WHERE c.guild_id = ? AND c.namespace = ?
         AND EXISTS (SELECT 1 FROM json_each(?) j WHERE json_extract(j.value, '$[0]') = c.blizzard_realm_id AND json_extract(j.value, '$[1]') = c.blizzard_char_id)
       LIMIT 1`,
-  ).bind(guildId, namespace, JSON.stringify(stamps.map((stamp) => [stamp.realmId, stamp.characterId]))).first();
+  ).bind(guildId, namespace, JSON.stringify(identities.map((identity) => [identity.realmId, identity.characterId]))).first();
   if (taken) {
     throw new HttpError(409, 'roster_identity_taken', `${taken.name} is already on the roster under that Battle.net character. Load the roster again.`, { field: 'members' });
-  }
-}
-
-// After the batch that created the characters. A failure here leaves the characters without ids (the sync and the sign-in match stamp them later), so it
-// is logged, never turned into an error for an import that did succeed.
-async function stampIdentities(ctx, guildId, namespace, stamps) {
-  if (!stamps.length) return;
-  const json = JSON.stringify(stamps.map((stamp) => [stamp.id, stamp.realmId, stamp.characterId]));
-  try {
-    await ctx.db.prepare(
-      `UPDATE characters
-          SET namespace = ?,
-              blizzard_realm_id = (SELECT json_extract(j.value, '$[1]') FROM json_each(?) j WHERE json_extract(j.value, '$[0]') = characters.id),
-              blizzard_char_id = (SELECT json_extract(j.value, '$[2]') FROM json_each(?) j WHERE json_extract(j.value, '$[0]') = characters.id)
-        WHERE guild_id = ? AND blizzard_char_id IS NULL AND id IN (SELECT json_extract(value, '$[0]') FROM json_each(?))`,
-    ).bind(namespace, json, json, guildId, json).run();
-  } catch (error) {
-    ctx.log(`bnet import: could not stamp identities: ${error && error.message}`);
   }
 }

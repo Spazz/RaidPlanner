@@ -104,9 +104,9 @@ check('a person "left" only when EVERY character has a left-on date: the latest 
 check('characterOfRow shapes a characters row (the predicate itself is pinned in guild-team-roster-tests.js)', async () => {
   const rank = await load('worker/person-rank.js');
   assert.deepEqual(rank.characterOfRow({ id: 'c1', team_id: 't', is_main: 1, core_rank: 'trial', left_on: null, trial_start: '2026-10-01', trial_end: null }),
-    { id: 'c1', teamId: 't', isMain: true, coreRank: 'trial', leftOn: null, trialStart: '2026-10-01', trialEnd: null });
+    { id: 'c1', teamId: 't', isMain: true, coreRank: 'trial', leftOn: null, leftReason: null, trialStart: '2026-10-01', trialEnd: null });
   assert.deepEqual(rank.characterOfRow({ core_rank: 'social', is_main: 0 }),
-    { id: null, teamId: null, isMain: false, coreRank: 'social', leftOn: null, trialStart: null, trialEnd: null }, 'missing columns read as null');
+    { id: null, teamId: null, isMain: false, coreRank: 'social', leftOn: null, leftReason: null, trialStart: null, trialEnd: null }, 'missing columns read as null');
 });
 
 // ---------------------------------------------------------------------------

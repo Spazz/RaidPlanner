@@ -8,9 +8,9 @@ import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { isId } from '../ids.js';
 import { allows, loadGuildContext } from '../permissions.js';
-import { raidingSql } from '../person-legacy.js';
 import { RAID_ROLES, countRoles, defaultTargets, gapsOf, readTargets, targetsOf } from '../recruit-data.js';
 import { isSpecOf } from '../roster-data.js';
+import { onTeamRosterSql } from '../team-roster.js';
 import { bad } from './roster.js';
 
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
@@ -39,8 +39,8 @@ async function recruitingPayload(ctx, guildContext, team) {
   const { targets, custom } = targetsOf(team.recruit_targets, team.size);
   const [mainResult, roundResult, scheduleResult, guildResult] = await db.batch([
     db.prepare(
-      `SELECT p.id, m.class, m.main_spec FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ? AND ${raidingSql('p')} AND m.team_id = ? ORDER BY m.name_key, p.id`,
+      `SELECT m.player_id AS id, m.class, m.main_spec FROM characters m
+        WHERE m.guild_id = ? AND m.is_main = 1 AND ${onTeamRosterSql('m', '?')} AND m.core_rank IN ('raider', 'trial') ORDER BY m.name_key, m.player_id`,
     ).bind(guild.id, team.id),
     db.prepare(
       `SELECT r.id, r.title, k.player_id, k.class, k.spec FROM intent_rounds r LEFT JOIN intent_picks k ON k.round_id = r.id AND k.kind = 'main'
