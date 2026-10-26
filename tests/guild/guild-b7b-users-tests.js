@@ -20,11 +20,24 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createD1Fake } = require('../d1-fake');
-const { load, runChecks, scenario } = require('../guild-b3-world');
+const { load, runChecks, scenario: baseScenario } = require('../guild-b3-world');
 const { newJar } = require('../guild-world');
 const { flip, makeProven } = require('../guild-ingame');
 const { scansSince, statementsSince, GUARDED_TABLES } = require('../guild-plans');
-const { bigWorld } = require('../guild-users-fixture');
+const { bigWorld: baseBigWorld } = require('../guild-users-fixture');
+
+// The routes allow 30 requests a minute per user (review G3) and the fixtures below ask far more than that within a few simulated seconds, so a request of the helpers (s.call, s.ok)
+// to the users routes starts with an empty window. The rate-limit check itself goes through s.w.call, which this leaves alone.
+function unlimited(s) {
+  const call = s.call.bind(s);
+  s.call = (who, method, tail, body) => {
+    if (/\/users(\/|\?|$)/.test(tail)) s.w.db.sqlite.exec("DELETE FROM rate_limits WHERE key LIKE 'users:%'");
+    return call(who, method, tail, body);
+  };
+  return s;
+}
+const scenario = async (options) => unlimited(await baseScenario(options));
+const bigWorld = async (options) => unlimited(await baseBigWorld(options));
 
 const MIGRATIONS = path.join(__dirname, '..', '..', 'migrations');
 const KEY = 'test-tombstone-key-0123456789abcdef';
@@ -578,7 +591,7 @@ check('last seen: the sign-in is ONE isolated term, off by constant and switchab
 check('rate limit: a per-user limit on the list and the user page (one key), 429 rate_limited with Retry-After; another user and the next window are not affected', async () => {
   const s = await legacy();
   const { USERS_LIMIT, USERS_WINDOW_MS } = await load('worker/ratelimit.js');
-  assert(USERS_LIMIT >= 60 && USERS_WINDOW_MS === 60_000, 'a person paging and sorting (a request every second) never hits it');
+  assert(USERS_LIMIT >= 30 && USERS_LIMIT <= 60 && USERS_WINDOW_MS === 60_000, 'a person paging and sorting (a request every two seconds) never hits it; a script that walks the list does');
   const key = (await list(s, 'gm')).rows[0].key;
   let last;
   // The legacy() setup already used some of the window; count what is left by asking until it refuses (the clock stands still).
@@ -1216,6 +1229,93 @@ check('identity: a name that a character gets later drops out of the names (the 
   exec(s, "UPDATE characters SET name = 'Renamed', name_key = 'renamed' WHERE id = ?", made.cid);
   exec(s, "INSERT INTO character_name_aliases (id, guild_id, character_id, name_key, realm_key, renamed_at) VALUES ('al_fixture', ?, ?, 'lootguy', 'nightslayer', 1)", s.gid, made.cid);
   assert(!names(await list(s, 'gm', 'segment=nonmembers&limit=100')).includes('Lootguy'));
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes G2 (a guest sign-up in ANOTHER guild) and G4 (the viewer's view permissions); tasks/open/audit-b6b2b-b7b-security.md
+
+check('G2: an account\'s guest sign-up on an open raid of ANOTHER guild moves nothing in this guild\'s Last seen: list, sort order and user page', async () => {
+  const s = await legacy();
+  attend(s, s.r1, s.alpha, s.mone.pid);
+  const other = await otherGuild(s);
+  const otherRaid = addRaid(other, '2026-12-20');
+  addSignup(other, otherRaid, { guest: 1, nickname: 'Elsewhere', guestUserId: s.uids.m1 });
+  addSignup(other, otherRaid, { guest: 1, nickname: 'Elsewhere', guestUserId: s.uids.out2 });
+  const members = await list(s, 'gm', 'segment=members&sort=lastSeen&dir=desc&limit=100');
+  assert.equal(row(members, 'Memberone').lastSeen, '2026-12-01', 'this guild\'s own newest fact, not the other guild\'s raid of 2026-12-20');
+  assert(!members.rows.some((entry) => entry.lastSeen === '2026-12-20'), 'nobody leads the sort with the other guild\'s date');
+  assert.equal((await s.ok('gm', 'GET', `/users/${s.uids.m1}`)).lastSeen, '2026-12-01');
+  const nonmembers = await list(s, 'gm', 'segment=nonmembers&sort=lastSeen&dir=desc&limit=100');
+  assert(!nonmembers.rows.some((entry) => entry.lastSeen === '2026-12-20'), 'for a non-member account as well');
+  assert.equal((await s.ok('gm', 'GET', `/users/${s.uids.out2}`)).lastSeen, '2026-12-01', 'their own guest sign-up of this guild (raid 1) is what counts');
+  // Control: the same sign-up in THIS guild, on a later raid, does count.
+  const own = addRaid(s, '2026-12-15');
+  addSignup(s, own, { guest: 1, nickname: 'Here', guestUserId: s.uids.m1 });
+  assert.equal(row(await list(s, 'gm', 'segment=members&limit=100'), 'Memberone').lastSeen, '2026-12-15');
+  assert.equal((await s.ok('gm', 'GET', `/users/${s.uids.m1}`)).lastSeen, '2026-12-15');
+});
+
+// Gives the Officer role and the Member role (everyone holds it: it grants raids.view) of the guild a permission list without the named actions (an edited role: the system rows
+// copied, minus these).
+function dropFromOfficer(s, actions) {
+  for (const role of ['officer', 'member']) {
+    exec(s, 'INSERT OR IGNORE INTO role_overrides (guild_id, role_id) VALUES (?, ?)', s.gid, role);
+    exec(s, 'DELETE FROM role_override_permissions WHERE guild_id = ? AND role_id = ?', s.gid, role);
+    for (const entry of rowsOf(s, 'SELECT action, scope FROM role_permissions WHERE role_id = ?', role)) {
+      if (!actions.includes(entry.action)) exec(s, 'INSERT INTO role_override_permissions (guild_id, role_id, action, scope) VALUES (?, ?, ?, ?)', s.gid, role, entry.action, entry.scope);
+    }
+  }
+}
+
+check('G4: the Users list and the user page leave out what the viewer\'s role may not see: loot item names, raid titles, attendance and sign-up dates, and the names and tags only those facts give', async () => {
+  const s = await legacy();
+  attend(s, s.r1, s.alpha, s.mone.pid);
+  addLoot(s, s.r2, 'Mone');
+  const names = (res) => res.rows.map((entry) => entry.name).sort();
+  const nonmembers = (who) => list(s, who, 'segment=nonmembers&limit=100');
+  const lastSeenOf = async (who, name) => row(await list(s, who, 'segment=members&limit=100'), name).lastSeen;
+  const mone = (who) => s.ok(who, 'GET', `/users/${s.uids.m1}`);
+  const lootPage = (who) => s.call(who, 'GET', `/users/${nameKeyOf('Lootguy')}`);
+
+  // Control: the Officer and the Guild Master see everything.
+  const all = names(await nonmembers('off'));
+  assert.deepEqual(all, names(await nonmembers('gm')));
+  for (const name of ['Lootguy', 'Logguy', 'Helperguy', 'Linkguest', 'Pasted', 'Marked', 'Hopeful']) assert(all.includes(name), name);
+  assert.deepEqual((await s.ok('off', 'GET', `/users/${nameKeyOf('Lootguy')}`)).sightings.map((entry) => [entry.source, entry.detail]), [['loot', 'Fixture Blade']]);
+  assert.equal(await lastSeenOf('off', 'Memberone'), '2026-12-08', 'the loot award of 2026-12-08 is the newest fact');
+  const outsiderTwo = row(await nonmembers('off'), 'Outsidertwo');
+  assert.deepEqual(outsiderTwo.tags, ['guest_signup']);
+  assert.deepEqual((await s.ok('off', 'GET', `/users/${outsiderTwo.key}`)).sightings.map((entry) => entry.source), ['guest_signup']);
+
+  // No loot.view: no item name, no loot-only name, no loot date.
+  dropFromOfficer(s, ['loot.view']);
+  const noLoot = await nonmembers('off');
+  assert(!names(noLoot).includes('Lootguy'), 'a name only the loot gives is not listed');
+  assert.equal(noLoot.counts.nonmembers, (await nonmembers('gm')).counts.nonmembers - 1);
+  assert.equal((await lootPage('off')).status, 404, 'and its page is gone: no item name for the viewer');
+  assert.equal((await lootPage('gm')).status, 200, 'the Guild Master still sees it');
+  assert.equal(await lastSeenOf('off', 'Memberone'), '2026-12-01', 'the attendance date, not the loot one');
+  assert.equal(JSON.stringify(await mone('off')).includes('Fixture Blade'), false);
+  assert.equal(JSON.stringify(noLoot).includes('Fixture Blade'), false);
+  assert(names(noLoot).includes('Logguy') && names(noLoot).includes('Pasted'), 'the rest is unchanged');
+
+  // No attendance.view: no attendance date, no officer-marked guest.
+  dropFromOfficer(s, ['loot.view', 'attendance.view']);
+  assert.equal(await lastSeenOf('off', 'Memberone'), null, 'no raid-level fact the viewer may see is left');
+  assert.equal((await mone('off')).lastSeen, null);
+  assert(!names(await nonmembers('off')).includes('Marked'));
+  assert.equal(await lastSeenOf('gm', 'Memberone'), '2026-12-08');
+
+  // No raids.view: no raid title, no sign-up or raid-log fact, no guest tag, no name only a raid gives.
+  dropFromOfficer(s, ['loot.view', 'attendance.view', 'raids.view']);
+  const noRaids = await nonmembers('off');
+  for (const name of ['Logguy', 'Helperguy', 'Linkguest', 'Pasted']) assert(!names(noRaids).includes(name), `${name} is a raid fact`);
+  assert(names(noRaids).includes('Hopeful'), 'an application is no raid fact');
+  const out2 = row(noRaids, 'Outsidertwo');
+  assert(!out2 || (out2.tags.length === 0 && out2.lastSeen === null), 'the account with only a guest sign-up carries neither tag nor date');
+  if (out2) assert.deepEqual((await s.ok('off', 'GET', `/users/${out2.key}`)).sightings, []);
+  assert(!JSON.stringify(noRaids).includes('Raid 2026-12'), 'no raid title anywhere');
+  assert(row(await nonmembers('gm'), 'Outsidertwo').tags.includes('guest_signup'), 'the Guild Master still sees the tag');
 });
 
 runChecks(checks);

@@ -27,11 +27,16 @@ export const RANK_MAP_WINDOW_MS = 10 * 60 * 1000;
 // Flip dry runs (per Owner): each one reads every account and person of the guild and writes an approval token.
 export const FLIP_DRY_RUN_LIMIT = 10;
 export const FLIP_DRY_RUN_WINDOW_MS = 10 * 60 * 1000;
-// The Users list and a user's page (GET /api/guild/:gid/users and /users/:ukey, per user, one key for both): a page of the list is a few statements, so the limit sits far above
-// what a person paging and sorting reaches (a request every half second for a minute) and below a script that walks the list.
-export const USERS_LIMIT = 120;
+// The Users list and a user's page (GET /api/guild/:gid/users and /users/:ukey, per user, one key for both). Every request classifies every account and person of the guild (the
+// counts statement alone does, and the names of the non-members), so the limit sits where a person paging and sorting (a request every two seconds) never reaches it and a script
+// that walks the list does (review G3: 120 a minute cost millions of reads a minute on a big guild).
+export const USERS_LIMIT = 30;
 export const USERS_WINDOW_MS = 60 * 1000;
 export const usersKey = (userId) => `users:${userId}`;
+// The People list (GET /api/guild/:gid/people, per user): the page reads every person of the guild once; the writes of that page answer with the same list, they are not counted.
+export const PEOPLE_LIMIT = 60;
+export const PEOPLE_WINDOW_MS = 60 * 1000;
+export const peopleKey = (userId) => `people:${userId}`;
 // Battle.net OAuth callbacks (worker/routes/bnet.js), checked after the token exchange and user info, before the snapshot fan-out of Blizzard calls.
 // Per Blizzard account id: a limit that answers 'busy'. Global: a budget that NEVER refuses (a gate would let a few accounts stop everyone); the callback
 // that takes the window's count past it logs one ALARM line for the operator.
@@ -93,6 +98,7 @@ export function rateLimitMessage(key) {
   if (/^rsync:/.test(key)) return 'Too many roster syncs. Try again in a little while.';
   if (/^rmap:/.test(key)) return 'Too many rank map dry runs. Try again in a few minutes.';
   if (/^users:/.test(key)) return 'Too many look-ups of the users list. Wait a moment and try again.';
+  if (/^people:/.test(key)) return 'Too many look-ups of the people list. Wait a moment and try again.';
   if (/^flip:/.test(key)) return 'Too many flip dry runs. Try again in a few minutes.';
   if (/^char:/.test(key)) return 'You have added a lot of characters this hour. Try again a little later.';
   if (/^open:/.test(key)) return 'You have signed up for a lot of open raids this hour. Try again a little later.';

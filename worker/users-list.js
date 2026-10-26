@@ -87,7 +87,16 @@ export function parseUsersQuery(searchParams) {
 // ---------------------------------------------------------------------------
 // SQL fragments. Every statement numbers its own placeholders (?1, ?2, ... in the order the text first needs a value); a scope hands them out once each.
 
-export function newScope(guild, now, { signIn }) {
+// What the viewer may see of the facts the list draws on (review G4): loot (loot.view), attendance (attendance.view) and the raids with their sign-ups and logs (raids.view), each at
+// GUILD scope (a list of the whole guild cannot be cut by team). A fact the viewer may not see feeds no sighting, no Last seen date, no tag, no candidate and no name row. The
+// gate of the routes (guild.access or guild.roles) says nothing about them: a role can be edited to keep the one and lose the other.
+export const viewerOf = (guildContext) => ({
+  loot: guildContext.can['loot.view'] === 'guild',
+  attendance: guildContext.can['attendance.view'] === 'guild',
+  raids: guildContext.can['raids.view'] === 'guild',
+});
+
+export function newScope(guild, now, { signIn, viewer }) {
   const values = [];
   const place = (value) => { values.push(value); return `?${values.length}`; };
   const once = (value) => {
@@ -102,8 +111,12 @@ export function newScope(guild, now, { signIn }) {
     today: once(todayIn(guild.time_zone, now)),
     mod: once(offsetModifier(zoneOffsetMinutes(guild.time_zone, now))),
     signIn,
+    viewer,
   };
 }
+
+// A viewer permission as a constant in the SQL: the source it guards is left out of the statement's result, the statement keeps its shape.
+export const flag = (allowed) => (allowed ? '1 = 1' : '1 = 0');
 
 // The accounts that can be in the list: a SUPERSET of the accounts of this guild (the segment tests decide), every lookup index-backed. Two FROM-subqueries of at most five
 // terms each (D1's compound limit), their union at the top.
@@ -118,8 +131,8 @@ function candidateAccountsSql(sc) {
     UNION SELECT user_id FROM (
       SELECT gb.user_id AS user_id FROM guild_blocks gb WHERE gb.guild_id = ${g}
       UNION SELECT pa.user_id FROM applications pa WHERE pa.guild_id = ${g} AND pa.user_id IS NOT NULL
-      UNION SELECT gs.guest_user_id FROM raids gr JOIN raid_signups gs ON gs.raid_id = gr.id WHERE gr.guild_id = ${g} AND gs.guest_user_id IS NOT NULL
-      UNION SELECT ru.id FROM raid_signups rs JOIN users ru ON ru.discord_id = rs.discord_user_id WHERE ${unresolvedHelperSql(sc, 'rs')})`;
+      UNION SELECT gs.guest_user_id FROM raids gr JOIN raid_signups gs ON gs.raid_id = gr.id WHERE gr.guild_id = ${g} AND gs.guest_user_id IS NOT NULL AND ${flag(sc.viewer.raids)}
+      UNION SELECT ru.id FROM raid_signups rs JOIN users ru ON ru.discord_id = rs.discord_user_id WHERE ${unresolvedHelperSql(sc, 'rs')} AND ${flag(sc.viewer.raids)})`;
 }
 
 // The person of an account in this guild: the one it is linked to (players.user_id), else the one carrying its Discord id (an account has at most one of each).
@@ -188,13 +201,20 @@ export function personSegmentSql(sc, segment) {
 // (a guild-local date already); an application by its time stamp in the guild's zone at the offset of NOW (a time near a DST change can be an hour off). The sign-in
 // (signInExpr: a users.last_seen_at expression) is the one isolated term, only when the scope says so.
 export function lastSeenSql(sc, { pid, uid = null, signInExpr = null }) {
+  // Only the facts the viewer may see (attendance.view, raids.view, loot.view): a term they may not see is a NULL date. An account's guest sign-ups on open raids count in THIS guild only
+  // (sg.guild_id): the account's sign-ups elsewhere must not move this guild's Last seen (review G2).
+  const none = 'SELECT NULL';
   const terms = [
-    `SELECT MAX(sr.raid_on) AS d FROM attendance sa JOIN raids sr ON sr.id = sa.raid_id WHERE sa.player_id = ${pid} AND sa.attended = 1`,
-    `SELECT MAX(gr.raid_on) FROM raid_signups sg JOIN raids gr ON gr.id = sg.raid_id WHERE (sg.player_id = ${pid}${uid ? ` OR sg.guest_user_id = ${uid}` : ''}) AND gr.raid_on <= ${sc.today()}`,
+    sc.viewer.attendance ? `SELECT MAX(sr.raid_on) AS d FROM attendance sa JOIN raids sr ON sr.id = sa.raid_id WHERE sa.player_id = ${pid} AND sa.attended = 1` : 'SELECT NULL AS d',
+    sc.viewer.raids
+      ? `SELECT MAX(gr.raid_on) FROM raid_signups sg JOIN raids gr ON gr.id = sg.raid_id WHERE (sg.player_id = ${pid}${uid ? ` OR (sg.guest_user_id = ${uid} AND sg.guild_id = ${sc.g()})` : ''}) AND gr.raid_on <= ${sc.today()}`
+      : none,
     // CROSS JOIN fixes the order (SQLite never reorders it): the person's few characters first, then their awards by loot_awards_winner. Left to itself the planner may start from
     // the awards of the whole guild (loot_awards_item) and probe the characters for each.
-    `SELECT MAX(lr.raid_on) FROM characters lc CROSS JOIN loot_awards la ON la.guild_id = ${sc.g()} AND la.winner_name_key = lc.name_key AND la.winner_realm_key = lc.realm_key
-       JOIN raids lr ON lr.id = la.raid_id WHERE lc.player_id = ${pid}`,
+    sc.viewer.loot
+      ? `SELECT MAX(lr.raid_on) FROM characters lc CROSS JOIN loot_awards la ON la.guild_id = ${sc.g()} AND la.winner_name_key = lc.name_key AND la.winner_realm_key = lc.realm_key
+       JOIN raids lr ON lr.id = la.raid_id WHERE lc.player_id = ${pid}`
+      : none,
   ];
   if (uid) terms.push(`SELECT date(MAX(ap.created_at) / 1000, 'unixepoch', ${sc.mod()}) FROM applications ap WHERE ap.user_id = ${uid} AND ap.guild_id = ${sc.g()}`);
   if (uid && signInExpr && sc.signIn) terms.push(`SELECT date(${signInExpr} / 1000, 'unixepoch', ${sc.mod()})`);
@@ -214,6 +234,7 @@ const unresolvedHelperSql = (sc, alias) => `${alias}.guild_id = ${sc.g()} AND ${
 // The where-from tags of an ACCOUNT (alias: the users / CTE alias of the account) as one test each (also the `from` filter). Each is index-backed: the account's own user_servers /
 // applications / guest sign-up rows, or one pass over the guild's few unresolved Raid-Helper sign-ups.
 export function accountTagSql(sc, tag, alias) {
+  if ((tag === 'guest_signup' || tag === 'raid_helper') && !sc.viewer.raids) return '1 = 0';
   if (tag === 'discord_signin') return `EXISTS (SELECT 1 FROM user_servers ts WHERE ts.user_id = ${alias}.id AND ts.server_id = ${sc.s()} AND ${serverIdIsDiscordSql('ts.server_id')})`;
   if (tag === 'application') return `EXISTS (SELECT 1 FROM applications ta WHERE ta.user_id = ${alias}.id AND ta.guild_id = ${sc.g()})`;
   if (tag === 'guest_signup') return `EXISTS (SELECT 1 FROM raid_signups tg WHERE tg.guest_user_id = ${alias}.id AND tg.guild_id = ${sc.g()})`;
@@ -229,8 +250,8 @@ export const unresolvedSql = (sc, keyExpr) => `(NOT EXISTS (SELECT 1 FROM charac
     AND NOT EXISTS (SELECT 1 FROM character_name_aliases al WHERE al.guild_id = ${sc.g()} AND al.name_key = ${keyExpr}))`;
 
 // The distinct values of an indexed column of one guild, by a loose index scan: one index seek per distinct value (not one read per row).
-const looseScan = (name, table, column, sc) => `${name}(k) AS (
-  SELECT MIN(${column}) FROM ${table} WHERE guild_id = ${sc.g()}
+const looseScan = (name, table, column, sc, allowed) => `${name}(k) AS (
+  SELECT MIN(${column}) FROM ${table} WHERE guild_id = ${sc.g()} AND ${flag(allowed)}
   UNION ALL SELECT (SELECT MIN(${column}) FROM ${table} WHERE guild_id = ${sc.g()} AND ${column} > ${name}.k) FROM ${name} WHERE ${name}.k IS NOT NULL)`;
 
 // The CTEs the names need and the CTE `nm` itself: (nk, nm, rlm, cls, seen, tags). Six sources; D1 allows five terms in one compound, so five sit in a FROM-subquery.
@@ -242,7 +263,7 @@ function namesCtes(sc) {
       (SELECT la.winner_class FROM loot_awards la WHERE la.guild_id = ${g} AND la.winner_name_key = ln.k LIMIT 1) AS cls,
       (SELECT MAX(lr.raid_on) FROM loot_awards la JOIN raids lr ON lr.id = la.raid_id WHERE la.guild_id = ${g} AND la.winner_name_key = ln.k) AS seen,
       'loot' AS tag
-    FROM ln WHERE ln.k IS NOT NULL AND ${unresolvedSql(sc, 'ln.k')}`;
+    FROM ln WHERE ln.k IS NOT NULL AND ${unresolvedSql(sc, 'ln.k')}`; // (the loose scans themselves are empty for a viewer without loot.view / raids.view)
   const log = `SELECT lg.k,
       (SELECT rp.name FROM raid_presence rp WHERE rp.guild_id = ${g} AND rp.name_key = lg.k LIMIT 1),
       (SELECT rp.realm FROM raid_presence rp WHERE rp.guild_id = ${g} AND rp.name_key = lg.k LIMIT 1),
@@ -251,8 +272,8 @@ function namesCtes(sc) {
       'raid_log'
     FROM lg WHERE lg.k IS NOT NULL AND ${unresolvedSql(sc, 'lg.k')}`;
   const manual = `SELECT mn.name_key, MIN(mn.name), MIN(mn.realm), NULL, MAX(mr.raid_on), 'raid_log'
-    FROM raids mr JOIN raid_manual_names mn ON mn.raid_id = mr.id WHERE mr.guild_id = ${g} AND ${unresolvedSql(sc, 'mn.name_key')} GROUP BY mn.name_key`;
-  const guests = `SELECT ag.name_key, MIN(ag.name), NULL, NULL, NULL, 'raid_log' FROM attendance_guests ag WHERE ag.guild_id = ${g} AND ${unresolvedSql(sc, 'ag.name_key')} GROUP BY ag.name_key`;
+    FROM raids mr JOIN raid_manual_names mn ON mn.raid_id = mr.id WHERE mr.guild_id = ${g} AND ${flag(sc.viewer.raids)} AND ${unresolvedSql(sc, 'mn.name_key')} GROUP BY mn.name_key`;
+  const guests = `SELECT ag.name_key, MIN(ag.name), NULL, NULL, NULL, 'raid_log' FROM attendance_guests ag WHERE ag.guild_id = ${g} AND ${flag(sc.viewer.attendance)} AND ${unresolvedSql(sc, 'ag.name_key')} GROUP BY ag.name_key`;
   const applications = `SELECT ap.name_key, MIN(ap.char_name), MIN(ap.realm), MIN(ap.class), date(MAX(ap.created_at) / 1000, 'unixepoch', ${sc.mod()}), 'application'
     FROM applications ap WHERE ap.guild_id = ${g} AND ap.user_id IS NULL AND ${unresolvedSql(sc, 'ap.name_key')} GROUP BY ap.name_key`;
   // Sign-ups that name nobody (no person, no account): a guest of a guest link ('raidsmith' source) or a Raid-Helper sign-up. A plan seat is a plan, not a sighting. The date is
@@ -260,12 +281,12 @@ function namesCtes(sc) {
   const signups = `SELECT lower(sn.nickname), MIN(sn.nickname), NULL, NULL, MAX(CASE WHEN sr.raid_on <= ${sc.today()} THEN sr.raid_on END),
       CASE sn.source WHEN 'raid_helper' THEN 'raid_helper' ELSE 'guest_signup' END
     FROM raid_signups sn JOIN raids sr ON sr.id = sn.raid_id
-   WHERE sn.guild_id = ${g} AND sn.player_id IS NULL AND sn.guest_user_id IS NULL AND sn.nickname IS NOT NULL AND sn.source IN ('raid_helper', 'raidsmith')
+   WHERE sn.guild_id = ${g} AND ${flag(sc.viewer.raids)} AND sn.player_id IS NULL AND sn.guest_user_id IS NULL AND sn.nickname IS NOT NULL AND sn.source IN ('raid_helper', 'raidsmith')
      AND ${unresolvedSql(sc, 'lower(sn.nickname)')}
      AND NOT (sn.source = 'raid_helper' AND EXISTS (SELECT 1 FROM users sd WHERE sd.discord_id = sn.discord_user_id))
    GROUP BY lower(sn.nickname), sn.source`;
-  return `${looseScan('ln', 'loot_awards', 'winner_name_key', sc)},
-  ${looseScan('lg', 'raid_presence', 'name_key', sc)},
+  return `${looseScan('ln', 'loot_awards', 'winner_name_key', sc, sc.viewer.loot)},
+  ${looseScan('lg', 'raid_presence', 'name_key', sc, sc.viewer.raids)},
   nm AS (
     SELECT x.nk AS nk, COALESCE(MIN(x.nm), x.nk) AS nm, MIN(x.rlm) AS rlm, MIN(x.cls) AS cls, MAX(x.seen) AS seen, group_concat(DISTINCT x.tag) AS tags
       FROM (SELECT * FROM (${loot} UNION ALL ${log} UNION ALL ${manual} UNION ALL ${guests} UNION ALL ${applications}) UNION ALL ${signups}) x
@@ -430,7 +451,7 @@ export async function listUsers(ctx, guildContext, requested, { signIn = LAST_SE
   const now = ctx.now();
   const guild = guildContext.guild;
   const window = query.offset + query.limit + 1;
-  const scope = () => newScope(guild, now, { signIn });
+  const scope = () => newScope(guild, now, { signIn, viewer: viewerOf(guildContext) });
 
   const first = [countsStatement(db, scope())];
   const core = corePageStatement(db, scope(), query, window);

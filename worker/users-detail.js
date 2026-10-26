@@ -12,7 +12,7 @@ import { ownerSql, seatHeldBySql } from './owner.js';
 import { todayIn } from './roster-data.js';
 import {
   ACCOUNT_TAGS, LAST_SEEN_INCLUDES_SIGN_IN, ROLE_LABELS, USERS_TAGS, accountSegmentSql, accountTagSql, accountsCte, bestBuiltinSql, customNameSql, lastSeenSql, newScope,
-  ignoredBlockSql, permissionOf, personNameSql, personOfAccountSql, personSegmentSql, personsCte, sortedTags, unresolvedSql,
+  flag, ignoredBlockSql, permissionOf, personNameSql, personOfAccountSql, personSegmentSql, personsCte, sortedTags, unresolvedSql, viewerOf,
 } from './users-list.js';
 
 // How many sightings a page lists per source.
@@ -88,10 +88,12 @@ const sightingRows = (source, rows) => rows.map((row) => ({ source, date: row.da
 // Newest first, a sighting with no date last; the same day in the order of the tags (the mockup's order), so the page is the same on every read.
 const byNewest = (a, b) => (a.date === b.date ? USERS_TAGS.indexOf(a.source) - USERS_TAGS.indexOf(b.source) : a.date === null ? 1 : b.date === null ? -1 : a.date < b.date ? 1 : -1);
 
-// The sightings of a NAME as statements (loot, the raid log, pasted names, officer-marked guests, applications, sign-ups): rows { date, detail }, newest first, capped.
+// The sightings of a NAME as statements (loot, the raid log, pasted names, officer-marked guests, applications, sign-ups): rows { date, detail }, newest first, capped. Only the
+// sources the viewer may see (users-list.js viewerOf: loot.view, raids.view, attendance.view): a loot item name, a raid title or an attendance fact is not for a role that lost its view.
 function nameSightingStatements(db, scope, nameKey) {
   const raidTitle = 'COALESCE(rr.title, rr.event_title, rr.zone)';
   const cap = SIGHTINGS_PER_SOURCE;
+  const { viewer } = scope();
   const sources = [
     ['loot', (sc, g, key) => `SELECT rr.raid_on AS date, la.item_name AS detail FROM loot_awards la JOIN raids rr ON rr.id = la.raid_id
        WHERE la.guild_id = ${g} AND la.winner_name_key = ${key} ORDER BY rr.raid_on DESC LIMIT ${cap}`],
@@ -99,14 +101,15 @@ function nameSightingStatements(db, scope, nameKey) {
        WHERE rr.id IN (SELECT DISTINCT rp.raid_id FROM raid_presence rp WHERE rp.guild_id = ${g} AND rp.name_key = ${key}) ORDER BY rr.raid_on DESC LIMIT ${cap}`],
     ['raid_log', (sc, g, key) => `SELECT rr.raid_on AS date, ${raidTitle} AS detail FROM raids rr JOIN raid_manual_names mn ON mn.raid_id = rr.id
        WHERE rr.guild_id = ${g} AND mn.name_key = ${key} ORDER BY rr.raid_on DESC LIMIT ${cap}`],
-    ['raid_log', (sc, g, key) => `SELECT NULL AS date, 'Marked as a guest by an officer' AS detail FROM attendance_guests ag WHERE ag.guild_id = ${g} AND ag.name_key = ${key} LIMIT 1`],
+    ['raid_log', (sc, g, key) => `SELECT NULL AS date, 'Marked as a guest by an officer' AS detail FROM attendance_guests ag WHERE ag.guild_id = ${g} AND ag.name_key = ${key} LIMIT 1`, 'attendance'],
     ['application', (sc, g, key) => `SELECT date(ap.created_at / 1000, 'unixepoch', ${sc.mod()}) AS date, NULL AS detail FROM applications ap
        WHERE ap.guild_id = ${g} AND ap.user_id IS NULL AND ap.name_key = ${key} ORDER BY ap.created_at DESC LIMIT ${cap}`],
     ['signup', (sc, g, key) => `SELECT rr.raid_on AS date, ${raidTitle} AS detail, sn.source AS source FROM raid_signups sn JOIN raids rr ON rr.id = sn.raid_id
        WHERE sn.guild_id = ${g} AND sn.player_id IS NULL AND sn.guest_user_id IS NULL AND sn.nickname IS NOT NULL AND sn.source IN ('raid_helper', 'raidsmith')
          AND lower(sn.nickname) = ${key} ORDER BY rr.raid_on DESC LIMIT ${cap}`],
   ];
-  return sources.map(([source, build]) => {
+  const needs = { loot: 'loot', raid_log: 'raids', application: null, signup: 'raids' };
+  return sources.filter(([source, , need = needs[source]]) => !need || viewer[need]).map(([source, build]) => {
     const sc = scope();
     const sql = build(sc, sc.g(), sc.add(nameKey));
     return { source, statement: db.prepare(sql).bind(...sc.values) };
@@ -116,7 +119,7 @@ function nameSightingStatements(db, scope, nameKey) {
 export async function loadUserDetail(ctx, guildContext, key, { signIn = LAST_SEEN_INCLUDES_SIGN_IN } = {}) {
   const parsed = parseUserKey(key);
   if (!parsed) throw notFound();
-  const scope = () => newScope(guildContext.guild, ctx.now(), { signIn });
+  const scope = () => newScope(guildContext.guild, ctx.now(), { signIn, viewer: viewerOf(guildContext) });
   const mayDecide = guildContext.can['guild.access'] === 'guild';
   if (parsed.kind === 'account') return accountPage(ctx, scope, guildContext, parsed.id, mayDecide);
   if (parsed.kind === 'person') return personPage(ctx, scope, guildContext, parsed.id, mayDecide);
@@ -157,7 +160,7 @@ async function accountPage(ctx, scope, guildContext, userId, mayDecide) {
 
   const guest = scope();
   const guestStatement = bound(db, guest, `SELECT rr.raid_on AS date, COALESCE(rr.title, rr.event_title, rr.zone) AS detail FROM raid_signups sn JOIN raids rr ON rr.id = sn.raid_id
-      WHERE sn.guest_user_id = ${guest.add(userId)} AND sn.guild_id = ${guest.g()} ORDER BY rr.raid_on DESC LIMIT ${SIGHTINGS_PER_SOURCE}`);
+      WHERE sn.guest_user_id = ${guest.add(userId)} AND sn.guild_id = ${guest.g()} AND ${flag(guest.viewer.raids)} ORDER BY rr.raid_on DESC LIMIT ${SIGHTINGS_PER_SOURCE}`);
 
   const results = await db.batch([headStatement, characters, rolesStatement, blockStatement, applicationStatement, guestStatement]);
   const row = results[0].results[0];

@@ -14,6 +14,7 @@ import { discordProblem, syncMember } from '../discord-sync.js';
 import { assertMayGrant, loadRolesData } from '../roles-store.js';
 import { ROLE_RANK, isCustomRole, loadGuildContext, rankOf, requireAction, requireAnyAction, shapeRoles } from '../permissions.js';
 import { toPerson } from '../person.js';
+import { PEOPLE_LIMIT, PEOPLE_WINDOW_MS, enforceRateLimit, peopleKey } from '../ratelimit.js';
 import { visibleCharacterSql } from '../character-visibility.js';
 
 const MAX_TEAM_LEAD_TEAMS = 20;
@@ -248,6 +249,7 @@ const byPairKey = (a, b) => pairKey(a).localeCompare(pairKey(b));
 export async function getPeople(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAnyAction(guildContext, ['guild.access', 'guild.roles']);
+  await enforceRateLimit(ctx.db, guildContext.userId, ctx.now(), { key: peopleKey(guildContext.userId), limit: PEOPLE_LIMIT, windowMs: PEOPLE_WINDOW_MS });
   return peopleReply(ctx, guildContext);
 }
 

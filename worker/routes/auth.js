@@ -318,7 +318,12 @@ async function deleteImpact(db, userId) {
     ).bind(userId, JSON.stringify(suspendedIds)).all();
     for (const row of found.results) successors.set(row.id, row);
   }
-  const successorIds = [...new Set([...rows.map((row) => row.successor_id), ...[...successors.values()].flatMap((row) => [row.gm_id, row.officer_id])].filter(Boolean))];
+  // Names are looked up only for a guild the account is still a member of (a seat holder who is no member any more is told the rule, never who: the earliest Officer is not public).
+  const memberGuildIds = new Set(rows.filter((row) => row.self_member === 1).map((row) => row.id));
+  const successorIds = [...new Set([
+    ...rows.map((row) => row.successor_id),
+    ...[...successors.entries()].filter(([guildId]) => memberGuildIds.has(guildId)).flatMap(([, row]) => [row.gm_id, row.officer_id]),
+  ].filter(Boolean))];
   const people = new Map();
   if (successorIds.length) {
     const found = await db.prepare(
@@ -331,9 +336,10 @@ async function deleteImpact(db, userId) {
   const successor = (row) => {
     const { gm_id: gmId = null, officer_id: officerId = null } = successors.get(row.id) || {};
     const toId = gmId || officerId || null;
+    // to: null = nobody qualifies (the seat stays vacant until the Guild Master in game claims it); { userId: null, name: null } = somebody does but the account is not a member any more.
     return {
       guild: brief(row),
-      to: toId && people.has(toId) ? { userId: toId, name: toPerson(people.get(toId)).displayName } : null,
+      to: !toId ? null : people.has(toId) && row.self_member === 1 ? { userId: toId, name: toPerson(people.get(toId)).displayName } : { userId: null, name: null },
       rule: ruleOf({ gmId, officerId, rankSource: row.rank_source }),
     };
   };
@@ -603,8 +609,8 @@ export async function deleteMe(ctx) {
     // Raid sign-ups keep the person link (outcomes recompute the same) but lose the Discord ID and nickname.
     statements.push(db.prepare(`UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ? AND ${guard.sql}`).bind(session.user.discordId, ...guard.params));
   }
-  statements.push(db.prepare(`DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND ${guard.sql}`)
-    .bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`, `rsync:${userId}`, `char:${userId}`, `open:${userId}`, `fresh:${userId}`, ...guard.params));
+  statements.push(db.prepare(`DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND ${guard.sql}`)
+    .bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`, `rsync:${userId}`, `char:${userId}`, `open:${userId}`, `fresh:${userId}`, `users:${userId}`, `people:${userId}`, ...guard.params));
   const results = await db.batch(statements);
   if (!act.consumed(results)) throw freshRequiredError('account_delete', {});
   return jsonResponse({ ok: true }, 200, {}, [clearSessionCookie()]);

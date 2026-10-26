@@ -416,7 +416,8 @@ check('probe, the post-flip shape (seat set, no stored Guild Master row): the Ow
   s.exec(`DELETE FROM players WHERE id = '${s.people.own.pid}'`);
   s.suspend();
   const suspended = (await s.ok('own', 'GET', '/auth/me')).deleteImpact;
-  assert.deepEqual([suspended.handOverFirst, suspended.autoPromote, suspended.succession.map((entry) => [entry.guild.id, entry.to && entry.to.userId, entry.rule])], [[], [], [[s.gid, s.uids.dgm, 'ingame_gm']]]);
+  assert.deepEqual([suspended.handOverFirst, suspended.autoPromote, suspended.succession.map((entry) => [entry.guild.id, entry.to && entry.to.userId, entry.rule])], [[], [], [[s.gid, null, 'ingame_gm']]], 'the seat holder is no member any more (their person is gone): told the rule, not the name (review G5)');
+  assert.deepEqual(suspended.succession[0].to, { userId: null, name: null });
   await s.grant('own', { purpose: 'account_delete' });
   const passed = await s.call('own', 'DELETE', '/auth/me', { deleteGuildIds: [] });
   assert.equal(passed.status, 200, passed.text);

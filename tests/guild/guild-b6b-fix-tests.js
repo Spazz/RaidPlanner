@@ -1,6 +1,7 @@
 /**
  * Raidsmith guild tracker - the security-review fixes of lane B6b parts 1 + 2a (branch guild/hier-b6b-fix; tasks/open/audit-b6b-security.md F1, F2, F5-F9)
  * Run: node tests/guild/guild-b6b-fix-tests.js [name filter]
+ * (and tasks/open/audit-b6b2b-b7b-security.md G1, G3 [People list], G5; G2, G3 [Users list] and G4 are in guild-b7b-users-tests.js)
  *
  *   F1  DELETE /auth/me needs a fresh grant (purpose account_delete, params {}) when the account is protected or the delete takes a guild with it; every statement of the batch carries
  *       the marker; a lost grant or an account that became staff between the read and the batch deletes nothing; the 409s come first;
@@ -9,7 +10,9 @@
  *   F6  fresh.failed / guild.claim_failed rows are written only for an account with a tie to the guild; a stranger's failure is logged only;
  *   F7  the Battle.net refresh fills a missing first_linked_at once (the old link time), so the identity ages;
  *   F8  the fresh-start budget is per SESSION (10 per 10 minutes) with a per-account ceiling (30), both fail closed; Delete my data sweeps both keys;
- *   F9  a block row on the live Owner is kept, listed (People `removed`, B7b blocked segment) with ignoredWhileOwner, and can be restored.
+ *   F9  a block row on the live Owner is kept, listed (People `removed`, B7b blocked segment) with ignoredWhileOwner, and can be restored;
+ *   G1  the reviewer's scenario (a cookie-only attacker steers the seat through self-suspension and Delete my data) ends in 403 fresh_required;
+ *   G3  GET /people has a per-user limit of its own; G5  deleteImpact.succession names the successor only to a member.
  * Drives worker/index.js over the node:sqlite D1 stand-in, Discord faked by an injected fetch, Battle.net by tools/fake-battlenet.js on a local port.
  */
 const assert = require('node:assert/strict');
@@ -492,8 +495,11 @@ check('F8: Delete my data sweeps the session keys and the account key of the acc
   assert.equal((await s.call('gm', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'guild_delete', provider: 'discord' })).status, 200);
   const keys = (await s.rows("SELECT key FROM rate_limits WHERE key LIKE 'fresh:%' ORDER BY key")).map((row) => row.key);
   assert.deepEqual(keys, [...new Set([`fresh:${s.uids.gm}`, `fresh:${s.uids.ivy}`, `fresh:s:${sessionHashOf(s.jars.gm)}`, ...jars.map((jar) => `fresh:s:${sessionHashOf(jar)}`)])].sort());
+  // The windows of the read limits (Users list, People list) are keyed by the account too: they go with it, the other account's stay.
+  for (const key of ['ivy', 'gm']) s.exec(`INSERT INTO rate_limits (key, window_start, count) VALUES ('users:${s.uids[key]}', 1, 1), ('people:${s.uids[key]}', 1, 1)`);
   const done = await s.w.call(s.jars.ivy, 'DELETE', '/auth/me', { deleteGuildIds: [] });
   assert.equal(done.status, 200, done.text);
+  assert.deepEqual((await s.rows("SELECT key FROM rate_limits WHERE key LIKE 'users:%' OR key LIKE 'people:%' ORDER BY key")).map((row) => row.key), [`people:${s.uids.gm}`, `users:${s.uids.gm}`]);
   const left = (await s.rows("SELECT key FROM rate_limits WHERE key LIKE 'fresh:%' ORDER BY key")).map((row) => row.key);
   assert.deepEqual(left, [`fresh:${s.uids.gm}`, `fresh:s:${sessionHashOf(s.jars.gm)}`].sort(), 'only the other account\'s counters are left');
 });
@@ -592,6 +598,108 @@ check('F9: an ignored row is restorable by an Officer too, not by a plain member
   undo();
   assert.equal(raced.status, 409, raced.text);
   assert.equal(await s.w.count('guild_blocks'), 1, 'the real block stays');
+});
+
+// ---------------------------------------------------------------------------
+// G1 (tasks/open/audit-b6b2b-b7b-security.md): the succession is no way round the hand-over's fresh sign-in
+
+// An extra member of the in-game guild: a person linked to the account with a character proved by Battle.net on the stored roster (live), at in-game rank 5 (no role of its own).
+async function addLiveMember(s, key, name) {
+  await s.member(key, name);
+  s.people[key] = await s.person({ name }, 'own');
+  await s.link(s.people[key].pid, key, 'own');
+  s.proven[key] = makeProven(s, key, s.people[key], { rank: 5, proof: 'bnet', link: true });
+}
+
+check('G1: a live Owner (only the cookie) appoints an accomplice Officer, unlinks themselves from their own person, then deletes the account: 403 fresh_required and the seat does not move; with the grant the plan\'s chain runs unchanged', async () => {
+  const s = await ingameWorld();
+  // No live in-game Guild Master (the first rule of the succession would pick them): the derived Guild Master's proof is gone.
+  s.exec(`UPDATE characters SET owner_proof = 'officer', proof_user_id = NULL, proof_bnet_account_id = NULL WHERE id = '${s.people.dgm.cid}'`);
+  await addLiveMember(s, 'acc', 'Accomplice');
+  const seat = async () => (await s.one('SELECT owner_user_id FROM guilds WHERE id = ?', s.gid)).owner_user_id;
+  // 1. The Owner appoints the accomplice Officer (an Owner act that asks for no fresh sign-in).
+  assert.equal((await s.setRoles('acc', { officer: true, teamLeadTeamIds: [] })).status, 200);
+  // 2. Controls: the hand-over asks for a fresh sign-in, the delete of a LIVE Owner is a 409.
+  const handOver = await s.call('own', 'POST', `/people/${s.uids.acc}/guild-master`, {});
+  assert.deepEqual([handOver.status, handOver.json.error], [403, 'fresh_required']);
+  const live = await s.call('own', 'DELETE', '/auth/me', { deleteGuildIds: [] });
+  assert.deepEqual([live.status, live.json.error], [409, 'hand_over_guild_master']);
+  // 3. The Owner unlinks themselves from their own person (an Owner act on a proven person): they are suspended, the seat stays theirs.
+  const unlink = await s.call('own', 'PUT', `/roster/${s.people.own.pid}/account`, { userId: null });
+  assert.equal(unlink.status, 200, unlink.text);
+  const impact = (await s.ok('own', 'GET', '/auth/me')).deleteImpact;
+  assert.deepEqual([impact.handOverFirst, impact.succession.map((entryOf) => entryOf.rule)], [[], ['manual_officer']], 'a suspended seat holder skips the 409: the succession would run');
+  // 4. The delete: refused, nothing moves, nothing is audited.
+  const refusedDelete = await s.call('own', 'DELETE', '/auth/me', { deleteGuildIds: [] });
+  assert.deepEqual([refusedDelete.status, refusedDelete.json.error, refusedDelete.json.purpose], [403, 'fresh_required', 'account_delete'], refusedDelete.text);
+  assert.equal(await seat(), s.uids.own, 'the seat did not move');
+  assert.equal(await s.w.count('users', 'id = ?', s.uids.own), 1);
+  assert.equal((await s.audit('guild.succession')).length, 0);
+  assert.equal(await s.w.count('fresh_act_markers'), 0);
+  // The real owner of the account signs in again with Discord (the grant), and the chain (the earliest live manual Officer) runs as the plan says.
+  const flow = await s.fresh('own', { purpose: 'account_delete', provider: 'discord' });
+  assert.equal(flow.location, '/#/fresh?done=account_delete');
+  const done = await s.call('own', 'DELETE', '/auth/me', { deleteGuildIds: [] });
+  assert.equal(done.status, 200, done.text);
+  assert.equal(await seat(), s.uids.acc);
+  assert.deepEqual((await s.audit('guild.succession')).map((row) => JSON.parse(row.after).rule), ['manual_officer']);
+});
+
+// ---------------------------------------------------------------------------
+// G3. The People list has a limit of its own
+
+check('G3: GET /people is limited per user (own key, fixed window, fail open); the answers of the writes are not counted; another user and the next window are not affected', async () => {
+  const s = await world();
+  await s.officer('off', 'Officerone');
+  const { PEOPLE_LIMIT, PEOPLE_WINDOW_MS, USERS_LIMIT } = await load('worker/ratelimit.js');
+  assert(PEOPLE_LIMIT >= 30 && PEOPLE_WINDOW_MS === 60_000 && USERS_LIMIT === 30);
+  const get = (key) => s.w.call(s.jars[key], 'GET', `${s.base}/people`);
+  let served = 0;
+  let last;
+  for (; served < PEOPLE_LIMIT + 5; served++) {
+    last = await get('gm');
+    if (last.status === 429) break;
+    assert.equal(last.status, 200, last.text);
+  }
+  assert.equal(served, PEOPLE_LIMIT, 'refused after exactly the limit');
+  assert.deepEqual([last.status, last.json.error], [429, 'rate_limited']);
+  assert(Number(last.headers.get('Retry-After')) >= 1);
+  assert(await s.w.count('rate_limits', 'key = ?', `people:${s.uids.gm}`) === 1);
+  assert.equal((await get('off')).status, 200, 'another user has a window of their own');
+  // The writes answer with the People payload but do not spend the window.
+  const before = (await s.one('SELECT count FROM rate_limits WHERE key = ?', `people:${s.uids.off}`)).count;
+  await s.officer('off2', 'Officertwo');
+  assert.equal((await s.one('SELECT count FROM rate_limits WHERE key = ?', `people:${s.uids.gm}`)).count, PEOPLE_LIMIT + 1, 'the PUT of s.officer did not count (only the refused read did)');
+  assert.equal((await s.one('SELECT count FROM rate_limits WHERE key = ?', `people:${s.uids.off}`)).count, before);
+  s.w.advance(PEOPLE_WINDOW_MS + 1000);
+  assert.equal((await get('gm')).status, 200, 'the next window');
+  // A refusal for lack of permission does not count.
+  await s.member('mem', 'Plainmember');
+  for (let i = 0; i < PEOPLE_LIMIT + 3; i++) assert.equal((await get('mem')).status, 403);
+  assert.equal(await s.w.count('rate_limits', 'key = ?', `people:${s.uids.mem}`), 0);
+});
+
+// ---------------------------------------------------------------------------
+// G5. Who takes the seat is told to a member only
+
+check('G5: deleteImpact.succession names the successor only to an account that is still a member of the guild; otherwise { userId: null, name: null } and the rule; vacant stays null', async () => {
+  const s = await ingameWorld();
+  s.exec(`UPDATE characters SET owner_proof = 'officer', proof_user_id = NULL, proof_bnet_account_id = NULL WHERE id = '${s.people.dgm.cid}'`); // no live in-game Guild Master
+  await addLiveMember(s, 'acc', 'Accomplice');
+  assert.equal((await s.setRoles('acc', { officer: true, teamLeadTeamIds: [] })).status, 200);
+  // Suspended but still a member (their person is on the roster): told who.
+  s.suspend();
+  const asMember = (await s.ok('own', 'GET', '/auth/me')).deleteImpact.succession;
+  assert.deepEqual(asMember.map((entryOf) => [entryOf.rule, entryOf.to && entryOf.to.userId, entryOf.to && entryOf.to.name]), [['manual_officer', s.uids.acc, 'Accomplice']]);
+  // No longer a member (unlinked from their person): the rule, not the name.
+  s.exec(`UPDATE players SET user_id = NULL WHERE id = '${s.people.own.pid}'`); // (a suspended Owner has no right to edit the roster: the fixture does it)
+  const notMember = (await s.ok('own', 'GET', '/auth/me')).deleteImpact.succession;
+  assert.deepEqual(notMember.map((entryOf) => [entryOf.guild.id, entryOf.rule, entryOf.to]), [[s.gid, 'manual_officer', { userId: null, name: null }]]);
+  assert(!JSON.stringify(notMember).includes('Accomplice') && !JSON.stringify(notMember).includes(s.uids.acc), 'neither the name nor the id');
+  // Nobody qualifies: vacant, and `to` stays null.
+  s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'officer'`);
+  const vacant = (await s.ok('own', 'GET', '/auth/me')).deleteImpact.succession;
+  assert.deepEqual(vacant.map((entryOf) => [entryOf.rule, entryOf.to]), [['vacant', null]]);
 });
 
 runChecks(checks);
