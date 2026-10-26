@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { load, adminOf, memberOf, makeWorld, signIn, person, ROOT } = require('../guild-world');
+const { seatOnRoster } = require('../guild-seat');
 
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
@@ -641,7 +642,10 @@ check('applyRankMap: before the flip (the rank source is not in-game) a sync cha
   for (const rankSource of [null, 'manual']) {
     const s = await scenario({ rankSource });
     s.mapAll('social');
+    // The Guild Master is in the Discord server and linked to nobody: a 'manual' guild would not let them in (lane B5), so the person is made under the legacy rule.
+    s.sql('UPDATE guilds SET rank_source = NULL WHERE id = ?', s.gid);
     const res = await s.call('gm', 'POST', '/roster', { teamId: s.tids[0], name: nameOf(1), class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'trial', trialEnd: '2027-02-10' });
+    s.sql('UPDATE guilds SET rank_source = ? WHERE id = ?', rankSource, s.gid);
     s.sql('UPDATE characters SET namespace = ?, blizzard_realm_id = 4001, blizzard_char_id = ? WHERE id = ?', NS, idOf(1), res.json.characters[0].id);
     const before = await s.rows('SELECT * FROM characters WHERE guild_id = ?', s.gid);
     assert.equal((await s.sync()).status, 'applied');
@@ -924,6 +928,8 @@ check('pinned target: a pinned guild\'s fetch reads only the pinned slugs and na
 check('officer roster import: refused for an in-game guild (preview and commit, before any Blizzard call or rate-limit use); a manual guild and a legacy guild still import', async () => {
   const s = await scenario({ officer: true, rankSource: 'ingame' });
   const team = s.tids[0];
+  // An in-game guild lets in only an account whose person has a character on the roster (lane B5): the Officer is seated, so the import routes answer for themselves.
+  await seatOnRoster({ call: s.call, sqlite: s.w.db.sqlite, guildId: s.gid, teamId: team, userId: s.uids.officer }, { name: 'Seatofficer', id: 71003 });
   for (const [route, body] of [['preview', { teamId: team }], ['commit', { teamId: team, defaultStatus: 'raider', members: [] }]]) {
     const res = await s.call('officer', 'POST', `/roster/import/bnet/${route}`, body);
     assert.deepEqual([res.status, res.json.error], [409, 'bnet_import_ingame'], route);

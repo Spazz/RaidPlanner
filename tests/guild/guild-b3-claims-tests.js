@@ -16,6 +16,7 @@
  */
 const assert = require('node:assert/strict');
 const { load, runChecks, scenario } = require('../guild-b3-world');
+const { seatOnRoster } = require('../guild-seat');
 
 const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
@@ -101,11 +102,13 @@ check('hand add: a typed name that is on a person nobody linked is NEVER linked 
 
 check('hand add is refused in a guild whose rank source is the in-game roster (characters come only through Battle.net there); legacy and manual guilds take it', async () => {
   const s = await world();
+  // An in-game guild lets in only an account whose person has a character on the roster (lane B5): m1 is seated first, so the request reaches the refusal this is about.
+  await seatOnRoster({ call: s.call, sqlite: s.w.db.sqlite, guildId: s.gid, teamId: s.alpha, userId: s.uids.m1 }, { name: 'Seatone', id: 71001 });
   s.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.gid}'`);
   const refused = await add(s, 'm1', { name: 'Handmain' });
   assert.deepEqual([refused.status, refused.json.error], [409, 'battlenet_only']);
   assert.equal((await s.rows('SELECT id FROM characters WHERE name = ?', 'Handmain')).length, 0);
-  assert.equal((await s.rows('SELECT id FROM players WHERE user_id = ?', s.uids.m1)).length, 0);
+  assert.equal((await s.rows('SELECT id FROM players WHERE user_id = ?', s.uids.m1)).length, 1, 'only the seat person');
   for (const source of ['manual', null]) {
     s.exec(`UPDATE guilds SET rank_source = ${source ? `'${source}'` : 'NULL'} WHERE id = '${s.gid}'`);
     const name = source ? 'Manualone' : 'Legacyone';

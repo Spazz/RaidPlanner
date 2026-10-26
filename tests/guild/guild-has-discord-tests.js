@@ -246,11 +246,11 @@ const countOf = (text, token) => text.split(token).length - 1;
 //   none      must not mention it at all
 const SERVER_ID_FILES = {
   'worker/attendance-view.js': { how: 'guard', count: 1 },
-  'worker/bnet-store.js': { how: 'fragment', count: 2 },
+  'worker/bnet-store.js': { how: 'fragment', count: 1 },
   'worker/discord-guard.js': { how: 'data', count: 3 },
   'worker/discord-sync.js': { how: 'guard', count: 7 },
   'worker/event-refresh.js': { how: 'guard', count: 2 },
-  'worker/membership.js': { how: 'data', count: 1 },
+  'worker/membership.js': { how: 'data', count: 4 },
   'worker/permissions.js': { how: 'fragment', count: 2 },
   'worker/roster-view.js': { how: 'fragment', count: 2 },
   'worker/routes/accounts.js': { how: 'fragment', count: 1 },
@@ -327,6 +327,7 @@ check('grep ratchet: the membership fragments carry the guard on the user_server
   assert(GUARD_IMPORT.test(text));
   assert.equal(countOf(text, "serverIdIsDiscordSql('ms.server_id')"), 1, 'inServerSql');
   assert.equal(countOf(text, "serverIdIsDiscordSql('server_id')"), 1, 'memberCandidatesSql');
+  assert.equal(countOf(text, "serverIdIsDiscordSql('mx_us.server_id')"), 1, 'the my-guilds candidate set');
   // And the sign-in write that fills user_servers.
   assert(read('worker/routes/auth.js').includes("serverIdIsDiscordSql('g.discord_server_id')"));
 });

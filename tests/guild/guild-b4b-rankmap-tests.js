@@ -14,6 +14,7 @@
  */
 const assert = require('node:assert/strict');
 const { load, runChecks, scenario } = require('../guild-b3-world');
+const { seatOnRoster } = require('../guild-seat');
 
 const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
@@ -52,6 +53,9 @@ async function world({ ingame = true } = {}) {
     if (id !== null) s.exec(`UPDATE characters SET namespace = '${NS}', blizzard_realm_id = 4001, blizzard_char_id = ${id} WHERE id = '${made.cid}'`);
     return made;
   };
+  // An in-game guild lets in only an Owner and accounts linked to a person with a character on the roster (lane B5): a test that acts as an Officer or as a Guild Master
+  // who is not the Owner seats that account first, on the roster row `id` (rank `rank`; the row is written again as it is when it exists).
+  s.seat = (key, name, id, rank = 4) => seatOnRoster({ call: s.call, sqlite: s.w.db.sqlite, guildId: s.gid, teamId: s.tids[0], userId: s.uids[key] }, { name, id, rank });
   s.rankOf = async (name) => (await s.one('SELECT core_rank, left_on, trial_start, trial_end, updated_at FROM characters WHERE name = ?', name));
   s.dry = (ranks, who = 'gm') => s.ok(who, 'POST', '/rank-map/dry-run', { ranks }, 200);
   s.put = (ranks, token, who = 'gm', status = 200) => s.call(who, 'PUT', '/rank-map', { ranks, token }).then((res) => {
@@ -73,6 +77,8 @@ const ONE_RANK = [{ rank: 0, label: 'Guild Master', coreRank: 'raider', roleId: 
 
 check('gate: the rank map (read, dry run, change) is the Owner\'s - a derived Guild Master and an Officer are refused on all three; the Owner is allowed on all three', async () => {
   const s = await world();
+  await s.seat('gm', 'Gmseat', 9100);
+  await s.seat('off', 'Offseat', 9101);
   await s.setOwner('own');
   for (const who of ['gm', 'off']) {
     await s.fail(who, 'GET', '/rank-map', undefined, 403, 'forbidden');
@@ -209,6 +215,7 @@ check('apply: the token is consumed inside the batch, the map is replaced, the a
 
 check('the token is bound to the approver: another account\'s token is refused, and the refusal does not burn it', async () => {
   const s = await world();
+  await s.seat('gm', 'Gmseat', 9100);
   const dry = await s.dry(VINDICATED);
   // The seat moves to 'own'; their request carries the Guild Master's token.
   await s.setOwner('own');
@@ -443,6 +450,9 @@ check('every-rank-mapped gate: assertRankMapComplete refuses while a rank on the
 check('the unmapped-rank attention item: the Owner of an in-game guild sees it with the ranks and the characters held back; a Guild Master who is not the Owner, an Officer and another guild do not; it clears when mapped', async () => {
   const s = await world();
   s.setRoster([{ name: 'Aone', rank: 0, id: 9000 }, { name: 'Btwo', rank: 3, id: 9001 }, { name: 'Cthree', rank: 3, id: 9002 }, { name: 'Dfour', rank: 9, id: 9003 }]);
+  // The Officer and the Guild Master who loses the seat are members through two of the roster's own characters.
+  await s.seat('off', 'Aone', 9000, 0);
+  await s.seat('gm', 'Btwo', 9001, 3);
   const items = async (who) => (await s.ok(who, 'GET', '/attention', undefined, 200)).items.filter((i) => i.kind === 'unmapped_ranks');
   const ownerItems = await items('gm');
   assert.equal(ownerItems.length, 1);
@@ -475,6 +485,8 @@ check('the unmapped-rank attention item: the Owner of an in-game guild sees it w
 
 check('the officer rank edit (PATCH status, left date, reason) is refused in an in-game guild - its ranks are the roster\'s - and works in a manual or legacy one; Trial dates stay editable', async () => {
   const s = await world({ ingame: false });
+  // A 'manual' guild lets in only an account linked to a person (lane B5): the Guild Master is linked to one.
+  await s.link((await s.person({ name: 'Gmperson' })).pid, 'gm');
   const p = await s.person({ name: 'Edited', status: 'trial', trialEnd: '2027-02-10' });
   let version = p.res.person.version;
   const patch = (body) => s.call('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: version, ...body });

@@ -10,7 +10,7 @@ import { hasDiscordServerId, serverIdIsDiscordSql } from '../discord-guard.js';
 import { syncSignIn } from '../discord-sync.js';
 import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
-import { blockedSql, memberCandidatesSql, memberSql } from '../membership.js';
+import { memberCandidatesSql, memberGuildsStatement, memberSql } from '../membership.js';
 import { LIMITS } from '../limits.js';
 import { shapeRoles } from '../permissions.js';
 import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
@@ -198,9 +198,9 @@ const successorSql = (userExpr) => `SELECT so.user_id FROM role_assignments so
         AND ${memberSql('so.user_id', 'g.id', 'g.discord_server_id')}
       ORDER BY so.assigned_at, so.id LIMIT 1`;
 
-// Another unblocked person can use the guild: somebody besides `userExpr` who is in its Discord server or linked to one of its people.
+// Another member can use the guild: somebody besides `userExpr` whom the guild's rank source lets in and who is not blocked (worker/membership.js).
 const othersSql = (userExpr) => `EXISTS (SELECT 1 FROM (${memberCandidatesSql('g.id', 'g.discord_server_id')}) oc
-         WHERE oc.user_id != ${userExpr} AND NOT ${blockedSql('oc.user_id', 'g.id')})`;
+         WHERE oc.user_id != ${userExpr} AND ${memberSql('oc.user_id', 'g.id', 'g.discord_server_id')})`;
 
 // Guilds the person leads, split three ways:
 //  - handOverFirst: others have joined and the person is still a current member (they must hand over)
@@ -213,8 +213,9 @@ async function deleteImpact(db, userId) {
             ${othersSql('m.uid')} AS has_others,
             ${memberSql('m.uid', 'g.id', 'g.discord_server_id')} AS self_member,
             (${successorSql('m.uid')}) AS successor_id
-       FROM (SELECT ? AS uid) m, guilds g
-       JOIN role_assignments ra ON ra.guild_id = g.id AND ra.role_id = 'guild_master' AND ra.user_id = m.uid
+       FROM (SELECT ? AS uid) m
+       JOIN role_assignments ra ON ra.user_id = m.uid AND ra.role_id = 'guild_master'
+       JOIN guilds g ON g.id = ra.guild_id
       ORDER BY g.name, g.id`,
   ).bind(userId).all();
   const rows = result.results;
@@ -286,11 +287,8 @@ export async function me(ctx) {
   const { db, session, env } = ctx;
   const userId = session.user.id;
   const [guildResult, assignmentResult, removedResult, optOutResult] = await db.batch([
-    db.prepare(
-      `SELECT g.id, g.name, g.realm, g.region FROM guilds g, (SELECT ? AS uid) c
-        WHERE ${memberSql('c.uid', 'g.id', 'g.discord_server_id')}
-        ORDER BY g.name, g.id`,
-    ).bind(userId),
+    // My guilds: driven from the account's own rows (its Discord servers, its linked people, the Owner seat), never a pass over every guild.
+    memberGuildsStatement(db, userId),
     db.prepare(
       `SELECT ra.guild_id, ra.role_id, ra.team_id, ra.source, r.name AS role_name
          FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.user_id = ?`,

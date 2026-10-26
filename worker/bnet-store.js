@@ -1,6 +1,6 @@
 // Battle.net data: the settings a guild keeps, the snapshot a member's link keeps, and the plan an officer's approval of a character claim
 // would carry out. D1 I/O only; the Blizzard calls are in battlenet.js.
-import { isOwnPlayer, memberSql } from './membership.js';
+import { isOwnPlayer, memberGuildsStatement, memberSql } from './membership.js';
 import { REALMS } from './realms.js';
 
 // Blizzard's terms: stored Battle.net data is refreshed or deleted within 30 days.
@@ -57,14 +57,9 @@ export function realmDisplayName(gameVersion, region, slug, apiName) {
   return slug.split('-').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
 
-// The guilds a person belongs to (worker/membership.js: in the guild's Discord server or linked to one of its people, and not blocked).
+// The guilds a person belongs to (worker/membership.js: the guild's rank source lets them in, and not blocked), driven from the account's own rows.
 export async function loadMemberGuilds(db, userId) {
-  const result = await db.prepare(
-    `SELECT g.id, g.name, g.realm, g.realm_kind, g.realm_slug, g.region, g.game_version FROM guilds g, (SELECT ? AS uid) c
-      WHERE ${memberSql('c.uid', 'g.id', 'g.discord_server_id')}
-      ORDER BY g.name, g.id`,
-  ).bind(userId).all();
-  return result.results;
+  return (await memberGuildsStatement(db, userId).all()).results;
 }
 
 // ---------------------------------------------------------------------------

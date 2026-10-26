@@ -1,6 +1,6 @@
 import { HttpError } from './http.js';
 import { isId } from './ids.js';
-import { blockedSql, inServerSql, membershipOf, ownPlayerSql, rosterLinkSql } from './membership.js';
+import { blockedSql, notMemberMessage, ownPlayerSql, reachesGuildSql } from './membership.js';
 import { teamRosterSql } from './team-roster.js';
 
 export const ACTIONS = [
@@ -205,8 +205,9 @@ export const effectivePermissionsStatement = (db, guildId) =>
   db.prepare('SELECT role_id, action, scope FROM effective_role_permissions WHERE guild_id = ?').bind(guildId);
 
 // One DB.batch loads everything a guild route needs. Order of checks:
-// guild exists (404) -> blocked (403 access_removed) -> a member: in the guild's Discord server or linked to one of its people (403 not_member).
-// The membership rule is worker/membership.js's. The guild id always comes from the URL.
+// guild exists (404) -> blocked (403 access_removed) -> a member by the guild's rank source (403 not_member): legacy = in the guild's Discord server or linked to one
+// of its people; 'manual' = linked; 'ingame' = the Owner or linked to a person with a character on the in-game roster. Roles stored for a non-member grant nothing:
+// they are read only after this check passes. The membership rule is worker/membership.js's. The guild id always comes from the URL.
 // viewAs (dev only, from session.viewAs; see worker/view-as.js): { guildId, roleId, teamId } or null. Honoured ONLY for this guild and ONLY when the
 // person's real rank is Guild Master; then can / roles / rank / isGuildMaster are those of ONE stand-in assignment (a stale role or team: real rights).
 // Route code passes `session.viewAs` as the 4th argument on every call made for the signed-in user (a test pins it); system lookups for another user omit it.
@@ -217,8 +218,7 @@ export async function loadGuildContext(db, userId, guildId, viewAs = null) {
          FROM guilds WHERE id = ?`,
     ).bind(guildId),
     db.prepare(
-      `SELECT ${blockedSql('c.uid', 'g.id')} AS blocked, ${inServerSql('c.uid', 'g.discord_server_id')} AS in_server,
-              ${rosterLinkSql('c.uid', 'g.id')} AS linked
+      `SELECT ${blockedSql('c.uid', 'g.id')} AS blocked, ${reachesGuildSql('c.uid', 'g.id', 'g.discord_server_id')} AS reaches, g.rank_source AS rank_source
          FROM (SELECT ? AS uid) c, guilds g WHERE g.id = ?`,
     ).bind(userId, guildId),
     db.prepare(
@@ -238,12 +238,12 @@ export async function loadGuildContext(db, userId, guildId, viewAs = null) {
   const guild = guildResult.results[0];
   if (!guild) throw new HttpError(404, 'not_found', 'That guild does not exist.');
   const standing = standingResult.results[0];
-  const membership = membershipOf({ blocked: standing.blocked === 1, inServer: standing.in_server === 1, linked: standing.linked === 1 });
-  if (membership === 'blocked') {
+  // The rule is the standing statement's own (one statement, so the guild's rank source is read once): a block wins; then the source lets the account in or not.
+  if (standing.blocked === 1) {
     throw new HttpError(403, 'access_removed', 'An officer has removed your access to this guild.');
   }
-  if (membership !== 'member') {
-    throw new HttpError(403, 'not_member', "You are not in this guild's Discord server, and no roster entry is linked to your account. Sign in again if you just joined the server, or ask an officer to link your account to your roster entry.");
+  if (standing.reaches !== 1) {
+    throw new HttpError(403, 'not_member', notMemberMessage(standing.rank_source));
   }
   const ownTeamIds = ownTeamResult.results.map((row) => row.team_id).filter((teamId) => teamId !== null);
   const resolved = resolvePermissions(assignmentResult.results, permissionResult.results, ownTeamIds);

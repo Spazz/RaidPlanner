@@ -12,6 +12,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createD1Fake } = require('../d1-fake');
 const { createFakeBattlenet } = require('../../tools/fake-battlenet');
+const { seatOnRoster } = require('../guild-seat');
 
 const ROOT = require('path').join(__dirname, '..', '..');
 const load = (rel) => import(pathToFileURL(path.join(ROOT, rel)).href);
@@ -698,11 +699,14 @@ check('claims: not linked, an unsupported version, a failed namespace, a non-mem
 check('claims: in a guild whose rank source is the in-game roster the Battle.net list is still the way in (typed characters are refused there)', async () => {
   const s = await scenario();
   await link(s, 'erin');
+  // An in-game guild lets in only an account whose person has a character on the roster (lane B5), so Erin is seated first; her Battle.net claim then adds an alt.
+  await seatOnRoster({ call: (who, method, tail, body) => s.call(who, method, tail, body), sqlite: s.w.db.sqlite, guildId: s.guildId, teamId: s.A, userId: s.ids.erin, who: 'alice' },
+    { name: 'Seaterin', id: 71002 });
   s.w.db.sqlite.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.guildId}'`);
   const typed = await s.call('erin', 'POST', '/me/characters', { name: 'Typedone', class: 'MAGE' });
   assert.deepEqual([typed.status, typed.json.error], [409, 'battlenet_only']);
   const res = await s.call('erin', 'POST', '/claims', claimBody('Eliora'));
-  assert.deepEqual([res.status, res.json.claims[0].status, res.json.claims[0].outcome], [201, 'applied', 'new_person']);
+  assert.deepEqual([res.status, res.json.claims[0].status, res.json.claims[0].outcome], [201, 'applied', 'add_alt']);
 });
 
 check('claims: a character already on your own record, or on someone else\'s linked person, cannot be claimed; a conflict has one open claim at a time', async () => {

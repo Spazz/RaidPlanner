@@ -19,6 +19,17 @@ export const OWNER_ONLY_MESSAGE = 'Only the Owner of the guild can do that.';
 export const ownerSql = (guildExpr, userExpr) => `EXISTS (SELECT 1 FROM guilds og WHERE og.id = ${guildExpr} AND (og.owner_user_id = ${userExpr}
     OR (og.owner_user_id IS NULL AND EXISTS (SELECT 1 FROM role_assignments gm WHERE gm.guild_id = og.id AND gm.user_id = ${userExpr} AND gm.role_id = 'guild_master'))))`;
 
+// SQL: a one-column compound (user_id) of the accounts that can pass ownerSql for a guild: the seat holder and every stored guild_master row. A SUPERSET (ownerSql
+// itself decides, by the NULL seat rule): for the candidate sets of worker/membership.js. The guild expression is written twice, so a bare `?` is only right when
+// the caller binds it twice; numbered parameters (?1) repeat freely.
+export const ownerCandidatesSql = (guildExpr) => `SELECT ocg.owner_user_id AS user_id FROM guilds ocg WHERE ocg.id = ${guildExpr} AND ocg.owner_user_id IS NOT NULL
+    UNION SELECT ocr.user_id FROM role_assignments ocr WHERE ocr.guild_id = ${guildExpr} AND ocr.role_id = 'guild_master'`;
+
+// SQL: a one-column compound (guild_id) of the guilds an account can be the Owner of (the seat, or a stored guild_master row): the "owner" candidate set of "my
+// guilds" (worker/membership.js). Index-backed: guilds_owner and idx_role_assignments_user. The user expression is written twice (see above).
+export const ownedGuildsSql = (userExpr) => `SELECT oug.id AS guild_id FROM guilds oug WHERE oug.owner_user_id = ${userExpr}
+    UNION SELECT our.guild_id FROM role_assignments our WHERE our.user_id = ${userExpr} AND our.role_id = 'guild_master'`;
+
 // { sql, params } for a guarded write inside a db.batch: the same test with the guild and the account bound (three placeholders: guild, user, user).
 export function ownerGuard(guildId, userId) {
   return { sql: ownerSql('?', '?'), params: [guildId, userId, userId] };

@@ -72,14 +72,15 @@ export async function unlinkDiscord(ctx) {
   if (blockedAt) {
     throw new HttpError(409, 'blocked_somewhere', 'An officer removed your access to a guild, so Discord cannot be disconnected right now.');
   }
-  // A Guild Master who would lose the guild (no roster person linked to their account there) must hand over or get linked first: a guild nobody
-  // can open helps no one. Without Discord only an officer's link (players.user_id) keeps someone in a guild they are not in the server of.
+  // A Guild Master who would lose the guild must hand over or get linked first: a guild nobody can open helps no one. "Would lose" = not a member of the guild once
+  // the Discord server no longer counts (the membership rule of worker/membership.js with no server to be in: only a link, or the in-game rule's own terms, keeps
+  // someone in a guild they are not in the server of).
   const leads = await db.prepare(
     `SELECT g.id, g.name FROM role_assignments ra JOIN guilds g ON g.id = ra.guild_id
       WHERE ra.user_id = ? AND ra.role_id = 'guild_master'
-        AND NOT EXISTS (SELECT 1 FROM players p WHERE p.guild_id = g.id AND p.user_id = ?)
+        AND NOT ${memberSql('ra.user_id', 'g.id', 'NULL')}
       ORDER BY g.name, g.id`,
-  ).bind(userId, userId).all();
+  ).bind(userId).all();
   if (leads.results.length) {
     throw new HttpError(409, 'leads_guild',
       'You are the Guild Master of a guild you would lose access to without Discord. Hand it over first, or ask an officer to link your account to your roster entry there.',
