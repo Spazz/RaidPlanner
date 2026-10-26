@@ -8,6 +8,7 @@ import { characterOfRow, personFields } from './person-rank.js';
 import { raidRoleOf } from './recruit-data.js';
 import { roleOf, todayIn, trialFlag } from './roster-data.js';
 import { isTeamRosterRow, onTeamRosterSql } from './team-roster.js';
+import { visibleCharacterSql } from './character-visibility.js';
 
 // Avatar URLs carry the user's Discord ID, so only the people who can open People and roles (where avatars are
 // already shown) get them in roster responses; everyone else gets initials.
@@ -60,7 +61,7 @@ export async function loadPersonData(db, guildId, personId) {
       `SELECT c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, c.core_rank, c.left_on, c.left_reason, c.trial_start, c.trial_end,
               c.blizzard_char_id, t.name AS team_name, t.archived AS team_archived
          FROM characters c LEFT JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
-        WHERE c.player_id = ? AND c.guild_id = ?`,
+        WHERE c.player_id = ? AND c.guild_id = ? AND ${visibleCharacterSql('c')}`,
     ).bind(personId, guildId),
     db.prepare(
       `SELECT u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar,
@@ -180,7 +181,7 @@ export async function loadRosterFlags(db, guildContext, today) {
     // A trial flag counts for the team of the person's main.
     db.prepare(
       `SELECT m.team_id, m.core_rank AS status, m.trial_end FROM characters m
-        WHERE m.guild_id = ? AND m.is_main = 1 AND m.core_rank = 'trial' AND m.trial_end IS NOT NULL`,
+        WHERE m.guild_id = ? AND m.is_main = 1 AND m.core_rank = 'trial' AND m.trial_end IS NOT NULL AND ${visibleCharacterSql('m')}`,
     ).bind(guildId),
   ]);
   const flags = {};
@@ -261,7 +262,7 @@ export async function loadRosterRows(db, guildContext, team, today, viewer, { in
               c.left_reason AS character_left_reason, c.trial_start AS character_trial_start, c.trial_end AS character_trial_end,
               t.name AS team_name, t.archived AS team_archived
          FROM players p JOIN characters c ON c.player_id = p.id LEFT JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
-        WHERE p.guild_id = ?1 AND p.id IN (${inactive ? INACTIVE_MEMBERS_SQL : ROSTER_MEMBERS_SQL})`;
+        WHERE p.guild_id = ?1 AND p.id IN (${inactive ? INACTIVE_MEMBERS_SQL : ROSTER_MEMBERS_SQL}) AND ${visibleCharacterSql('c')}`;
   const [rowResult, userResult] = await db.batch([
     db.prepare(rowsSql).bind(guildId, team.id),
     // Signed in = the person's account (linked by an officer, or matching the Discord ID they carry) is a member of this guild.

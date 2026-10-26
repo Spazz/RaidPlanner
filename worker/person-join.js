@@ -45,6 +45,7 @@ import { markPersonRaidsStale } from './attendance-store.js';
 import { HttpError } from './http.js';
 import { defaultRandomBytes, newId } from './ids.js';
 import { LIMITS } from './limits.js';
+import { isPlaceholderKey, placeholderCharacterSql, visibleCharacterSql } from './character-visibility.js';
 
 export const JOIN_REASONS = Object.freeze(['officer', 'bnet']);
 export const MAX_NOTES = 4000;
@@ -93,7 +94,7 @@ const PERSONS_SQL = `SELECT p.id, p.version, p.notes_version, p.created_at, p.us
 // Every lookup of characters by person names the index: with only "guild_id = ? AND player_id = ?" to go on the planner takes characters_guild_id and walks the
 // whole guild (a 1,200-member guild reads 1,200 rows per statement, and a join runs this in about 35 statements).
 const BY_PERSON = 'INDEXED BY characters_player';
-const CHARACTERS_SQL = `SELECT id, player_id, team_id, is_main FROM characters ${BY_PERSON} WHERE guild_id = ? AND player_id IN (?, ?)`;
+const CHARACTERS_SQL = `SELECT id, player_id, team_id, is_main, name_key FROM characters ${BY_PERSON} WHERE guild_id = ? AND player_id IN (?, ?)`;
 
 // The owners of a person as a set of keys: the account of players.user_id, the account whose Discord ID the person carries, else the bare Discord ID.
 function ownerKeysOf(person) {
@@ -130,9 +131,11 @@ async function loadPlan(db, guildId, aId, bId) {
   const charactersOf = (person) => characterResult.results.filter((row) => row.player_id === person.id);
   const survivorCharacters = charactersOf(survivor);
   const loserCharacters = charactersOf(loser);
-  if (survivorCharacters.length + loserCharacters.length > LIMITS.charactersPerPerson) {
+  // (A retired placeholder, worker/character-visibility.js, is not counted in the cap.)
+  const together = [...survivorCharacters, ...loserCharacters].filter((row) => !isPlaceholderKey(row.name_key)).length;
+  if (together > LIMITS.charactersPerPerson) {
     throw new HttpError(409, 'join_too_many_characters',
-      `Together they have ${survivorCharacters.length + loserCharacters.length} characters, and a person can have at most ${LIMITS.charactersPerPerson}. Remove some first.`);
+      `Together they have ${together} characters, and a person can have at most ${LIMITS.charactersPerPerson}. Remove some first.`);
   }
   return { survivor, loser, survivorCharacters, loserCharacters };
 }
@@ -164,7 +167,7 @@ function countStatement(db, guildId, survivorId, loserId) {
   add('characters', ['total', 'team_cleared', 'main_demoted'],
     `SELECT COUNT(*) AS total,
             COALESCE(SUM(l.team_id IS NOT NULL AND l.team_id IN (SELECT s.team_id FROM characters s WHERE s.player_id = ? AND s.team_id IS NOT NULL)), 0) AS team_cleared,
-            COALESCE(SUM(l.is_main = 1 AND EXISTS (SELECT 1 FROM characters m WHERE m.player_id = ? AND m.is_main = 1)), 0) AS main_demoted
+            COALESCE(SUM(l.is_main = 1 AND ${visibleCharacterSql('l')} AND EXISTS (SELECT 1 FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')})), 0) AS main_demoted
        FROM characters l ${BY_PERSON} WHERE l.guild_id = ? AND l.player_id = ?`, survivorId, survivorId, guildId, loserId);
   add('raid_signups', ['total', 'clash', 'loser_wins'],
     `SELECT COUNT(*) AS total,
@@ -239,7 +242,8 @@ export async function joinPersonsStatements(db, {
 
   const survivorTeams = new Set(survivorCharacters.map((row) => row.team_id).filter((id) => id !== null));
   const teamlessCharacterIds = loserCharacters.filter((row) => row.team_id !== null && survivorTeams.has(row.team_id)).map((row) => row.id);
-  const survivorHasMain = survivorCharacters.some((row) => row.is_main === 1);
+  const survivorHasMain = survivorCharacters.some((row) => row.is_main === 1 && !isPlaceholderKey(row.name_key));
+  const survivorHasHiddenMain = survivorCharacters.some((row) => row.is_main === 1 && isPlaceholderKey(row.name_key));
   const survivorAccount = !!(survivor.user_id || survivor.discord_account_id);
 
   const countRead = countStatement(db, guildId, S, L);
@@ -265,7 +269,7 @@ export async function joinPersonsStatements(db, {
   // The guard of every statement: the guild, the versions of BOTH persons (notes_version too: a notes edit does not bump version), the 20-character cap, and the
   // caller's own guards. After the survivor's own fields were written its version (and notes_version) are the new ones.
   const guardFor = (survivorVersion, survivorNotesVersion, more = []) => ({
-    sql: `(SELECT COUNT(*) FROM characters ${BY_PERSON} WHERE guild_id = ? AND player_id IN (?, ?)) <= ${LIMITS.charactersPerPerson}
+    sql: `(SELECT COUNT(*) FROM characters ${BY_PERSON} WHERE guild_id = ? AND player_id IN (?, ?) AND ${visibleCharacterSql('characters')}) <= ${LIMITS.charactersPerPerson}
           AND EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ? AND notes_version = ?)
           AND EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ? AND notes_version = ?)
           ${[...more, ...guards].map((guard) => `AND ${guard.sql}`).join(' ')}`,
@@ -313,6 +317,9 @@ export async function joinPersonsStatements(db, {
   // (characters.updated_at stays as it is: the Trial clock reads it as the day a rank was last written, and a join writes no rank.)
   if (survivorHasMain) {
     guarded(`UPDATE characters ${BY_PERSON} SET is_main = 0 WHERE guild_id = ? AND player_id = ? AND is_main = 1`, [guildId, L]);
+  } else if (survivorHasHiddenMain) {
+    // The survivor's only Main is a retired placeholder: the loser's visible Main takes over.
+    guarded(`UPDATE characters ${BY_PERSON} SET is_main = 0 WHERE guild_id = ? AND player_id = ? AND is_main = 1 AND ${placeholderCharacterSql('characters')}`, [guildId, S]);
   }
   guarded(
     `UPDATE characters ${BY_PERSON} SET team_id = NULL

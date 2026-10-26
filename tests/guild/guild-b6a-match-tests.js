@@ -6,8 +6,8 @@
  *   - the snapshot keeps the identity key of every character; the in-game namespaces are fetched first;
  *   - an account with a character on an 'ingame' guild's roster becomes a member by signing in (new account, existing account, a link, a re-link); a LEGACY guild and a
  *     'manual' guild never get a person, a character or a players.user_id from the match, only proof and keys on characters of the account's own linked person;
- *   - the unowned-person link (the trigger clears the proofs, the match restamps them), the auto join (one per callback), and the cases that wait for part 2b
- *     (a person of another account, a name collision) that write nothing;
+ *   - the unowned-person link (the trigger clears the proofs, the match restamps them), the auto join (one per callback); Battle.net beats a link and the name
+ *     collision (part 2b) are in guild-b6a-rehome-tests.js;
  *   - non-roster characters get no rows, a roster character of any level does; the cap, a blocked account, a class or realm the guild cannot take;
  *   - the proof: the monotonic guard in either order of two accounts, the supersede audit row, clearing on disconnect, re-verify through a link-mode callback;
  *   - the statement budget (45 per callback, batch members counted one by one) for three shapes of callback and the query plans on a 1,200-member roster;
@@ -538,9 +538,11 @@ check('a Discord-owned person of the account\'s own Discord ID counts as unowned
   const linked = await bnetLink(w, jar, BNET.ann);
   assert.equal(locationOf(linked.callback), '/#/characters');
   assert.equal(w.one('SELECT user_id FROM players WHERE id = ?', PID(1)).user_id, userId, 'her own Discord-owned person is linked');
-  assert.equal(w.one('SELECT user_id FROM players WHERE id = ?', PID(2)).user_id, null, 'the other ID\'s person is not touched');
-  assert.equal(w.one("SELECT owner_proof FROM characters WHERE id = ?", CID(2)).owner_proof, 'officer');
-  assert(logged(w, 'rehome'));
+  assert.equal(w.one('SELECT user_id FROM players WHERE id = ?', PID(2)).user_id, null, 'the other ID\'s person is not linked to the account');
+  // Brindle sat on a person of ANOTHER account (its Discord ID): Battle.net beats that link, the character moved to her person (guild-b6a-rehome-tests.js has the details).
+  assert.deepEqual(w.one('SELECT player_id, owner_proof, proof_user_id FROM characters WHERE id = ?', CID(2)), { player_id: PID(1), owner_proof: 'bnet', proof_user_id: userId });
+  assert.equal(w.count('characters', 'player_id = ? AND name_key LIKE ?', PID(2), '~ph:%'), 1, 'and the other person keeps a retired placeholder');
+  assert(!logged(w, 'rehome'));
   assert.notEqual(dump(w), before);
 });
 
@@ -582,38 +584,6 @@ check('the auto join: a matched key on another unowned person joins that person 
   w.advance(1000);
   await bnetSignIn(w, BNET.ann, jar);
   assert.equal(w.count('person_joins'), 2, 'a third sign-in joins nothing');
-});
-
-check('the cases that wait for part 2b write nothing: a key held by a person of ANOTHER account (rehome), a free key whose name and realm another character has (collision)', async () => {
-  const w = await makeWorld();
-  const G = w.ingame(1, [['Aldric', 2], ['Brindle', 3], ['Cassia', 4]]);
-  const other = UID(9);
-  w.raw.user(other);
-  w.raw.person(PID(1), G, { userId: other });
-  w.raw.character(CID(1), G, PID(1), 'Aldric', { isMain: 1, proof: 'bnet', proofUser: other, proofBnet: '555', proofAt: 5 });
-  w.raw.person(PID(2), G);
-  w.raw.character(CID(2), G, PID(2), 'Brindle', { key: false, isMain: 1 });          // hand-added, no key, same name + realm as the roster row
-  // Aldric: rehome. Brindle: collision. Cassia is not served. The account has no person and gets none.
-  w.serve(['Aldric', 'Brindle']);
-  const before = dump(w);
-  const { jar } = await bnetSignIn(w, BNET.ann);
-  assert.equal(dump(w), before, 'nothing written');
-  assert(logged(w, 'rehome'));
-  assert(logged(w, 'collision'));
-  assert.equal((await w.call(jar, 'GET', `/api/guild/${G}`)).status, 403, 'still not a member');
-
-  // The same two with a person of its own: its own free characters are still created, the two keys stay as they are.
-  w.raw.roster(G, 'Dunmar', 5);
-  w.serve(['Aldric', 'Brindle', 'Dunmar']);
-  w.logs.length = 0;
-  const kept = dump(w);
-  await bnetSignIn(w, BNET.ann, jar);
-  const userId = userOf(w, BNET.ann);
-  assert.deepEqual(names(charactersOf(w, personOf(w, userId, G).id)), ['Dunmar']);
-  assert.equal(w.one('SELECT proof_user_id, proof_at FROM characters WHERE id = ?', CID(1)).proof_user_id, other, 'the other account\'s proof is untouched');
-  assert.equal(w.one('SELECT blizzard_char_id FROM characters WHERE id = ?', CID(2)).blizzard_char_id, null);
-  assert.notEqual(dump(w), kept);
-  assert(logged(w, 'rehome') && logged(w, 'collision'));
 });
 
 check('several unowned persons and nothing free: the one holding the best-ranked key is linked and one other joins in the same callback, the third waits; with something free a person is created and they join into it', async () => {
@@ -1122,9 +1092,12 @@ check('a unique violation inside the match (a character with the same name made 
   assert.notEqual(dump(w), before, 'only the typed-in character (the other side of the race)');
   w.logs.length = 0;
   await bnetSignIn(w, BNET.ann, jar);
-  assert(logged(w, 'collision'), 'the next sign-in sees the collision');
-  assert.equal(w.count('players', 'user_id = ?', userId), 1, 'and creates the person with the characters that are free');
-  assert.deepEqual(names(charactersOf(w, personOf(w, userId, G).id)), ['Aldric']);
+  assert(!logged(w, 'collision'), 'the next sign-in meets the typed-in Brindle and binds the key onto it (the name collision of part 2b)');
+  assert.equal(w.count('players', 'user_id = ?', userId), 1, 'the typed-in Brindle sat on an unowned person: it is linked to the account');
+  const person = personOf(w, userId, G);
+  assert.equal(person.id, PID(7));
+  assert.deepEqual(names(charactersOf(w, person.id)), ['Aldric', 'Brindle'], 'with the character that was free');
+  assert.equal(w.one('SELECT blizzard_char_id, owner_proof FROM characters WHERE id = ?', CID(7)).blizzard_char_id, idOf('Brindle'));
 });
 
 check('a character that somebody else bound to the roster key first (an officer\'s Match to roster) is not created twice: characters_identity stays unique', async () => {

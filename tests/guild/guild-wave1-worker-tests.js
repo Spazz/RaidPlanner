@@ -438,6 +438,12 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('person.match_link', 'person', 'p_thoren', null, { userId: 'u_erin' }), 'Linked a Battle.net account to Thoren because its characters are on the in-game roster'],
     [row('character.proof_supersede', 'character', 'c_th', { userId: 'u_bob' }, { userId: 'u_erin' }), 'The Battle.net proof of Thoren passed to the account Erin E, which proved it more recently'],
     [row('character.proof_supersede', 'character', 'c_th', { userId: 'u_bob' }, { userId: 'u_gone' }), 'The Battle.net proof of Thoren passed to another account, which proved it more recently'],
+    // Hierarchy B6a part 2b: Battle.net beats a link (the old person is named by what it has left), the name collision.
+    [row('character.rehome', 'character', 'c_th', { personId: 'p_kael' }, { personId: 'p_thoren', reason: 'bnet_beats_link' }), 'Moved Thoren from Kaelith to Thoren, because the Battle.net account that owns it proved it'],
+    [row('character.rehome', 'character', 'c_th', { personId: 'p_kael' }, { personId: 'p_thoren', reason: 'collision' }), 'Moved Thoren from Kaelith to Thoren, because the Battle.net account that owns it signed in with the same name'],
+    [row('character.rehome', 'character', 'c_th', { personId: 'p_kael' }, { personId: 'p_thoren', reason: 'gm_claim' }), 'Moved Thoren from Kaelith to Thoren, by the Guild Master\'s claim'],
+    [row('character.rehome', 'character', 'c_th', null, null), 'Moved Thoren from a person to a person'],
+    [row('character.name_retire', 'character', 'c_th', { teamId: null }, { retired: true }), 'Thoren is now Former: its name belongs to the character on the in-game roster that signed in with it'],
     // Hierarchy B7a: blocks, tombstone matches, the per-person detail of a sync run and the coalesced failures.
     [row('person.block', 'person', 'p_thoren', { blocked: false }, { blocked: true }), 'Removed the access of Thoren, who has no account yet'],
     [row('person.unblock', 'person', 'p_thoren', { blocked: true }, { blocked: false }), 'Restored the access of Thoren'],

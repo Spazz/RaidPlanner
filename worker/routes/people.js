@@ -13,6 +13,7 @@ import { discordProblem, syncMember } from '../discord-sync.js';
 import { assertMayGrant, loadRolesData } from '../roles-store.js';
 import { ROLE_RANK, isCustomRole, loadGuildContext, rankOf, requireAction, requireAnyAction, shapeRoles } from '../permissions.js';
 import { toPerson } from '../person.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 
 const MAX_TEAM_LEAD_TEAMS = 20;
 const TEAM_ID = /^t_[A-Za-z0-9_-]{22}$/;
@@ -45,7 +46,7 @@ async function loadModel(db, guildContext) {
     // The roster entry (the Main) of each person linked to an account (by an officer's link, or by the Discord ID they carry).
     db.prepare(
       `SELECT p.id AS person_id, p.discord_user_id, p.user_id, m.name, m.class FROM players p
-         JOIN characters m ON m.player_id = p.id AND m.is_main = 1
+         JOIN characters m ON m.player_id = p.id AND m.is_main = 1 AND ${visibleCharacterSql('m')}
         WHERE p.guild_id = ? AND (p.discord_user_id IS NOT NULL OR p.user_id IS NOT NULL)`,
     ).bind(guildId),
     db.prepare('SELECT COUNT(*) AS n FROM discord_role_maps WHERE guild_id = ?').bind(guildId),

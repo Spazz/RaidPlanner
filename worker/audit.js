@@ -124,6 +124,9 @@ export const AUDIT_ACTIONS = [
   'person.match_create',
   'person.match_link',
   'character.proof_supersede',
+  // Lane B6a part 2b: a character moved to the person whose Battle.net account proved it; a Former character whose name went to a dated alias.
+  'character.rehome',
+  'character.name_retire',
   // Lane B7a: blocks and tombstones, and the rows the prune/coalesce rules know by name (PRUNABLE_ACTIONS below).
   'person.block',
   'person.unblock',
@@ -165,7 +168,7 @@ export function auditStatement({ db, randomBytes, now }, entry, guard = null) {
   const actorUserId = entry.actorUserId ?? null;
   const guildId = entry.guildId ?? null;
   const values = [
-    newId('al', randomBytes),
+    entry.id || newId('al', randomBytes), // a caller that needs the row as a batch marker (worker/rehome.js) passes its own id
     guildId,
     actorUserId,
     entry.action,

@@ -8,6 +8,7 @@ import { HttpError, jsonResponse } from '../http.js';
 import { isId, newId } from '../ids.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { allows } from '../permissions.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { CSV_MAX_ROWS, findColumns, mapRows, planRows, readCsvText } from '../csv-roster.js';
 import { CREATE_STATUSES, isRealDate, isSpecOf, nameKey } from '../roster-data.js';
 import {
@@ -150,7 +151,7 @@ export async function commitCsv(ctx) {
   if (existing.length) {
     if (existing.some((id) => !isId('p', id))) throw bad('Pick the person this character belongs to.', 'personId');
     const result = await db.prepare(
-      `SELECT p.id, m.team_id FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1 WHERE p.guild_id = ? AND p.id IN (SELECT value FROM json_each(?))`,
+      `SELECT p.id, m.team_id FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1 AND ${visibleCharacterSql('m')} WHERE p.guild_id = ? AND p.id IN (SELECT value FROM json_each(?))`,
     ).bind(guild.id, JSON.stringify(existing)).all();
     for (const row of result.results) homeByPerson.set(row.id, row.team_id);
   }

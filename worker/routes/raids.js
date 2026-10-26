@@ -13,6 +13,7 @@ import { isId, newId } from '../ids.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { RAID_SIZES, isRaidSize, raidSizeFields, zonesFor } from '../raid-zones.js';
 import {
   WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, WCL_RAID_LIMIT, WCL_RAID_WINDOW_MS, enforceRateLimit,
@@ -854,7 +855,7 @@ export async function getPlanner(ctx) {
     ).bind(raid.id),
     ctx.db.prepare(
       `SELECT id, player_id, name, class, main_spec, is_main, team_id FROM characters
-        WHERE guild_id = ? AND player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND player_id IS NOT NULL)`,
+        WHERE guild_id = ? AND player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND player_id IS NOT NULL) AND ${visibleCharacterSql('characters')}`,
     ).bind(guild.id, raid.id),
   ];
   const noticesAt = statements.length;

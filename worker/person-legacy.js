@@ -36,9 +36,12 @@ export function characterRankColumns({ status, leftOn = null, leftReason = null,
 // The last five values of an INSERT INTO characters (... core_rank, left_on, left_reason, trial_start, trial_end): the values given, else the person's main.
 // Eight placeholders, bound with rankBinds(rank, personId). `rank` is characterRankColumns(...) for the first character of a new person (the main) and
 // null for every later one (an alt takes core_rank, left_on and left_reason of the person's main and no trial dates).
-export const RANK_COLUMNS_SQL = `COALESCE(?, (SELECT m.core_rank FROM characters m WHERE m.player_id = ? AND m.is_main = 1), 'raider'),
-       COALESCE(?, (SELECT m.left_on FROM characters m WHERE m.player_id = ? AND m.is_main = 1)),
-       COALESCE(?, (SELECT m.left_reason FROM characters m WHERE m.player_id = ? AND m.is_main = 1)), ?, ?`;
+import { visibleCharacterSql } from './character-visibility.js';
+
+// (The person's main is its VISIBLE main: a retired placeholder, worker/character-visibility.js, hands no rank or left date to a new character.)
+export const RANK_COLUMNS_SQL = `COALESCE(?, (SELECT m.core_rank FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')}), 'raider'),
+       COALESCE(?, (SELECT m.left_on FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')})),
+       COALESCE(?, (SELECT m.left_reason FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')})), ?, ?`;
 
 export function rankBinds(rank, personId) {
   const given = rank || {};
@@ -47,7 +50,7 @@ export function rankBinds(rank, personId) {
 }
 
 // The same for a bulk INSERT ... SELECT ... FROM json_each(?) j whose items carry { playerId, coreRank?, leftOn?, leftReason?, trialStart?, trialEnd? }.
-const mainOf = (column) => `(SELECT m.${column} FROM characters m WHERE m.player_id = json_extract(j.value, '$.playerId') AND m.is_main = 1)`;
+const mainOf = (column) => `(SELECT m.${column} FROM characters m WHERE m.player_id = json_extract(j.value, '$.playerId') AND m.is_main = 1 AND ${visibleCharacterSql('m')})`;
 export const IMPORTED_RANK_COLUMNS_SQL = `COALESCE(json_extract(j.value, '$.coreRank'), ${mainOf('core_rank')}, 'raider'),
               COALESCE(json_extract(j.value, '$.leftOn'), ${mainOf('left_on')}), COALESCE(json_extract(j.value, '$.leftReason'), ${mainOf('left_reason')}),
               json_extract(j.value, '$.trialStart'), json_extract(j.value, '$.trialEnd')`;
@@ -62,7 +65,7 @@ export function setCharacterRanksStatement(db, guildId, personId, columns, guard
   return db.prepare(
     `UPDATE characters SET core_rank = ?, left_on = ?, left_reason = ?,
             trial_start = CASE WHEN is_main = 1 THEN ? END, trial_end = CASE WHEN is_main = 1 THEN ? END, updated_at = ?
-      WHERE guild_id = ? AND player_id = ?${guard ? ` AND ${guard.sql}` : ''}`,
+      WHERE guild_id = ? AND player_id = ? AND ${visibleCharacterSql('characters')}${guard ? ` AND ${guard.sql}` : ''}`,
   ).bind(columns.coreRank, columns.leftOn, columns.leftReason, columns.trialStart, columns.trialEnd, now, guildId, personId, ...(guard ? guard.params : []));
 }
 

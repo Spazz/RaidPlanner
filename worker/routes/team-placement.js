@@ -13,6 +13,7 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
 import { nameKey } from '../roster-data.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
 import { assertSenior, seniorityOk } from '../seniority.js';
 import { dropUpcomingSignupsStatements, personLeftTeamSql, placeStatement, releaseStatement, staleStatement, upcomingSignupsOf } from '../team-place.js';
@@ -135,7 +136,7 @@ const UNASSIGNED_LIMIT = 100;
 const UNASSIGNED_SQL = `SELECT c.id, c.name, c.class, c.main_spec, c.realm, c.is_main, c.core_rank, c.left_on, c.player_id, m.name AS main_name,
        (SELECT q.team_id FROM team_requests q WHERE q.character_id = c.id AND q.status = 'pending') AS requested_team_id
   FROM characters c LEFT JOIN characters m ON m.player_id = c.player_id AND m.guild_id = c.guild_id AND m.is_main = 1
- WHERE c.guild_id = ? AND c.team_id IS NULL AND c.name_key LIKE ? ESCAPE '!'
+ WHERE c.guild_id = ? AND c.team_id IS NULL AND c.name_key LIKE ? ESCAPE '!' AND ${visibleCharacterSql('c')}
  ORDER BY c.name_key, c.id LIMIT ?`;
 
 export async function listUnassigned(ctx) {

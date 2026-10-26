@@ -10,6 +10,7 @@
 // The people and raids keep their Raidsmith ids so the lists in the file refer to each other.
 import { allows } from './permissions.js';
 import { characterOfRow, personFields } from './person-rank.js';
+import { visibleCharacterSql } from './character-visibility.js';
 
 export const EXPORT_FORMAT = 'raidsmith-guild-export';
 export const EXPORT_VERSION = 1;
@@ -53,7 +54,7 @@ export async function buildGuildExport(db, guildContext, nowMs) {
     // The rank columns are not exported per character; the person's status and dates are worked out from them (worker/person-rank.js personFields).
     db.prepare(
       `SELECT id, player_id, team_id, name, realm, class, main_spec, off_spec, is_main, core_rank, left_on, left_reason, trial_start, trial_end
-         FROM characters WHERE guild_id = ? ORDER BY player_id, is_main DESC, name_key, id`,
+         FROM characters WHERE guild_id = ? AND ${visibleCharacterSql('characters')} ORDER BY player_id, is_main DESC, name_key, id`,
     ).bind(gid),
     db.prepare(
       `SELECT id, team_id, raid_on, starts_at, zone, title, event_title, size, log_mode, manual_reason, created_at

@@ -29,7 +29,8 @@ const ALLOWED_CORE_RANK_WRITERS = {
   'worker/claim-apply.js': 'applyClaimPlan: a claimed character (new person, alt), whoever decides - the claimant, or an officer approving a claim',
   'worker/routes/roster-import.js': 'writeImport (Raid-Helper, Warcraft Logs, CSV and Battle.net roster imports)',
   'worker/rank-map.js': 'applyRankMap: the in-game roster and the rank map decide the rank of every character (roster sync batch, rank-map edit)',
-  'worker/bnet-match.js': 'the Battle.net sign-in match: a roster character of the account is created with the core rank of its roster row (newCoreRankSql, the rank map of the guild)',
+  'worker/bnet-match.js': 'the Battle.net sign-in match: a roster character of the account is created with the core rank of its roster row (newCoreRankSql, the rank map of the guild); an unkeyed character that takes the key of a name collision takes its roster rank too',
+  'worker/rehome.js': 'the retired placeholder a re-home leaves behind: Former and Social (no rank map applies: it has no identity key)',
 };
 
 const FIELDS = ['status', 'trial_start', 'trial_end', 'left_on', 'left_reason'];
@@ -347,7 +348,7 @@ check('every INSERT INTO characters in worker/ names core_rank', () => {
     const inComments = raw.split(/\r?\n/).filter((l) => /^\s*\/\//.test(l) && /INTO\s+characters\b/i.test(l)).length;
     assert.equal(mentions - inComments, literal, `${rel}: an INSERT INTO characters outside a plain SQL literal`);
   }
-  assert.equal(seen, 4, 'the four character inserts today: roster.js insertCharacter, claim-apply.js, roster-import.js writeImport, bnet-match.js (the sign-in match)');
+  assert.equal(seen, 5, 'the five character inserts today: roster.js insertCharacter, claim-apply.js, roster-import.js writeImport, bnet-match.js (the sign-in match), rehome.js (the retired placeholder)');
 });
 
 check('core_rank is written only by the allowed paths', () => {
@@ -417,7 +418,7 @@ check('the status mapping and the person-level SQL name exactly what the readers
   assert.deepEqual(legacy.rankBinds(map({ status: 'trial', trialStart: '2027-01-01' }), 'p1'), ['trial', 'p1', null, 'p1', null, 'p1', '2027-01-01', null]);
   assert.equal((legacy.RANK_COLUMNS_SQL.match(/\?/g) || []).length, 8, 'eight placeholders, one per bind of rankBinds');
   const sqlHelpers = await import(pathToFileURL(path.join(ROOT, 'worker/person-rank-sql.js')).href);
-  assert.match(sqlHelpers.personRankSql('p.id'), /^\(SELECT mr\.core_rank FROM characters mr WHERE mr\.player_id = p\.id ORDER BY mr\.is_main DESC, mr\.id LIMIT 1\)$/);
+  assert.match(sqlHelpers.personRankSql('p.id'), /^\(SELECT mr\.core_rank FROM characters mr WHERE mr\.player_id = p\.id AND substr\(mr\.name_key, 1, 4\) <> '~ph:' ORDER BY mr\.is_main DESC, mr\.id LIMIT 1\)$/);
   assert.match(sqlHelpers.personStatusSql('p.id'), /CASE mr\.core_rank WHEN 'social' THEN 'inactive' ELSE mr\.core_rank END/);
   const roster = await import(pathToFileURL(path.join(ROOT, 'worker/team-roster.js')).href);
   assert.match(roster.personOnTeamRosterSql('p.id', '?2'), /^EXISTS \(SELECT 1 FROM characters rc WHERE rc\.player_id = p\.id AND \(rc\.team_id = \?2 AND \(rc\.team_id IS NOT NULL AND rc\.left_on IS NULL/);

@@ -20,6 +20,7 @@ import { recomputeRaid } from './attendance-store.js';
 import { isSpecOf } from './roster-data.js';
 import { raidHelperClassName, raidHelperSpecKey } from './signups-data.js';
 import { isTeamRosterRow } from './team-roster.js';
+import { visibleCharacterSql } from './character-visibility.js';
 
 export const STANDING_KINDS = ['signed', 'late'];
 const CHUNK = 100;           // rows per statement (the rows travel as one JSON text)
@@ -137,7 +138,7 @@ export async function reconcileStanding(ctx, guild, { teamIds = null, personId =
     ),
     scoped(
       `SELECT c.id, c.player_id, c.team_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, c.core_rank, c.left_on FROM characters c
-        WHERE c.guild_id = ?1 AND c.player_id IN (${ENTRIES_IN_SCOPE})`,
+        WHERE c.guild_id = ?1 AND c.player_id IN (${ENTRIES_IN_SCOPE}) AND ${visibleCharacterSql('c')}`,
     ),
   ]);
   const characters = new Map();

@@ -26,6 +26,8 @@ export const ACTION_GROUP = Object.freeze({
   'person.account_link': 'roster', 'person.account_unlink': 'roster', 'person.join': 'roster', 'character.match_roster': 'roster',
   // The Battle.net sign-in match (B6a): a person made or linked from the account's roster characters; a newer proof replacing another account's.
   'person.match_create': 'roster', 'person.match_link': 'roster', 'character.proof_supersede': 'bnet',
+  // B6a part 2b: a character re-homed to the person whose Battle.net account proved it (or an officer's claim); a name given up to a roster character.
+  'character.rehome': 'roster', 'character.name_retire': 'roster',
   'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'character.place': 'roster', 'character.release': 'roster', 'character.move': 'roster', 'team_request.create': 'roster', 'team_request.withdraw': 'roster', 'team_request.approve': 'roster', 'team_request.reject': 'roster', 'roster.import': 'roster',
   'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.plan_edit': 'raids', 'raid.manual': 'raids',
   'schedule.update': 'raids', 'schedule.fill': 'raids', 'raid.settings': 'raids', 'roster.publish': 'raids', 'roster.unpublish': 'raids', 'roster.decline': 'signups',
@@ -464,6 +466,13 @@ export function describeRow(row, names = {}) {
     case 'person.match_link': return `Linked a Battle.net account to ${person(ent)} because its characters are on the in-game roster`;
     case 'character.proof_supersede':
       return `The Battle.net proof of ${character(ent)} passed to ${get('user', after.userId, null) ? `the account ${user(after.userId)}` : 'another account'}, which proved it more recently`;
+    // The old person is named by what it still has; a person left with nothing is named by its retired placeholder (the name the moved character had).
+    case 'character.rehome': {
+      const why = after.reason === 'bnet_beats_link' ? ', because the Battle.net account that owns it proved it'
+        : after.reason === 'collision' ? ', because the Battle.net account that owns it signed in with the same name' : after.reason === 'gm_claim' ? ', by the Guild Master\'s claim' : '';
+      return `Moved ${character(ent)} from ${person(before.personId)} to ${person(after.personId)}${why}`;
+    }
+    case 'character.name_retire': return `${character(ent)} is now Former: its name belongs to the character on the in-game roster that signed in with it`;
     case 'character.claim': return after.outcome === 'link_person'
       ? `Linked their account to ${person(after.personId)} through ${character(ent)}`
       : `Added ${character(ent)} to their own record${after.source === 'hand' ? ' by hand' : ' from Battle.net'}`;

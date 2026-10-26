@@ -17,6 +17,7 @@ import { reconcileStanding } from '../standing.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { personOnTeamRosterSql } from '../team-roster.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { guildToday } from '../roster-view.js';
 import { bad } from './roster.js';
 
@@ -54,7 +55,7 @@ async function personAccess(ctx, guildContext, personId, ownId) {
   const guildId = guildContext.guild.id;
   const [personResult, teamResult] = await ctx.db.batch([
     ctx.db.prepare('SELECT id FROM players WHERE id = ? AND guild_id = ?').bind(personId, guildId),
-    ctx.db.prepare('SELECT DISTINCT team_id FROM characters WHERE guild_id = ? AND player_id = ?').bind(guildId, personId),
+    ctx.db.prepare(`SELECT DISTINCT team_id FROM characters WHERE guild_id = ? AND player_id = ? AND ${visibleCharacterSql('characters')}`).bind(guildId, personId),
   ]);
   const exists = personResult.results.length === 1;
   const teamIds = teamResult.results.map((row) => row.team_id);

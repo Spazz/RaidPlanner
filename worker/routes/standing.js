@@ -9,6 +9,7 @@ import { allows, loadGuildContext } from '../permissions.js';
 import { specChoices } from '../signups-data.js';
 import { STANDING_KINDS, reconcileStanding } from '../standing.js';
 import { isTeamRosterRow } from '../team-roster.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { bad } from './roster.js';
 
 const MAX_SLOTS = 7; // one per weekday
@@ -31,7 +32,7 @@ async function readTeams(ctx, guildContext, personId, onlyTeamId = null) {
           AND (? IS NOT NULL OR EXISTS (SELECT 1 FROM team_schedules s WHERE s.team_id = t.id)) ORDER BY t.created_at, t.id`,
     ).bind(guildId, onlyTeamId, onlyTeamId, onlyTeamId),
     ctx.db.prepare('SELECT team_id, weekday, start_time, zone, title FROM team_schedules WHERE guild_id = ? ORDER BY team_id, weekday').bind(guildId),
-    ctx.db.prepare('SELECT id, name, class, main_spec, off_spec, is_main, team_id, core_rank, left_on FROM characters WHERE guild_id = ? AND player_id = ?').bind(guildId, personId),
+    ctx.db.prepare(`SELECT id, name, class, main_spec, off_spec, is_main, team_id, core_rank, left_on FROM characters WHERE guild_id = ? AND player_id = ? AND ${visibleCharacterSql('characters')}`).bind(guildId, personId),
     ctx.db.prepare('SELECT team_id, weekday, kind, character_id FROM standing_signups WHERE guild_id = ? AND player_id = ? ORDER BY team_id, weekday').bind(guildId, personId),
   ]);
   const teams = [];
@@ -79,7 +80,7 @@ export async function putStanding(ctx) {
 
   const [slotResult, characterResult] = await db.batch([
     db.prepare('SELECT weekday FROM team_schedules WHERE team_id = ?').bind(team.id),
-    db.prepare('SELECT id, name, class, main_spec, off_spec, is_main, team_id, core_rank, left_on FROM characters WHERE guild_id = ? AND player_id = ?').bind(guild.id, personId),
+    db.prepare(`SELECT id, name, class, main_spec, off_spec, is_main, team_id, core_rank, left_on FROM characters WHERE guild_id = ? AND player_id = ? AND ${visibleCharacterSql('characters')}`).bind(guild.id, personId),
   ]);
   if (!characterResult.results.some((row) => row.team_id === team.id && isTeamRosterRow(row))) throw forbidden();
   if (!Array.isArray(body.slots) || body.slots.length > MAX_SLOTS) throw bad(`Send a list of at most ${MAX_SLOTS} slots.`, 'slots');
