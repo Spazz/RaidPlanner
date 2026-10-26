@@ -128,12 +128,16 @@ export function markPersonRaidsStale(db, guildId, playerId) {
 }
 
 // Raid-Helper sign-ups nobody is linked to take this person: every row of the guild with the Discord ID, or (a sign-up without one) just that one row.
-export function linkSignupsStatement(db, guildId, playerId, discordId, raidId, signupId) {
+// `extra` ({ sql, params }, optional) is another condition of the write (the Seniority guard of a relink): the sign-ups follow the person only while it holds.
+export function linkSignupsStatement(db, guildId, playerId, discordId, raidId, signupId, extra = null) {
+  // The statement numbers its placeholders (?1-?5), so the extra condition's anonymous ones are numbered on from ?6 (D1 does not mix the two forms).
+  let next = 5;
+  const guard = extra ? { sql: extra.sql.replace(/[?]/g, () => `?${++next}`), params: extra.params } : { sql: '1 = 1', params: [] };
   return db.prepare(
     `UPDATE raid_signups SET player_id = ?1
       WHERE guild_id = ?2 AND source = 'raid_helper' AND player_id IS NULL
-        AND (CASE WHEN ?3 IS NOT NULL THEN discord_user_id = ?3 ELSE (raid_id = ?4 AND signup_id = ?5) END)`,
-  ).bind(playerId, guildId, discordId, raidId, signupId);
+        AND (CASE WHEN ?3 IS NOT NULL THEN discord_user_id = ?3 ELSE (raid_id = ?4 AND signup_id = ?5) END) AND ${guard.sql}`,
+  ).bind(playerId, guildId, discordId, raidId, signupId, ...guard.params);
 }
 
 // Input writes put this in their own batch: the raid's results are out of date and no in-flight recompute may write over that.

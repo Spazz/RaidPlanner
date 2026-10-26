@@ -4,13 +4,14 @@
 //   GET    /api/guild/:gid/roster/:pid/characters/:cid/team-signups                                              the upcoming sign-ups the Remove confirm lists
 //   GET    /api/guild/:gid/roster/unassigned?q=                                                                 the characters on no team (what Add to team offers), at the end of this file
 // Rights (roster.edit, team-scoped): place = on the target team; release = on the team the character is on (its Team Leads, officers, the Guild Master: D4);
-// move = on BOTH, the current lead releases first (U R3-Q8: a lead of the target team alone gets 403 release_first). A release or a move also passes the
+// move = on BOTH, the current lead releases first (U R3-Q8: a lead of the target team alone gets 403 release_first). Both writes need roster.view too, and both
+// check their rights BEFORE they answer anything about the person (a stale page's 409 and the no-change replies carry the person record). A release or a move also passes the
 // Seniority guard (worker/seniority.js). Every write is the guarded statement of worker/team-place.js: one character per person per team (409 team_taken),
 // the team and the character belong to the caller's guild, and a lost race changes nothing (409 conflict with the current record).
 // removeSignups (default false, "ask each time"): the person's upcoming native sign-ups for the team and their standing sign-ups for it go with the
 // character. Past raids, attendance and loot are never touched.
 import { HttpError, jsonResponse } from '../http.js';
-import { allows, isGranted, loadGuildContext } from '../permissions.js';
+import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
 import { nameKey } from '../roster-data.js';
 import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
 import { assertSenior, seniorityOk } from '../seniority.js';
@@ -57,11 +58,12 @@ export async function putCharacterTeam(ctx) {
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const { data, current } = await loadCharacter(ctx, guildContext);
+  requireAction(guildContext, 'roster.view');
   const team = await requireTarget(db, guild.id, body.teamId);
+  requireEdit(guildContext, team.id);
   const { removeSignups, from } = readFlags(body);
   await ensureFrom(ctx, guildContext, data, current, from);
   if (current.team_id === team.id) return jsonResponse(await personReply(ctx, guildContext, data.player.id));
-  requireEdit(guildContext, team.id);
   const moving = current.team_id !== null;
   if (moving) {
     if (!allows(guildContext.can, 'roster.edit', current.team_id)) {
@@ -100,10 +102,12 @@ export async function deleteCharacterTeam(ctx) {
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const { data, current } = await loadCharacter(ctx, guildContext);
+  requireAction(guildContext, 'roster.view');
+  // A character on no team is edited by whoever edits the person (its home team), as everywhere else.
+  requireEdit(guildContext, current.team_id !== null ? current.team_id : homeTeamOf(data).id);
   const { removeSignups, from } = readFlags(body);
   await ensureFrom(ctx, guildContext, data, current, from);
   if (current.team_id === null) return jsonResponse(await personReply(ctx, guildContext, data.player.id));
-  requireEdit(guildContext, current.team_id);
   await assertSenior(db, guildContext, data.player.id);
 
   const now = ctx.now();

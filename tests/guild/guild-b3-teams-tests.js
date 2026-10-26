@@ -7,6 +7,7 @@
  *   - one character per person per team (409 team_taken), archived or foreign teams are refused, a stale page gets 409 with the current record;
  *   - the writes are guarded statements: a team of another guild, a character that moved, a person who already holds the team change nothing;
  *   - the Seniority guard applies to a release and a move, not to a placement;
+ *   - rights are checked before anything about the person is answered: a place or a release without roster.view / roster.edit is a bare 403;
  *   - removeSignups (asked each time, default off): the person's upcoming native sign-ups and standing sign-ups for the team go, nothing else does;
  *   - audited (character.place / release / move), raids that depend on the roster show "Recalculate", the team roster follows.
  */
@@ -121,8 +122,9 @@ check('release: the team\'s Team Lead and officers take a character off the team
   const rows = await auditRows(s, 'character.release');
   assert.equal(rows.length, 1);
   assert.deepEqual([JSON.parse(rows[0].before).teamId, JSON.parse(rows[0].after).teamId], [s.bravo, null]);
-  // Releasing a character on no team: nothing happens, nothing is audited.
-  await s.ok('tlb', 'DELETE', `/roster/${s.m1.pid}/characters/${s.alt1}/team`, {}, 200);
+  // Releasing a character on no team: nothing happens, nothing is audited. It is the person's lead (home team Alpha) who may ask, not a lead of another team.
+  await s.fail('tlb', 'DELETE', `/roster/${s.m1.pid}/characters/${s.alt1}/team`, {}, 403, 'forbidden');
+  await s.ok('tla', 'DELETE', `/roster/${s.m1.pid}/characters/${s.alt1}/team`, {}, 200);
   assert.equal((await auditRows(s, 'character.release')).length, 1);
   // An officer releases the Main; the person is on no team then and the alt placed on Bravo stays there.
   await s.ok('o1', 'PUT', `/roster/${s.m1.pid}/characters/${s.alt2}/team`, { teamId: s.bravo }, 200);
@@ -286,6 +288,44 @@ check('a team change makes the raids that depend on the roster show Recalculate;
   assert(/Took the character Mainone off Alpha/.test(text), text.slice(0, 400));
   assert(/Put the character Mainone on Bravo/.test(text));
   assert(/Moved the character Mainone from Bravo to Charlie/.test(text));
+});
+
+check('rights come before any answer about the person: without roster.edit on the team (or without roster.view) a place or a release is a bare 403 - not a stale-page 409 and not the no-change reply, both of which carry the person record', async () => {
+  const s = await world();
+  const url = `/roster/${s.m1.pid}/characters/${s.alt1}/team`;
+  await s.member('m2', 'Membertwo');
+  await s.ok('o1', 'PUT', url, { teamId: s.bravo }, 200); // alt1 sits on Bravo; alt2 on no team
+  const bare = (res) => {
+    assert.deepEqual([res.status, res.json.error], [403, 'forbidden'], res.text);
+    assert.deepEqual(Object.keys(res.json).sort(), ['error', 'message'], 'no person data in the answer');
+  };
+  const attempts = async (who) => {
+    // a stale page (the character is on Bravo, the caller saw Charlie), placing where it already is, a stale release, releasing a character on no team
+    bare(await s.call(who, 'PUT', url, { teamId: s.charlie, fromTeamId: s.alpha }));
+    bare(await s.call(who, 'PUT', url, { teamId: s.bravo }));
+    bare(await s.call(who, 'DELETE', url, { fromTeamId: s.alpha }));
+    bare(await s.call(who, 'DELETE', `/roster/${s.m1.pid}/characters/${s.alt2}/team`, {}));
+  };
+  // A plain Member (roster.view, no roster.edit), the lead of another team (roster.edit on Bravo only is not enough for Charlie or for the person's home team),
+  await attempts('m2');
+  await attempts('m1');
+  bare(await s.call('tlb', 'PUT', url, { teamId: s.charlie, fromTeamId: s.alpha }));
+  bare(await s.call('tlb', 'DELETE', `/roster/${s.m1.pid}/characters/${s.alt2}/team`, {}));
+  // Whoever may edit still gets the stale-page 409 with the record and the no-change replies.
+  const stale = await s.fail('o1', 'PUT', url, { teamId: s.charlie, fromTeamId: s.alpha }, 409, 'conflict');
+  assert(stale.current.person, 'the officer is shown the current record');
+  assert.equal((await s.call('o1', 'PUT', url, { teamId: s.bravo })).status, 200);
+  assert.equal((await s.call('tla', 'DELETE', `/roster/${s.m1.pid}/characters/${s.alt2}/team`, {})).status, 200);
+  // and a Member whose role lost roster.view.
+  await s.ok('gm', 'PUT', '/roles/member', { permissions: { 'raids.view': 'guild' } }, 200);
+  await attempts('m2');
+  await attempts('m1');
+  assert.equal(await s.teamOf(s.alt1), s.bravo, 'nothing was written');
+  // roster.view on its own: a Member who may edit every roster but cannot view it still gets nothing back.
+  await s.ok('gm', 'PUT', '/roles/member', { permissions: { 'raids.view': 'guild', 'roster.edit': 'guild' } }, 200);
+  await attempts('m2');
+  await s.ok('gm', 'PUT', '/roles/member', { permissions: { 'raids.view': 'guild', 'roster.edit': 'guild', 'roster.view': 'guild' } }, 200);
+  assert.equal((await s.call('m2', 'PUT', url, { teamId: s.charlie, fromTeamId: s.alpha })).status, 409, 'with both rights the stale page is answered again');
 });
 
 runChecks(checks);

@@ -8,6 +8,7 @@
  *     Officer deletes a Member's person: allowed), a person owned only by a Discord id, a person with no account, one's own person;
  *   - every guarded writer: delete person, remove character, rename and move a character, relink a Discord account, link and unlink an account,
  *     and the three routes that swap a person's Main (a new Main, Make Main, an Unmatched-names link as the Main), each also inside its batch;
+ *   - linking a Raid-Helper sign-up gives the person a Discord ID: roster.edit on the person's team and the guard, in the pre-check and inside the batch;
  *   - a Battle.net-proven character, or a person holding one, is deleted only by a GM-tier actor;
  *   - the guard sits INSIDE the write: a promotion between the read and the write stops the write.
  */
@@ -271,6 +272,65 @@ check('linking an unmatched raid name as a new Main (attendance) is guarded too:
   const allowed = await link('o1', 'Memnewmain', s.people.m1.pid);
   assert.equal(allowed.status, 200, allowed.text);
   assert.equal((await s.one('SELECT is_main FROM characters WHERE name = ?', 'Memnewmain')).is_main, 1);
+});
+
+check('linking a Raid-Helper sign-up gives the person its Discord ID: needs roster.edit on the PERSON\'s team, not only the raid\'s, and passes the Seniority guard; each refusal changes nothing', async () => {
+  const s = await world();
+  const [alpha, bravo] = s.tids;
+  const raid = (await s.ok('tl', 'POST', '/raids', { teamId: alpha, raidOn: '2099-02-01', startTime: '20:00', zone: 'Karazhan' })).raid.id;
+  const signup = (id, discordId) => s.exec(`INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, class_name, spec_name, position, guild_id)
+    VALUES ('${raid}', 'raid_helper', ${id}, '${discordId}', 'Attacker${id}', 'signed', 'Mage', 'Fire', ${id}, '${s.gid}')`);
+  const link = (who, id, pid) => s.call(who, 'POST', `/raids/${raid}/signups/link`, { signupId: id, personId: pid });
+  const personRow = (pid) => s.one('SELECT discord_user_id, version FROM players WHERE id = ?', pid);
+  const signupRow = (id) => s.one('SELECT player_id FROM raid_signups WHERE raid_id = ? AND signup_id = ?', raid, id);
+  const linkAudits = async () => (await s.rows("SELECT id FROM audit_log WHERE action = 'signup.link'")).length;
+  const bravoGuy = await s.person({ name: 'Bravoguy', teamId: bravo });
+  signup(1, '555000555000555001');
+  signup(2, '555000555000555002');
+  signup(3, '555000555000555003');
+  signup(4, '555000555000555004');
+  // The raid is Alpha's and the Team Lead leads Alpha, but the Guild Master's person is senior: refused, whichever team it sits on.
+  const gmBefore = await personRow(s.people.gm.pid);
+  await s.fail('tl', 'POST', `/raids/${raid}/signups/link`, { signupId: 1, personId: s.people.gm.pid }, 403, 'seniority');
+  assert.deepEqual(await personRow(s.people.gm.pid), gmBefore);
+  assert.equal((await signupRow(1)).player_id, null);
+  // A person on Bravo is not the Alpha lead's to relink, even for an Alpha raid.
+  await s.fail('tl', 'POST', `/raids/${raid}/signups/link`, { signupId: 2, personId: bravoGuy.pid }, 403, 'forbidden');
+  assert.equal((await personRow(bravoGuy.pid)).discord_user_id, null);
+  assert.equal((await signupRow(2)).player_id, null);
+  assert.equal(await linkAudits(), 0, 'a refused link leaves no audit row');
+  // A Member's person on the lead's own team, and the lead's own person, link; so does an Officer onto a person of any team.
+  assert.equal((await link('tl', 1, s.people.m1.pid)).status, 200);
+  assert.deepEqual([(await personRow(s.people.m1.pid)).discord_user_id, (await signupRow(1)).player_id], ['555000555000555001', s.people.m1.pid]);
+  assert.equal((await link('tl', 2, s.people.tl.pid)).status, 200);
+  assert.equal((await personRow(s.people.tl.pid)).discord_user_id, '555000555000555002');
+  assert.equal((await link('o1', 3, bravoGuy.pid)).status, 200);
+  assert.deepEqual([(await personRow(bravoGuy.pid)).discord_user_id, (await signupRow(3)).player_id], ['555000555000555003', bravoGuy.pid]);
+  assert.equal(await linkAudits(), 3);
+  // An Officer is refused on an equal Officer's person; the Guild Master links anyone.
+  await s.fail('o1', 'POST', `/raids/${raid}/signups/link`, { signupId: 4, personId: s.people.o2.pid }, 403, 'seniority');
+  assert.equal((await link('gm', 4, s.people.o2.pid)).status, 200);
+  // A person who already carries that Discord ID relinks nothing, so the person-level rules do not apply: the raid's team alone decides.
+  signup(5, '555000555000555001');
+  assert.equal((await link('tl', 5, s.people.m1.pid)).status, 200);
+});
+
+check('linking a sign-up sits inside the batch: the Discord ID and the sign-up rows follow the person only while the Seniority guard holds', async () => {
+  const { linkSignupsStatement } = await load('worker/attendance-store.js');
+  const { seniorityOk } = await load('worker/seniority.js');
+  const s = await world();
+  const raid = (await s.ok('tl', 'POST', '/raids', { teamId: s.tids[0], raidOn: '2099-02-01', startTime: '20:00', zone: 'Karazhan' })).raid.id;
+  for (const id of [1, 2]) {
+    s.exec(`INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, class_name, spec_name, position, guild_id)
+      VALUES ('${raid}', 'raid_helper', ${id}, '555000555000555009', 'Attacker${id}', 'signed', 'Mage', 'Fire', ${id}, '${s.gid}')`);
+  }
+  const attempt = (actor) => s.w.db.batch([linkSignupsStatement(s.w.db, s.gid, s.people.gm.pid, '555000555000555009', raid, 1, seniorityOk(s.gid, s.uids[actor], s.people.gm.pid))]);
+  assert.equal((await attempt('tl'))[0].meta.changes, 0, 'a Team Lead links nothing onto the Guild Master\'s person');
+  assert.equal((await s.rows('SELECT player_id FROM raid_signups WHERE player_id IS NOT NULL')).length, 0);
+  assert.equal((await attempt('gm'))[0].meta.changes, 2, 'the Guild Master\'s own person takes both rows with that Discord ID');
+  // Without a guard the statement is the one it always was.
+  s.exec('UPDATE raid_signups SET player_id = NULL');
+  assert.equal((await s.w.db.batch([linkSignupsStatement(s.w.db, s.gid, s.people.m1.pid, '555000555000555009', raid, 1)]))[0].meta.changes, 2);
 });
 
 runChecks(checks);
