@@ -81,13 +81,13 @@ check('the predicate over every combination: SQL fragment, row test and characte
   db.sqlite.exec(`INSERT INTO guilds (id, name, realm, realm_kind, region, discord_server_id, time_zone, game_version, created_at)
                   VALUES ('g1', 'G', 'R', 'realm', 'US', 'd1', 'America/Chicago', 'tbc', 1)`);
   db.sqlite.exec("INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES ('t1', 'g1', 'T1', 25, 0, 1)");
-  db.sqlite.exec("INSERT INTO players (id, guild_id, status, created_at, updated_at) VALUES ('p1', 'g1', 'raider', 1, 1)");
   let n = 0;
   const sources = [];
   for (const team of [null, 't1']) for (const left of [null, '2026-01-01']) for (const core of ['raider', 'trial', 'reserve', 'social']) {
     n++;
+    db.sqlite.exec(`INSERT INTO players (id, guild_id, status, created_at, updated_at) VALUES ('p${n}', 'g1', 'raider', 1, 1)`); // one person each: one character per person per team
     db.sqlite.exec(`INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, class, is_main, created_at, updated_at, core_rank, left_on)
-                    VALUES ('c${n}', 'g1', 'p1', ${team ? `'${team}'` : 'NULL'}, 'N${n}', 'n${n}', 'MAGE', 0, 1, 1, '${core}', ${left ? `'${left}'` : 'NULL'})`);
+                    VALUES ('c${n}', 'g1', 'p${n}', ${team ? `'${team}'` : 'NULL'}, 'N${n}', 'n${n}', 'MAGE', 0, 1, 1, '${core}', ${left ? `'${left}'` : 'NULL'})`);
     sources.push({ id: `c${n}`, team, left, core });
   }
   const sql = await db.prepare(`SELECT c.id, ${roster.teamRosterSql('c')} AS on_roster, ${roster.onTeamRosterSql('c', "'t1'")} AS on_t1, ${roster.onTeamRosterSql('c', "'t2'")} AS on_t2

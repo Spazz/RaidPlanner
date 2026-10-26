@@ -251,7 +251,11 @@ async function addPerson(s, who, teamId, name, extra = {}) {
 // A new alt starts on no team (B2); placing it on a team is the team routes' job (B3), so these tests place it with the column itself.
 const addAlt = async (s, who, pid, teamId, name, extra = {}) => {
   const res = await s.call(who, 'POST', `/roster/${pid}/characters`, { name, class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId, makeMain: false, ...extra });
-  if (res.status === 201 && teamId && !extra.makeMain) exec(s.w, `UPDATE characters SET team_id = '${teamId}' WHERE name = '${name}'`);
+  // (not onto a team the person already holds: one character per person per team)
+  if (res.status === 201 && teamId && !extra.makeMain) {
+    exec(s.w, `UPDATE characters SET team_id = '${teamId}' WHERE name = '${name}'
+                AND NOT EXISTS (SELECT 1 FROM characters o WHERE o.player_id = '${pid}' AND o.team_id = '${teamId}')`);
+  }
   return res;
 };
 

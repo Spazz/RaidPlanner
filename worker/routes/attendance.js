@@ -523,6 +523,7 @@ export async function postUnmatched(ctx) {
     if (LIMIT_KINDS.includes(kind)) throw limitError(kind);
     if (kind === 'character_name') throw nameTaken(cleanCharacterName(presence.name, guild.game_version) || presence.name, null);
     if (kind === 'foreign_key') throw new HttpError(404, 'not_found', 'That person no longer exists.');
+    if (kind === 'team_taken') throw new HttpError(409, 'team_taken', 'That person already has a character on the raid team.', { field: 'personId' });
     throw error;
   }
   if (mainIndex >= 0 && results[mainIndex].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The Main could not be changed. Reload and try again.');

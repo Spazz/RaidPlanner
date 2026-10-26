@@ -177,8 +177,8 @@ check('attendance "add as an alt": the alt starts on no team; as the Main it tak
   assert.equal((await link('logtwo', { makeMain: true })).status, 200);
   const rows = Object.fromEntries((await s.rows('SELECT name, team_id, is_main FROM characters WHERE player_id = ?', p.pid)).map((r) => [r.name, r]));
   assert.deepEqual([rows.Logtwo.team_id, rows.Logtwo.is_main, rows.Logmain.team_id, rows.Logmain.is_main], [alpha, 1, null, 0]);
-  // Now a character of the person sits on Alpha and the raid is Alpha's: a second new Main is refused, nothing changes.
-  await s.exec(`UPDATE characters SET team_id = '${charlie}' WHERE name = 'Logmain'`);
+  // Now an alt of the person sits on Alpha (their Main moved to Charlie) and the raid is Alpha's: a second new Main is refused, nothing changes.
+  await s.exec(`UPDATE characters SET team_id = '${charlie}' WHERE name = 'Logtwo'`);
   await s.exec(`UPDATE characters SET team_id = '${alpha}' WHERE name = 'Logalt'`);
   const before = await s.rows('SELECT name, team_id, is_main FROM characters WHERE player_id = ? ORDER BY name', p.pid);
   const refused = await link('logthree', { makeMain: true });

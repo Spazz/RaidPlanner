@@ -55,7 +55,7 @@ function seed(db) {
                     VALUES ('${id}', 'g1', '${status}', ${q(reason)}, ${q(leftOn)}, ${q(trialStart)}, ${q(trialEnd)}, 1, 1)`);
     db.sqlite.exec(`INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, class, is_main, created_at, updated_at)
                     VALUES ('${id}_main', 'g1', '${id}', 't1', 'M${id}', 'm${id}', 'MAGE', 1, 5, 6),
-                           ('${id}_alt1', 'g1', '${id}', 't1', 'A${id}', 'a${id}', 'ROGUE', 0, 5, 6),
+                           ('${id}_alt1', 'g1', '${id}', NULL, 'A${id}', 'a${id}', 'ROGUE', 0, 5, 6),
                            ('${id}_alt2', 'g1', '${id}', NULL, 'B${id}', 'b${id}', 'ROGUE', 0, 5, 6)`);
   }
 }

@@ -275,7 +275,7 @@ check('recompute: fill-in credit is the home team, never the team of the most-pr
     addPerson(db, 'p1'); addPerson(db, 'p3');
     addChar(db, 'm1', 'p1', { team: 'tA', main: 1 });
     addChar(db, 'a1', 'p1', { team: 'tB' });                            // the alt on B is the one in the raid of C
-    addChar(db, 'a2', 'p1', { team: 'tB' });
+    addChar(db, 'a2', 'p1');                                            // (one character per person per team: this one is on no team)
     addChar(db, 'm3', 'p3', { team: 'tC', main: 1 });
     addRaid(db, 'rC', 'tC', ['m3', 'a1', 'a2']);                        // two of the person's three characters, both on B
   }, ['rC']);

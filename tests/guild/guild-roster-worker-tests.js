@@ -290,7 +290,7 @@ function seedGuild(w, guildId, serverId) {
 const playerSql = (id, guildId, extra = '') => `INSERT INTO players (id, guild_id, status, created_at, updated_at${extra ? ', ' + extra.split('|')[0] : ''}) VALUES ('${id}', '${guildId}', 'raider', 1, 1${extra ? ', ' + extra.split('|')[1] : ''})`;
 const charSql = (id, guildId, playerId, teamId, name, { main = 0, realmKey = '', cls = 'MAGE' } = {}) =>
   `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm_key, class, is_main, created_at, updated_at)
-   VALUES ('${id}', '${guildId}', '${playerId}', '${teamId}', '${name}', '${name.toLowerCase()}', '${realmKey}', '${cls}', ${main}, 1, 1)`;
+   VALUES ('${id}', '${guildId}', '${playerId}', ${teamId ? `'${teamId}'` : 'NULL'}, '${name}', '${name.toLowerCase()}', '${realmKey}', '${cls}', ${main}, 1, 1)`;
 const fails = (w, sql, pattern) => assert.throws(() => exec(w, sql), pattern);
 
 check('schema: one Main per person, a name is unique per guild + realm key, and CHECKs refuse bad dates, Discord IDs and nicknames', async () => {
@@ -299,9 +299,9 @@ check('schema: one Main per person, a name is unique per guild + realm key, and 
   exec(w, playerSql('p1', 'g1'));
   exec(w, charSql('c1', 'g1', 'p1', 'g1_t1', 'Aldric', { main: 1 }));
   fails(w, charSql('c2', 'g1', 'p1', 'g1_t1', 'Brindle', { main: 1 }), /UNIQUE constraint failed/);
-  exec(w, charSql('c2', 'g1', 'p1', 'g1_t1', 'Brindle'));
+  exec(w, charSql('c2', 'g1', 'p1', 'g1_t2', 'Brindle'));
   fails(w, charSql('c3', 'g1', 'p1', 'g1_t1', 'Aldric'), /UNIQUE constraint failed/);
-  exec(w, charSql('c3', 'g1', 'p1', 'g1_t1', 'Aldric', { realmKey: 'otherrealm' }));
+  exec(w, charSql('c3', 'g1', 'p1', null, 'Aldric', { realmKey: 'otherrealm' }));
   for (const [column, value] of [['joined_on', '2026-19-39'], ['trial_start', '2026-02-30'], ['trial_end', 'tomorrow'],
     ['left_on', '2026-02-30'], ['left_reason', 'quit'], ['discord_user_id', '1234567890123456a'], ['discord_user_id', '1234567890123456'], ['discord_user_id', '123456789012345678901'], ['discord_nickname', 'x'.repeat(65)]]) {
     fails(w, playerSql('px', 'g1', `${column}|'${value}'`), /CHECK constraint failed/);
@@ -351,9 +351,9 @@ check('schema: the cap triggers abort the statement, and a batch that would pass
 
   exec(w, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 19)
            INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, class, is_main, created_at, updated_at)
-           SELECT 'x' || i, 'g2', 'q1', 'g2_t1', 'Name' || i, 'name' || i, 'MAGE', CASE WHEN i = 1 THEN 1 ELSE 0 END, 1, 1 FROM n`);
+           SELECT 'x' || i, 'g2', 'q1', CASE WHEN i = 1 THEN 'g2_t1' END, 'Name' || i, 'name' || i, 'MAGE', CASE WHEN i = 1 THEN 1 ELSE 0 END, 1, 1 FROM n`);
   const insertChar = (id, name) => w.db.prepare(
-    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, class, created_at, updated_at) VALUES (?, 'g2', 'q1', 'g2_t1', ?, ?, 'MAGE', 1, 1)`,
+    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, class, created_at, updated_at) VALUES (?, 'g2', 'q1', NULL, ?, ?, 'MAGE', 1, 1)`,
   ).bind(id, name, name.toLowerCase());
   await assert.rejects(w.db.batch([insertChar('y1', 'Extraone'), insertChar('y2', 'Extratwo')]), /character_limit/);
   assert.equal(await w.count('characters', "player_id = 'q1'"), 19, 'rolled back whole');

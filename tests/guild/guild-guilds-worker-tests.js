@@ -212,7 +212,7 @@ check('limits: a guild holds at most 5000 characters (a trigger, so every way of
     SELECT 'p_cap' || printf('%019d', i), '${s.guildId}', 'raider', 1, 0, 1, 1 FROM n;
     WITH RECURSIVE a(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM a WHERE i < 249), b(j) AS (SELECT 1 UNION ALL SELECT j + 1 FROM b WHERE j < 20)
     INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, is_main, created_at, updated_at)
-    SELECT 'c_cap' || printf('%08d', i * 100 + j), '${s.guildId}', 'p_cap' || printf('%019d', i), '${s.teamId}', 'Cap' || i || 'x' || j, 'cap' || i || 'x' || j,
+    SELECT 'c_cap' || printf('%08d', i * 100 + j), '${s.guildId}', 'p_cap' || printf('%019d', i), CASE WHEN j = 1 THEN '${s.teamId}' END, 'Cap' || i || 'x' || j, 'cap' || i || 'x' || j,
            'Nightslayer', 'nightslayer', 'WARRIOR', 'Arms', (j = 1), 1, 1 FROM a, b;
     WITH RECURSIVE m(i) AS (SELECT 250 UNION ALL SELECT i + 1 FROM m WHERE i < 269)
     INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, is_main, created_at, updated_at)
