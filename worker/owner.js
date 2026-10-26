@@ -18,6 +18,7 @@
 import { HttpError } from './http.js';
 
 export const OWNER_ONLY_MESSAGE = 'Only the Owner of the guild can do that.';
+export const PROVEN_LINK_MESSAGE = 'Only the Owner of the guild can link or unlink an account on a person who has a character proved by Battle.net.';
 
 // Pure mirror of the rule above. userId: the account asked about. Facts: ownerUserId (guilds.owner_user_id), rankSource (guilds.rank_source), storedMasterUserId (the holder of the
 // stored guild_master row, or null), hasValidProvenCharacter (the SEAT HOLDER has a valid Battle.net-proven character on the stored roster).
@@ -49,6 +50,38 @@ export const ownedGuildsSql = (userExpr) => `SELECT oug.id AS guild_id FROM guil
 // expression is written twice.
 export const hasOwnerSql = (guildExpr) => `(EXISTS (SELECT 1 FROM guilds hg WHERE hg.id = ${guildExpr} AND hg.owner_user_id IS NOT NULL)
     OR EXISTS (SELECT 1 FROM effective_roles_owner he WHERE he.guild_id = ${guildExpr}))`;
+
+// SQL: true when the account holds the SEAT (guilds.owner_user_id) of the guild, suspended or not. Not "is the Owner" (ownerSql is): the seat is what a hand-over moves and what
+// Delete my data has to settle. Both expressions are used once.
+export const seatHeldBySql = (guildExpr, userExpr) => `EXISTS (SELECT 1 FROM guilds sh WHERE sh.id = ${guildExpr} AND sh.owner_user_id = ${userExpr})`;
+
+// SQL: true when the account is a LIVE recipient of the seat: in a guild whose rank source is 'ingame' it has a valid Battle.net-proven character on the stored roster (the same
+// fact that keeps a seat holder from being suspended, view ingame_proven_characters); in any other guild nothing more is asked (membership is a separate guard). The guild
+// expression is written twice, the user expression once.
+export const liveRecipientSql = (guildExpr, userExpr) =>
+  `(NOT EXISTS (SELECT 1 FROM guilds lg WHERE lg.id = ${guildExpr} AND lg.rank_source = 'ingame')
+    OR EXISTS (SELECT 1 FROM ingame_proven_characters lp WHERE lp.guild_id = ${guildExpr} AND lp.user_id = ${userExpr}))`;
+export const liveRecipientGuard = (guildId, userId) => ({ sql: liveRecipientSql('?', '?'), params: [guildId, guildId, userId] });
+
+// SQL: true when the legacy claim (POST /api/guild/:gid/claim, a Discord-server administrator taking a guild with no Guild Master) is CLOSED for the guild: it has a rank source
+// or an Owner seat. Those guilds are claimed only by the in-game Guild Master (lane B6b part 2b); the legacy route answers 403 (review finding B4b/B5 F1). The guild expression is used once.
+export const legacyClaimClosedSql = (guildExpr) =>
+  `EXISTS (SELECT 1 FROM guilds cl WHERE cl.id = ${guildExpr} AND (cl.rank_source IS NOT NULL OR cl.owner_user_id IS NOT NULL))`;
+
+// -> { seatHolder: string | null, rankSource: string | null } for a guild, or null when it does not exist. The one place outside the SQL fragments that reads the seat column.
+export async function readSeat(db, guildId) {
+  const row = await db.prepare('SELECT owner_user_id, rank_source FROM guilds WHERE id = ?').bind(guildId).first();
+  return row ? { seatHolder: row.owner_user_id, rankSource: row.rank_source } : null;
+}
+
+// One statement for a db.batch: move the seat (and nothing else) from `from` to `to`. Every seat write carries `AND owner_user_id IS <the expected current holder>`, so a write
+// that lost a race to another hand-over, a claim or a succession changes nothing (plan "Owner"). `guards`: [{ sql, params }] ANDed on (the recipient is live, the fresh-auth
+// marker, the actor is still the Owner, ...). Lanes B6b part 2b (claim, succession) write the seat through here too.
+export function moveSeatStatement(db, { guildId, from, to, guards = [] }) {
+  const extra = guards.map((guard) => ` AND (${guard.sql})`).join('');
+  return db.prepare(`UPDATE guilds SET owner_user_id = ? WHERE id = ? AND owner_user_id IS ?${extra}`)
+    .bind(to, guildId, from, ...guards.flatMap((guard) => guard.params));
+}
 
 // { sql, params } for a guarded write inside a db.batch: the same test with the guild and the account bound (three placeholders: guild, user, user).
 export function ownerGuard(guildId, userId) {

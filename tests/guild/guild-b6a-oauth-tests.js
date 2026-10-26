@@ -7,7 +7,8 @@
  *     more than a minute ahead, is refused like a bad MAC, at every callback, before any outbound call;
  *   - single use: the callback claims the state's nonce (SHA-256 in oauth_state_nonces) after the MAC and age checks and before the code exchange; a replay is
  *     refused with no outbound call, two parallel callbacks with one state let exactly one through, the begin routes write nothing;
- *   - "fresh." is its own mode in both mode functions (lane B6b builds on it); both callbacks refuse it for now and it is never taken for a link or a sign-in;
+ *   - "fresh." is its own mode in both mode functions (lane B6b part 2a builds the flow on it: tests/guild/guild-b6b2-fresh-tests.js); a forged one is refused by both callbacks
+ *     and it is never taken for a link or a sign-in;
  *   - a link state is still bound to the member who started it;
  *   - Battle.net callbacks: per Blizzard account id 10 per 10 minutes ('busy', after the exchange and before the snapshot fan-out), and a global budget of 300
  *     per 10 minutes that never refuses and logs one ALARM line per window;
@@ -144,7 +145,8 @@ async function makeWorld({ allowlist = [] } = {}) {
     async bucket(key) { const [row] = await world.rows('SELECT count, window_start FROM rate_limits WHERE key = ?', key); return row || null; },
   };
   openWorlds.push(world);
-  return world;
+  // Identity-change protection (lane B6b part 2a): this suite links and unlinks as a staff account without being about fresh-auth, so such requests get their grant first.
+  return require('../guild-auto-fresh').autoFresh(world);
 }
 
 async function closeWorlds() {
@@ -490,7 +492,7 @@ check('the fresh. prefix is its own mode in both mode functions and can never be
   }
 });
 
-check('both callbacks refuse a fresh-shaped state for now: before the session, any outbound call or a nonce, signed in or not', async () => {
+check('both callbacks refuse a forged fresh-shaped state: signed out they send the browser to sign in, signed in to the fresh route, with no outbound call, no nonce, no session', async () => {
   const w = await makeWorld();
   const x = await flowsOf(w);
   const states = [];
@@ -506,9 +508,10 @@ check('both callbacks refuse a fresh-shaped state for now: before the session, a
     for (const jar of [{}, { ...x.alice }]) {
       const withCookies = { ...jar, '__Host-rs_state': state, '__Host-rs_bnet_state': state };
       const discord = await w.req('GET', `/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { jar: { ...withCookies } });
-      assert.equal(locationOf(discord), '/#/signin?error=state', `Discord callback: ${state.slice(0, 12)}`);
+      const expected = Object.keys(jar).length ? '/#/fresh?error=state' : '/#/signin';
+      assert.equal(locationOf(discord), expected, `Discord callback: ${state.slice(0, 12)}`);
       const bnet = await w.req('GET', `/auth/bnet/callback?code=abc&state=${encodeURIComponent(state)}`, { jar: { ...withCookies } });
-      assert.equal(locationOf(bnet), '/#/signin?error=state', `Battle.net callback: ${state.slice(0, 12)}`);
+      assert.equal(locationOf(bnet), expected, `Battle.net callback: ${state.slice(0, 12)}`);
       assert(!sessionCookieOf(discord) && !sessionCookieOf(bnet), 'no session was made');
     }
   }

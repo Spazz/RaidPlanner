@@ -121,13 +121,23 @@ export function isConfigured(env) {
   return !!(env.BNET_CLIENT_ID && env.BNET_CLIENT_SECRET && canonicalOrigin(env));
 }
 
-export function authorizeUrl(env, state) {
+// FRESH-AUTH (worker/fresh.js) and FORCED RE-AUTHENTICATION. Battle.net's OAuth documentation (develop.battle.net, "Authorization code flow") lists no parameter that makes
+// the /authorize step ask for the password again (no `prompt`, no `max_age`, no `approval_prompt`), and the OpenID discovery document at oauth.battle.net publishes no
+// prompt_values_supported; the lane could not verify one, and an unknown parameter might be rejected by Blizzard, so NONE is sent (FRESH_AUTHORIZE_PARAMS is empty on purpose:
+// a verified parameter is added there and nowhere else). The guarantee is therefore weaker than "the password was typed just now": the callback proves that the browser
+// that started the fresh-auth (the state cookie and the MAC'd state bound to the user and session) came back from Blizzard within 10 minutes holding the Battle.net account that is
+// linked to the signed-in account, so a session stolen WITHOUT the owner's live Battle.net login cannot pass it, but a browser that still has a Blizzard login cookie passes
+// without a prompt. That is why hand-over and guild delete also accept Discord (prompt=consent, worker/discord.js) and why identity-change protection (worker/fresh.js) exists.
+export const FRESH_AUTHORIZE_PARAMS = Object.freeze({});
+
+export function authorizeUrl(env, state, { fresh = false } = {}) {
   const query = new URLSearchParams({
     client_id: env.BNET_CLIENT_ID,
     redirect_uri: redirectUri(env),
     response_type: 'code',
     scope: SCOPE,
     state,
+    ...(fresh ? FRESH_AUTHORIZE_PARAMS : {}),
   });
   return `${oauthUrl(env, '/authorize')}?${query}`;
 }

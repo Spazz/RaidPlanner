@@ -17,6 +17,7 @@ import { dryRunRankMap, getRankMap, putRankMap } from './routes/rank-map.js';
 import { runCron } from './scheduler.js';
 import { SHARE_PATH, handleShare, isSharePagePath, servePlannerPage } from './share.js';
 import { claimGuild, createGuild, getGuild, patchGuild } from './routes/guild.js';
+import { startFresh } from './routes/fresh.js';
 import { deleteGuild, dismissOnboarding, exportGuild } from './routes/guild-data.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
 import { blockRosterPerson, unblockRosterPerson } from './routes/person-blocks.js';
@@ -112,6 +113,10 @@ export const ROUTES = [
   // Guild settings > General: the Guild Master edits the name, the realm (not a ruleset) and the time zone.
   { method: 'PATCH', path: '/api/guild/:gid', auth: true, handler: patchGuild },
   { method: 'POST', path: '/api/guild/:gid/claim', auth: true, handler: claimGuild },
+  // Fresh-auth (lane B6b part 2a, worker/fresh.js): a sign-in done just now before a sensitive act. The start step returns the provider's authorize URL; the grant is written by
+  // the fresh mode of the OAuth callbacks. /api/fresh/start is for acts that belong to no guild (in-game creation, identity changes).
+  { method: 'POST', path: '/api/guild/:gid/fresh/start', auth: true, handler: startFresh },
+  { method: 'POST', path: '/api/fresh/start', auth: true, handler: startFresh },
   // Phase 8: the Guild Master's copy of the guild's data, deleting the guild, and hiding the setup checklist on Home.
   { method: 'GET', path: '/api/guild/:gid/export', auth: true, handler: exportGuild },
   { method: 'DELETE', path: '/api/guild/:gid', auth: true, handler: deleteGuild },

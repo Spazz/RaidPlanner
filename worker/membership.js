@@ -125,6 +125,10 @@ const MY_GUILDS_SQL = `SELECT g.id, g.name, g.realm, g.realm_kind, g.realm_slug,
      WHERE ${memberSql('?1', 'g.id', 'g.discord_server_id')}
      ORDER BY g.name, g.id`;
 
+// The ids of the guilds ONE account (?1) is a member of, as a sub-select another statement can read (one column, guild_id): the audit rows of an identity change are written
+// in each of them (worker/audit.js auditEachMemberGuildStatement). Same candidates and same rule as "My guilds"; the caller binds ?1.
+export const MEMBER_GUILD_IDS_SQL = `SELECT mg.id AS guild_id FROM (${MY_GUILD_CANDIDATES_SQL}) mgc JOIN guilds mg ON mg.id = mgc.guild_id WHERE ${memberSql('?1', 'mg.id', 'mg.discord_server_id')}`;
+
 // The statement behind GET /auth/me and loadMemberGuilds: the account's member guilds (id, name, realm, realm_kind, realm_slug, region, game_version), by name.
 export const memberGuildsStatement = (db, userId) => db.prepare(MY_GUILDS_SQL).bind(userId);
 

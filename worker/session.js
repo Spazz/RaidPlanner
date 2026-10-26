@@ -111,7 +111,8 @@ export function readManageable(session, nowMs) {
 //   Discord link       link.<nonce>.<issued>.<mac>       key raidsmith-discord-link-state:   bound to the signed-in user
 //   Battle.net link    <nonce>.<issued>.<mac>            key raidsmith-bnet-state:           bound to the signed-in user
 //   Battle.net sign-in signin.<nonce>.<issued>.<mac>     key raidsmith-bnet-signin-state:
-//   fresh-auth         fresh.<nonce>.<issued>.<mac>      lane B6b, not built: only the shape is recognised below (FRESH_MODE)
+//   fresh-auth         fresh.<purpose>.<guild|none>.<params hash>.<nonce>.<issued>.<mac>   lane B6b part 2a (signFreshState below), key raidsmith-fresh-state:<purpose>,
+//                      bound to the signed-in user AND the session that started it, the purpose, the guild and the SHA-256 of the act's parameters
 // <issued> is the issue time in milliseconds and is part of the MAC'd text. A state is good for STATE_TTL_MS after it and not more than
 // STATE_FUTURE_SKEW_MS before it; an older or future-dated state is refused like a bad MAC. The keys derive from the provider's client secret, so a
 // state this Worker did not issue is refused before any outbound call. Single use is claimStateNonce: a callback claims the nonce AFTER the MAC and
@@ -128,8 +129,8 @@ async function macOf(secret, domain, message) {
   return base64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))));
 }
 
-// The text a MAC covers: the nonce and the issue time, behind the user id for a state bound to a user.
-const macText = (userId, nonce, issuedAt) => (userId === undefined ? `${nonce}.${issuedAt}` : `${userId}.${nonce}.${issuedAt}`);
+// The text a MAC covers: the nonce and the issue time, behind the user id for a state bound to a user and behind any further bound facts (`bind`, fresh-auth only).
+const macText = (userId, nonce, issuedAt, bind = []) => [...(userId === undefined ? [] : [userId]), ...bind, nonce, issuedAt].join('.');
 
 // The last three dot-separated parts of any state are <nonce>.<issued>.<mac>, whatever the mode prefix -> { nonce, issuedAt, mac } or null.
 function tailOf(parts) {
@@ -153,10 +154,10 @@ function isCurrent(issuedAt, now) {
   return age >= -STATE_FUTURE_SKEW_MS && age <= STATE_TTL_MS;
 }
 
-// The two halves every mode is built from. Lane B6b makes the fresh-auth pair from these (mode FRESH_MODE, its own domain, bound to the user).
-async function signStateWith({ secret, domain, mode, userId, nonce, issuedAt }) {
+// The two halves every mode is built from. The fresh-auth pair (signFreshState / verifyFreshState below) adds `bind`: more facts the MAC covers.
+async function signStateWith({ secret, domain, mode, userId, nonce, issuedAt, bind }) {
   if (!Number.isSafeInteger(issuedAt) || issuedAt < 0) throw new TypeError('issuedAt must be a millisecond timestamp');
-  return `${mode ? `${mode}.` : ''}${nonce}.${issuedAt}.${await macOf(secret, domain, macText(userId, nonce, issuedAt))}`;
+  return `${mode ? `${mode}.` : ''}${nonce}.${issuedAt}.${await macOf(secret, domain, macText(userId, nonce, issuedAt, bind))}`;
 }
 
 async function verifyStateWith({ secret, domain, mode, userId, state, now }) {
@@ -232,10 +233,56 @@ export function verifyBnetSigninState(env, state, now) {
   return verifyStateWith({ secret: env.BNET_CLIENT_SECRET, domain: 'raidsmith-bnet-signin-state', mode: 'signin', state, now });
 }
 
+// Fresh-auth (lane B6b part 2a, worker/fresh.js): a sign-in done NOW to prove the person at the keyboard holds an identity linked to the signed-in account, before a
+// sensitive act. The state is minted by POST /api/guild/:gid/fresh/start (or /api/fresh/start), and its MAC covers
+//   the provider's secret (DISCORD_CLIENT_SECRET / BNET_CLIENT_SECRET: a state for one provider never verifies at the other),
+//   a key DOMAIN PER PURPOSE (raidsmith-fresh-state:<purpose>),
+//   the user, the SESSION (its token hash: a state copied into another browser or session is refused), the provider, the purpose, the guild ("none" for an account act),
+//   the SHA-256 of the act's parameters (worker/fresh.js freshHash: the hand-over target, the identity change, ...), the nonce and the issue time.
+// The same 10-minute window and single-use nonce as every other state. The callbacks learn purpose, guild and parameter hash only from a state whose MAC checked out.
+const FRESH_DOMAIN = 'raidsmith-fresh-state';
+const FRESH_PURPOSE_PATTERN = /^[a-z][a-z_]{2,23}$/;
+const FRESH_GUILD_PATTERN = /^(?:none|g_[A-Za-z0-9_-]{22})$/;
+const FRESH_HASH_PATTERN = /^[0-9a-f]{64}$/;
+const FRESH_PROVIDERS = ['discord', 'bnet'];
+
+function freshSecret(env, provider) {
+  if (provider === 'discord') return env.DISCORD_CLIENT_SECRET;
+  if (provider === 'bnet') return env.BNET_CLIENT_SECRET;
+  return undefined;
+}
+
+// facts: { provider, userId, tokenHash, purpose, guildId (null = an account act), paramsHash, nonce, issuedAt }
+export function signFreshState(env, facts) {
+  const { provider, userId, tokenHash, purpose, guildId, paramsHash, nonce, issuedAt } = facts;
+  if (!FRESH_PROVIDERS.includes(provider)) throw new TypeError('unknown fresh-auth provider');
+  if (typeof userId !== 'string' || typeof tokenHash !== 'string') throw new TypeError('a fresh-auth state is bound to a user and a session');
+  if (!FRESH_PURPOSE_PATTERN.test(purpose) || !FRESH_HASH_PATTERN.test(paramsHash) || !FRESH_GUILD_PATTERN.test(guildId || 'none')) throw new TypeError('bad fresh-auth facts');
+  const guild = guildId || 'none';
+  return signStateWith({
+    secret: freshSecret(env, provider), domain: `${FRESH_DOMAIN}:${purpose}`, mode: `${FRESH_MODE}.${purpose}.${guild}.${paramsHash}`, userId, nonce, issuedAt,
+    bind: [provider, tokenHash, purpose, guild, paramsHash],
+  });
+}
+
+// -> { purpose, guildId (null = none), paramsHash } for a state this Worker signed for exactly this provider, user and session, still in its window; else null.
+export async function verifyFreshState(env, { provider, userId, tokenHash, state, now }) {
+  const secret = freshSecret(env, provider);
+  if (!secret || typeof userId !== 'string' || typeof tokenHash !== 'string' || typeof state !== 'string') return null;
+  const parts = state.split('.');
+  if (parts.length !== 7 || parts[0] !== FRESH_MODE) return null;
+  const [, purpose, guild, paramsHash] = parts;
+  const tail = tailOf(parts);
+  if (!tail || !FRESH_PURPOSE_PATTERN.test(purpose) || !FRESH_GUILD_PATTERN.test(guild) || !FRESH_HASH_PATTERN.test(paramsHash)) return null;
+  if (!isCurrent(tail.issuedAt, now)) return null;
+  const expected = await macOf(secret, `${FRESH_DOMAIN}:${purpose}`, macText(userId, tail.nonce, tail.issuedAt, [provider, tokenHash, purpose, guild, paramsHash]));
+  if (!safeEqual(tail.mac, expected)) return null;
+  return { purpose, guildId: guild === 'none' ? null : guild, paramsHash };
+}
+
 // Which flow a state belongs to, by shape only; the callback verifies the MAC of that mode before it trusts it. A state starting "fresh." is its own
 // mode and is recognised BEFORE the default branch of both functions, so it can never be taken for a link or a sign-in (verifyStateWith needs the
-// exact shape of its own mode, and "fresh" is not a nonce). Lane B6b builds the fresh-auth flow on this: its callback replaces the refusals marked
-// "B6b seam" in routes/auth.js and routes/bnet.js.
+// exact shape of its own mode, and "fresh" is not a nonce). The fresh-auth callbacks (routes/auth.js discordFreshCallback, routes/bnet.js bnetFreshCallback) take it from there.
 export const FRESH_MODE = 'fresh';
 const isFreshShaped = (state) => typeof state === 'string' && state.startsWith(`${FRESH_MODE}.`);
 

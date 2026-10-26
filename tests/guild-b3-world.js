@@ -17,8 +17,8 @@ const discord = (key, name) => {
   return { id: `11000000000009${String(KEYS.indexOf(key) + 1).padStart(4, '0')}`, username: (name || key).toLowerCase(), globalName: name || key };
 };
 
-async function scenario({ teams = ['Alpha', 'Bravo'], env = {}, serverId = SERVER, wrapFetch } = {}) {
-  const w = await makeWorld({ env, wrapFetch });
+async function scenario({ teams = ['Alpha', 'Bravo'], env = {}, serverId = SERVER, wrapFetch, autoFresh } = {}) {
+  const w = await makeWorld({ env, wrapFetch, ...(autoFresh === undefined ? {} : { autoFresh }) });
   const jars = { gm: (await signIn(w, discord('gm', 'Gmb3'), [adminOf(serverId)])).jar };
   const made = await w.call(jars.gm, 'POST', '/api/guild', {
     serverId, name: 'Writers B3', gameVersion: 'tbc', region: 'US', realm: 'Nightslayer', timeZone: 'America/New_York', multipleTeams: true, teamNames: teams,

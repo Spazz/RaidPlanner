@@ -28,7 +28,7 @@ const STEP_MS = 30_000; // between requests, so no per-minute write limit or imp
 // Routes that need a session but name no guild or other record: they act on the caller's own account (or the app-wide idea box). Listed by hand.
 const ACCOUNT_ROUTES = new Set([
   'GET /auth/me', 'DELETE /auth/me', 'PATCH /auth/prefs', 'PATCH /api/me', 'PUT /auth/reminders', 'DELETE /auth/discord', 'GET /auth/bnet', 'DELETE /auth/bnet',
-  'POST /auth/logout', 'POST /api/guild', 'GET /api/roadmap/ideas', 'POST /api/roadmap/ideas', 'PUT /api/dev/view-as', 'DELETE /api/dev/view-as',
+  'POST /auth/logout', 'POST /api/guild', 'POST /api/fresh/start', 'GET /api/roadmap/ideas', 'POST /api/roadmap/ideas', 'PUT /api/dev/view-as', 'DELETE /api/dev/view-as',
 ]);
 // Routes that need no session. Each has a contract below (checked by name); anything else open fails until it is classified here.
 const OPEN_ROUTES = new Set([
@@ -50,6 +50,8 @@ const REF = 'AbCdEfGhIjKlMnOp';
 const EVENT = '123456789012345678';
 const REASON = 'A fine reason';
 const VALID_BODIES = {
+  // Fresh-auth start (lane B6b part 2a): the purpose is checked before the guild so a malformed request costs no query; an Owner act then asks for the Owner.
+  'POST /api/guild/:gid/fresh/start': () => ({ purpose: 'guild_delete', params: {} }),
   'POST /api/guild/:gid/roster/import/raid-helper/preview': (ids) => ({ teamId: ids.tid, source: EVENT }),
   'POST /api/guild/:gid/roster/import/raid-helper/commit': (ids) => ({ teamId: ids.tid, eventId: EVENT, defaultStatus: 'raider', rows: [] }),
   'POST /api/guild/:gid/roster/import/wcl/preview': (ids) => ({ teamId: ids.tid, source: REF }),

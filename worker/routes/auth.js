@@ -9,6 +9,9 @@ import {
 import { botConfigured } from '../discord-bot.js';
 import { hasDiscordServerId, serverIdIsDiscordSql } from '../discord-guard.js';
 import { syncSignIn } from '../discord-sync.js';
+import {
+  ALWAYS, allOf, beginIdentityChange, freshDoneRoute, freshErrorRoute, identityChangeBlocked, identityChangeStatements, isProtectedAccount, noteFreshFailure, writeFreshGrant,
+} from '../fresh.js';
 import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
 import { memberCandidatesSql, memberGuildsStatement, memberSql } from '../membership.js';
@@ -20,7 +23,7 @@ import { parsePrefs, personFromSession, toPerson } from '../person.js';
 import {
   FRESH_MODE, STATE_COOKIE, claimStateNonce, clearSessionCookie, clearStateCookie, discordStateMode, hashToken, loadSession, newSessionToken,
   presentedToken, readManageable, sessionCookie, signDiscordLinkState, signState, startSessionStatements, stateCookie, verifyDiscordLinkState,
-  verifyState,
+  verifyFreshState, verifyState,
 } from '../session.js';
 
 // Fixed targets inside the app shell (index.html); the hash router reads them. No user input reaches a Location header.
@@ -51,6 +54,8 @@ export async function login(ctx) {
   if (link) {
     const session = await loadSession(ctx);
     if (!session) return redirectResponse(SIGNIN_REDIRECT);
+    // A first link on an account that holds the Owner seat or any staff role needs a fresh grant for this change first (worker/fresh.js identity-change protection).
+    if (!session.user.discordId && (await identityChangeBlocked({ ...ctx, session }, { userId: session.user.id, change: 'link_discord' }))) return redirectResponse(LINKED_ERROR_REDIRECT('fresh_required'));
     // Bound to the member who starts it, so a state copied into another browser is refused there.
     state = await signDiscordLinkState(env, session.user.id, nonce, ctx.now());
   } else {
@@ -74,8 +79,8 @@ export async function callback(ctx) {
   const mode = discordStateMode(state);
   const now = ctx.now();
   const fail = (reason) => redirectResponse(mode === 'link' ? LINKED_ERROR_REDIRECT(reason) : ERROR_REDIRECT(reason), [clear]);
-  // B6b seam: the fresh-auth callback replaces this refusal. Until then a fresh-shaped state ends here, before the session, the cookie or the MAC.
-  if (mode === FRESH_MODE) return fail('state');
+  // Fresh-auth (worker/fresh.js): its own callback, which never starts or rotates a session.
+  if (mode === FRESH_MODE) return discordFreshCallback(ctx, { url, state, cookieState, now, clear });
 
   let session = null;
   if (mode === 'link') {
@@ -119,6 +124,39 @@ export async function callback(ctx) {
     ctx.log(`${mode === 'link' ? 'link' : 'sign-in'}: saving failed: ${error && error.message}`);
     return fail('discord');
   }
+}
+
+// The fresh-auth callback for Discord: the Discord account that comes back must be the one linked to the signed-in account. It reads the Discord id and nothing else (scope
+// identify), never mints or rotates a session, and ends on a fixed app route. Order: session, state cookie (compared with the state), MAC of THIS user and THIS session, the
+// age window, the single-use nonce, the exchange, then the grant (worker/fresh.js writeFreshGrant: identity equality, rule (a), the write).
+async function discordFreshCallback(ctx, { url, state, cookieState, now, clear }) {
+  const { env, db } = ctx;
+  const session = await loadSession(ctx);
+  if (!session) return redirectResponse(SIGNIN_REDIRECT, [clear]);
+  const fail = (reason, purpose = null) => redirectResponse(freshErrorRoute(reason, purpose), [clear]);
+  if (!cookieState || !state || !safeEqual(state, cookieState)) return fail('state');
+  if (!isConfigured(env)) return fail('not_configured');
+  const parsed = await verifyFreshState(env, { provider: 'discord', userId: session.user.id, tokenHash: session.tokenHash, state, now });
+  if (!parsed) return fail('state');
+  if (url.searchParams.get('error')) return fail('denied', parsed.purpose);
+  const code = url.searchParams.get('code');
+  if (!code || code.length > 512) return fail('state', parsed.purpose);
+  if (!(await claimStateNonce(db, state, now))) return fail('state', parsed.purpose);
+  let discordUser;
+  try {
+    const accessToken = await exchangeCode(env, ctx.fetch, code);
+    discordUser = await fetchDiscordUser(env, ctx.fetch, accessToken);
+    await revokeToken(env, ctx.fetch, accessToken);
+  } catch (error) {
+    ctx.log(`fresh-auth: Discord step failed: ${error && error.message}`);
+    return fail('provider', parsed.purpose);
+  }
+  const granted = await writeFreshGrant(ctx, { session, provider: 'discord', identityId: discordUser.id, parsed, nowMs: now });
+  if (!granted.ok) {
+    await noteFreshFailure(ctx, { userId: session.user.id, guildId: parsed.guildId, purpose: parsed.purpose, reason: granted.reason });
+    return fail(granted.reason, parsed.purpose);
+  }
+  return redirectResponse(freshDoneRoute(parsed.purpose), [clear]);
 }
 
 // Replaces the account's servers that have a Raidsmith guild: one JSON parameter, never an IN list. userSql names the account.
@@ -177,21 +215,41 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
   // The later statements apply only if the account really holds this Discord ID now (the UPDATE is guarded the same way).
   const linked = { sql: 'EXISTS (SELECT 1 FROM users WHERE id = ? AND discord_id = ?)', params: [userId, discordUser.id] };
   const firstLink = !session.user.discordId;
+  // A FIRST link is an identity change (worker/fresh.js): an account that holds the Owner seat or any staff role must show a fresh grant for exactly this change (the begin
+  // route already asked; this is the authoritative check, inside the batch), and every account's change nulls its grants and is audited in each guild it is a member of.
+  // A refresh of the same Discord account is not a change.
+  let act = null;
+  if (firstLink) {
+    try {
+      act = await beginIdentityChange({ ...ctx, session }, { userId, change: 'link_discord' });
+    } catch (error) {
+      if (error instanceof HttpError && error.code === 'fresh_required') return fail('fresh_required');
+      throw error;
+    }
+  }
+  const gate = act ? act.guard : ALWAYS;
   const results = await db.batch([
+    ...(act ? [
+      ...act.statements,
+      ...identityChangeStatements(ctx, { userId, provider: 'discord', change: 'link', guard: allOf(gate, { sql: 'EXISTS (SELECT 1 FROM users WHERE id = ? AND discord_id IS NULL)', params: [userId] }) }),
+    ] : []),
     db.prepare(
-      `UPDATE users SET discord_id = ?, username = ?, global_name = ?, avatar = ?, last_seen_at = ?
-        WHERE id = ? AND (discord_id IS NULL OR discord_id = ?) AND ${clash.sql}`,
-    ).bind(discordUser.id, discordUser.username, discordUser.globalName, discordUser.avatar, now, userId, discordUser.id, ...clash.params),
-    ...serverStatements(db, '?', [userId], servers, now, linked),
+      // discord_linked_at starts with the first link (or a row whose value is missing) and is never moved by a refresh of the same Discord account; unlink clears it.
+      `UPDATE users SET discord_id = ?, username = ?, global_name = ?, avatar = ?, last_seen_at = ?,
+              discord_linked_at = CASE WHEN discord_id IS NULL OR discord_linked_at IS NULL THEN ? ELSE discord_linked_at END
+        WHERE id = ? AND (discord_id IS NULL OR discord_id = ?) AND ${clash.sql} AND ${gate.sql}`,
+    ).bind(discordUser.id, discordUser.username, discordUser.globalName, discordUser.avatar, now, now, userId, discordUser.id, ...clash.params, ...gate.params),
+    ...serverStatements(db, '?', [userId], servers, now, allOf(linked, gate)),
     // The creator's server list lives 30 minutes on this session, like after a sign-in.
     ...(manageable ? [db.prepare(
-      `UPDATE sessions SET manageable_servers = ?, manageable_until = ? WHERE token_hash = ? AND ${linked.sql}`,
-    ).bind(JSON.stringify(manageable), now + 30 * 60 * 1000, session.tokenHash, ...linked.params)] : []),
+      `UPDATE sessions SET manageable_servers = ?, manageable_until = ? WHERE token_hash = ? AND ${linked.sql} AND ${gate.sql}`,
+    ).bind(JSON.stringify(manageable), now + 30 * 60 * 1000, session.tokenHash, ...linked.params, ...gate.params)] : []),
     ...(firstLink ? [auditStatement(ctx, {
       guildId: null, actorUserId: userId, action: 'discord.link', entityType: 'user', entityId: userId,
-    }, linked)] : []),
+    }, allOf(linked, gate))] : []),
   ]);
-  if (results[0].meta.changes !== 1) return fail('roster_conflict');
+  if (act && !act.consumed(results)) return fail('fresh_required');
+  if (results[act ? act.offset + 2 : 0].meta.changes !== 1) return fail(firstLink && (await isProtectedAccount(db, userId)) ? 'fresh_required' : 'roster_conflict');
   // The Discord id just joined this account: match it (and the account's other keys) against the tombstones of the guilds it reaches (sec A9-11).
   await matchAccountAtSignIn(ctx, userId);
   await syncSignIn(ctx, userId);
@@ -490,7 +548,7 @@ export async function deleteMe(ctx) {
     // Raid sign-ups keep the person link (outcomes recompute the same) but lose the Discord ID and nickname.
     statements.push(db.prepare('UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ?').bind(session.user.discordId));
   }
-  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`, `rsync:${userId}`, `char:${userId}`, `open:${userId}`));
+  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`, `rsync:${userId}`, `char:${userId}`, `open:${userId}`, `fresh:${userId}`));
   await db.batch(statements);
   return jsonResponse({ ok: true }, 200, {}, [clearSessionCookie()]);
 }

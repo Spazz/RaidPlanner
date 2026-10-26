@@ -214,7 +214,8 @@ async function makeWorld() {
     run('INSERT OR IGNORE INTO block_tombstones (guild_id, block_ref, key_version, hmac, created_at) VALUES (?, ?, 1, ?, 3)', guildId, ref, await tombstoneHmac(TOMBSTONE_KEY, guildId, typed));
   };
   openWorlds.push(world);
-  return world;
+  // Identity-change protection (lane B6b part 2a): this suite links and unlinks as a staff account without being about fresh-auth, so such requests get their grant first.
+  return require('../guild-auto-fresh').autoFresh(world);
 }
 
 async function closeWorlds() {

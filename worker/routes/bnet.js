@@ -9,8 +9,12 @@ import {
 } from '../battlenet.js';
 import { matchAccountAtSignIn } from '../block-tombstones.js';
 import { CALLBACK_STATEMENT_BUDGET, clearBnetProofStatement, loadIngameCombos, runBnetMatch } from '../bnet-match.js';
+import {
+  ALWAYS, allOf, beginIdentityChange, freshDoneRoute, freshErrorRoute, freshRequiredError, identityChangeBlocked, identityChangeStatements, isProtectedAccount, noteFreshFailure,
+  protectedAccountSql, writeFreshGrant,
+} from '../fresh.js';
 import { CLAIM_BATCH_MAX, DATA_TTL_MS, loadMemberGuilds, parseSnapshot, realmDisplayName } from '../bnet-store.js';
-import { bnetNameOf, findUserByBnet, hasDiscordSql, insertBnetAccountStatement } from '../identities.js';
+import { bnetNameOf, findUserByBnet, hasBnetSql, hasDiscordSql, insertBnetAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
 import { isOwnPlayer, ownPersonStatement } from '../membership.js';
 import { loadGuildContext } from '../permissions.js';
@@ -20,7 +24,7 @@ import {
 import { cleanCharacterName, nameKey } from '../roster-data.js';
 import {
   BNET_STATE_COOKIE, FRESH_MODE, bnetStateCookie, bnetStateMode, claimStateNonce, clearBnetStateCookie, hashToken, loadSession, newSessionToken,
-  presentedToken, sessionCookie, signBnetSigninState, signBnetState, startSessionStatements, verifyBnetSigninState, verifyBnetState,
+  presentedToken, sessionCookie, signBnetSigninState, signBnetState, startSessionStatements, verifyBnetSigninState, verifyBnetState, verifyFreshState,
 } from '../session.js';
 import { applyPicks } from '../claim-apply.js';
 import { bad, resolveRealm } from './roster.js';
@@ -37,7 +41,7 @@ const LINK_LIMIT = 10;
 const LINK_WINDOW_MS = 10 * 60 * 1000;
 // D1 statements a callback has used by the time the sign-in match starts (nonce, rate limits, look-ups, the Battle.net reads of the callback and its own writes);
 // the match counts its own on top and stays inside CALLBACK_STATEMENT_BUDGET. tests/guild/guild-b6a-match-tests.js measures both modes and fails when one grows past this.
-export const STATEMENTS_BEFORE_MATCH = { signin: 12, link: 9 };
+export const STATEMENTS_BEFORE_MATCH = { signin: 12, link: 10 };
 
 // ---------------------------------------------------------------------------
 // Link
@@ -62,6 +66,9 @@ export async function bnetLogin(ctx) {
   }
   const limit = await checkRateLimit(db, session.user.id, ctx.now(), { key: `bnet:${session.user.id}`, limit: LINK_LIMIT, windowMs: LINK_WINDOW_MS });
   if (limit.limited) return redirectResponse(linkedRedirect('busy'));
+  // A first link on an account that holds the Owner seat or any staff role needs a fresh grant for this change first (worker/fresh.js identity-change protection).
+  const linked = await db.prepare('SELECT 1 AS found FROM bnet_links WHERE user_id = ?').bind(session.user.id).first();
+  if (!linked && (await identityChangeBlocked({ ...ctx, session }, { userId: session.user.id, change: 'link_bnet' }))) return redirectResponse(linkedRedirect('fresh_required'));
   const state = await signBnetState(env, session.user.id, base64url(ctx.randomBytes(16)), ctx.now());
   return redirectResponse(authorizeUrl(env, state), [bnetStateCookie(state)]);
 }
@@ -127,6 +134,40 @@ async function callbackAllowed(ctx, bnetAccountId, now) {
   return true;
 }
 
+// The fresh-auth callback for Battle.net: the Battle.net account that comes back must be the one linked to the signed-in account. It reads the account number and nothing else
+// (no snapshot, no character fan-out), counts against the same per-Blizzard-account callback limit as every Battle.net callback, never mints or rotates a session, and ends on a
+// fixed app route. Same order as the Discord one (routes/auth.js). Blizzard offers no forced re-login parameter (worker/battlenet.js authorizeUrl says what that weakens).
+async function bnetFreshCallback(ctx, { url, state, now, clear }) {
+  const { env, db } = ctx;
+  const session = await loadSession(ctx);
+  if (!session) return redirectResponse(SIGNIN_REDIRECT, [clear]);
+  const fail = (reason, purpose = null) => redirectResponse(freshErrorRoute(reason, purpose), [clear]);
+  const cookieState = parseCookies(ctx.request.headers.get('Cookie'))[BNET_STATE_COOKIE];
+  if (!cookieState || !state || !safeEqual(state, cookieState)) return fail('state');
+  if (!isConfigured(env)) return fail('not_configured');
+  const parsed = await verifyFreshState(env, { provider: 'bnet', userId: session.user.id, tokenHash: session.tokenHash, state, now });
+  if (!parsed) return fail('state');
+  if (url.searchParams.get('error')) return fail('denied', parsed.purpose);
+  const code = url.searchParams.get('code');
+  if (!code || code.length > 512) return fail('state', parsed.purpose);
+  if (!(await claimStateNonce(db, state, now))) return fail('state', parsed.purpose);
+  let info;
+  try {
+    const accessToken = await exchangeCode(ctx, code);
+    info = await fetchUserInfo(ctx, accessToken);
+    if (!(await callbackAllowed(ctx, info.id, now))) return fail('busy', parsed.purpose);
+  } catch (error) {
+    ctx.log(`fresh-auth: Battle.net step failed: ${error && error.message}`);
+    return fail('provider', parsed.purpose);
+  }
+  const granted = await writeFreshGrant(ctx, { session, provider: 'bnet', identityId: info.id, parsed, nowMs: now });
+  if (!granted.ok) {
+    await noteFreshFailure(ctx, { userId: session.user.id, guildId: parsed.guildId, purpose: parsed.purpose, reason: granted.reason });
+    return fail(granted.reason, parsed.purpose);
+  }
+  return redirectResponse(freshDoneRoute(parsed.purpose), [clear]);
+}
+
 // One callback for both modes. The mode comes from the state alone, and only a state whose MAC checked out for that mode is believed.
 export async function bnetCallback(ctx) {
   const { env, db } = ctx;
@@ -136,8 +177,8 @@ export async function bnetCallback(ctx) {
   const now = ctx.now();
   const clear = clearBnetStateCookie();
   const fail = (reason) => redirectResponse((mode === 'link' ? linkedRedirect : signinRedirect)(reason), [clear]);
-  // B6b seam: the fresh-auth callback replaces this refusal. Until then a fresh-shaped state ends here, before the session, the cookie or the MAC.
-  if (mode === FRESH_MODE) return fail('state');
+  // Fresh-auth (worker/fresh.js): its own callback, which never starts or rotates a session.
+  if (mode === FRESH_MODE) return bnetFreshCallback(ctx, { url, state, now, clear });
   let session = null;
   if (mode === 'link') {
     session = await loadSession(ctx);
@@ -177,19 +218,45 @@ export async function bnetCallback(ctx) {
     // The same Battle.net account again refreshes its link; a DIFFERENT one never replaces it (disconnect first): swapping the sign-in of an
     // account is not something a stolen session should be able to do in one step. The rows after the first apply only if the link is this one.
     const here = { sql: 'EXISTS (SELECT 1 FROM bnet_links WHERE user_id = ? AND bnet_account_id = ?)', params: [session.user.id, info.id] };
-    const saved = await db.batch([
-      db.prepare(
-        `INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(user_id) DO UPDATE SET battletag = excluded.battletag,
+    // A FIRST link (the account has no Battle.net yet) is an identity change (worker/fresh.js): an account that holds the Owner seat or any staff role must show a fresh grant for
+    // exactly this change (the begin route already asked; this is the authoritative check, inside the batch), and every account's change nulls its grants and is audited in
+    // each guild it is a member of. A refresh of the same Battle.net account is not a change.
+    const userId = session.user.id;
+    const state = await db.prepare(`SELECT (SELECT bnet_account_id FROM bnet_links WHERE user_id = ?1) AS linked, ${protectedAccountSql('?1')} AS protected`).bind(userId).first();
+    const first = !state.linked;
+    let act = null;
+    if (first) {
+      try {
+        act = await beginIdentityChange({ ...ctx, session }, { userId, change: 'link_bnet', protectedAccount: state.protected === 1 });
+      } catch (error) {
+        if (error instanceof HttpError && error.code === 'fresh_required') return fail('fresh_required');
+        throw error;
+      }
+    }
+    const gate = act ? act.guard : ALWAYS;
+    const linkUpdate = `ON CONFLICT(user_id) DO UPDATE SET battletag = excluded.battletag,
            linked_at = excluded.linked_at, snapshot = excluded.snapshot, snapshot_at = excluded.snapshot_at
-         WHERE bnet_links.bnet_account_id = excluded.bnet_account_id`,
-      ).bind(session.user.id, info.id, info.battletag, now, JSON.stringify(snapshot), now),
+         WHERE bnet_links.bnet_account_id = excluded.bnet_account_id`;
+    const linkValues = [userId, info.id, info.battletag, now, JSON.stringify(snapshot), now, now];
+    const saved = await db.batch([
+      ...(act ? [
+        ...act.statements,
+        ...identityChangeStatements(ctx, { userId, provider: 'bnet', change: 'link', guard: allOf(gate, { sql: 'NOT EXISTS (SELECT 1 FROM bnet_links WHERE user_id = ?)', params: [userId] }) }),
+      ] : []),
+      // The first link is an INSERT ... SELECT so the act's guard can sit on it; a refresh is the plain UPSERT. first_linked_at is written by the INSERT only.
+      first
+        ? db.prepare(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${gate.sql} ${linkUpdate}`).bind(...linkValues, ...gate.params)
+        : db.prepare(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES (?, ?, ?, ?, ?, ?, ?) ${linkUpdate}`).bind(...linkValues),
       // An account without Discord is named after its BattleTag; a new BattleTag renames it.
-      db.prepare(`UPDATE users SET username = ? WHERE id = ? AND discord_id IS NULL AND ${here.sql}`)
-        .bind(bnetNameOf(info.battletag), session.user.id, ...here.params),
-      auditStatement(ctx, { guildId: null, actorUserId: session.user.id, action: 'bnet.link', entityType: 'user', entityId: session.user.id }, here),
+      db.prepare(`UPDATE users SET username = ? WHERE id = ? AND discord_id IS NULL AND ${here.sql} AND ${gate.sql}`)
+        .bind(bnetNameOf(info.battletag), userId, ...here.params, ...gate.params),
+      auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'bnet.link', entityType: 'user', entityId: userId }, allOf(here, gate)),
     ]);
-    if (saved[0].meta.changes !== 1) return fail('has_bnet');
+    if (act && !act.consumed(saved)) return fail('fresh_required');
+    if (saved[act ? act.offset + 2 : 0].meta.changes !== 1) {
+      // Nothing was linked: another Battle.net account is linked already, or (a first link) the account became staff between the read and the write.
+      return fail(first && (await isProtectedAccount(db, userId)) ? 'fresh_required' : 'has_bnet');
+    }
   } catch (error) {
     if (isUniqueViolation(error)) return fail('taken');
     ctx.log(`bnet ${mode}: saving failed: ${error && error.message}`);
@@ -237,8 +304,8 @@ async function finishSignin(ctx, info, snapshot, now, clear) {
     ]
     : [
       insertBnetAccountStatement(db, { userId, battletag: info.battletag, now }),
-      db.prepare('INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(userId, info.id, info.battletag, now, JSON.stringify(snapshot), now),
+      db.prepare('INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(userId, info.id, info.battletag, now, JSON.stringify(snapshot), now, now),
       auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'bnet.link', entityType: 'user', entityId: userId }),
     ];
   try {
@@ -261,21 +328,30 @@ async function finishSignin(ctx, info, snapshot, now, clear) {
 
 export async function disconnectBnet(ctx) {
   const { db, session } = ctx;
-  // The last identity cannot go: the link is deleted only while the account keeps a Discord to sign in with. Every proof the link gave goes with it (a proof
-  // belongs to the Battle.net account that earned it); the clearing is written first, with the same condition, so a refused disconnect clears nothing.
-  const keepsDiscord = { sql: hasDiscordSql('?'), params: [session.user.id] };
-  const results = await db.batch([
-    clearBnetProofStatement(db, session.user.id, keepsDiscord),
-    db.prepare(`DELETE FROM bnet_links WHERE user_id = ? AND ${hasDiscordSql('?')}`).bind(session.user.id, session.user.id),
-    auditStatement(ctx, { guildId: null, actorUserId: session.user.id, action: 'bnet.unlink', entityType: 'user', entityId: session.user.id },
-      { sql: 'changes() = 1', params: [] }),
-  ]);
-  if (results[1].meta.changes === 1) return jsonResponse({ ok: true, removed: true });
-  const link = await db.prepare('SELECT 1 AS found FROM bnet_links WHERE user_id = ?').bind(session.user.id).first();
-  if (link) {
+  const userId = session.user.id;
+  // The last identity cannot go: the link is deleted only while the account keeps a Discord to sign in with.
+  const standing = await db.prepare(`SELECT EXISTS (SELECT 1 FROM bnet_links WHERE user_id = ?1) AS linked, ${hasDiscordSql('?1')} AS discord`).bind(userId).first();
+  if (!standing.linked) return jsonResponse({ ok: true, removed: false });
+  if (!standing.discord) {
     throw new HttpError(409, 'last_identity', 'Battle.net is the only way you sign in to this account. Connect Discord first, or delete your data on the privacy page.');
   }
-  return jsonResponse({ ok: true, removed: false });
+  // Identity-change protection (worker/fresh.js): on an account that holds the Owner seat or any staff role this is a fresh-auth act (403 fresh_required { purpose:
+  // 'identity_change', params: { change: 'unlink_bnet' } } until the grant is there); every account's change nulls its grants and is audited in each guild the account is a member of.
+  const act = await beginIdentityChange(ctx, { userId, change: 'unlink_bnet' });
+  // Every proof the link gave goes with it (a proof belongs to the Battle.net account that earned it); the clearing is written first, with the same condition, so a refused
+  // disconnect clears nothing.
+  const keepsDiscord = allOf({ sql: hasDiscordSql('?'), params: [userId] }, { sql: hasBnetSql('?'), params: [userId] }, act.guard);
+  const results = await db.batch([
+    ...act.statements,
+    ...identityChangeStatements(ctx, { userId, provider: 'bnet', change: 'unlink', guard: keepsDiscord }),
+    clearBnetProofStatement(db, userId, keepsDiscord),
+    db.prepare(`DELETE FROM bnet_links WHERE user_id = ? AND ${keepsDiscord.sql}`).bind(userId, ...keepsDiscord.params),
+    auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'bnet.unlink', entityType: 'user', entityId: userId },
+      { sql: 'changes() = 1', params: [] }),
+  ]);
+  if (!act.consumed(results)) throw freshRequiredError('identity_change', { change: 'unlink_bnet' });
+  if (results[act.offset + 3].meta.changes === 1) return jsonResponse({ ok: true, removed: true });
+  throw new HttpError(409, 'conflict', 'That changed while you were working on it. Reload and try again.');
 }
 
 // ---------------------------------------------------------------------------

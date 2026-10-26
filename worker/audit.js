@@ -1,4 +1,5 @@
 import { newId } from './ids.js';
+import { MEMBER_GUILD_IDS_SQL } from './membership.js';
 import { ownerSql } from './owner.js';
 
 // The audited actions (nothing else writes the log).
@@ -137,6 +138,8 @@ export const AUDIT_ACTIONS = [
   'person.former',
   'guild.claim_failed',
   'fresh.failed',
+  // Lane B6b part 2a: a sign-in identity (Discord or Battle.net) of an account was linked or disconnected; written in each guild the account is a member of, never pruned.
+  'identity.change',
 ];
 
 // The PRUNABLE set (plan "Audit"): per-person detail of a sync run and failures. The daily job deletes these past AUDIT_PRUNE_AFTER_MS; every other row is
@@ -182,6 +185,24 @@ export function auditStatement({ db, randomBytes, now }, entry, guard = null) {
   const where = guard ? ` WHERE ${guard.sql}` : '';
   return db.prepare(`INSERT INTO audit_log (${COLUMNS}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ${SNAPSHOT_SQL}${where}`)
     .bind(...values, ...snapshotParams(actorUserId, guildId), ...(guard ? guard.params : []));
+}
+
+// One statement for a db.batch: the same audit row in EACH guild the actor is a member of right now (identity changes: plan "Identity-change protection" (c)). Put it BEFORE
+// the statements that change what membership reads (a Discord disconnect deletes the user_servers rows). The snapshot columns follow the single-row form: actor_role is read per
+// guild. entry: { actorUserId, action, entityType, entityId, after }. guard: { sql, params } as for auditStatement (bare placeholders; they are renumbered after the six this statement binds).
+export function auditEachMemberGuildStatement({ db, randomBytes, now }, entry, guard = null) {
+  // D1 does not take numbered and bare placeholders in one statement: the guard's bare `?` are numbered on from ?7.
+  let next = 6;
+  const where = guard ? ` WHERE ${guard.sql.replace(/\?/g, () => `?${++next}`)}` : '';
+  return db.prepare(
+    `INSERT INTO audit_log (${COLUMNS})
+     SELECT 'al_' || lower(hex(randomblob(16))), mgs.guild_id, ?1, ?2, ?3, ?4, NULL, ?5, ?6, substr(?1, 3, 8),
+            CASE WHEN ${ownerSql('mgs.guild_id', '?1')} THEN 'owner'
+                 ELSE COALESCE((SELECT ra.role_id FROM effective_roles ra JOIN roles r ON r.id = ra.role_id
+                                 WHERE ra.guild_id = mgs.guild_id AND ra.user_id = ?1 AND ra.role_id IN ('guild_master', 'officer', 'team_lead') ORDER BY r.rank LIMIT 1), 'member') END
+       FROM (${MEMBER_GUILD_IDS_SQL}) mgs${where}`,
+  ).bind(entry.actorUserId, entry.action, entry.entityType, entry.entityId ?? null, entry.after === undefined || entry.after === null ? null : JSON.stringify(entry.after), now(),
+    ...(guard ? guard.params : []));
 }
 
 // ---------------------------------------------------------------------------

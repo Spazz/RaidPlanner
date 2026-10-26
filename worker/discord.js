@@ -25,14 +25,19 @@ export function isConfigured(env) {
   return !!(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET && canonicalOrigin(env));
 }
 
-export function authorizeUrl(env, state) {
+// Sign-in and link ask for `prompt=none`: a person who authorised Raidsmith before is passed straight through. FRESH-AUTH (worker/fresh.js) asks for `prompt=consent`
+// instead and for the `identify` scope alone (it reads the Discord id and nothing else): Discord then shows the authorise screen every time, so the person at the
+// keyboard has to be signed in to Discord in this browser and press Authorize. That is the strongest ask Discord's OAuth2 offers: it has no max_age and no password
+// re-entry parameter, so it proves a live, logged-in Discord session in THIS browser and a deliberate click, not a typed password. The Worker compares the Discord id
+// it gets with the id linked to the signed-in account (fresh-auth callback); a stolen Raidsmith session without the owner's Discord login cannot pass it.
+export function authorizeUrl(env, state, { fresh = false } = {}) {
   const query = new URLSearchParams({
     client_id: env.DISCORD_CLIENT_ID,
     redirect_uri: env.DISCORD_REDIRECT_URI,
     response_type: 'code',
-    scope: 'identify guilds',
+    scope: fresh ? 'identify' : 'identify guilds',
     state,
-    prompt: 'none',
+    prompt: fresh ? 'consent' : 'none',
   });
   return `${apiBase(env)}/oauth2/authorize?${query}`;
 }

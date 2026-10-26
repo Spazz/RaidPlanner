@@ -65,6 +65,8 @@ export const ACTION_GROUP = Object.freeze({
   'person.block': 'settings', 'person.unblock': 'settings', 'block.match': 'settings', 'block.match_held': 'settings',
   'person.core_rank': 'roster', 'person.ingame_rank': 'roster', 'person.former': 'roster',
   'fresh.failed': 'settings', 'guild.claim_failed': 'settings',
+  // Lane B6b part 2a: a sign-in identity of an account was linked or disconnected (written in every guild the account is a member of).
+  'identity.change': 'settings',
 });
 
 // Actions the Worker writes itself (no actor): the Activity log names "Raidsmith" for them instead of a former member.
@@ -228,6 +230,7 @@ export function describeRow(row, names = {}) {
     case 'person.ingame_rank': return `The in-game rank of ${person(ent)} went from ${before.rank === undefined ? 'one rank' : before.rank} to ${after.rank === undefined ? 'another' : after.rank}`;
     case 'person.former': return `${person(ent)} left the in-game guild and is now Former`;
     case 'fresh.failed': return `A sign-in check for a sensitive act failed${after.count > 1 ? ` ${after.count} times in an hour` : ''}`;
+    case 'identity.change': return `${after.change === 'unlink' ? 'Disconnected' : 'Connected'} the ${after.provider === 'discord' ? 'Discord' : 'Battle.net'} sign-in of ${user(ent)}`;
     case 'guild.claim_failed': return `A claim of the Guild Master seat failed${after.count > 1 ? ` ${after.count} times in an hour` : ''}`;
 
     // Phase 7. A role's name comes from the row (a custom role can be renamed or deleted since); a built-in role has a fixed label.

@@ -1,6 +1,6 @@
 // A small world for the Phase 8 suites (guild-guilds-worker-tests.js, guild-isolation-tests.js): the Worker over the node:sqlite D1 stand-in, Discord
 // faked by an injected fetch, cookie jars, and sign-in helpers. Nothing here touches the network or a real database.
-//   makeWorld({ allowlist, env, routes, wrapFetch })  allowlist: array of Discord ids (omit it for NO allowlist: creation is open to server administrators);
+//   makeWorld({ allowlist, env, routes, wrapFetch, autoFresh })  allowlist: array of Discord ids (omit it for NO allowlist: creation is open to server administrators);
 //                                          routes: replaces worker/index.js ROUTES (the isolation suite's leaky canary);
 //                                          wrapFetch(discordFetch) -> the fetch the Worker gets (the wave 4 suites answer webhooks and Raid-Helper events and hand the rest on)
 //   world.call(jar, method, path, body)    -> { status, json, text, headers }   world.rows(sql, ...values)   world.count(table, where, ...values)
@@ -51,7 +51,7 @@ function absorbCookies(jar, response) {
   }
 }
 
-async function makeWorld({ allowlist, env = {}, routes, wrapFetch } = {}) {
+async function makeWorld({ allowlist, env = {}, routes, wrapFetch, autoFresh = true } = {}) {
   const { createApp } = await load('worker/index.js');
   const db = createD1Fake();
   const discord = makeDiscord();
@@ -104,6 +104,9 @@ async function makeWorld({ allowlist, env = {}, routes, wrapFetch } = {}) {
         .all(column).map((row) => row.name);
     },
   };
+  // Identity-change protection (lane B6b part 2a): the suites that are not about fresh-auth link and unlink as their Guild Master, so such a request is given the matching grant
+  // first (tests/guild-auto-fresh.js). The fresh-auth suites pass autoFresh: false.
+  if (autoFresh) require('./guild-auto-fresh').autoFresh(world);
   return world;
 }
 

@@ -2,10 +2,11 @@
 // (Signing in, linking Discord and the Battle.net link live in auth.js and bnet.js; which identities an account has, in identities.js.)
 import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
+import { allOf, beginIdentityChange, freshRequiredError, identityChangeStatements } from '../fresh.js';
 import { bnetNameOf, hasBnetSql } from '../identities.js';
 import { isId } from '../ids.js';
 import { blockedSql, memberSql, ownPlayerSql } from '../membership.js';
-import { ownedGuildsSql, ownerGuard, requireOwner } from '../owner.js';
+import { PROVEN_LINK_MESSAGE, ownedGuildsSql, ownerGuard, ownerSql, requireOwner } from '../owner.js';
 import { loadGuildContext, isGranted } from '../permissions.js';
 import { personFromSession, toPerson } from '../person.js';
 import { enforceRateLimit } from '../ratelimit.js';
@@ -22,7 +23,7 @@ const LOOKUP_WINDOW_MS = 10 * 60 * 1000;
 const FOUND_MAX = 5;
 const CLAIMANTS_MAX = 20;
 const conflict = () => new HttpError(409, 'conflict', 'That changed while you were working on it. Reload and try again.');
-export const PROVEN_LINK_MESSAGE = 'Only the Owner of the guild can link or unlink an account on a person who has a character proved by Battle.net.';
+export { PROVEN_LINK_MESSAGE };
 
 // ---------------------------------------------------------------------------
 // PATCH /api/me { displayName: string | null }: the name the account shows everywhere. null (or "") goes back to the Discord or Battle.net name.
@@ -70,7 +71,8 @@ export async function unlinkDiscord(ctx) {
     throw new HttpError(409, 'last_identity', 'Discord is the only way you sign in to this account. Connect Battle.net first, or delete your data on the privacy page.');
   }
   // A blocked account does not shed its Discord: signing in with that Discord again would make a fresh account that no block names.
-  const blockedAt = await db.prepare('SELECT 1 AS found FROM guild_blocks WHERE user_id = ?').bind(userId).first();
+  // (A block row on the unsuspended Owner is ignored everywhere, so it does not count here either: worker/membership.js blockedSql.)
+  const blockedAt = await db.prepare(`SELECT 1 AS found FROM guild_blocks gb WHERE gb.user_id = ? AND NOT ${ownerSql('gb.guild_id', 'gb.user_id')}`).bind(userId).first();
   if (blockedAt) {
     throw new HttpError(409, 'blocked_somewhere', 'An officer removed your access to a guild, so Discord cannot be disconnected right now.');
   }
@@ -92,13 +94,19 @@ export async function unlinkDiscord(ctx) {
   }
 
   const now = ctx.now();
-  // Every statement applies only while this account still holds this Discord ID and still has Battle.net (the last-identity rule).
-  const guard = { sql: `EXISTS (SELECT 1 FROM users WHERE id = ? AND discord_id = ?) AND ${hasBnetSql('?')}`, params: [userId, discordId, userId] };
-  const cleared = { sql: 'EXISTS (SELECT 1 FROM users WHERE id = ? AND discord_id IS NULL)', params: [userId] };
+  // Identity-change protection (worker/fresh.js): on an account that holds the Owner seat or any staff role, disconnecting an identity is itself a fresh-auth act (403
+  // fresh_required { purpose: 'identity_change', params: { change: 'unlink_discord' } } until the grant is there); every account's change nulls its grants and is audited in each
+  // guild the account is a member of. The audit row is written BEFORE the change: it asks who is a member while the Discord server still counts.
+  const act = await beginIdentityChange(ctx, { userId, change: 'unlink_discord' });
+  // Every statement applies only while this account still holds this Discord ID and still has Battle.net (the last-identity rule), and while the act's guard holds.
+  const guard = allOf({ sql: `EXISTS (SELECT 1 FROM users WHERE id = ? AND discord_id = ?) AND ${hasBnetSql('?')}`, params: [userId, discordId, userId] }, act.guard);
+  const cleared = allOf({ sql: 'EXISTS (SELECT 1 FROM users WHERE id = ? AND discord_id IS NULL)', params: [userId] }, act.guard);
   const results = await db.batch([
+    ...act.statements,
+    ...identityChangeStatements(ctx, { userId, provider: 'discord', change: 'unlink', guard }),
     // An account without Discord is named after its BattleTag.
     db.prepare(
-      `UPDATE users SET discord_id = NULL, username = ?, global_name = NULL, avatar = NULL WHERE id = ? AND ${guard.sql}`,
+      `UPDATE users SET discord_id = NULL, discord_linked_at = NULL, username = ?, global_name = NULL, avatar = NULL WHERE id = ? AND ${guard.sql}`,
     ).bind(bnetNameOf(bnet.battletag), userId, ...guard.params),
     db.prepare(`DELETE FROM user_servers WHERE user_id = ? AND ${cleared.sql}`).bind(userId, ...cleared.params),
     // The roles Discord gave (Phase 7) go with the Discord connection: nothing could take them away later, and roles an officer set by hand stay.
@@ -113,7 +121,8 @@ export async function unlinkDiscord(ctx) {
     db.prepare(`UPDATE sessions SET manageable_servers = NULL, manageable_until = NULL WHERE user_id = ? AND ${cleared.sql}`).bind(userId, ...cleared.params),
     auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'discord.unlink', entityType: 'user', entityId: userId }, cleared),
   ]);
-  if (results[0].meta.changes !== 1) throw conflict();
+  if (!act.consumed(results)) throw freshRequiredError('identity_change', { change: 'unlink_discord' });
+  if (results[act.offset + 2].meta.changes !== 1) throw conflict();
   return jsonResponse({ ok: true, removed: true });
 }
 

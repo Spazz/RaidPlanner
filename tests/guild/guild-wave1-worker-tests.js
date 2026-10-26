@@ -128,7 +128,8 @@ async function makeWorld({ bnet = false } = {}) {
     async count(table, where = '1 = 1', ...values) { return (await db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).bind(...values).first()).n; },
     exec(sql) { db.sqlite.exec(sql); },
   };
-  return world;
+  // Identity-change protection (lane B6b part 2a): this suite links and unlinks as a staff account without being about fresh-auth, so such requests get their grant first.
+  return require('../guild-auto-fresh').autoFresh(world);
 }
 
 async function signIn(world, person, servers = []) {
@@ -456,6 +457,8 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('fresh.failed', 'user', 'u_erin', null, { count: 1 }), 'A sign-in check for a sensitive act failed'],
     [row('fresh.failed', 'user', 'u_erin', null, { count: 7, coalesced: true }), 'A sign-in check for a sensitive act failed 7 times in an hour'],
     [row('guild.claim_failed', 'user', 'u_erin', null, { count: 3, coalesced: true }), 'A claim of the Guild Master seat failed 3 times in an hour'],
+    [row('identity.change', 'user', 'u_erin', null, { provider: 'bnet', change: 'link' }), 'Connected the Battle.net sign-in of Erin E'],
+    [row('identity.change', 'user', 'u_erin', null, { provider: 'discord', change: 'unlink' }), 'Disconnected the Discord sign-in of Erin E'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {

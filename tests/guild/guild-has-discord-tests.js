@@ -252,7 +252,7 @@ const SERVER_ID_FILES = {
   'worker/discord-sync.js': { how: 'guard', count: 7 },
   'worker/event-refresh.js': { how: 'guard', count: 2 },
   'worker/flip-preview.js': { how: 'guard', count: 1 },
-  'worker/membership.js': { how: 'data', count: 4 },
+  'worker/membership.js': { how: 'data', count: 5 },
   'worker/permissions.js': { how: 'fragment', count: 2 },
   'worker/roster-view.js': { how: 'fragment', count: 2 },
   'worker/routes/accounts.js': { how: 'fragment', count: 1 },

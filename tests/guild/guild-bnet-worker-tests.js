@@ -135,7 +135,8 @@ async function makeWorld({ allowlist = [], env = {} } = {}) {
     asked(kind, pathPrefix) { return bnet.state.requests.filter((r) => (!kind || r.token === kind) && (!pathPrefix || r.path.startsWith(pathPrefix))); },
   };
   openWorlds.push(world);
-  return world;
+  // Identity-change protection (lane B6b part 2a): this suite links and unlinks as a staff account without being about fresh-auth, so such requests get their grant first.
+  return require('../guild-auto-fresh').autoFresh(world);
 }
 
 async function signIn(world, person, servers = [], jar = {}) {
