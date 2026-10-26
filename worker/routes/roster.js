@@ -202,20 +202,20 @@ function requireGuildWideEditForTeamlessMain(guildContext) {
 // Person writes below repeat the authorization inside the statement (SQL is written out, never interpolated):
 // "AND EXISTS (... is_main = 1 AND team_id IS ?)" = the Main is still on the home team the caller was authorized against (NULL for a Main on no team).
 
-function audit(ctx, guildContext, action, entityType, entityId, before, after, guard = null) {
+export function audit(ctx, guildContext, action, entityType, entityId, before, after, guard = null) {
   return auditStatement(ctx, {
     guildId: guildContext.guild.id, actorUserId: ctx.session.user.id, action, entityType, entityId, before, after,
   }, guard);
 }
 
-async function conflict(ctx, guildContext, personId, message, pick = (record) => record) {
+export async function conflict(ctx, guildContext, personId, message, pick = (record) => record) {
   const record = await personRecordFor(ctx, guildContext, personId);
   if (!record) throw notFound();
   throw new HttpError(409, 'conflict', message, { current: pick(record) });
 }
 
 // One character per person per team (unique index characters_team_person, migration 0032; the writers below check first, the index is the backstop).
-const teamTaken = () => new HttpError(409, 'team_taken', 'That person already has a character on that team.', { field: 'teamId' });
+export const teamTaken = () => new HttpError(409, 'team_taken', 'That person already has a character on that team.', { field: 'teamId' });
 
 function mapCreateError(error) {
   const kind = constraintOf(error);
@@ -582,14 +582,14 @@ export async function deletePerson(ctx) {
 // ---------------------------------------------------------------------------
 // Characters
 
-function findCharacter(data, characterId) {
+export function findCharacter(data, characterId) {
   const entry = data.characters.find((candidate) => candidate.row.id === characterId);
   if (!entry) throw notFound('That character was not found.');
   return entry;
 }
 
 // A guarded character write changed nothing: 404 when the person or character is gone, else 409 with the current record.
-async function characterMoved(ctx, guildContext, personId, characterId) {
+export async function characterMoved(ctx, guildContext, personId, characterId) {
   const reread = await loadPersonData(ctx.db, guildContext.guild.id, personId);
   if (!reread || !reread.characters.some((entry) => entry.row.id === characterId)) throw notFound('That character was not found.');
   return conflict(ctx, guildContext, personId, 'Someone moved this character. The page now shows the current record.');

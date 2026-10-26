@@ -304,6 +304,11 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('character.update', 'character', 'c_th', {}, { changed: ['teamId', 'mainSpec'] }), 'Updated the character Thoren: team and main spec'],
     [row('character.delete', 'character', 'c_old', { personId: 'p_kael' }), 'Removed a character from Kaelith'],
     [row('character.main', 'character', 'c_alt', { mainCharacterId: 'c_th' }, { mainCharacterId: 'c_alt' }), 'Made Thorenmage the Main character'],
+    // User-hierarchy build, lane B3: the team routes.
+    [row('character.place', 'character', 'c_alt', { teamId: null, personId: 'p_thoren' }, { teamId: 't_a', personId: 'p_thoren' }), 'Put the character Thorenmage on Alpha'],
+    [row('character.release', 'character', 'c_alt', { teamId: 't_a', personId: 'p_thoren' }, { teamId: null, personId: 'p_thoren', removeSignups: false }), 'Took the character Thorenmage off Alpha'],
+    [row('character.release', 'character', 'c_alt', { teamId: 't_a', personId: 'p_thoren' }, { teamId: null, personId: 'p_thoren', removeSignups: true }), 'Took the character Thorenmage off Alpha and removed it from the upcoming raids'],
+    [row('character.move', 'character', 'c_alt', { teamId: 't_a', personId: 'p_thoren' }, { teamId: 't_b', personId: 'p_thoren', removeSignups: false }), 'Moved the character Thorenmage from Alpha to Bravo'],
     [row('roster.import', 'team', 't_a', null, { source: 'wcl', people: 1, characters: 12 }), 'Imported 1 person and 12 characters from Warcraft Logs into Alpha'],
     [row('raid.create', 'raid', 'r_1'), 'Created the raid on Tue Oct 21 (Alpha)'],
     [row('raid.delete', 'raid', 'r_gone', { teamId: 't_a', raidOn: '2026-10-21' }), 'Deleted the raid on Wed Oct 21 (Alpha)'],

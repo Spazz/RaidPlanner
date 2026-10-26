@@ -24,7 +24,7 @@ export const GROUP_IDS = AUDIT_GROUPS.map((group) => group.id);
 export const ACTION_GROUP = Object.freeze({
   'person.create': 'roster', 'person.update': 'roster', 'person.delete': 'roster', 'person.notes': 'roster',
   'person.account_link': 'roster', 'person.account_unlink': 'roster',
-  'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'roster.import': 'roster',
+  'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'character.place': 'roster', 'character.release': 'roster', 'character.move': 'roster', 'roster.import': 'roster',
   'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.plan_edit': 'raids', 'raid.manual': 'raids',
   'schedule.update': 'raids', 'schedule.fill': 'raids', 'raid.settings': 'raids', 'roster.publish': 'raids', 'roster.unpublish': 'raids', 'roster.decline': 'signups',
   'away.set': 'signups', 'away.remove': 'signups',
@@ -279,6 +279,9 @@ export function describeRow(row, names = {}) {
     }
     case 'character.delete': return `Removed a character from ${person(before.personId)}`;
     case 'character.main': return `Made ${character(ent)} the Main character`;
+    case 'character.place': return `Put the character ${character(ent)} on ${team(after.teamId)}`;
+    case 'character.release': return `Took the character ${character(ent)} off ${team(before.teamId)}${after.removeSignups ? ' and removed it from the upcoming raids' : ''}`;
+    case 'character.move': return `Moved the character ${character(ent)} from ${team(before.teamId)} to ${team(after.teamId)}${after.removeSignups ? ' and removed it from the upcoming raids of the old team' : ''}`;
     case 'roster.import': {
       const source = SOURCE_LABEL[after.source] || 'a list';
       return `Imported ${plural(Number(after.people) || 0, 'person', 'people')} and ${plural(Number(after.characters) || 0, 'character', 'characters')} from ${source} into ${team(ent)}`;

@@ -31,6 +31,7 @@ import {
   addCharacter, createPerson, deletePerson, getLinkable, getPerson, getRoster, makeMain, patchCharacter, patchPerson,
   removeCharacter, saveNotes,
 } from './routes/roster.js';
+import { deleteCharacterTeam, getTeamSignups, putCharacterTeam } from './routes/team-placement.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
 import { commitCsv, previewCsv } from './routes/roster-import-csv.js';
 import { closeIntent, deleteIntentPick, getIntent, openIntent, putIntentPick } from './routes/intent.js';
@@ -154,6 +155,10 @@ export const ROUTES = [
   { method: 'PATCH', path: '/api/guild/:gid/roster/:pid/characters/:cid', auth: true, handler: patchCharacter },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/characters/:cid', auth: true, handler: removeCharacter },
   { method: 'POST', path: '/api/guild/:gid/roster/:pid/characters/:cid/main', auth: true, handler: makeMain },
+  // Team placement (lane B3): put a character on a team, take it off, move it; and the sign-ups leaving the team would end.
+  { method: 'PUT', path: '/api/guild/:gid/roster/:pid/characters/:cid/team', auth: true, handler: putCharacterTeam },
+  { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/characters/:cid/team', auth: true, handler: deleteCharacterTeam },
+  { method: 'GET', path: '/api/guild/:gid/roster/:pid/characters/:cid/team-signups', auth: true, handler: getTeamSignups },
   { method: 'GET', path: '/api/guild/:gid/raids', auth: true, handler: listRaids },
   { method: 'POST', path: '/api/guild/:gid/raids', auth: true, handler: createRaid },
   { method: 'GET', path: '/api/guild/:gid/raids/:rid', auth: true, handler: getRaid },
