@@ -10,6 +10,7 @@ import { personFromSession, toPerson } from '../person.js';
 import { enforceRateLimit } from '../ratelimit.js';
 import { SINGLE_LINE_STRIP } from '../roster-data.js';
 import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
+import { assertSenior, seniorityOk } from '../seniority.js';
 import { bad, constraintOf, requireEdit } from './roster.js';
 
 export const MAX_DISPLAY_NAME = 32;
@@ -185,8 +186,14 @@ export async function setPersonAccount(ctx) {
   }
   const { player } = data;
   const now = ctx.now();
+  // The Seniority guard (worker/seniority.js): a person whose account ranks the same or above the actor is not relinked or unlinked by them.
+  await assertSenior(db, guildContext, player.id);
+  const senior = seniorityOk(guildId, ctx.session.user.id, player.id);
   // `IS ?` matches a Main on no team (home.id null) too; `= ?` would match nothing and the write would silently do nothing.
-  const onHomeTeam = { sql: 'EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)', params: [home.id] };
+  const onHomeTeam = {
+    sql: 'EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?) AND ' + senior.sql,
+    params: [home.id, ...senior.params],
+  };
 
   if (body.userId === null) {
     if (!player.user_id) return jsonResponse(await personReply(ctx, guildContext, player.id));

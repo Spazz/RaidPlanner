@@ -12,6 +12,7 @@ import {
 import { LIMITS } from '../limits.js';
 import { findRealm } from '../realms.js';
 import { linkSignupsStatement, markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
+import { assertSenior, seniorityDeleteOk, seniorityOk } from '../seniority.js';
 import {
   canSeeAvatars, guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
 } from '../roster-view.js';
@@ -443,6 +444,10 @@ export async function patchPerson(ctx) {
   if (next.discordUserId !== player.discord_user_id) changed.push('link');
   if (changed.length) {
     const now = ctx.now();
+    // Changing the Discord link relinks the person: the Seniority guard (worker/seniority.js) applies, in the pre-check and in both writes below.
+    const relink = changed.includes('link');
+    if (relink) await assertSenior(db, guildContext, player.id);
+    const senior = relink ? seniorityOk(guildContext.guild.id, ctx.session.user.id, player.id) : { sql: '1 = 1', params: [] };
     const snapshot = (state) => ({
       status: state.status, joinedOn: state.joinedOn, trialStart: state.trialStart, trialEnd: state.trialEnd,
       leftOn: state.leftOn, leftReason: state.leftReason, linked: !!state.discordUserId,
@@ -461,8 +466,8 @@ export async function patchPerson(ctx) {
     if (changed.some((key) => ['status', 'trialStart', 'trialEnd', 'leftOn', 'leftReason'].includes(key))) {
       const unchanged = {
         sql: `EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ?)
-              AND EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND is_main = 1 AND team_id IS ?)`,
-        params: [player.id, guildContext.guild.id, player.version, player.id, home.id],
+              AND EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND is_main = 1 AND team_id IS ?) AND ${senior.sql}`,
+        params: [player.id, guildContext.guild.id, player.version, player.id, home.id, ...senior.params],
       };
       statements.push(setCharacterRanksStatement(db, guildContext.guild.id, player.id, characterRankColumns(next), unchanged));
     }
@@ -474,10 +479,10 @@ export async function patchPerson(ctx) {
                 left_on = CASE WHEN ? THEN ? ELSE left_on END, left_reason = CASE WHEN ? THEN ? ELSE left_reason END,
                 discord_user_id = ?, discord_nickname = ?, version = version + 1, updated_at = ?
           WHERE id = ? AND guild_id = ? AND version = ?
-            AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)`,
+            AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?) AND ${senior.sql}`,
       ).bind(...mirrored('status', next.status), next.joinedOn, ...mirrored('trialStart', next.trialStart), ...mirrored('trialEnd', next.trialEnd),
         ...mirrored('leftOn', next.leftOn), ...mirrored('leftReason', next.leftReason), next.discordUserId, next.nickname, now,
-        player.id, guildContext.guild.id, player.version, home.id),
+        player.id, guildContext.guild.id, player.version, home.id, ...senior.params),
       audit(ctx, guildContext, 'person.update', 'person', player.id,
         { ...before, version: player.version },
         { ...snapshot(next), version: player.version + 1, changed },
@@ -542,6 +547,9 @@ export async function deletePerson(ctx) {
   // A character on no team is covered by the person's home team (editTeamOf): whoever may edit the Main may delete its alts.
   for (const teamId of new Set(data.characters.map((entry) => editTeamOf(entry.row, home)))) requireEdit(guildContext, teamId);
   const { player } = data;
+  // The Seniority guard (worker/seniority.js): a junior never deletes a senior's person, and a Battle.net-proven person goes only by the Guild Master.
+  await assertSenior(db, guildContext, player.id, { remove: 'person' });
+  const senior = seniorityDeleteOk(guildContext.guild.id, ctx.session.user.id, player.id);
   // The write repeats the authorization: the Main is still on the home team (which may be none) and every character that sits on a team is still on a
   // team the caller was authorized against.
   const placedTeamIds = teamIds.filter((teamId) => teamId !== null);
@@ -549,8 +557,8 @@ export async function deletePerson(ctx) {
     AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND team_id IS NOT NULL AND team_id NOT IN (SELECT value FROM json_each(?)))`;
   const guardParams = [home.id, JSON.stringify(placedTeamIds)];
   const exists = {
-    sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND ' + stillAuthorized + ')',
-    params: [player.id, guildContext.guild.id, ...guardParams],
+    sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND ' + stillAuthorized + ') AND ' + senior.sql,
+    params: [player.id, guildContext.guild.id, ...guardParams, ...senior.params],
   };
   const results = await db.batch([
     audit(ctx, guildContext, 'person.delete', 'person', player.id,
@@ -559,8 +567,9 @@ export async function deletePerson(ctx) {
       `DELETE FROM players WHERE id = ? AND guild_id = ?
           AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)
           AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND team_id IS NOT NULL AND team_id NOT IN (SELECT value FROM json_each(?)))
+          AND ${senior.sql}
         RETURNING id`,
-    ).bind(player.id, guildContext.guild.id, ...guardParams),
+    ).bind(player.id, guildContext.guild.id, ...guardParams, ...senior.params),
     markRaidsStale(db, guildContext.guild.id, data.characters.map((entry) => nameKey(entry.row.name)), null, teamIds),
   ]);
   if (results[1].results.length !== 1) {
@@ -706,13 +715,17 @@ export async function patchCharacter(ctx) {
   if (teamId !== current.team_id) changed.push('teamId');
   if (changed.length) {
     const now = ctx.now();
+    // The Seniority guard (worker/seniority.js) covers what renames or moves a character; class and spec stay with whoever edits the roster.
+    const identity = changed.includes('name') || changed.includes('teamId');
+    if (identity) await assertSenior(db, guildContext, data.player.id);
+    const senior = identity ? seniorityOk(guild.id, ctx.session.user.id, data.player.id) : { sql: '1 = 1', params: [] };
     let results;
     try {
       results = await db.batch([
         db.prepare(
           `UPDATE characters SET name = ?, name_key = ?, class = ?, main_spec = ?, off_spec = ?, team_id = ?, updated_at = ?
-            WHERE id = ? AND player_id = ? AND guild_id = ? AND team_id IS ?`,
-        ).bind(name, nameKey(name), classId, specs.mainSpec, specs.offSpec, teamId, now, current.id, data.player.id, guild.id, current.team_id),
+            WHERE id = ? AND player_id = ? AND guild_id = ? AND team_id IS ? AND ${senior.sql}`,
+        ).bind(name, nameKey(name), classId, specs.mainSpec, specs.offSpec, teamId, now, current.id, data.player.id, guild.id, current.team_id, ...senior.params),
         audit(ctx, guildContext, 'character.update', 'character', current.id,
           { teamId: current.team_id, class: current.class, mainSpec: current.main_spec, offSpec: current.off_spec },
           { teamId, class: classId, mainSpec: specs.mainSpec, offSpec: specs.offSpec, changed },
@@ -760,15 +773,18 @@ export async function removeCharacter(ctx) {
   const entry = findCharacter(data, ctx.params.cid);
   const target = entry.row;
   requireEdit(guildContext, editTeamOf(target, home));
+  // The Seniority guard: a junior never removes a senior's character, and a Battle.net-proven one goes only by the Guild Master (the sync removes the rest).
+  await assertSenior(db, guildContext, data.player.id, { remove: target.id });
+  const senior = seniorityDeleteOk(guildContext.guild.id, ctx.session.user.id, data.player.id, target.id);
   const removable = {
-    sql: 'EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ?)',
-    params: [target.id, data.player.id, target.team_id],
+    sql: 'EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ?) AND ' + senior.sql,
+    params: [target.id, data.player.id, target.team_id, ...senior.params],
   };
   const results = await db.batch([
     audit(ctx, guildContext, 'character.delete', 'character', target.id,
       { personId: data.player.id, teamId: target.team_id, class: target.class, mainSpec: target.main_spec, offSpec: target.off_spec }, null, removable),
-    db.prepare('DELETE FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ? RETURNING id')
-      .bind(target.id, data.player.id, target.team_id),
+    db.prepare(`DELETE FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ? AND ${senior.sql} RETURNING id`)
+      .bind(target.id, data.player.id, target.team_id, ...senior.params),
     markRaidsStale(db, guildContext.guild.id, [nameKey(target.name)], null, target.team_id ? [target.team_id] : []),
   ]);
   if (results[1].results.length !== 1) {
