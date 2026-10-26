@@ -5,7 +5,7 @@ import { auditStatement } from '../audit.js';
 import { raidAwayEffects, readNotices, realSignupsStatement, teamCharactersStatement, teamNoticesStatement } from '../away-store.js';
 import { localDate, localTimeToMs } from '../attendance-calendar.js';
 import {
-  bumpDayStatement, loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid,
+  PLAN_NAME_KEY, bumpDayStatement, loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid,
 } from '../attendance-store.js';
 import { displayCharacter, loadRaidDetail, raidState, isStale } from '../attendance-view.js';
 import { hasDiscord, requireDiscord } from '../discord-guard.js';
@@ -880,8 +880,10 @@ export async function getPlanner(ctx) {
     ctx.db.prepare(RECENT_RAIDS_SQL).bind(...recentBinds),
     ctx.db.prepare(`SELECT a.player_id, a.raid_id FROM attendance a WHERE a.raid_id IN (${RECENT_RAIDS_SQL}) AND a.outcome = 'bench'`).bind(...recentBinds),
     ctx.db.prepare(
-      `SELECT c.player_id, p.raid_id FROM raid_plan p JOIN characters c ON c.guild_id = ? AND c.name_key = p.name_key
-        WHERE p.raid_id IN (${RECENT_RAIDS_SQL}) AND p.group_number = 0 AND c.player_id IS NOT NULL`,
+      // A seat is a stored NAME: it counts for the character that carried it when the raid was held (worker/name-alias.js), so an old bench seat of a re-homed
+      // character stays with the person who had it then.
+      `SELECT c.player_id, pl.raid_id FROM raid_plan pl JOIN raids pr ON pr.id = pl.raid_id JOIN characters c ON c.guild_id = ? AND c.name_key = ${PLAN_NAME_KEY}
+        WHERE pl.raid_id IN (${RECENT_RAIDS_SQL}) AND pl.group_number = 0 AND c.player_id IS NOT NULL`,
     ).bind(guild.id, ...recentBinds),
   );
   const results = await ctx.db.batch(statements);

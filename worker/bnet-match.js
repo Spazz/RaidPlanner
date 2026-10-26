@@ -67,9 +67,10 @@ export const CALLBACK_STATEMENT_BUDGET = 45;
 // The cheapest join: 3 reads (the pair, their characters, the counts) + the lean batch of an empty loser (journal, audit, team clear, move, stale marking, survivor,
 // delete) + the proof stamping that follows it.
 const JOIN_MIN_STATEMENTS = 14;
-// The most a re-home can take: its read, then up to 11 statements (the opening audit row, the sign-ups and stale marking, the move, the Main hand-over, the placeholder,
-// the alias and the older aliases' move, the versions), the bind of a name collision with its audit row (2) and the proof stamping (2).
-const REHOME_MAX_STATEMENTS = 16;
+// The most a re-home can take: its read, then up to 14 statements (the opening audit row, the sign-ups, roster seats and team request, the stale marking, the placeholder
+// Main's step-down, the move, the Main hand-over, the placeholder, the alias and the older aliases' move, the versions), the bind of a name collision with its audit row (2)
+// and the proof stamping (2).
+const REHOME_MAX_STATEMENTS = 19;
 // A guild batch gives up the names of at most this many Former characters at once (4 statements each); the rest wait for the next sign-in.
 const MAX_RETIRES = 2;
 const CLASS_LIST = `(${CLASS_IDS.map((id) => `'${id}'`).join(', ')})`;
@@ -164,14 +165,15 @@ export function clearBnetProofStatement(db, userId, guard) {
 
 // Every snapshot character that is on the roster of a guild running on the in-game roster, with the character that holds the key (if any), the character with the
 // same name and realm when nobody holds the key (the collider R), and the person of whichever it is (hp: the holder's, else the collider's). json_each (the snapshot)
-// drives it: each key is one guild_roster_identity lookup, then primary-key and unique-index lookups (no scan of guild_roster, characters or players). A person's
+// drives it: each key is one guild_roster_identity lookup, then primary-key and unique-index lookups (no scan of guild_roster, characters or players). The collider is
+// found by the realm rule of the GUILD: a ruleset guild's characters have no realm and an empty realm_key, whatever realm the snapshot says. A person's
 // size and Main are its VISIBLE characters' (worker/character-visibility.js); a hidden Main is told apart (holder_hidden_main) because a new Main must replace it.
 const MATCHES_SQL = `SELECT g.id AS guild_id, g.time_zone, g.game_version, g.region, g.realm, g.realm_kind,
        EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = ?) AS blocked,
        EXISTS (SELECT 1 FROM block_tombstones bt WHERE bt.guild_id = g.id) AS has_tombstones,
        gr.namespace, gr.blizzard_realm_id AS realm_id, gr.blizzard_char_id AS char_id, gr.name, gr.name_key, gr.class, gr.rank,
        COALESCE((SELECT sm.core_rank FROM source_rank_maps sm WHERE sm.guild_id = g.id AND sm.source = 'ingame' AND sm.team_id IS NULL AND sm.source_key = CAST(gr.rank AS TEXT)), 'social') AS mapped_rank,
-       ch.id AS character_id, co.id AS collider_id, co.blizzard_char_id AS collider_key, co.left_on AS collider_left, co.team_id AS collider_team,
+       ch.id AS character_id, co.id AS collider_id, co.realm_key AS collider_realm_key, co.blizzard_char_id AS collider_key, co.left_on AS collider_left, co.team_id AS collider_team,
        EXISTS (SELECT 1 FROM guild_roster cr WHERE co.blizzard_char_id IS NOT NULL AND cr.guild_id = co.guild_id AND cr.namespace = co.namespace
                   AND cr.blizzard_realm_id = co.blizzard_realm_id AND cr.blizzard_char_id = co.blizzard_char_id) AS collider_on_roster,
        hp.id AS holder_id, hp.user_id AS holder_user, hp.discord_user_id AS holder_discord, hp.version AS holder_version,
@@ -185,7 +187,8 @@ const MATCHES_SQL = `SELECT g.id AS guild_id, g.time_zone, g.game_version, g.reg
   CROSS JOIN guild_roster gr ON gr.namespace = json_extract(j.value, '$[0]') AND gr.blizzard_realm_id = json_extract(j.value, '$[1]') AND gr.blizzard_char_id = json_extract(j.value, '$[2]')
   JOIN guilds g ON g.id = gr.guild_id AND g.rank_source = 'ingame'
   LEFT JOIN characters ch ON ch.guild_id = gr.guild_id AND ch.namespace = gr.namespace AND ch.blizzard_realm_id = gr.blizzard_realm_id AND ch.blizzard_char_id = gr.blizzard_char_id
-  LEFT JOIN characters co ON ch.id IS NULL AND co.guild_id = gr.guild_id AND co.name_key = gr.name_key AND co.realm_key = json_extract(j.value, '$[3]')
+  LEFT JOIN characters co ON ch.id IS NULL AND co.guild_id = gr.guild_id AND co.name_key = gr.name_key
+       AND co.realm_key = CASE WHEN g.realm_kind = 'ruleset' THEN '' ELSE json_extract(j.value, '$[3]') END
   LEFT JOIN players hp ON hp.id = COALESCE(ch.player_id, co.player_id)
  ORDER BY g.id, gr.rank, gr.name_key`;
 
@@ -368,6 +371,14 @@ function bindStatements(ctx, { guildId, characterId, holderId, row, userId, now,
   return [update, audit];
 }
 
+// The conditions under which bindStatements' UPDATE changes the character: still unkeyed and not Former, still named for the roster row, and nobody else holds the key.
+// The collision re-home carries them in its opening row, so a character that cannot take the key does not move without it.
+const bindable = (guildId, characterId, row) => ({
+  sql: `(EXISTS (SELECT 1 FROM characters bc WHERE bc.id = ? AND bc.guild_id = ? AND bc.blizzard_char_id IS NULL AND bc.left_on IS NULL AND bc.name_key = ?)
+        AND NOT EXISTS (SELECT 1 FROM characters bh WHERE bh.guild_id = ? AND bh.namespace = ? AND bh.blizzard_realm_id = ? AND bh.blizzard_char_id = ?))`,
+  params: [characterId, guildId, row.name_key, guildId, row.namespace, row.realm_id, row.char_id],
+});
+
 const personIsMine = (personId, guildId, userId) => ({
   sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND user_id = ?)', params: [personId, guildId, userId],
 });
@@ -414,12 +425,13 @@ function guildStatements(ctx, plan, { userId, bnetAccountId, now }) {
   // A name collision: the characters that give the name up become Former first (the new character takes the name), the unkeyed ones take the key.
   for (const entry of plan.retires) {
     statements.push(...retireNameStatements(db, {
-      guildId, characterId: entry.row.collider_id, expected: { nameKey: entry.row.name_key, realmKey: entry.item.realmKey, blizzardCharId: entry.row.collider_key },
+      guildId, characterId: entry.row.collider_id, expected: { nameKey: entry.row.name_key, realmKey: entry.row.collider_realm_key, blizzardCharId: entry.row.collider_key },
       actorUserId: userId, now, timeZone: plan.guild.time_zone, guards: [mine], randomBytes: ctx.randomBytes, teamId: entry.row.collider_team,
     }));
   }
   for (const entry of plan.binds) {
-    statements.push(...bindStatements(ctx, { guildId, characterId: entry.characterId, holderId: entry.holderId, row: entry.row, userId, now, guard: and(ingame, notBlocked(guildId, userId)) }));
+    // `mine` holds only once the account's person exists (made or linked by the statements above, or already there): a link or create that did nothing binds nothing.
+    statements.push(...bindStatements(ctx, { guildId, characterId: entry.characterId, holderId: entry.holderId, row: entry.row, userId, now, guard: mine }));
   }
 
   if (plan.inserts.length) {
@@ -519,6 +531,8 @@ async function rehomeBatch(ctx, candidate, { userId, bnetAccountId, now, byKey, 
       params: [characterId, bnetAccountId, fetchedAt],
     },
   ];
+  // The bind is a precondition of the move: the key goes onto the typed character and the character goes with it, or neither happens.
+  if (bind) guards.push(bindable(guildId, characterId, row));
   let rehome = null;
   try {
     rehome = await rehomeStatements(db, {

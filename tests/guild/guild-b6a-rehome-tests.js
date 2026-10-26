@@ -439,7 +439,7 @@ check('rehome: one batch moves the character, hands over the Main, leaves a plac
   assert.equal(plan.fromPersonId, A.pid);
   assert.equal(plan.toPersonId, B.pid);
   assert.equal(plan.wasMain, true);
-  assert.equal(plan.statements.length, 11, 'the batch: opening audit, 4 sign-up and stale statements, move, Main, placeholder, alias, older aliases, versions (one read before it)');
+  assert.equal(plan.statements.length, 14, 'the batch: opening audit, 6 sign-up, roster seat, team request and stale statements, placeholder Main step-down, move, Main, placeholder, alias, older aliases, versions (one read before it)');
 
   // the character: B's now, on its team (B has none there), not the Main (B has one)
   const moved = sOne(s, 'SELECT * FROM characters WHERE id = ?', A.cid);
@@ -473,7 +473,7 @@ check('rehome: one batch moves the character, hands over the Main, leaves a plac
   assert.equal(audit.length, 1);
   assert.deepEqual([audit[0].entity_type, audit[0].entity_id, audit[0].actor_user_id, audit[0].guild_id], ['character', A.cid, s.uids.gm, s.gid]);
   assert.deepEqual(JSON.parse(audit[0].before), { personId: A.pid, teamId: alpha, wasMain: true });
-  assert.deepEqual(JSON.parse(audit[0].after), { personId: B.pid, placeholderId: plan.placeholderId, reason: 'bnet_beats_link' });
+  assert.deepEqual(JSON.parse(audit[0].after), { personId: B.pid, reason: 'bnet_beats_link' }, 'the log row carries no placeholder id (review fixes 2, L6)');
   assert(!`${audit[0].before} ${audit[0].after}`.includes('Foo'));
   const shown = (await s.ok('gm', 'GET', '/audit?group=roster')).rows.find((row) => row.action === 'character.rehome');
   assert.equal(shown.text, 'Moved Foo from Fooalt to Bar, because the Battle.net account that owns it proved it', 'the old person is named by what it still has');
@@ -1035,7 +1035,8 @@ check('the name collision, squat-then-enrol: an officer typed Aldric into someon
   assert.equal(matched.length, 1);
   assert.deepEqual([matched[0].entity_id, matched[0].after.via, matched[0].after.blizzardCharId], [CID(2), 'bnet', idOf('Aldric')]);
   assert.equal(auditOf(w, 'person.match_create').length, 1);
-  assert.deepEqual(w.logs.filter((line) => /bnet match/.test(line)), [], 'nothing deferred');
+  // The callback is at 35 of its 45 statements: the account-wide tombstone pass (3 reads and at least 8 more) has no room and waits for the next callback (review fixes 2, L8).
+  assert.deepEqual(w.logs.filter((line) => /bnet match/.test(line)), ['bnet match deferred: budget'], 'only the tombstone pass of other guilds waits');
   assert(statements <= 45, `${statements} statements`);
   measured.rehomeCollision = statements;
   // the Activity view reads it
