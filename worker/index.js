@@ -35,6 +35,8 @@ import {
   removeCharacter, saveNotes,
 } from './routes/roster.js';
 import { deleteCharacterTeam, getTeamSignups, listUnassigned, putCharacterTeam } from './routes/team-placement.js';
+import { joinPerson } from './routes/person-join.js';
+import { matchToRoster } from './routes/roster-match.js';
 import { approveTeamRequest, createTeamRequest, listTeamRequests, rejectTeamRequest, withdrawTeamRequest } from './routes/team-requests.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
 import { commitCsv, previewCsv } from './routes/roster-import-csv.js';
@@ -163,6 +165,9 @@ export const ROUTES = [
   { method: 'PATCH', path: '/api/guild/:gid/roster/:pid/characters/:cid', auth: true, handler: patchCharacter },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/characters/:cid', auth: true, handler: removeCharacter },
   { method: 'POST', path: '/api/guild/:gid/roster/:pid/characters/:cid/main', auth: true, handler: makeMain },
+  // Hierarchy B6a: an officer joins two persons into one; an officer binds an id-less character to its place on the in-game roster.
+  { method: 'POST', path: '/api/guild/:gid/roster/:pid/join', auth: true, handler: joinPerson },
+  { method: 'POST', path: '/api/guild/:gid/roster/:pid/characters/:cid/match', auth: true, handler: matchToRoster },
   // Team placement (lane B3): put a character on a team, take it off, move it; and the sign-ups leaving the team would end.
   { method: 'PUT', path: '/api/guild/:gid/roster/:pid/characters/:cid/team', auth: true, handler: putCharacterTeam },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/characters/:cid/team', auth: true, handler: deleteCharacterTeam },

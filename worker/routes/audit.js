@@ -63,9 +63,17 @@ function rowsStatement(db, guildId, filters, limit) {
   );
 }
 
+// A person that was joined into another after a row was written (worker/person-join.js): the audit rows keep its id, person_joins says who took its place. Each id of ?2
+// is followed to the end of its chain (a survivor can be joined into a third person later), the longest chain last per origin. Not a compound SELECT of five terms.
+const JOINED_SQL = `WITH RECURSIVE chain(origin, id, depth) AS (
+    SELECT value, value, 0 FROM json_each(?2)
+    UNION ALL
+    SELECT chain.origin, pj.survivor_player_id, chain.depth + 1 FROM chain JOIN person_joins pj ON pj.guild_id = ?1 AND pj.loser_player_id = chain.id WHERE chain.depth < 10)
+  SELECT origin, id FROM chain ORDER BY origin, depth`;
+
 // The names the sentences of these rows need, in one batch. -> the `names` object describeRow reads.
 export async function loadNames(db, guildId, refs, teams) {
-  const [personResult, characterResult, raidResult, userResult, awardResult, claimResult] = await db.batch([
+  const [personResult, characterResult, raidResult, userResult, awardResult, claimResult, joinedResult] = await db.batch([
     db.prepare(
       `SELECT player_id, name FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT value FROM json_each(?2)) ORDER BY is_main DESC, name`,
     ).bind(guildId, idsOf(refs.persons)),
@@ -74,9 +82,20 @@ export async function loadNames(db, guildId, refs, teams) {
     db.prepare('SELECT id, username, global_name, display_name FROM users WHERE id IN (SELECT value FROM json_each(?1))').bind(idsOf(refs.users)),
     db.prepare('SELECT id, item_name, item_id FROM loot_awards WHERE guild_id = ?1 AND id IN (SELECT value FROM json_each(?2))').bind(guildId, idsOf(refs.awards)),
     db.prepare('SELECT id, name FROM character_claims WHERE guild_id = ?1 AND id IN (SELECT value FROM json_each(?2))').bind(guildId, idsOf(refs.claims)),
+    db.prepare(JOINED_SQL).bind(guildId, idsOf(refs.persons)),
   ]);
   const persons = new Map();
   for (const row of personResult.results) if (!persons.has(row.player_id)) persons.set(row.player_id, row.name);
+  // A joined person reads as the person that took its place: one more read, only when some id was joined away.
+  const tookPlace = new Map();
+  for (const row of joinedResult.results) tookPlace.set(row.origin, row.id);
+  const wanted = [...new Set([...tookPlace.values()].filter((id) => !persons.has(id)))];
+  if (wanted.length) {
+    const more = await db.prepare(
+      `SELECT player_id, name FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT value FROM json_each(?2)) ORDER BY is_main DESC, name`,
+    ).bind(guildId, idsOf(new Set(wanted))).all();
+    for (const row of more.results) if (!persons.has(row.player_id)) persons.set(row.player_id, row.name);
+  }
   const characters = new Map(characterResult.results.map((row) => [row.id, row.name]));
   const teamNames = new Map(teams.map((team) => [team.id, team.name]));
   const several = teams.filter((team) => team.archived === 0).length > 1;
@@ -85,7 +104,7 @@ export async function loadNames(db, guildId, refs, teams) {
   const awards = new Map(awardResult.results.map((row) => [row.id, row.item_name || `item ${row.item_id}`]));
   const claims = new Map(claimResult.results.map((row) => [row.id, row.name]));
   return {
-    person: (id) => persons.get(id) || null,
+    person: (id) => persons.get(id) || persons.get(tookPlace.get(id)) || null,
     character: (id) => characters.get(id) || null,
     team: (id) => teamNames.get(id) || null,
     raid: (id) => {

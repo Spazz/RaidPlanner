@@ -23,7 +23,7 @@ export const GROUP_IDS = AUDIT_GROUPS.map((group) => group.id);
 // action of audit.js has no entry, so a new action gets a conscious home.
 export const ACTION_GROUP = Object.freeze({
   'person.create': 'roster', 'person.update': 'roster', 'person.delete': 'roster', 'person.notes': 'roster',
-  'person.account_link': 'roster', 'person.account_unlink': 'roster',
+  'person.account_link': 'roster', 'person.account_unlink': 'roster', 'person.join': 'roster', 'character.match_roster': 'roster',
   'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'character.place': 'roster', 'character.release': 'roster', 'character.move': 'roster', 'team_request.create': 'roster', 'team_request.withdraw': 'roster', 'team_request.approve': 'roster', 'team_request.reject': 'roster', 'roster.import': 'roster',
   'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.plan_edit': 'raids', 'raid.manual': 'raids',
   'schedule.update': 'raids', 'schedule.fill': 'raids', 'raid.settings': 'raids', 'roster.publish': 'raids', 'roster.unpublish': 'raids', 'roster.decline': 'signups',
@@ -95,6 +95,7 @@ export function collectRefs(rows) {
       take(refs.raids, 'r', side.raidId);
       take(refs.characters, 'c', side.mainCharacterId);
       take(refs.characters, 'c', side.characterId);
+      for (const id of Array.isArray(side.characterIds) ? side.characterIds : []) take(refs.characters, 'c', id);
       take(refs.users, 'u', side.guildMasterUserId);
       take(refs.users, 'u', side.userId);
       for (const id of Array.isArray(side.teamLeadTeamIds) ? side.teamLeadTeamIds : []) take(refs.teams, 't', id);
@@ -436,6 +437,13 @@ export function describeRow(row, names = {}) {
       const moved = Number(after.charactersChanged) || 0;
       return `Changed the in-game rank map (${Number(after.mapChanges) || 0} ${Number(after.mapChanges) === 1 ? 'rank' : 'ranks'} edited, ${moved} ${moved === 1 ? 'character' : 'characters'} moved)`;
     }
+    // A join keeps the loser's id in the log: its name is the survivor's (the loser's characters moved there), so the sentence names the loser by its characters.
+    case 'person.join': {
+      const moved = (Array.isArray(before.characterIds) ? before.characterIds : []).map((id) => get('character', id, null)).filter(Boolean);
+      return `Joined ${moved.length ? `the person with ${list(moved)}` : 'a person'} into ${person(after.personId || ent)}${after.via === 'bnet' ? ' (proved by Battle.net)' : ''}`;
+    }
+    case 'character.match_roster':
+      return `Matched ${character(ent)} to its place on the in-game roster${after.renamed ? ' and took its name' : ''}`;
     case 'character.claim': return after.outcome === 'link_person'
       ? `Linked their account to ${person(after.personId)} through ${character(ent)}`
       : `Added ${character(ent)} to their own record${after.source === 'hand' ? ' by hand' : ' from Battle.net'}`;

@@ -119,13 +119,25 @@ const MARK_PERSON_STALE_SQL = `UPDATE raids SET policy_fp = '', version = versio
         AND (id IN (${loggedUnder('SELECT name_key FROM characters WHERE guild_id = ?1 AND player_id = ?2')})
              OR (team_id IN (SELECT team_id FROM characters WHERE guild_id = ?1 AND player_id = ?2) AND ${HAS_EVIDENCE}))`;
 
-export function markRaidsStale(db, guildId, nameKeys, exceptRaidId = null, teamIds = []) {
-  return db.prepare(MARK_STALE_SQL).bind(guildId, exceptRaidId || '', JSON.stringify([...new Set(nameKeys)]), JSON.stringify([...new Set(teamIds)]));
+// `guard` ({ sql, params }, optional) is another condition of the write: a batch whose statements all carry one marks nothing when it fails. The two statements number
+// their placeholders (?1-?4 and ?1-?2), so the guard's anonymous ones are numbered on after them (D1 does not mix the two forms).
+const guardedAfter = (guard, last) => {
+  let next = last;
+  return { sql: guard.sql.replace(/[?]/g, () => `?${++next}`), params: guard.params };
+};
+
+export function markRaidsStale(db, guildId, nameKeys, exceptRaidId = null, teamIds = [], guard = null) {
+  const values = [guildId, exceptRaidId || '', JSON.stringify([...new Set(nameKeys)]), JSON.stringify([...new Set(teamIds)])];
+  if (!guard) return db.prepare(MARK_STALE_SQL).bind(...values);
+  const numbered = guardedAfter(guard, 4);
+  return db.prepare(MARK_STALE_SQL + ' AND ' + numbered.sql).bind(...values, ...numbered.params);
 }
 
 // A person's status, join date or Discord link changed: every raid of every team they have a character on, plus the raids naming them.
-export function markPersonRaidsStale(db, guildId, playerId) {
-  return db.prepare(MARK_PERSON_STALE_SQL).bind(guildId, playerId);
+export function markPersonRaidsStale(db, guildId, playerId, guard = null) {
+  if (!guard) return db.prepare(MARK_PERSON_STALE_SQL).bind(guildId, playerId);
+  const numbered = guardedAfter(guard, 2);
+  return db.prepare(MARK_PERSON_STALE_SQL + ' AND ' + numbered.sql).bind(guildId, playerId, ...numbered.params);
 }
 
 // Raid-Helper sign-ups nobody is linked to take this person: every row of the guild with the Discord ID, or (a sign-up without one) just that one row.
