@@ -537,7 +537,7 @@ const PLAYERS_USER_ID_ALLOWED = {
   'worker/routes/accounts.js': { count: 3, reason: 'an officer links or unlinks an account (writes) and the "already another person\'s" check' },
   'worker/routes/applications.js': { count: 1, reason: 'write: an accepted application makes a person linked to the applicant' },
   'worker/routes/attendance.js': { count: 2, reason: 'select lists: the person columns the attendance views show' },
-  'worker/routes/auth.js': { count: 2, reason: 'identity guards: a Discord link must not put two people of a guild on one account; Delete my data unlinks the account\'s people' },
+  'worker/routes/auth.js': { count: 4, reason: 'identity guards: a Discord link must not put two people of a guild on one account; Delete my data unlinks the account\'s people, and first puts the account\'s block on its person (the person_blocks marker and its audit row)' },
   'worker/routes/bnet-claims.js': { count: 1, reason: 'guard of an approved claim: the person is still the claimant\'s' },
   'worker/routes/bnet.js': { count: 1, reason: 'claim fixtures: who owns the characters a Battle.net list names' },
   'worker/routes/loot.js': { count: 1, reason: 'select list: the person columns of a loot award' },

@@ -2,7 +2,9 @@
 // After the flip an id-less character (hand-added, imported, claimed before it) is bound to its place on the in-game roster by an officer, or by its owner's Battle.net
 // proof, and by nothing else. The officer picks the guild_roster row; the character takes that row's identity key, name, name_key and class and keeps everything else
 // (team, specs when the class is the same, the person, owner_proof: it stays 'officer' or 'hand', never 'bnet').
-//   rights    roster.edit on the character's team (the whole guild for a character on no team), and the Seniority guard (worker/seniority.js)
+//   rights    roster.edit on the character's team (the whole guild for a character on no team), the Seniority guard (worker/seniority.js) and, for a roster row whose
+//             in-game rank the guild's map gives an elevated role (Guild Master, Officer, Team Lead), the Owner or an actor strictly senior to that role: the key makes
+//             whoever owns the character that rank (403 `seniority`, rosterRowOk)
 //   refused   409 already_bound (the character has an identity key) | 409 left_guild (left_on is set: a Former character is never bound) | 409 identity_taken (another
 //             character of the guild holds that key) | 409 name_taken (another character already carries the roster row's name) | 404 not_found (no such row in THIS guild's
 //             guild_roster, or no such character)
@@ -18,7 +20,7 @@ import { loadGuildContext } from '../permissions.js';
 import { ingameGuard, rankMapApplyStatements } from '../rank-map.js';
 import { CLASS_IDS, isSpecOf } from '../roster-data.js';
 import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
-import { assertSenior, seniorityOk } from '../seniority.js';
+import { assertMayMatchRow, assertSenior, rosterRowOk, seniorityOk } from '../seniority.js';
 import { bad, characterMoved, constraintOf, findCharacter, findNameOwner, nameTaken, requireEdit } from './roster.js';
 
 const notFound = (message) => new HttpError(404, 'not_found', message);
@@ -31,19 +33,22 @@ function readKey(body) {
 }
 
 // The guard repeated in every statement: ?-placeholders only, bound in this order.
-function matchGuard({ guildId, personId, current, row, key, senior }) {
+// The character is guarded as the officer saw it: its name, team, class and both specs (it has no version column), so an edit that lands between the read and the
+// write makes the whole batch a no-op instead of being overwritten by values computed from the old record.
+function matchGuard({ guildId, personId, current, row, key, senior, rowOk }) {
   return {
     sql: `EXISTS (SELECT 1 FROM characters mc WHERE mc.id = ? AND mc.guild_id = ? AND mc.player_id = ? AND mc.blizzard_char_id IS NULL AND mc.left_on IS NULL
-                    AND mc.name_key = ? AND mc.team_id IS ?)
+                    AND mc.name_key = ? AND mc.team_id IS ? AND mc.class = ? AND mc.main_spec IS ? AND mc.off_spec IS ?)
           AND EXISTS (SELECT 1 FROM guild_roster mg WHERE mg.guild_id = ? AND mg.namespace = ? AND mg.blizzard_realm_id = ? AND mg.blizzard_char_id = ?
                         AND mg.name_key = ? AND mg.class = ?)
           AND NOT EXISTS (SELECT 1 FROM characters mo WHERE mo.guild_id = ? AND mo.namespace = ? AND mo.blizzard_realm_id = ? AND mo.blizzard_char_id = ?)
-          AND ${senior.sql}`,
+          AND ${senior.sql} AND ${rowOk.sql}`,
     params: [
-      current.id, guildId, personId, current.name_key, current.team_id,
+      current.id, guildId, personId, current.name_key, current.team_id, current.class, current.main_spec, current.off_spec,
       guildId, key.namespace, key.realmId, key.charId, row.name_key, row.class,
       guildId, key.namespace, key.realmId, key.charId,
       ...senior.params,
+      ...rowOk.params,
     ],
   };
 }
@@ -62,6 +67,7 @@ export async function matchToRoster(ctx) {
   }
   if (current.left_on) throw new HttpError(409, 'left_guild', 'This character has left the guild. A character that left is never matched to the roster.');
   await assertSenior(db, guildContext, data.player.id);
+  await assertMayMatchRow(db, guildContext, key);
 
   const [rowResult, holderResult, sourceResult, keysResult] = await db.batch([
     db.prepare('SELECT name, name_key, class FROM guild_roster WHERE guild_id = ? AND namespace = ? AND blizzard_realm_id = ? AND blizzard_char_id = ?')
@@ -74,7 +80,9 @@ export async function matchToRoster(ctx) {
   const row = rowResult.results[0];
   const stored = keysResult.results[0];
   if (!stored) throw notFound('That character was not found.');
-  const old = { id: current.id, name_key: stored.name_key, realm_key: stored.realm_key, team_id: current.team_id };
+  const old = {
+    id: current.id, name_key: stored.name_key, realm_key: stored.realm_key, team_id: current.team_id, class: current.class, main_spec: current.main_spec ?? null, off_spec: current.off_spec ?? null,
+  };
   if (!row) throw notFound('That character is not on the in-game roster.');
   if (holderResult.results.length) throw new HttpError(409, 'identity_taken', 'Another character of this guild is already linked to that place on the roster.', { field: 'blizzardCharId' });
   if (!CLASS_IDS.includes(row.class)) throw new HttpError(409, 'roster_class_unknown', 'The roster row names a class Raidsmith does not know.');
@@ -88,7 +96,9 @@ export async function matchToRoster(ctx) {
   // The specs belong to a class: a different class clears them (a spec is chosen again on the person page).
   const mainSpec = classChanged || !isSpecOf(row.class, current.main_spec) ? null : current.main_spec;
   const offSpec = classChanged || !isSpecOf(row.class, current.off_spec) ? null : current.off_spec;
-  const guard = matchGuard({ guildId: guild.id, personId: data.player.id, current: old, row, key, senior: seniorityOk(guild.id, actorId, data.player.id) });
+  const guard = matchGuard({
+    guildId: guild.id, personId: data.player.id, current: old, row, key, senior: seniorityOk(guild.id, actorId, data.player.id), rowOk: rosterRowOk(guild.id, actorId, key),
+  });
   const guarded = (sql, params) => db.prepare(sql + ' AND ' + guard.sql).bind(...params, ...guard.params);
 
   const statements = [markRaidsStale(db, guild.id, [old.name_key, row.name_key], null, current.team_id ? [current.team_id] : [], guard)];

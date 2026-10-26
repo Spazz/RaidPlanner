@@ -9,18 +9,21 @@
 //   guards ....... [{ sql, params }] repeated (AND) in every statement: the officer route passes the Seniority guard of both persons, the sign-in match its own.
 //   expectedVersions { [personId]: players.version } the versions the caller saw; a difference throws 409 `conflict` before anything is built.
 //   lean ......... the Battle.net sign-in match (a callback has a statement budget): the counts are read in ONE statement and a table the loser has no rows in gets no
-//                  statements (3 reads + 8 to 10 writes for a loser with a few rows, against 3 + about 35). The journal row is inserted only while those tables are
+//                  statements (2 reads + 8 to 10 writes for a loser with a few rows, against 2 + about 35). The journal row is inserted only while those tables are
 //                  STILL empty for the loser and every later statement asks for the journal row, so a row that appeared after the count makes the whole batch a
 //                  no-op (appliedIndex says so). The end state is the one of the full join (tests/guild/guild-b6a-match-tests.js compares them).
 //
 // WHO SURVIVES   the account-linked person (players.user_id), else the older one (created_at, then id).
 // REFUSED        400 same person | 404 a person that is not in this guild | 409 join_owned_by_two: both persons are owned and the sets of owners differ (an owner is the
 //                account of players.user_id, the account whose Discord ID the person carries, else the bare Discord ID: worker/membership.js ownPlayerSql meaning) |
-//                409 join_too_many_characters: the two together hold more than LIMITS.charactersPerPerson.
+//                409 join_too_many_characters: the two together hold more than LIMITS.charactersPerPerson |
+//                409 join_blocked_person: the loser carries a person block (an account-less person an officer blocked) and the survivor belongs to an account. The block
+//                would land on that account, so it is carried only by an OFFICER join whose actor is the Owner or strictly senior to the account, and the account is
+//                neither the Owner nor GM-tier (worker/seniority.js blockCarryOk, checked here and again inside every statement). The Battle.net match never carries one.
 //
 // EVERY table that references players(id) is listed in JOIN_TABLES (tests/guild/guild-b6a-join-tests.js reads PRAGMA foreign_key_list over the whole schema and fails when
 // a table references players and is in neither JOIN_TABLES nor JOIN_SKIPPED). The loser's rows move with UPDATE OR IGNORE; what is left (a row the survivor already
-// has) is deleted. The survivor's row wins every clash except these two:  raid sign-ups (the confirmed one, else the newer) and the Main (the survivor's stays).
+// has) is deleted with the loser by the foreign key's cascade. The survivor's row wins every clash except these two:  raid sign-ups (the confirmed one, else the newer) and the Main (the survivor's stays).
 // Characters are moved with a plain UPDATE after the two clashes (one Main, one character per team) are resolved: a character is never silently dropped (the DELETE of
 // the loser would cascade to it), an unexpected clash aborts the whole batch.
 //
@@ -45,6 +48,7 @@ import { markPersonRaidsStale } from './attendance-store.js';
 import { HttpError } from './http.js';
 import { defaultRandomBytes, newId } from './ids.js';
 import { LIMITS } from './limits.js';
+import { blockCarryOk } from './seniority.js';
 import { isPlaceholderKey, placeholderCharacterSql, visibleCharacterSql } from './character-visibility.js';
 
 export const JOIN_REASONS = Object.freeze(['officer', 'bnet']);
@@ -52,7 +56,7 @@ export const MAX_NOTES = 4000;
 // The tables whose rows make a raid stale when they move (step 3 of the statements).
 const EVIDENCE_TABLES = Object.freeze(['attendance', 'raid_manual', 'raid_signups', 'attendance_decisions', 'raid_roster', 'raid_duties']);
 
-// A table that references players(id) by a foreign key -> how the join treats it. 'keyed': UPDATE OR IGNORE then DELETE what is left (keys = the other columns of the
+// A table that references players(id) by a foreign key -> how the join treats it. 'keyed': UPDATE OR IGNORE, what is left goes with the loser by the cascade (keys = the other columns of the
 // unique key the person id is part of). 'plain': every row moves (no unique key holds the person id). 'special': see the statements below.
 export const JOIN_TABLES = Object.freeze({
   characters: { how: 'special', note: 'the Main steps down and a clashing team is cleared first, then every character moves' },
@@ -87,14 +91,16 @@ const bad = (message, field) => new HttpError(400, 'bad_request', message, { fie
 // ---------------------------------------------------------------------------
 // Reading
 
-const PERSONS_SQL = `SELECT p.id, p.version, p.notes_version, p.created_at, p.user_id, p.discord_user_id, p.discord_nickname, p.joined_on, p.notes,
-       (SELECT u.id FROM users u WHERE u.discord_id = p.discord_user_id) AS discord_account_id,
-       (SELECT u.discord_id FROM users u WHERE u.id = p.user_id) AS user_discord_id
-  FROM players p WHERE p.guild_id = ? AND p.id IN (?, ?)`;
 // Every lookup of characters by person names the index: with only "guild_id = ? AND player_id = ?" to go on the planner takes characters_guild_id and walks the
 // whole guild (a 1,200-member guild reads 1,200 rows per statement, and a join runs this in about 35 statements).
 const BY_PERSON = 'INDEXED BY characters_player';
-const CHARACTERS_SQL = `SELECT id, player_id, team_id, is_main, name_key FROM characters ${BY_PERSON} WHERE guild_id = ? AND player_id IN (?, ?)`;
+// The two persons and their characters in ONE statement (the characters of each person as a JSON list): a join request is that much shorter.
+const PERSONS_SQL = `SELECT p.id, p.version, p.notes_version, p.created_at, p.user_id, p.discord_user_id, p.discord_nickname, p.joined_on, p.notes,
+       (SELECT u.id FROM users u WHERE u.discord_id = p.discord_user_id) AS discord_account_id,
+       (SELECT u.discord_id FROM users u WHERE u.id = p.user_id) AS user_discord_id,
+       (SELECT json_group_array(json_object('id', c.id, 'player_id', c.player_id, 'team_id', c.team_id, 'is_main', c.is_main, 'name_key', c.name_key))
+          FROM characters c ${BY_PERSON} WHERE c.guild_id = p.guild_id AND c.player_id = p.id) AS characters
+  FROM players p WHERE p.guild_id = ? AND p.id IN (?, ?)`;
 
 // The owners of a person as a set of keys: the account of players.user_id, the account whose Discord ID the person carries, else the bare Discord ID.
 function ownerKeysOf(person) {
@@ -115,10 +121,8 @@ function pickSurvivor(a, b) {
 }
 
 async function loadPlan(db, guildId, aId, bId) {
-  const [personResult, characterResult] = await db.batch([
-    db.prepare(PERSONS_SQL).bind(guildId, aId, bId),
-    db.prepare(CHARACTERS_SQL).bind(guildId, aId, bId),
-  ]);
+  const personResult = await db.prepare(PERSONS_SQL).bind(guildId, aId, bId).all();
+  const characterResult = { results: personResult.results.flatMap((row) => JSON.parse(row.characters)) };
   const a = personResult.results.find((row) => row.id === aId);
   const b = personResult.results.find((row) => row.id === bId);
   if (!a || !b) throw new HttpError(404, 'not_found', 'That person was not found.');
@@ -250,6 +254,19 @@ export async function joinPersonsStatements(db, {
   const [countResult] = await db.batch([countRead.statement]);
   const { counts, totals } = countsOf(countRead.names, countResult, { survivorAccount });
 
+  // A person block on the loser lands on the survivor's account (step 8): only an officer who outranks that account may carry it there.
+  let carryGuard = null;
+  if (totals.person_blocks > 0 && survivorAccount) {
+    const blocked = new HttpError(409, 'join_blocked_person',
+      'One of these people is blocked, and joining them would put that block on an account you do not outrank. Ask someone more senior, or lift the block first.');
+    if (reason !== 'officer') throw blocked;
+    const guard = blockCarryOk(guildId, actorUserId, survivor.user_id || survivor.discord_account_id);
+    const allowed = await db.prepare(`SELECT ${guard.sql} AS ok`).bind(...guard.params).first();
+    if (!allowed || allowed.ok !== 1) throw blocked;
+    carryGuard = guard;
+  }
+  const callerGuards = carryGuard ? [...guards, carryGuard] : guards;
+
   // LEAN (the Battle.net sign-in match, which has a statement budget): a table the loser has no rows in gets no statements. The journal row is inserted only while
   // the loser STILL has none there (a row that appeared after the count makes the batch a no-op: appliedIndex says so, and the caller tries again later), and
   // every other statement asks for the journal row instead of repeating the check (a batch is one transaction, nothing else changes those tables inside it).
@@ -272,8 +289,8 @@ export async function joinPersonsStatements(db, {
     sql: `(SELECT COUNT(*) FROM characters ${BY_PERSON} WHERE guild_id = ? AND player_id IN (?, ?) AND ${visibleCharacterSql('characters')}) <= ${LIMITS.charactersPerPerson}
           AND EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ? AND notes_version = ?)
           AND EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ? AND notes_version = ?)
-          ${[...more, ...guards].map((guard) => `AND ${guard.sql}`).join(' ')}`,
-    params: [guildId, S, L, S, guildId, survivorVersion, survivorNotesVersion, L, guildId, loser.version, loser.notes_version, ...[...more, ...guards].flatMap((guard) => guard.params)],
+          ${[...more, ...callerGuards].map((guard) => `AND ${guard.sql}`).join(' ')}`,
+    params: [guildId, S, L, S, guildId, survivorVersion, survivorNotesVersion, L, guildId, loser.version, loser.notes_version, ...[...more, ...callerGuards].flatMap((guard) => guard.params)],
   });
   const afterVersion = survivor.version + 1;
   const afterNotesVersion = survivor.notes_version + (notesChanged ? 1 : 0);
@@ -346,8 +363,9 @@ export async function joinPersonsStatements(db, {
   for (const [table, spec] of Object.entries(JOIN_TABLES)) {
     if (skipped.has(table)) continue;
     if (spec.how === 'keyed') {
+      // What the UPDATE leaves behind is a row the survivor already has: it goes with the loser at step 12 (the composite foreign key cascades; tests/guild/
+      // guild-hier-review-fixes-tests.js pins that every keyed table does), so no statement of its own is spent on it.
       guarded(`UPDATE OR IGNORE ${table} SET player_id = ? WHERE guild_id = ? AND player_id = ?`, [S, guildId, L]);
-      guarded(`DELETE FROM ${table} WHERE guild_id = ? AND player_id = ?`, [guildId, L]);
     } else if (spec.how === 'plain') {
       guarded(`UPDATE ${table} SET player_id = ? WHERE guild_id = ? AND player_id = ?`, [S, guildId, L]);
     }

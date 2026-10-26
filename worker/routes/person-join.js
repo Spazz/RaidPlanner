@@ -7,7 +7,7 @@ import { isId } from '../ids.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { joinPersonsStatements } from '../person-join.js';
 import { personReply } from '../roster-view.js';
-import { assertSenior, seniorityOk } from '../seniority.js';
+import { assertSeniorAll, seniorityOk } from '../seniority.js';
 import { bad, conflict, constraintOf } from './roster.js';
 
 const readVersion = (value, field) => {
@@ -27,8 +27,7 @@ export async function joinPerson(ctx) {
   const otherVersion = readVersion(body.otherVersion, 'otherVersion');
 
   // The Seniority guard (worker/seniority.js) on both persons: a clean 403 here, and the same SQL inside every statement of the batch.
-  await assertSenior(db, guildContext, personId);
-  await assertSenior(db, guildContext, body.otherPersonId);
+  await assertSeniorAll(db, guildContext, [personId, body.otherPersonId]);
   const actorId = ctx.session.user.id;
 
   let plan;
@@ -43,6 +42,9 @@ export async function joinPerson(ctx) {
       randomBytes: ctx.randomBytes,
       guards: [seniorityOk(guildId, actorId, personId), seniorityOk(guildId, actorId, body.otherPersonId)],
       expectedVersions: { [personId]: version, [body.otherPersonId]: otherVersion },
+      // Lean: the request stays well inside the Worker's subrequest budget (a table the loser has no rows in gets no statements; a row that shows up after the count
+      // makes the batch a no-op and the answer a conflict).
+      lean: true,
     });
   } catch (error) {
     if (error instanceof HttpError && error.code === 'conflict') return conflict(ctx, guildContext, personId, error.message);

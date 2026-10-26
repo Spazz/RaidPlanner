@@ -7,7 +7,8 @@ import { auditStatement } from '../audit.js';
 import {
   BnetError, authorizeUrl, bnetSupport, canonicalOrigin, exchangeCode, fetchAccountCharacters, fetchUserInfo, isConfigured,
 } from '../battlenet.js';
-import { clearBnetProofStatement, loadIngameCombos, runBnetMatch } from '../bnet-match.js';
+import { matchAccountAtSignIn } from '../block-tombstones.js';
+import { CALLBACK_STATEMENT_BUDGET, clearBnetProofStatement, loadIngameCombos, runBnetMatch } from '../bnet-match.js';
 import { CLAIM_BATCH_MAX, DATA_TTL_MS, loadMemberGuilds, parseSnapshot, realmDisplayName } from '../bnet-store.js';
 import { bnetNameOf, findUserByBnet, hasDiscordSql, insertBnetAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
@@ -199,14 +200,24 @@ export async function bnetCallback(ctx) {
   return redirectResponse(CHARACTERS_REDIRECT, [clear]);
 }
 
-// The sign-in match runs after the callback's own writes and never fails the callback: whatever it could not do waits for the next sign-in.
+// The sign-in match runs after the callback's own writes and never fails the callback: whatever it could not do waits for the next sign-in. Then the tombstone match
+// for the guilds the in-game match did not handle itself (legacy and manual guilds, and the in-game ones it had nothing to do in): the account's Battle.net id and
+// proven characters are keys of a block like its Discord id is (sec A9-11). It takes what the match left of the callback's CALLBACK_STATEMENT_BUDGET; a guild that does
+// not fit waits for the next callback.
 async function matchAfterCallback(ctx, input) {
+  let matched = null;
   try {
-    return await runBnetMatch(ctx, input);
+    matched = await runBnetMatch(ctx, input);
   } catch (error) {
     ctx.log(`bnet match failed: ${error && error.message}`);
     return null;
   }
+  await matchAccountAtSignIn(ctx, input.userId, {
+    budget: CALLBACK_STATEMENT_BUDGET - matched.statements,
+    skip: matched.tombstoned,
+    onDeferred: () => ctx.log('bnet match deferred: budget'),
+  });
+  return matched;
 }
 
 // Sign in with Battle.net: the account that holds this Battle.net account signs in (its BattleTag and snapshot refreshed); a Battle.net

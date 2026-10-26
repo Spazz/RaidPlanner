@@ -36,11 +36,17 @@
 // BATCHES: reads (2 statements, one batch) -> one write batch per 'ingame' guild -> one for the legacy / manual stamping -> at most one re-home batch (its own read:
 // worker/rehome.js) -> at most one join batch. A batch that fails (a unique violation from a concurrent sign-in, a cap trigger) rolls back alone; the sign-in stands
 // and the match is redone at the next one. A re-home or a join whose guard refuses it leaves EVERY statement a no-op (the opening row says so).
-// RETIRED PLACEHOLDERS (worker/character-visibility.js): a person's size and Main are its visible characters'; the inserts stop at its ROWS because the
-// characters_cap trigger counts the placeholders too.
+// RETIRED PLACEHOLDERS (worker/character-visibility.js): a person's size and Main are its visible characters' (migration 0036: the characters_cap trigger counts the
+// visible ones only, and a character inserted into a person whose only Main is a placeholder takes the Main).
 // BUDGET: the whole callback stays within CALLBACK_STATEMENT_BUDGET D1 statements (batch members count one by one). The callback tells how many it has used;
-// work that does not fit is deferred to the next sign-in (`bnet match deferred: budget`).
-import { tombstoneMatchStatements } from './block-tombstones.js';
+// work that does not fit is deferred to the next sign-in (`bnet match deferred: budget`). The tombstone match of a guild is part of its batch and its D1 reads are
+// RESERVED before they run (TOMBSTONE_MATCH_STATEMENTS); a guild with no tombstones and no blocked matched person reads nothing (MATCHES_SQL has_tombstones). The guilds
+// where the account still has to become a member go first, so the ones that wait for the next sign-in are not the same every time. After the match the callback runs the
+// account-wide tombstone pass (worker/routes/bnet.js) on what is left.
+// BLOCKS (review fixes): a matched holder with a person_blocks row (an officer blocked an account-less person) is never linked, joined or bound: it is a tombstone hit of
+// its own with the same held rules (the Owner, a Guild Master by role and an account equal or senior to the blocker are held, anyone else gets a pending-review block).
+// Every statement of the guild's batch, the re-home and the join carries notBlocked, so a hit written at the head of the batch leaves the account's person untouched.
+import { TOMBSTONE_MATCH_STATEMENTS, planTombstoneMatch } from './block-tombstones.js';
 import { auditStatement } from './audit.js';
 import { markPersonRaidsStale, markRaidsStale } from './attendance-store.js';
 import { bnetSupport } from './battlenet.js';
@@ -107,8 +113,8 @@ export async function loadIngameCombos(db) {
 // ---------------------------------------------------------------------------
 // Seams
 
-// The block-tombstone match (lane B7a, worker/block-tombstones.js) runs per guild before its batch is built: a hit puts the pending-review block FIRST in
-// the batch, so the person create / link (guarded by notBlocked) does nothing.
+// The block-tombstone match (lane B7a, worker/block-tombstones.js planTombstoneMatch) runs per guild before its batch is built: a hit puts the pending-review block
+// FIRST in the batch, so every statement after it (guarded by notBlocked) does nothing.
 
 // ---------------------------------------------------------------------------
 // Proof
@@ -162,6 +168,7 @@ export function clearBnetProofStatement(db, userId, guard) {
 // size and Main are its VISIBLE characters' (worker/character-visibility.js); a hidden Main is told apart (holder_hidden_main) because a new Main must replace it.
 const MATCHES_SQL = `SELECT g.id AS guild_id, g.time_zone, g.game_version, g.region, g.realm, g.realm_kind,
        EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = ?) AS blocked,
+       EXISTS (SELECT 1 FROM block_tombstones bt WHERE bt.guild_id = g.id) AS has_tombstones,
        gr.namespace, gr.blizzard_realm_id AS realm_id, gr.blizzard_char_id AS char_id, gr.name, gr.name_key, gr.class, gr.rank,
        COALESCE((SELECT sm.core_rank FROM source_rank_maps sm WHERE sm.guild_id = g.id AND sm.source = 'ingame' AND sm.team_id IS NULL AND sm.source_key = CAST(gr.rank AS TEXT)), 'social') AS mapped_rank,
        ch.id AS character_id, co.id AS collider_id, co.blizzard_char_id AS collider_key, co.left_on AS collider_left, co.team_id AS collider_team,
@@ -169,11 +176,11 @@ const MATCHES_SQL = `SELECT g.id AS guild_id, g.time_zone, g.game_version, g.reg
                   AND cr.blizzard_realm_id = co.blizzard_realm_id AND cr.blizzard_char_id = co.blizzard_char_id) AS collider_on_roster,
        hp.id AS holder_id, hp.user_id AS holder_user, hp.discord_user_id AS holder_discord, hp.version AS holder_version,
        CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN (SELECT COUNT(*) FROM characters hc WHERE hc.player_id = hp.id AND ${visibleCharacterSql('hc')}) END AS holder_characters,
-       CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN (SELECT COUNT(*) FROM characters hr WHERE hr.player_id = hp.id) END AS holder_rows,
        CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN EXISTS (SELECT 1 FROM characters hm WHERE hm.player_id = hp.id AND hm.is_main = 1 AND ${visibleCharacterSql('hm')}) END AS holder_has_main,
        CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN EXISTS (SELECT 1 FROM characters hh WHERE hh.player_id = hp.id AND hh.is_main = 1 AND ${placeholderCharacterSql('hh')}) END AS holder_hidden_main,
        CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL
-            THEN (SELECT json_group_object(hq.id, hq.owner_proof) FROM characters hq WHERE hq.player_id = hp.id AND hq.owner_proof IN ('officer', 'hand')) END AS holder_proofs
+            THEN (SELECT json_group_object(hq.id, hq.owner_proof) FROM characters hq WHERE hq.player_id = hp.id AND hq.owner_proof IN ('officer', 'hand')) END AS holder_proofs,
+       CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN EXISTS (SELECT 1 FROM person_blocks hb WHERE hb.guild_id = g.id AND hb.player_id = hp.id) END AS holder_blocked
   FROM json_each(?) j
   CROSS JOIN guild_roster gr ON gr.namespace = json_extract(j.value, '$[0]') AND gr.blizzard_realm_id = json_extract(j.value, '$[1]') AND gr.blizzard_char_id = json_extract(j.value, '$[2]')
   JOIN guilds g ON g.id = gr.guild_id AND g.rank_source = 'ingame'
@@ -186,7 +193,6 @@ const MATCHES_SQL = `SELECT g.id AS guild_id, g.time_zone, g.game_version, g.reg
 const ACCOUNT_SQL = `SELECT u.discord_id, p.id AS person_id, p.guild_id, p.version, g.rank_source, g.game_version, g.region, g.realm, g.realm_kind, g.time_zone,
        EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = p.guild_id AND b.user_id = u.id) AS blocked,
        (SELECT COUNT(*) FROM characters c WHERE c.player_id = p.id AND ${visibleCharacterSql('c')}) AS characters,
-       (SELECT COUNT(*) FROM characters r WHERE r.player_id = p.id) AS character_rows,
        EXISTS (SELECT 1 FROM characters m WHERE m.player_id = p.id AND m.is_main = 1 AND ${visibleCharacterSql('m')}) AS has_main,
        EXISTS (SELECT 1 FROM characters h WHERE h.player_id = p.id AND h.is_main = 1 AND ${placeholderCharacterSql('h')}) AS hidden_main
   FROM users u LEFT JOIN players p ON p.user_id = u.id LEFT JOIN guilds g ON g.id = p.guild_id
@@ -220,8 +226,8 @@ function classify(row, { userId, discordId, personId }) {
 
 const byRank = (a, b) => a.rank - b.rank || (a.name_key < b.name_key ? -1 : a.name_key > b.name_key ? 1 : 0);
 
-// -> null (nothing to do in this guild) | { guild, invalid: true } | the plan: { guild, person: { id, kind: 'existing' | 'link' | 'create', ... }, inserts, retires, binds, rehomes,
-// keys, stamp, joinCandidates, deferred }. rehomes: the characters of other accounts' persons that move to the account's person (a batch of their own, at most one
+// -> null (nothing to do in this guild) | { guild, invalid: true } | the plan: { guild, person: { id, kind: 'existing' | 'link' | 'create', ... } | null, inserts, retires, binds,
+// rehomes, keys, stamp, joinCandidates, personBlocks (the blocked persons the keys matched), deferred }. rehomes: the characters of other accounts' persons that move to the account's person (a batch of their own, at most one
 // per callback); binds: the unkeyed characters that take a matched key.
 function planGuild(rows, { account, mine, byKey, userId, ids }) {
   const guild = { id: rows[0].guild_id, time_zone: rows[0].time_zone, game_version: rows[0].game_version, region: rows[0].region, realm: rows[0].realm, realm_kind: rows[0].realm_kind };
@@ -230,6 +236,10 @@ function planGuild(rows, { account, mine, byKey, userId, ids }) {
   const personId = mine ? mine.person_id : null;
   const classified = rows.map((row) => ({ row, ...classify(row, { userId, discordId: account.discord_id, personId }) }));
   if (classified.some((entry) => entry.kind === 'invalid')) return { guild, invalid: true, deferred };
+  // A matched holder that carries a PERSON BLOCK (an officer blocked an account-less person) is a tombstone hit of the person's own: it is never linked, joined or
+  // bound, and the tombstone match handles it with the same held rules (worker/block-tombstones.js planTombstoneMatch, personBlocks).
+  const blockedHolders = [...new Set(classified.filter((entry) => entry.kind === 'unowned' && entry.row.holder_blocked === 1).map((entry) => entry.row.holder_id))];
+  for (const entry of classified) if (entry.kind === 'unowned' && blockedHolders.includes(entry.row.holder_id)) entry.kind = 'held';
   if (classified.some((entry) => entry.kind === 'skip')) deferred.add('collision');
 
   // The characters nobody holds that can be created: a class Raidsmith knows and a realm the guild accepts.
@@ -255,7 +265,7 @@ function planGuild(rows, { account, mine, byKey, userId, ids }) {
   for (const { row, kind } of classified) {
     if (kind !== 'unowned') continue;
     const entry = unowned.get(row.holder_id) || {
-      id: row.holder_id, rank: row.rank, nameKey: row.name_key, version: row.holder_version, characters: row.holder_characters, rows: row.holder_rows,
+      id: row.holder_id, rank: row.rank, nameKey: row.name_key, version: row.holder_version, characters: row.holder_characters,
       hasMain: row.holder_has_main === 1, hiddenMain: row.holder_hidden_main === 1, proofs: row.holder_proofs,
     };
     if (byRank(row, { rank: entry.rank, name_key: entry.nameKey }) < 0) { entry.rank = row.rank; entry.nameKey = row.name_key; }
@@ -270,23 +280,22 @@ function planGuild(rows, { account, mine, byKey, userId, ids }) {
 
   let person = null;
   if (mine) {
-    person = { id: mine.person_id, kind: 'existing', version: mine.version, characters: mine.characters, rows: mine.character_rows, hasMain: mine.has_main === 1, hiddenMain: mine.hidden_main === 1 };
+    person = { id: mine.person_id, kind: 'existing', version: mine.version, characters: mine.characters, hasMain: mine.has_main === 1, hiddenMain: mine.hidden_main === 1 };
   } else if (unownedList.length === 1 || (unownedList.length >= 2 && !free.length)) {
     const target = unownedList[0];
-    person = { id: target.id, kind: 'link', version: target.version, characters: target.characters, rows: target.rows, hasMain: target.hasMain, hiddenMain: target.hiddenMain, proofs: target.proofs };
+    person = { id: target.id, kind: 'link', version: target.version, characters: target.characters, hasMain: target.hasMain, hiddenMain: target.hiddenMain, proofs: target.proofs };
   } else if (free.length || rehomes.length) {
-    person = { id: ids.person(), kind: 'create', version: 1, characters: 0, rows: 0, hasMain: false, hiddenMain: false };
+    person = { id: ids.person(), kind: 'create', version: 1, characters: 0, hasMain: false, hiddenMain: false };
   }
-  if (!person) return { guild, person: null, deferred };
+  const keys = rows.map((row) => [row.namespace, row.realm_id, row.char_id, byKey.get(keyOf(row.namespace, row.realm_id, row.char_id)).fetchedAt]);
+  if (!person) return { guild, person: null, keys, personBlocks: blockedHolders, deferred };
 
-  // The cap counts VISIBLE characters (a retired placeholder is not one), but the INSERT trigger of migration 0030 (characters_cap) still counts every row of the
-  // person: an insert past it would abort the whole batch. Until a migration makes the trigger skip placeholders, the inserts stop at the rows.
-  const room = Math.max(0, LIMITS.charactersPerPerson - Math.max(person.characters, person.rows));
+  // The cap counts VISIBLE characters (a retired placeholder is not one), and so does the characters_cap trigger since migration 0036: the inserts fill the person up to 20.
+  const room = Math.max(0, LIMITS.charactersPerPerson - person.characters);
   if (free.length > room) deferred.add('cap');
   const inserts = free.slice(0, room).map((entry, index) => ({ ...entry, id: ids.character(), isMain: !person.hasMain && index === 0 ? 1 : 0 }));
   const retires = inserts.filter((entry) => entry.retire);
-  const binds = classified.filter((entry) => entry.bind && entry.kind !== 'other').map((entry) => ({ row: entry.row, characterId: entry.row.collider_id, holderId: entry.row.holder_id }));
-  const keys = rows.map((row) => [row.namespace, row.realm_id, row.char_id, byKey.get(keyOf(row.namespace, row.realm_id, row.char_id)).fetchedAt]);
+  const binds = classified.filter((entry) => entry.bind && (entry.kind === 'mine' || entry.kind === 'unowned')).map((entry) => ({ row: entry.row, characterId: entry.row.collider_id, holderId: entry.row.holder_id }));
   const hasMine = classified.some((entry) => entry.kind === 'mine');
   return {
     guild,
@@ -298,6 +307,7 @@ function planGuild(rows, { account, mine, byKey, userId, ids }) {
     keys,
     stamp: hasMine || person.kind === 'link',
     joinCandidates: unownedList.filter((entry) => entry.id !== person.id),
+    personBlocks: blockedHolders,
     deferred,
   };
 }
@@ -368,15 +378,16 @@ const hasNoPerson = (guildId, userId) => ({
   sql: 'NOT EXISTS (SELECT 1 FROM players WHERE guild_id = ? AND user_id = ?)', params: [guildId, userId],
 });
 
-// -> { statements, personAt }: the write batch of one guild. personAt = the position of the statement that makes the account's person (create / link), whose
-// meta.changes is 1 when it happened; null for an existing person.
-function guildStatements(ctx, plan, { userId, bnetAccountId, now, tombstone }) {
+// -> { statements, personAt }: the write batch of one guild (the caller puts the tombstone statements in front of it). personAt = the position in `statements` of the
+// statement that makes the account's person (create / link), whose meta.changes is 1 when it happened; null for an existing person.
+// EVERY statement carries notBlocked: a tombstone hit written at the head of the same batch (a pending-review block) leaves the account's person untouched.
+function guildStatements(ctx, plan, { userId, bnetAccountId, now }) {
   const { db } = ctx;
   const guildId = plan.guild.id;
   const P = plan.person.id;
   const ingame = ingameGuard(guildId);
-  const mine = and(ingame, personIsMine(P, guildId, userId));
-  const statements = [...tombstone];
+  const mine = and(ingame, personIsMine(P, guildId, userId), notBlocked(guildId, userId));
+  const statements = [];
   let personAt = null;
 
   if (plan.person.kind === 'create') {
@@ -408,7 +419,7 @@ function guildStatements(ctx, plan, { userId, bnetAccountId, now, tombstone }) {
     }));
   }
   for (const entry of plan.binds) {
-    statements.push(...bindStatements(ctx, { guildId, characterId: entry.characterId, holderId: entry.holderId, row: entry.row, userId, now, guard: ingame }));
+    statements.push(...bindStatements(ctx, { guildId, characterId: entry.characterId, holderId: entry.holderId, row: entry.row, userId, now, guard: and(ingame, notBlocked(guildId, userId)) }));
   }
 
   if (plan.inserts.length) {
@@ -527,7 +538,7 @@ async function rehomeBatch(ctx, candidate, { userId, bnetAccountId, now, byKey, 
     : [];
   const stamps = proofStatements(db, {
     scope: { sql: 'characters.guild_id = ? AND characters.player_id = ?', params: [guildId, personId] },
-    guard: and(ingameGuard(guildId), personIsMine(personId, guildId, userId)), actorUserId: userId, bnetAccountId, keys: plan.keys, now,
+    guard: and(ingameGuard(guildId), personIsMine(personId, guildId, userId), notBlocked(guildId, userId)), actorUserId: userId, bnetAccountId, keys: plan.keys, now,
   });
   const statements = [opening, ...bound, ...rest, ...stamps];
   if (!room(1 + statements.length)) {
@@ -540,17 +551,18 @@ async function rehomeBatch(ctx, candidate, { userId, bnetAccountId, now, byKey, 
   return 1 + statements.length;
 }
 
-// ctx: { db, now, randomBytes, log }.   input: { userId, bnetAccountId, snapshot, now, spent }  spent = D1 statements the callback has used so far.
-// -> { statements: the total the callback has used, deferred: ['rehome', ...], joined: boolean }
+// ctx: { db, env, now, randomBytes, log }.   input: { userId, bnetAccountId, snapshot, now, spent }  spent = D1 statements the callback has used so far.
+// -> { statements: the total the callback has used, deferred: ['rehome', ...], joined: boolean, tombstoned: [guild ids whose tombstones the match has matched] }
 export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, spent }) {
   const { db } = ctx;
   let used = spent;
   const deferred = new Set();
   const outcome = () => {
     for (const reason of deferred) ctx.log(`bnet match deferred: ${reason}`);
-    return { statements: used, deferred: [...deferred], joined };
+    return { statements: used, deferred: [...deferred], joined, tombstoned };
   };
   let joined = false;
+  const tombstoned = [];
   const items = keyedCharacters(snapshot);
   if (!items.length) return outcome();
   const room = (count) => used + count <= CALLBACK_STATEMENT_BUDGET;
@@ -572,6 +584,9 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
   const ids = { person: () => newId('p', ctx.randomBytes), character: () => newId('c', ctx.randomBytes) };
   const ready = [];
   const rehomeReady = [];
+  // The guilds where the account still has to become a member (a person to create or link) go first, then the ones where it already is: the guilds that do not fit the
+  // budget wait for the next sign-in, and a fixed order would make the same ones fit every time.
+  const planned = [];
   for (const [guildId, rows] of guildRows) {
     const plan = planGuild(rows, { account, mine: persons.find((person) => person.guild_id === guildId), byKey, userId, ids });
     if (!plan) continue;
@@ -581,18 +596,34 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
       ctx.log('bnet match invalid: collision');
       continue;
     }
-    if (!plan.person) continue;
-    const tombstone = await tombstoneMatchStatements(db, {
-      guildId, userId, env: ctx.env, now: ctx.now, randomBytes: ctx.randomBytes, log: ctx.log,
-      keys: { bnetAccountId, identityKeys: plan.keys.map((key) => `idkey:${key[0]}:${key[1]}:${key[2]}`) },
-    });
-    used += tombstone.length ? 6 : 1; // its reads: 1 when the guild has no tombstones, up to 6 on a hit
-    const { statements, personAt } = guildStatements(ctx, plan, { userId, bnetAccountId, now, tombstone });
+    planned.push({ guildId, rows, plan });
+  }
+  planned.sort((a, b) => Number(!!a.plan.person && a.plan.person.kind === 'existing') - Number(!!b.plan.person && b.plan.person.kind === 'existing'));
+  for (const { guildId, rows, plan } of planned) {
+    // The tombstone match (lane B7a) runs first in the guild's batch when the guild has tombstones or a matched person carries a block. Its D1 reads are counted BEFORE
+    // they run: the most it can take (TOMBSTONE_MATCH_STATEMENTS, reads and writes) must fit together with the guild's own batch, else the guild waits.
+    const wantsMatch = rows[0].has_tombstones === 1 || plan.personBlocks.length > 0;
+    if (!plan.person && !wantsMatch) continue;
+    const base = plan.person ? guildStatements(ctx, plan, { userId, bnetAccountId, now }) : { statements: [], personAt: null };
+    if (!room((wantsMatch ? TOMBSTONE_MATCH_STATEMENTS : 0) + base.statements.length)) { deferred.add('budget'); continue; }
+    let tombstone = [];
+    if (wantsMatch) {
+      const matched = await planTombstoneMatch(db, {
+        guildId, userId, env: ctx.env, now: ctx.now, randomBytes: ctx.randomBytes, log: ctx.log, personBlocks: plan.personBlocks,
+        keys: { bnetAccountId, identityKeys: plan.keys.map((key) => `idkey:${key[0]}:${key[1]}:${key[2]}`) },
+      });
+      used += matched.reads;
+      tombstone = matched.statements;
+      tombstoned.push(guildId);
+    }
+    const statements = [...tombstone, ...base.statements];
+    const personAt = base.personAt === null ? null : base.personAt + tombstone.length;
     if (!room(statements.length)) { deferred.add('budget'); continue; }
     used += statements.length;
     const results = statements.length ? await writeBatch(ctx, statements) : [];
     if (!results) continue;
     if (personAt !== null && results[personAt].meta.changes !== 1) continue;
+    if (!plan.person) continue;
     if (plan.joinCandidates.length) ready.push({ plan, personId: plan.person.id });
     for (const candidate of plan.rehomes) rehomeReady.push({ plan, personId: plan.person.id, ...candidate });
   }
@@ -630,11 +661,13 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
     } else {
       const guildId = target.plan.guild.id;
       const other = target.plan.joinCandidates[0];
+      // A person that carries a block is never joined (a block appearing since the read refuses the batch too).
       const stillUnowned = {
-        sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND user_id IS NULL AND (discord_user_id IS NULL OR discord_user_id = (SELECT discord_id FROM users WHERE id = ?)))',
-        params: [other.id, userId],
+        sql: `EXISTS (SELECT 1 FROM players WHERE id = ? AND user_id IS NULL AND (discord_user_id IS NULL OR discord_user_id = (SELECT discord_id FROM users WHERE id = ?)))
+              AND NOT EXISTS (SELECT 1 FROM person_blocks WHERE guild_id = ? AND player_id = ?)`,
+        params: [other.id, userId, guildId, other.id],
       };
-      const guard = and(ingameGuard(guildId), personIsMine(target.personId, guildId, userId), stillUnowned);
+      const guard = and(ingameGuard(guildId), personIsMine(target.personId, guildId, userId), notBlocked(guildId, userId), stillUnowned);
       let join = null;
       try {
         join = await joinPersonsStatements(db, {
@@ -649,7 +682,7 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
       if (join) {
         const stamps = proofStatements(db, {
           scope: { sql: 'characters.guild_id = ? AND characters.player_id = ?', params: [guildId, target.personId] },
-          guard: and(ingameGuard(guildId), personIsMine(target.personId, guildId, userId)), actorUserId: userId, bnetAccountId, keys: target.plan.keys, now,
+          guard: and(ingameGuard(guildId), personIsMine(target.personId, guildId, userId), notBlocked(guildId, userId)), actorUserId: userId, bnetAccountId, keys: target.plan.keys, now,
         });
         const statements = [...join.statements, ...stamps];
         if (!room(statements.length)) {

@@ -16,13 +16,13 @@ import { RANK_COUNT, loadBnetSettings } from '../bnet-store.js';
 import {
   APPROVAL_TTL_MS, approvalProblem, consumeApprovalStatement, insertApprovalStatement, loadApproval, markerGuard, markerStatement, newApprovalToken, newMarkerId, rosterSyncIdOf,
 } from '../dry-run.js';
-import { ownerGuard, requireOwner } from '../owner.js';
+import { isOwner, ownerGuard, requireOwner } from '../owner.js';
 import { loadGuildContext } from '../permissions.js';
 import { RANK_MAP_LIMIT, RANK_MAP_WINDOW_MS, enforceRateLimit } from '../ratelimit.js';
 import { hashToken } from '../session.js';
 import {
   APPLY_UPDATE_INDEX, CORE_RANK_IDS, CORE_RANK_LABELS, MAPPABLE_BUILTIN_ROLES, gapsOfMap, ingameGuard, loadRankMap, loadRosterRanks, mapChanges, mapStateHash,
-  normalizeRankMap, previewMap, rankMapApplyStatements, replaceMapStatements, suggestedLabels,
+  approvedTransitionsGuard, normalizeRankMap, previewMap, rankMapApplyStatements, replaceMapStatements, suggestedLabels,
 } from '../rank-map.js';
 
 const BUILTIN_ROLE_NAMES = { officer: 'Officer', team_lead: 'Team Lead', guild_master: 'Guild Master' };
@@ -132,9 +132,13 @@ export async function putRankMap(ctx) {
   const marker = markerGuard(markerId);
   const guards = [marker, ingameGuard(guildId)];
   const owner = ownerGuard(guildId, approverUserId);
+  // The characters the map would change are recomputed inside the batch and must be the ones the Owner approved (a character edited after the check above and before
+  // the batch ran would otherwise be moved without approval).
+  const approved = approvedTransitionsGuard(guildId, proposed, preview.transitions);
   const statements = [
-    // 0: consume the token. Changes one row only while every binding still holds inside the database, and the approver still holds the Owner seat.
-    consumeApprovalStatement(db, { tokenHash, guildId, approverUserId, stateHash, rosterSyncId, now }, owner),
+    // 0: consume the token. Changes one row only while every binding still holds inside the database, the approver still holds the Owner seat and the transitions
+    // of the map over the characters AS THEY ARE NOW are the approved ones.
+    consumeApprovalStatement(db, { tokenHash, guildId, approverUserId, stateHash, rosterSyncId, now }, { sql: `${owner.sql} AND ${approved.sql}`, params: [...owner.params, ...approved.params] }),
     // 1: the marker every later statement carries.
     markerStatement(db, { markerId, tokenHash, purpose: 'rank_map', now }),
     // 2-3: the map. 4-6: applyRankMap (nothing happens to a character while the guild's rank source is not 'ingame').
@@ -147,7 +151,13 @@ export async function putRankMap(ctx) {
     }, marker),
   ];
   const results = await db.batch(statements);
-  if (results[0].meta.changes !== 1) throw approvalInvalid();
+  if (results[0].meta.changes !== 1) {
+    // Nothing was written. The token is still the Owner's live one when the state moved under the batch (a character, the roster or the map): run the dry run again.
+    // A token that is used or expired, or an approver who lost the seat meanwhile, is not valid any more.
+    const again = await loadApproval(db, tokenHash);
+    const live = again && again.guild_id === guildId && again.approver_user_id === approverUserId && again.used_at === null && again.expires_at > now;
+    throw live && (await isOwner(db, guildId, approverUserId)) ? approvalStale() : approvalInvalid();
+  }
   const updateAt = 2 + 2 + APPLY_UPDATE_INDEX; // consume, marker, the two map statements, then the stale marking and the rank UPDATE
   const applied = { mapRows: proposed.length, characters: results[updateAt].meta.changes };
   return jsonResponse({ ...(await rankMapPayload(db, await loadGuildRow(db, guildId))), applied });

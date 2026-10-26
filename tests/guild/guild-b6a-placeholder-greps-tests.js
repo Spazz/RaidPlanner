@@ -163,7 +163,7 @@ const ALLOWED = [
   ["worker/notify-run.js", "?, (SELECT c.name FROM characters c WHERE c.player_id = p.id AND c.team_id =", "team"],
   ["worker/notify-run.js", "?, (SELECT c.name FROM characters c WHERE c.player_id = p.id ORDER BY", "display"],
   ["worker/permissions.js", "DISTINCT c.team_id FROM characters c JOIN players p ON p.id = c.player_id", "team"],
-  ["worker/person-join.js", "is_main, name_key FROM characters ? WHERE guild_id = ? AND player_id IN (?, ?)", "person"],
+  ["worker/person-join.js", "c.name_key)) FROM characters c ? WHERE c.guild_id = p.guild_id AND c.player_id = p.id", "person"],
   ["worker/person-join.js", "IN (SELECT id FROM characters ? WHERE guild_id = ? AND player_id = ?)", "person"],
   ["worker/person-join.js", "IN (SELECT s.team_id FROM characters s WHERE s.player_id = ? AND s.team_id IS", "team"],
   ["worker/person-join.js", "NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ?)", "person"],

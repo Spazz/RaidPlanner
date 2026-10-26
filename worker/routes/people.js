@@ -2,10 +2,10 @@ import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.j
 import { auditStatement } from '../audit.js';
 import { blockEffectStatements } from '../block-effects.js';
 import {
-  MISSING_KEY_LINE, accountBlockRef, accountKeys, matchedRefsOf, planTombstones, tombstoneDeleteStatement, tombstoneInsertStatements,
+  MISSING_KEY_LINE, accountBlockRef, accountKeys, liftGuard, matchedRefsOf, planTombstones, splitLiftableRefs, tombstoneDeleteStatement, tombstoneInsertStatements,
 } from '../block-tombstones.js';
 import { newId } from '../ids.js';
-import { requireOwner } from '../owner.js';
+import { isOwner, requireOwner } from '../owner.js';
 import { boundMember, memberCandidatesSql, reachesGuildSql } from '../membership.js';
 import { botConfigured } from '../discord-bot.js';
 import { requireDiscord } from '../discord-guard.js';
@@ -138,8 +138,8 @@ function peopleResponse(model, guildContext, env) {
   return { signedInCount: people.length, people, removed, discord: { configured: botConfigured(env), mapped: model.hasMaps } };
 }
 
-async function peopleReply(ctx, guildContext) {
-  return jsonResponse(peopleResponse(await loadModel(ctx.db, guildContext), guildContext, ctx.env));
+async function peopleReply(ctx, guildContext, extra = {}) {
+  return jsonResponse({ ...peopleResponse(await loadModel(ctx.db, guildContext), guildContext, ctx.env), ...extra });
 }
 
 function conflict() {
@@ -495,23 +495,27 @@ export async function restorePerson(ctx) {
     actorHolds('guild.access', guildId, guildContext.userId),
     actorOutranks(guildId, guildContext.userId, target.id),
   );
-  // Unblock deletes the block's tombstones by block_ref: the account's own, and every ref its keys hit (a pending-review block matched an earlier block's
-  // tombstones; lifting it must lift those too, or the next sign-in would block it again).
-  const refs = [...new Set([accountBlockRef(target.id), ...(await matchedRefsOf(ctx.db, ctx.env, guildId, await accountKeys(ctx.db, target.id, guildId)))])];
+  // Unblock deletes the block's tombstones by block_ref: the account's own, and the refs its keys hit (a pending-review block matched an earlier block's tombstones;
+  // lifting it must lift those too, or the next sign-in would block it again) - but only the refs of blocks the actor outranks (splitLiftableRefs): the earlier block
+  // of someone senior keeps its tombstones, and the answer says how many stayed.
+  const own = accountBlockRef(target.id);
+  const matched = (await matchedRefsOf(ctx.db, ctx.env, guildId, await accountKeys(ctx.db, target.id, guildId))).filter((ref) => ref !== own);
+  const split = await splitLiftableRefs(ctx.db, guildId, matched, { owner: await isOwner(ctx.db, guildId, guildContext.userId), rank: guildContext.rank });
   const results = await ctx.db.batch([
     auditStatement(ctx, {
       guildId, actorUserId: guildContext.userId, action: 'access.restore', entityType: 'user',
       entityId: target.id, before: { blocked: true }, after: { blocked: false },
     }, guard),
-    tombstoneDeleteStatement(ctx.db, { guildId, blockRefs: refs, guard }),
+    tombstoneDeleteStatement(ctx.db, { guildId, blockRefs: [own], guard }),
+    ...(split.lift.length ? [tombstoneDeleteStatement(ctx.db, { guildId, blockRefs: split.lift, guard: and(guard, liftGuard(guildId, guildContext.userId, split.minBlockerRank)) })] : []),
     ctx.db.prepare(`DELETE FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND ${guard.sql}`)
       .bind(guildId, target.id, ...guard.params),
   ]);
-  if (results[2].meta.changes !== 1) {
+  if (results[results.length - 1].meta.changes !== 1) {
     // Someone else restoring first is fine. If the block is still there, the actor lost the right.
     const still = await ctx.db.prepare('SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?')
       .bind(guildId, target.id).first();
     if (still) throw conflict();
   }
-  return peopleReply(ctx, guildContext);
+  return peopleReply(ctx, guildContext, split.kept.length ? { tombstonesKept: split.kept.length } : {});
 }
