@@ -187,7 +187,7 @@ check('Make Main: the loser of a race (the same move already done) does not wipe
   // The loser read the person before that: the old Main on Alpha, the same target. Its batch, statement for statement, as the route builds it.
   const db = s.w.db;
   const results = await db.batch([
-    ...roster.makeMainStatements(db, p.pid, alt, 1, { homeTeamId: alpha, targetTeamId: null }),
+    ...roster.makeMainStatements(db, p.pid, alt, 1, { homeTeamId: alpha, targetTeamId: null, senior: { sql: '1 = 1', params: [] } }),
     db.prepare('SELECT 1').bind(),
     ...legacy.trialDatesFollowMainStatements(db, p.cid, alt),
   ]);

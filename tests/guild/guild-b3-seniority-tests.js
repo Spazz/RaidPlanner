@@ -224,7 +224,8 @@ check('Make Main is refused for a junior on a senior\'s person and works on a Me
   const memberAlt = await s.alt(s.people.m1.pid, 'Memberalt');
   const officerAlt = await s.alt(s.people.o1.pid, 'Officeralt');
   await s.fail('o1', 'POST', `/roster/${s.people.gm.pid}/characters/${gmAlt}/main`, {}, 403, 'seniority');
-  await s.fail('tl', 'POST', `/roster/${s.people.o1.pid}/characters/${officerAlt}/main`, {}, 403, 'seniority');
+  // The alt is on no team, so a Team Lead is refused before the Seniority guard (R2: only a guild-wide editor makes a teamless character the Main).
+  await s.fail('tl', 'POST', `/roster/${s.people.o1.pid}/characters/${officerAlt}/main`, {}, 403, 'forbidden');
   assert.deepEqual([await mainOf(s.people.gm.pid), await mainOf(s.people.o1.pid)], ['Gmperson', 'Officerone']);
   assert.equal((await s.rows("SELECT id FROM audit_log WHERE action = 'character.main'")).length, 0, 'a refused swap leaves no audit row');
   await s.ok('o1', 'POST', `/roster/${s.people.m1.pid}/characters/${memberAlt}/main`, {}, 200);
