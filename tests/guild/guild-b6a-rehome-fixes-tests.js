@@ -546,6 +546,98 @@ check('L5: the collision re-home needs the bind to be possible - a typed charact
   assert.equal(auditCount(w2, 'character.rehome'), 0);
 });
 
+// ---- M2, L8, L6, L7: the re-home (worker/rehome.js) and what reads its placeholder
+
+check('M2: a re-home into a person whose Main is a retired placeholder makes the moved character the Main and demotes the placeholder - the person keeps a VISIBLE Main and stays on the team roster', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'] });
+  const [alpha, bravo] = s.tids;
+  const E = await mk(s, 'Emain');
+  const F = await mk(s, 'Fmain', { teamId: bravo });
+  assert((await rehome(s, E.cid, F.pid)).applied);
+  const placeholder = sOne(s, "SELECT id, is_main FROM characters WHERE player_id = ? AND name_key LIKE '~ph:%'", E.pid);
+  assert.equal(placeholder.is_main, 1, 'E is left with a placeholder as its Main');
+  const G = await mk(s, 'Gmain');
+  const gAlt = await s.alt(G.pid, 'Galt');
+  s.setTeam(gAlt, bravo);
+
+  const moved = await rehome(s, gAlt, E.pid);
+  assert(moved.applied);
+  assert.deepEqual(sAll(s, 'SELECT name FROM characters WHERE player_id = ? AND is_main = 1', E.pid).map((row) => row.name), ['Galt'], 'the moved character is the only Main of E');
+  assert.equal(sOne(s, 'SELECT is_main FROM characters WHERE id = ?', placeholder.id).is_main, 0, 'the placeholder stepped down');
+  const roster = await s.ok('gm', 'GET', `/roster?team=${bravo}`);
+  const entry = roster.people.find((person) => person.id === E.pid);
+  assert(entry, 'E is on the Bravo roster again');
+  assert.equal(entry.main.name, 'Galt');
+  assert.equal((await s.ok('gm', 'GET', `/roster/${E.pid}`)).characters.find((character) => character.isMain).name, 'Galt');
+  void alpha;
+
+  // A person that already has a visible Main keeps it (the moved character is an alt, the placeholder does not matter).
+  const H = await mk(s, 'Hmain');
+  const hAlt = await s.alt(H.pid, 'Halt');
+  assert((await rehome(s, hAlt, E.pid)).applied);
+  assert.deepEqual(sAll(s, 'SELECT name FROM characters WHERE player_id = ? AND is_main = 1', E.pid).map((row) => row.name), ['Galt']);
+});
+
+check('L8: a re-home withdraws the moved character\'s pending team request and removes its upcoming published-roster seat (those raids are stale); past raids, other characters and other requests stay - within the statement budget', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'] });
+  const [, bravo] = s.tids;
+  const A = await mk(s, 'Foo');
+  const fooAlt = await s.alt(A.pid, 'Fooalt');
+  await s.alt(A.pid, 'Otheralt');
+  const B = await mk(s, 'Bar', { teamId: bravo });
+  const upcoming = await raidOn(s, bravo, 20);
+  const past = await raidOn(s, bravo, 5);
+  const seat = (raidId, name) => sRun(s, "INSERT INTO raid_roster (raid_id, guild_id, name_key, name, player_id, group_number, status) VALUES (?, ?, ?, ?, ?, 1, 'confirmed')", raidId, s.gid, name.toLowerCase(), name, A.pid);
+  seat(upcoming, 'Fooalt'); seat(past, 'Fooalt'); seat(upcoming, 'Otheralt');
+  const request = (id, characterId) => sRun(s, "INSERT INTO team_requests (id, guild_id, team_id, character_id, requested_by, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', 1)", id, s.gid, bravo, characterId, s.uids.gm);
+  request('tr_fooalt', fooAlt);
+  request('tr_other', sOne(s, "SELECT id FROM characters WHERE name = 'Otheralt'").id);
+  sRun(s, "UPDATE raids SET policy_fp = 'fp'");
+  const versionBefore = Object.fromEntries(sAll(s, 'SELECT id, version FROM raids').map((row) => [row.id, row.version]));
+
+  const res = await rehome(s, fooAlt, B.pid);
+  assert(res.applied);
+  assert(res.plan.statements.length <= 14, `${res.plan.statements.length} statements`);
+  const requests = Object.fromEntries(sAll(s, 'SELECT id, status, decided_by, decided_at FROM team_requests').map((row) => [row.id, row]));
+  assert.deepEqual([requests.tr_fooalt.status, requests.tr_fooalt.decided_by, requests.tr_fooalt.decided_at], ['withdrawn', s.uids.gm, s.w.clock.now], 'the request of the moved character is withdrawn');
+  assert.equal(requests.tr_other.status, 'pending', 'the request of another character stays');
+  assert.deepEqual(sAll(s, 'SELECT raid_id, name_key FROM raid_roster ORDER BY raid_id, name_key').map((row) => `${row.raid_id === upcoming ? 'upcoming' : 'past'}:${row.name_key}`).sort(),
+    ['past:fooalt', 'upcoming:otheralt'], 'its upcoming seat is gone; the past one and the other character\'s stay');
+  const raidRow = (id) => sOne(s, 'SELECT policy_fp, version FROM raids WHERE id = ?', id);
+  assert.equal(raidRow(upcoming).policy_fp, '', 'the raid that held the seat is stale');
+  assert.equal(raidRow(upcoming).version, versionBefore[upcoming] + 1);
+  assert.equal(raidRow(past).policy_fp, 'fp', 'a past raid is not touched');
+});
+
+check('L6: the Activity / audit JSON never carries a placeholder id - a re-home logs the person and the reason, the join of a person that holds a placeholder lists its visible characters and a count', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'] });
+  const [, bravo] = s.tids;
+  const C = await mk(s, 'Cee');
+  const A = await mk(s, 'Foo');
+  const fooAlt = await s.alt(A.pid, 'Fooalt');
+  const B = await mk(s, 'Bar', { teamId: bravo });
+  const res = await rehome(s, fooAlt, B.pid);
+  assert(res.applied);
+  const audit = sAll(s, "SELECT before, after FROM audit_log WHERE action = 'character.rehome'");
+  assert.deepEqual(audit.map((row) => JSON.parse(row.after)), [{ personId: B.pid, reason: 'bnet_beats_link' }], 'the log row names the person and the reason');
+  // A (older than C? no: C is older, so A is the loser) joins into C: the loser's characters in the log are the visible ones.
+  const versions = { version: sOne(s, 'SELECT version FROM players WHERE id = ?', C.pid).version, otherVersion: sOne(s, 'SELECT version FROM players WHERE id = ?', A.pid).version };
+  const joined = await s.call('gm', 'POST', `/roster/${C.pid}/join`, { otherPersonId: A.pid, ...versions });
+  assert.equal(joined.status, 200, joined.text);
+  const joinRow = sAll(s, "SELECT before, after FROM audit_log WHERE action = 'person.join'").map((row) => JSON.parse(row.before));
+  assert.equal(joinRow.length, 1);
+  assert.deepEqual(joinRow[0].characterIds, [A.cid], 'the visible character of the loser (Foo, the Main)');
+  assert.equal(joinRow[0].placeholders, 1, 'and how many hidden ones it had');
+  for (const url of ['/audit', '/audit?group=roster']) {
+    const text = JSON.stringify(await s.ok('gm', 'GET', url));
+    assert(!text.includes(res.plan.placeholderId), `${url} does not hand out the placeholder's id`);
+    assert(!text.includes('placeholderId'), `${url} carries no placeholderId`);
+    assert(!text.includes('~ph:'), `${url} carries no reserved key`);
+  }
+  const csv = await s.call('gm', 'GET', '/audit?format=csv');
+  assert(!csv.text.includes(res.plan.placeholderId));
+});
+
 // ==== more checks above this line
 
 // ---------------------------------------------------------------------------

@@ -313,7 +313,12 @@ export async function joinPersonsStatements(db, {
     action: 'person.join',
     entityType: 'person',
     entityId: S,
-    before: { personId: L, characterIds: loserCharacters.map((row) => row.id) },
+    // The Activity view hands this to the page: the loser's VISIBLE characters by id and how many retired placeholders it had (their ids are never shown).
+    before: {
+      personId: L,
+      characterIds: loserCharacters.filter((row) => !isPlaceholderKey(row.name_key)).map((row) => row.id),
+      ...(loserCharacters.some((row) => isPlaceholderKey(row.name_key)) ? { placeholders: loserCharacters.filter((row) => isPlaceholderKey(row.name_key)).length } : {}),
+    },
     after: { personId: S, joinId: journalId, via: reason, teamlessCharacterIds },
   }, guard));
 

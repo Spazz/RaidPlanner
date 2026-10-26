@@ -67,9 +67,10 @@ export const CALLBACK_STATEMENT_BUDGET = 45;
 // The cheapest join: 3 reads (the pair, their characters, the counts) + the lean batch of an empty loser (journal, audit, team clear, move, stale marking, survivor,
 // delete) + the proof stamping that follows it.
 const JOIN_MIN_STATEMENTS = 14;
-// The most a re-home can take: its read, then up to 11 statements (the opening audit row, the sign-ups and stale marking, the move, the Main hand-over, the placeholder,
-// the alias and the older aliases' move, the versions), the bind of a name collision with its audit row (2) and the proof stamping (2).
-const REHOME_MAX_STATEMENTS = 16;
+// The most a re-home can take: its read, then up to 14 statements (the opening audit row, the sign-ups, roster seats and team request, the stale marking, the placeholder
+// Main's step-down, the move, the Main hand-over, the placeholder, the alias and the older aliases' move, the versions), the bind of a name collision with its audit row (2)
+// and the proof stamping (2).
+const REHOME_MAX_STATEMENTS = 19;
 // A guild batch gives up the names of at most this many Former characters at once (4 statements each); the rest wait for the next sign-in.
 const MAX_RETIRES = 2;
 const CLASS_LIST = `(${CLASS_IDS.map((id) => `'${id}'`).join(', ')})`;
