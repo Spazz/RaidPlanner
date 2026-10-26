@@ -8,6 +8,7 @@ import {
   bumpDayStatement, loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid,
 } from '../attendance-store.js';
 import { displayCharacter, loadRaidDetail, raidState, isStale } from '../attendance-view.js';
+import { hasDiscord, requireDiscord } from '../discord-guard.js';
 import { isId, newId } from '../ids.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { ownPlayerSql } from '../membership.js';
@@ -349,7 +350,7 @@ export async function listRaids(ctx) {
       eventId: row.event_id,
       eventSyncedAt: row.event_id !== null ? row.event_synced : null, // when the sign-ups were last read from Raid-Helper (an officer's refresh or the automatic one)
       eventMovedOn: canEdit ? row.event_moved_on : null, // the date Raid-Helper has the event on when that is not the raid's (the automatic refresh never moves a raid)
-      otherServer: row.event_server !== null && row.event_server !== guild.discord_server_id,
+      otherServer: hasDiscord(guild) && row.event_server !== null && row.event_server !== guild.discord_server_id,
       signups: seeCounts ? Object.fromEntries(SIGNUP_KINDS.map((kind) => [kind, row[`n_${kind}`] + (kind === 'absence' ? awayOf(row).length : 0)])) : null,
       locked: row.signups_locked === 1,
       signupsOpen: !closedReason(windowOf(row), now, rowCloseHours(row)),
@@ -477,6 +478,7 @@ export async function createRaid(ctx) {
 
   let event = null;
   if (eventId) {
+    requireDiscord(guild); // a Raid-Helper event lives in a Discord server
     await raidFetchRate(ctx, { wcl: false });
     event = await fetchRaidHelperEvent(ctx, eventId);
     if (event.serverId !== guild.discord_server_id && body.acceptOtherServer !== true) {
@@ -598,6 +600,7 @@ export async function putEvent(ctx) {
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext, { edit: true });
+  requireDiscord(guild); // a Raid-Helper event lives in a Discord server
   await raidFetchRate(ctx, { wcl: false });
   const event = await fetchRaidHelperEvent(ctx, eventId);
   if (event.serverId !== guild.discord_server_id && body.acceptOtherServer !== true) {

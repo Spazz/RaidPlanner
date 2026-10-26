@@ -2,6 +2,7 @@
 // stores nothing; a commit validates every row, then writes people and characters in one batch.
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
+import { requireDiscord } from '../discord-guard.js';
 import { isId, newId } from '../ids.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { memberSql } from '../membership.js';
@@ -180,6 +181,7 @@ export async function previewRaidHelper(ctx) {
   const { guildContext, team } = await startImport(ctx);
   const { db } = ctx;
   const guild = guildContext.guild;
+  requireDiscord(guild); // a Raid-Helper event lives in a Discord server
   await importRate(ctx);
   const event = await fetchRaidHelperEvent(ctx, eventId);
 
@@ -384,6 +386,7 @@ export async function commitRaidHelper(ctx) {
   const { guildContext, team } = await startImport(ctx);
   const { db } = ctx;
   const guild = guildContext.guild;
+  requireDiscord(guild); // a Raid-Helper event lives in a Discord server
   await importRate(ctx);
   const event = await fetchRaidHelperEvent(ctx, body.eventId);
   if (event.serverId !== guild.discord_server_id && body.acceptOtherServer !== true) {

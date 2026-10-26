@@ -4,6 +4,7 @@
 //   POST   /api/guild/:gid/onboarding/dismiss     (whoever sets the guild up)  hides the checklist card on Home for everyone
 import { HttpError, SECURITY_HEADERS, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
+import { hasDiscord } from '../discord-guard.js';
 import { buildGuildExport } from '../guild-export.js';
 import { sees } from '../onboarding.js';
 import { loadGuildContext } from '../permissions.js';
@@ -46,8 +47,9 @@ export async function deleteGuild(ctx) {
     // guild_id stays NULL: the row would go with the guild otherwise (the same record deleting an account leaves).
     auditStatement(ctx, { guildId: null, actorUserId: session.user.id, action: 'guild.delete', entityType: 'guild', entityId: guild.id }),
     db.prepare('DELETE FROM guilds WHERE id = ?').bind(guild.id),
-    db.prepare('DELETE FROM user_servers WHERE server_id = ? AND NOT EXISTS (SELECT 1 FROM guilds WHERE discord_server_id = user_servers.server_id)')
-      .bind(guild.discord_server_id),
+    // A guild without Discord has no server membership rows to clear.
+    ...(hasDiscord(guild) ? [db.prepare('DELETE FROM user_servers WHERE server_id = ? AND NOT EXISTS (SELECT 1 FROM guilds WHERE discord_server_id = user_servers.server_id)')
+      .bind(guild.discord_server_id)] : []),
   ]);
   return jsonResponse({ ok: true });
 }

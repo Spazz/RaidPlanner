@@ -9,6 +9,7 @@
 import { auditStatement } from './audit.js';
 import { HttpError } from './http.js';
 import { botConfigured, fetchMemberRoleIds } from './discord-bot.js';
+import { hasDiscord, serverIdIsDiscordSql } from './discord-guard.js';
 import { newId } from './ids.js';
 
 const MAX_GUILDS_AT_SIGN_IN = 5;
@@ -19,6 +20,7 @@ const SYNC_CONCURRENCY = 5;
 export function discordProblem(reason) {
   switch (reason) {
     case 'not_configured': return new HttpError(400, 'bot_not_configured', 'The Raidsmith Discord bot is not set up on this server (DISCORD_BOT_TOKEN).');
+    case 'no_server': return new HttpError(409, 'no_discord_server', 'This guild does not use a Discord server, so there are no Discord roles to read.');
     case 'bot_missing': return new HttpError(409, 'bot_not_in_server', 'The Raidsmith bot is not in your Discord server yet. Add it with the invite link in Guild settings > Discord roles.');
     case 'bad_token': return new HttpError(502, 'discord_unavailable', 'Discord did not accept the bot\'s token. Check DISCORD_BOT_TOKEN.');
     case 'rate_limited': return new HttpError(429, 'rate_limited', 'Discord is busy right now. Wait a moment and try again.', { retryAfter: 5 });
@@ -29,9 +31,11 @@ export function discordProblem(reason) {
 const keyOf = (roleId, teamId) => `${roleId}|${teamId || ''}`;
 
 // One person in one guild. guild: { id, discord_server_id }. -> { status: 'changed' | 'unchanged' | 'skipped' | 'failed', reason?, added?, removed? }
-// reason (skipped): not_configured, no_mapping, blocked, guild_master, no_discord. reason (failed): bad_token, bot_missing, rate_limited, unavailable.
+// reason (skipped): not_configured, no_mapping, blocked, guild_master, no_discord, no_discord_server (the guild has no Discord server: nothing is read or changed).
+// reason (failed): bad_token, bot_missing, rate_limited, unavailable.
 export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) {
   const { db, env } = ctx;
+  if (!hasDiscord(guild)) return { status: 'skipped', reason: 'no_discord_server' };
   const [mapResult, currentResult, standingResult] = await db.batch([
     db.prepare(
       `SELECT m.discord_role_id, m.role_id, m.team_id
@@ -120,7 +124,7 @@ export async function syncSignIn(ctx, userId) {
     if (!botConfigured(ctx.env)) return;
     const guilds = await ctx.db.prepare(
       `SELECT g.id, g.discord_server_id FROM guilds g
-        WHERE EXISTS (SELECT 1 FROM discord_role_maps m WHERE m.guild_id = g.id)
+        WHERE ${serverIdIsDiscordSql('g.discord_server_id')} AND EXISTS (SELECT 1 FROM discord_role_maps m WHERE m.guild_id = g.id)
           AND (EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = ?1 AND us.server_id = g.discord_server_id)
                OR EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.guild_id = g.id AND ra.user_id = ?1 AND ra.source = 'discord'))
         ORDER BY g.id LIMIT ?2`,
@@ -141,6 +145,7 @@ export async function syncSignIn(ctx, userId) {
 // Sync everyone who signed in: up to SYNC_BATCH people of the guild per call, from `after` (a user id; '' = the start). The caller repeats with `next` until it is null.
 // -> { processed, changed, unchanged, skipped, failed, problem, next }. problem: a failure that will repeat for everyone (bad_token, bot_missing, rate_limited): the run stops there.
 export async function syncGuildMembers(ctx, guild, { actorId, after = '' }) {
+  if (!hasDiscord(guild)) return { processed: 0, changed: 0, unchanged: 0, skipped: 0, failed: 0, problem: null, next: null };
   const rows = (await ctx.db.prepare(
     `SELECT u.id FROM users u
       WHERE u.id > ? AND u.discord_id IS NOT NULL

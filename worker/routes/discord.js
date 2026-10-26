@@ -7,6 +7,7 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { botConfigured, fetchServerRoles, inviteUrl } from '../discord-bot.js';
+import { requireDiscord } from '../discord-guard.js';
 import { discordProblem, syncGuildMembers } from '../discord-sync.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
 import { assertMayGrant, loadRolesData } from '../roles-store.js';
@@ -54,6 +55,7 @@ export async function getDiscord(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const guild = guildContext.guild;
+  requireDiscord(guild); // a guild without a Discord server has no roles to read and no bot to invite
   const [maps, rolesData] = await Promise.all([loadMaps(ctx.db, guild.id), loadRolesData(ctx.db, guild.id)]);
   // inServer: true/false once the bot has answered, null when it could not be asked (no token, or Discord did not answer).
   const bot = { configured: botConfigured(ctx.env), inviteUrl: inviteUrl(ctx.env, guild.discord_server_id), inServer: null, problem: null };
@@ -91,6 +93,7 @@ export async function putMaps(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const guild = guildContext.guild;
+  requireDiscord(guild);
   const maps = readMaps(ctx.body);
   const rolesData = await loadRolesData(ctx.db, guild.id);
   const targets = new Map(targetsOf(rolesData).map((target) => [target.roleId, target]));
@@ -143,6 +146,7 @@ export async function putMaps(ctx) {
 export async function syncEveryone(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
+  requireDiscord(guildContext.guild);
   if (!botConfigured(ctx.env)) throw discordProblem('not_configured');
   const after = ctx.body.after === undefined || ctx.body.after === null ? '' : ctx.body.after;
   if (typeof after !== 'string' || (after !== '' && !/^u_[A-Za-z0-9_-]{22}$/.test(after))) throw bad('after must be a person id from the previous call.', 'after');

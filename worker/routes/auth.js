@@ -6,6 +6,7 @@ import {
   creationIsOpen, isConfigured, mayCreateGuilds, revokeToken, serverIconUrl,
 } from '../discord.js';
 import { botConfigured } from '../discord-bot.js';
+import { hasDiscordServerId, serverIdIsDiscordSql } from '../discord-guard.js';
 import { syncSignIn } from '../discord-sync.js';
 import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
@@ -116,11 +117,11 @@ export async function callback(ctx) {
 function serverStatements(db, userSql, userParams, servers, now, guard = { sql: '1 = 1', params: [] }) {
   return [
     db.prepare(`DELETE FROM user_servers WHERE user_id = ${userSql} AND ${guard.sql}`).bind(...userParams, ...guard.params),
-    // Membership is the servers that have a Raidsmith guild.
+    // Membership is the servers that have a Raidsmith guild (a guild without Discord has no server: serverIdIsDiscordSql).
     db.prepare(
       `INSERT INTO user_servers (user_id, server_id, seen_at)
        SELECT ${userSql}, g.discord_server_id, ? FROM guilds g
-        WHERE g.discord_server_id IN (SELECT value FROM json_each(?)) AND ${guard.sql}`,
+        WHERE g.discord_server_id IN (SELECT value FROM json_each(?)) AND ${serverIdIsDiscordSql('g.discord_server_id')} AND ${guard.sql}`,
     ).bind(...userParams, now, JSON.stringify(servers.map((server) => server.id)), ...guard.params),
   ];
 }
@@ -234,7 +235,7 @@ async function deleteImpact(db, userId) {
       to: row.successor_id && people.has(row.successor_id) ? toPerson(people.get(row.successor_id)) : null,
     })),
     // Server ids of the deleted guilds, for the batch (never sent to the browser).
-    deletedServerIds: rows.filter((row) => row.has_others !== 1).map((row) => row.discord_server_id),
+    deletedServerIds: rows.filter((row) => row.has_others !== 1 && hasDiscordServerId(row.discord_server_id)).map((row) => row.discord_server_id),
   };
 }
 
@@ -256,7 +257,7 @@ async function createPayload(ctx) {
     const taken = await db.prepare(
       `SELECT g.id, g.name, g.discord_server_id,
               EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.guild_id = g.id AND ra.role_id = 'guild_master') AS has_master
-         FROM guilds g WHERE g.discord_server_id IN (SELECT value FROM json_each(?))`,
+         FROM guilds g WHERE g.discord_server_id IN (SELECT value FROM json_each(?)) AND ${serverIdIsDiscordSql('g.discord_server_id')}`,
     ).bind(JSON.stringify(manageable.servers.map((server) => server.id))).all();
     const takenIds = new Set(taken.results.map((row) => row.discord_server_id));
     servers = manageable.servers
