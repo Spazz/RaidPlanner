@@ -30,6 +30,7 @@
 // fails (a unique violation from a concurrent sign-in, a cap trigger) rolls back alone; the sign-in stands and the match is redone at the next one.
 // BUDGET: the whole callback stays within CALLBACK_STATEMENT_BUDGET D1 statements (batch members count one by one). The callback tells how many it has used;
 // work that does not fit is deferred to the next sign-in (`bnet match deferred: budget`).
+import { tombstoneMatchStatements } from './block-tombstones.js';
 import { auditStatement } from './audit.js';
 import { markPersonRaidsStale, markRaidsStale } from './attendance-store.js';
 import { bnetSupport } from './battlenet.js';
@@ -89,13 +90,8 @@ export async function loadIngameCombos(db) {
 // ---------------------------------------------------------------------------
 // Seams
 
-// SEAM for lane B7: the block-tombstone match (a blocked person who comes back under a new account or character is recognised by the HMACs of their keys).
-// guildId, userId, and keys: the typed values `bnet:<Battle.net account id>` and `idkey:<namespace>:<realm id>:<character id>` the match proved. B7 returns the
-// statements that insert the pending-review block; they go in front of the person statements of the guild's batch. Nothing is written here yet.
-// eslint-disable-next-line no-unused-vars
-export function tombstoneMatchStatements(db, { guildId, userId, keys }) {
-  return [];
-}
+// The block-tombstone match (lane B7a, worker/block-tombstones.js) runs per guild before its batch is built: a hit puts the pending-review block FIRST in
+// the batch, so the person create / link (guarded by notBlocked) does nothing.
 
 // ---------------------------------------------------------------------------
 // Proof
@@ -284,15 +280,13 @@ const hasNoPerson = (guildId, userId) => ({
 
 // -> { statements, personAt }: the write batch of one guild. personAt = the position of the statement that makes the account's person (create / link), whose
 // meta.changes is 1 when it happened; null for an existing person.
-function guildStatements(ctx, plan, { userId, bnetAccountId, now }) {
+function guildStatements(ctx, plan, { userId, bnetAccountId, now, tombstone }) {
   const { db } = ctx;
   const guildId = plan.guild.id;
   const P = plan.person.id;
   const ingame = ingameGuard(guildId);
   const mine = and(ingame, personIsMine(P, guildId, userId));
-  const statements = [...tombstoneMatchStatements(db, {
-    guildId, userId, keys: [`bnet:${bnetAccountId}`, ...plan.keys.map((key) => `idkey:${key[0]}:${key[1]}:${key[2]}`)],
-  })];
+  const statements = [...tombstone];
   let personAt = null;
 
   if (plan.person.kind === 'create') {
@@ -422,7 +416,12 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
     if (!plan) continue;
     for (const reason of plan.deferred) deferred.add(reason);
     if (!plan.person) continue;
-    const { statements, personAt } = guildStatements(ctx, plan, { userId, bnetAccountId, now });
+    const tombstone = await tombstoneMatchStatements(db, {
+      guildId, userId, env: ctx.env, now: ctx.now, randomBytes: ctx.randomBytes, log: ctx.log,
+      keys: { bnetAccountId, identityKeys: plan.keys.map((key) => `idkey:${key[0]}:${key[1]}:${key[2]}`) },
+    });
+    used += tombstone.length ? 6 : 1; // its reads: 1 when the guild has no tombstones, up to 6 on a hit
+    const { statements, personAt } = guildStatements(ctx, plan, { userId, bnetAccountId, now, tombstone });
     if (!room(statements.length)) { deferred.add('budget'); continue; }
     used += statements.length;
     const results = await writeBatch(ctx, statements);

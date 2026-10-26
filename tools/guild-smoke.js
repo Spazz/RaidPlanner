@@ -148,6 +148,10 @@ function workerVars(workerPort, fakes, gmDiscordId, open = false) {
     BNET_CLIENT_ID: 'smoke-client',
     BNET_CLIENT_SECRET: 'smoke-secret',
     BNET_REDIRECT_URI: `http://127.0.0.1:${workerPort}/auth/bnet/callback`,
+    // Block tombstones: a fixed throwaway key (a local .env key never reaches an isolated run); no retired keys (a lone comma reads as none).
+    TOMBSTONE_KEY: 'smoke-tombstone-key-0123456789abcdef',
+    TOMBSTONE_KEY_VERSION: '1',
+    TOMBSTONE_OLD_KEYS: ',',
   };
   return Object.entries(vars).flatMap(([key, val]) => ['--var', `${key}:${val}`]);
 }

@@ -12,7 +12,7 @@ import { addDays, localTimeToMs, weekStart } from './attendance-calendar.js';
 import { noticeOfRow, raidNoticeEffects } from './away.js';
 import { EXPECTED_KINDS, mergeSignups, roleGroup } from './signups-data.js';
 
-export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'team_requests', 'unmapped_ranks', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'log_missing', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
+export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'team_requests', 'unmapped_ranks', 'block_review', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'log_missing', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
 export const INFO_KINDS = ['unlocked'];  // listed with severity 'info'
 // Readiness FACTS about a raid: the Week view builds the raid's sentence from them (or from `week`). They stay in `items`, marked `readiness: true`,
@@ -88,6 +88,7 @@ function daysBetween(from, to) {
 //   noLoot: [{ id, team_id, raid_on, zone, title, event_title }],
 //   applications: [{ team_id, n }]   (applications still marked New, per team)
 //   teamRequests: [{ team_id, n }]   (pending team requests, per team: a person asked for a character to be placed on the team)
+//   blockReview: { pending, held }   (lane B7a: blocks a tombstone match inserted that wait for an officer, and matches that were held back; the route reads them ONLY for a holder of guild.access)
 //   unmappedRanks: [{ rank, members }]   (in-game ranks on the stored roster with no row in the rank map; the route reads them ONLY for the Owner of an 'ingame' guild)
 //   rosterDeclined: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids with a published roster: n seats said "can't make it")
 //   rosterPending: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids that start within CONFIRM_HOURS with a published roster: n seats have not answered)
@@ -312,6 +313,14 @@ function collect(input) {
       ...base('unmapped_ranks', null), count: ranks.length, ranks, characters: input.unmappedRanks.reduce((total, row) => total + row.members, 0),
       id: 'unmapped_ranks', link: { name: 'settings', tab: 'battlenet' },
     }, [0], ranks.join(','));
+  }
+  // Blocks a tombstone match made or held back (lane B7a): one item for the guild, for the holders of guild.access, never dismissable (a pending block stays until an
+  // officer keeps it or lifts it).
+  if (input.blockReview && (input.blockReview.pending > 0 || input.blockReview.held > 0) && input.granted('guild.access')) {
+    const { pending, held } = input.blockReview;
+    add('block_review', {
+      ...base('block_review', null), count: pending + held, pending, held, id: 'block_review', link: { name: 'settings', tab: 'people' },
+    }, [0], `${pending}:${held}`);
   }
   // A Trial is per CHARACTER on its team (a Raider main on A can have a Trial alt on B): one item per Trial character. The id stays `trial:<person>` for the
   // main (what a snooze has always been keyed by) and adds the team for an alt.

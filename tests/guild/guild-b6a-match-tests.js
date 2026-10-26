@@ -335,6 +335,8 @@ check('a Battle.net-only account with characters on an in-game roster signs in a
   const { jar } = await bnetSignIn(w, BNET.ann);
   const userId = userOf(w, BNET.ann);
 
+  assert.equal(w.count('block_tombstones'), 0, 'the guild has no tombstones: the match reads once and finds nothing, and the callback still makes the person');
+  assert.equal(w.count('guild_blocks'), 0);
   const me = await w.call(jar, 'GET', '/auth/me');
   assert.equal(me.status, 200);
   assert.deepEqual(me.json.guilds.map((guild) => guild.id), [G], 'GET /auth/me lists the guild');
@@ -1153,10 +1155,75 @@ check('a character that somebody else bound to the roster key first (an officer\
 // ---------------------------------------------------------------------------
 // The seams and the lean join
 
-check('the lane B7 seam: tombstoneMatchStatements returns no statement', async () => {
-  const { tombstoneMatchStatements } = await load('worker/bnet-match.js');
+// The block tombstones (lane B7a) are matched inside the callback: the tombstone statements go first in the guild's batch, so the person create / link, guarded by
+// notBlocked, does nothing on a hit. Blocked account A, its account deleted, the same Battle.net account and roster character on a NEW account. `removePerson`:
+// Delete my data also deletes the guild's rows of A (the person is gone) or leaves them unowned (the new account would link to the old person).
+async function blockedAccountComesBack(removePerson) {
+  const { tombstoneMatchStatements } = await load('worker/block-tombstones.js');
+  assert.equal(typeof tombstoneMatchStatements, 'function', 'the real tombstone match, not a seam stub');
   const w = await makeWorld();
-  assert.deepEqual(tombstoneMatchStatements(w.db, { guildId: GID(1), userId: UID(1), keys: ['bnet:1', 'idkey:profile-classicann-us:4001:7000'] }), []);
+  w.env.TOMBSTONE_KEY = 'test-tombstone-key-0123456789abcdef';
+  const G = w.ingame(1, [['Aldric', 3], ['Galdor', 2]]);
+  // The officer: a Discord account with a person on the roster and the Officer role.
+  const officerJar = await discordSignIn(w, DISCORD.eve);
+  const officerId = w.one('SELECT id FROM users WHERE discord_id = ?', DISCORD.eve.id).id;
+  w.raw.person(PID(9), G, { userId: officerId });
+  w.raw.character(CID(9), G, PID(9), 'Galdor', { isMain: 1 });
+  w.run("INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at) VALUES ('ra_officer', ?, ?, 'officer', NULL, NULL, 1)", G, officerId);
+
+  // Account A signs in with its Battle.net account: a person and a Battle.net-proven Aldric.
+  w.serve(['Aldric']);
+  const first = await bnetSignIn(w, BNET.ann);
+  const oldUserId = userOf(w, BNET.ann);
+  assert(personOf(w, oldUserId, G), 'A is a member');
+  assert.equal(charactersOf(w, personOf(w, oldUserId, G).id)[0].proof_bnet_account_id, BNET.ann.id);
+
+  // The officer blocks A: tombstones for its Battle.net id and the identity key of Aldric.
+  assert.equal((await w.call(officerJar, 'POST', `/api/guild/${G}/people/${oldUserId}/block`, {})).status, 200);
+  assert.equal(w.count('block_tombstones', 'guild_id = ?', G), 2, 'a tombstone for the Battle.net id and one for the identity key');
+  assert.equal((await w.call(first.jar, 'GET', `/api/guild/${G}`)).json.error, 'access_removed');
+
+  // Delete my data: the account row goes (and its block row), the tombstones stay.
+  assert.equal((await w.call(first.jar, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
+  assert.equal(w.count('users', 'id = ?', oldUserId), 0, 'the account is gone');
+  assert.equal(w.count('guild_blocks'), 0, 'and its block row with it');
+  assert.equal(w.count('block_tombstones', 'guild_id = ?', G), 2, 'the tombstones stayed');
+  if (removePerson) {
+    w.run('DELETE FROM characters WHERE name = ?', 'Aldric');
+    w.run('DELETE FROM players WHERE guild_id = ? AND id != ?', G, PID(9));
+  }
+  const charactersBefore = w.count('characters');
+  const playersBefore = w.count('players');
+
+  // A NEW account signs in with the SAME Battle.net account and the same roster character.
+  w.logs.length = 0;
+  const again = await bnetSignIn(w, BNET.ann);
+  const newUserId = userOf(w, BNET.ann);
+  assert.notEqual(newUserId, oldUserId, 'a new account');
+  const block = w.one('SELECT * FROM guild_blocks WHERE guild_id = ? AND user_id = ?', G, newUserId);
+  assert.deepEqual([block.blocked_by, block.pending_review, block.tombstone_missing, block.reason], [null, 1, 0, 'Matched an earlier block of the same person']);
+  assert.equal(w.count('players', 'user_id = ?', newUserId), 0, 'no person linked to the new account');
+  assert.equal(w.count('characters', 'proof_user_id = ?', newUserId), 0, 'no character proven for it');
+  assert.equal(w.count('players'), playersBefore, 'no person created');
+  assert.equal(w.count('characters'), charactersBefore, 'no character created');
+  assert.equal(w.count('characters', "name = 'Aldric'"), removePerson ? 0 : 1);
+  const route = await w.call(again.jar, 'GET', `/api/guild/${G}`);
+  assert.deepEqual([route.status, route.json.error], [403, 'access_removed'], 'a pending block enforces');
+  const audit = w.one("SELECT actor_user_id, entity_id, after FROM audit_log WHERE action = 'block.match'");
+  assert.deepEqual([audit.actor_user_id, audit.entity_id, JSON.parse(audit.after)], [null, newUserId, { refs: 1, kinds: ['bnet', 'idkey'] }]);
+  assert.deepEqual(w.logs.filter((line) => /failed/.test(line)), []);
+  // The sign-in itself held: the new Battle.net link exists, and the statements stay inside the budget (the tombstone hit reads up to 6).
+  assert.equal(w.count('bnet_links', 'user_id = ?', newUserId), 1);
+  const { CALLBACK_STATEMENT_BUDGET } = await load('worker/bnet-match.js');
+  assert(again.statements <= CALLBACK_STATEMENT_BUDGET, `${again.statements} statements`);
+}
+
+check('the lane B7 tombstone match: a blocked account that deletes its data and signs in again as a new account with the same Battle.net account and roster character gets a pending-review block, no person, no character, 403 access_removed and a block.match audit row (its old person left unowned)', async () => {
+  await blockedAccountComesBack(false);
+});
+
+check('the lane B7 tombstone match: the same when Delete my data removed the person and its character too - the new account creates nothing', async () => {
+  await blockedAccountComesBack(true);
 });
 
 check('a lean join leaves the tables the loser has nothing in out, ends in the same state as the full join, and a row that appears after the count makes the batch a no-op', async () => {

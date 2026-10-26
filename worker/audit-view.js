@@ -59,6 +59,10 @@ export const ACTION_GROUP = Object.freeze({
   'attention.dismiss': 'raids', 'attention.restore': 'raids',
   'join.create': 'signups', 'join.revoke': 'signups', 'signup.guest': 'signups', 'signup.guest_remove': 'signups', 'signup.guest_resolve': 'signups',
   'signup.guests_clear': 'signups', 'signup.open': 'signups', 'signup.open_withdraw': 'signups',
+  // Lane B7a: blocks and tombstone matches sit with access.remove; the per-person detail of a sync run is roster history; failures are settings.
+  'person.block': 'settings', 'person.unblock': 'settings', 'block.match': 'settings', 'block.match_held': 'settings',
+  'person.core_rank': 'roster', 'person.ingame_rank': 'roster', 'person.former': 'roster',
+  'fresh.failed': 'settings', 'guild.claim_failed': 'settings',
 });
 
 // Actions the Worker writes itself (no actor): the Activity log names "Raidsmith" for them instead of a former member.
@@ -110,6 +114,7 @@ export function collectRefs(rows) {
 // Sentences
 
 const STATUS_LABEL = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', inactive: 'Inactive' };
+const CORE_RANK_LABEL = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', social: 'Social' };
 const LEFT_LABEL = { left: 'left the guild', kicked: 'kicked', break: 'on a break', other: 'other' };
 const KIND_LABEL = { signed: 'Signed', late: 'Late', standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
 const AWAY_LABEL = { away: 'Away', late: 'Late', leaving: 'Leaving early' };
@@ -213,6 +218,15 @@ export function describeRow(row, names = {}) {
     case 'guild_master.auto_promote': return after.guildMasterUserId ? `Guild Master passed to ${user(after.guildMasterUserId)}` : 'The guild has no Guild Master';
     case 'access.remove': return `Removed the access of ${user(ent)}`;
     case 'access.restore': return `Restored the access of ${user(ent)}`;
+    case 'person.block': return `Removed the access of ${person(ent)}, who has no account yet`;
+    case 'person.unblock': return `Restored the access of ${person(ent)}`;
+    case 'block.match': return `${user(ent)} matched an earlier block and was removed until an officer reviews it`;
+    case 'block.match_held': return `${user(ent)} matched an earlier block but was not removed (${after.reason === 'senior' ? 'they rank the same as the officer who blocked, or above' : 'they hold the Owner seat or a Guild Master role'}); an officer needs to review it`;
+    case 'person.core_rank': return `${person(ent)} went from ${CORE_RANK_LABEL[before.coreRank] || 'one rank'} to ${CORE_RANK_LABEL[after.coreRank] || 'another'}`;
+    case 'person.ingame_rank': return `The in-game rank of ${person(ent)} went from ${before.rank === undefined ? 'one rank' : before.rank} to ${after.rank === undefined ? 'another' : after.rank}`;
+    case 'person.former': return `${person(ent)} left the in-game guild and is now Former`;
+    case 'fresh.failed': return `A sign-in check for a sensitive act failed${after.count > 1 ? ` ${after.count} times in an hour` : ''}`;
+    case 'guild.claim_failed': return `A claim of the Guild Master seat failed${after.count > 1 ? ` ${after.count} times in an hour` : ''}`;
 
     // Phase 7. A role's name comes from the row (a custom role can be renamed or deleted since); a built-in role has a fixed label.
     case 'role.create': return `Created the role ${after.name || 'a role'}`;

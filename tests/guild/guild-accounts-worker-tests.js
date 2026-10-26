@@ -1033,18 +1033,18 @@ check('PUT /roster/:pid/account: link and unlink with the rights of the person\'
   assert.deepEqual(await w.rows("SELECT actor_user_id, action FROM audit_log WHERE action LIKE 'person.account_%' ORDER BY created_at, rowid"), [
     { actor_user_id: s.ids.carol, action: 'person.account_link' }, { actor_user_id: s.ids.carol, action: 'person.account_unlink' },
   ]);
-  await w.db.sqlite.exec("DELETE FROM audit_log WHERE action LIKE 'person.account_%'");
+  // The log is append-only (migration 0034): the cassia rows above stay and the checks below look at the rows of this person only.
   const byLead = await linkAccount(s, 'bob', pid, s.ids.holly);
   assert.equal(byLead.status, 200, JSON.stringify(byLead.json));
   assert.equal(byLead.json.person.account.user.id, s.ids.holly);
   const stored = (await w.rows('SELECT user_id, version FROM players WHERE id = ?', pid))[0];
   assert.deepEqual([stored.user_id, stored.version], [s.ids.holly, aldric.person.version + 1]);
-  assert.deepEqual(await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, before, after FROM audit_log WHERE action = 'person.account_link'"), [{
+  assert.deepEqual(await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, before, after FROM audit_log WHERE action = 'person.account_link' AND entity_id = ?", pid), [{
     guild_id: s.guildId, actor_user_id: s.ids.bob, entity_type: 'person', entity_id: pid, before: JSON.stringify({ userId: null }), after: JSON.stringify({ userId: s.ids.holly }),
   }]);
   // The same link again changes nothing; a different account needs the first unlinked.
   assert.equal((await linkAccount(s, 'bob', pid, s.ids.holly)).status, 200);
-  assert.equal(await w.count('audit_log', "action = 'person.account_link'"), 1);
+  assert.equal(await w.count('audit_log', "action = 'person.account_link' AND entity_id = ?", pid), 1);
   const other = await linkAccount(s, 'bob', pid, s.ids.ivan);
   assert.deepEqual([other.status, other.json.error], [409, 'already_linked']);
   // One person per account in a guild.
@@ -1055,9 +1055,9 @@ check('PUT /roster/:pid/account: link and unlink with the rights of the person\'
   const off = await linkAccount(s, 'bob', pid, null);
   assert.equal(off.status, 200, JSON.stringify(off.json));
   assert.equal(off.json.person.account.user, null);
-  assert.deepEqual(await w.rows("SELECT before, after FROM audit_log WHERE action = 'person.account_unlink'"), [{ before: JSON.stringify({ userId: s.ids.holly }), after: JSON.stringify({ userId: null }) }]);
+  assert.deepEqual(await w.rows("SELECT before, after FROM audit_log WHERE action = 'person.account_unlink' AND entity_id = ?", pid), [{ before: JSON.stringify({ userId: s.ids.holly }), after: JSON.stringify({ userId: null }) }]);
   assert.equal((await linkAccount(s, 'bob', pid, null)).status, 200);
-  assert.equal(await w.count('audit_log', "action = 'person.account_unlink'"), 1);
+  assert.equal(await w.count('audit_log', "action = 'person.account_unlink' AND entity_id = ?", pid), 1);
   // Validation and lookups of what does not exist.
   for (const body of [{}, { userId: 5 }, { userId: 'nope' }, { userId: 'g_AAAAAAAAAAAAAAAAAAAAAA' }]) {
     const r = await s.call('bob', 'PUT', `/roster/${pid}/account`, body);

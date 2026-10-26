@@ -19,6 +19,7 @@ import { SHARE_PATH, handleShare, isSharePagePath, servePlannerPage } from './sh
 import { claimGuild, createGuild, getGuild, patchGuild } from './routes/guild.js';
 import { deleteGuild, dismissOnboarding, exportGuild } from './routes/guild-data.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
+import { blockRosterPerson, unblockRosterPerson } from './routes/person-blocks.js';
 import { createRole, deleteRole, getRoles, resetRole, updateRole } from './routes/roles.js';
 import { getDiscord, putMaps, syncEveryone } from './routes/discord.js';
 import { createGuestLink, getGuestView, leaveGuest, listGuestLinks, redeemGuestLink, revokeGuestLink } from './routes/guests.js';
@@ -123,6 +124,9 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/people/:uid/sync', auth: true, handler: syncPerson },
   { method: 'POST', path: '/api/guild/:gid/people/:uid/block', auth: true, handler: blockPerson },
   { method: 'DELETE', path: '/api/guild/:gid/people/:uid/block', auth: true, handler: restorePerson },
+  // B7a: blocking a roster person who has no account (a marker + tombstones; the same permission as the account block).
+  { method: 'POST', path: '/api/guild/:gid/roster/:pid/block', auth: true, handler: blockRosterPerson },
+  { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/block', auth: true, handler: unblockRosterPerson },
   // Roles, Discord role mapping, guest links and the public page (Phase 7). The guest and public routes need no account: they answer read-only views.
   { method: 'GET', path: '/api/guild/:gid/roles', auth: true, handler: getRoles },
   { method: 'POST', path: '/api/guild/:gid/roles', auth: true, handler: createRole },

@@ -516,6 +516,7 @@ const touchesUserServers = (sql) => /\buser_servers\b/.test(sql);
 const touchesPlayersUserId = (sql) => /\bplayers\b/.test(sql) && /\buser_id\b/.test(sql);
 
 const USER_SERVERS_ALLOWED = {
+  'worker/block-tombstones.js': { count: 1, reason: 'the tombstone match at a Discord sign-in or link: which guilds with tombstones the account could reach, so the match runs there; it decides nothing about membership' },
   'worker/discord-sync.js': { count: 3, reason: 'Discord ROLE sync: "is the account in the Discord server" decides whether to call Discord for its roles (and who to sync), not who is in the guild; a stored role grants nothing while membership fails' },
   'worker/flip-preview.js': { count: 1, reason: 'the flip dry run lists the accounts of the guild\'s Discord server as candidates; today\'s rule is applied by memberSql, the in-game rule by the roster fragments' },
   'worker/routes/accounts.js': { count: 1, reason: 'write: disconnecting Discord clears the account\'s server rows' },
@@ -526,6 +527,8 @@ const USER_SERVERS_ALLOWED = {
 
 const PLAYERS_USER_ID_ALLOWED = {
   'worker/bnet-match.js': { count: 9, reason: 'the Battle.net sign-in match: which person is the signing-in account\'s (players.user_id), the person it creates or is linked to, and the stamping of that person\'s characters; membership itself stays memberSql (a person on the roster is what makes the roster rule true)' },
+  'worker/routes/person-blocks.js': { count: 1, reason: 'blocking a roster person: the person must have no account (players.user_id NULL and no user holding its Discord id); the block target is judged by the guild_blocks / person_blocks rows, not by membership' },
+  'worker/block-tombstones.js': { count: 1, reason: 'the tombstone match: the guilds where the account has a person, to run the match there (the block itself is judged by guild_blocks and memberSql)' },
   'worker/bnet-store.js': { count: 2, reason: 'claim planning: which person is the claimant\'s own (ownership of a person; the member test is memberSql)' },
   'worker/claim-apply.js': { count: 3, reason: 'writes and guards of an applied claim: the person is still the claimant\'s' },
   'worker/flip-preview.js': { count: 3, reason: 'the flip dry run: the person each account has today and would have after the flip links the Discord-owned ones' },

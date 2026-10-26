@@ -438,6 +438,18 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('person.match_link', 'person', 'p_thoren', null, { userId: 'u_erin' }), 'Linked a Battle.net account to Thoren because its characters are on the in-game roster'],
     [row('character.proof_supersede', 'character', 'c_th', { userId: 'u_bob' }, { userId: 'u_erin' }), 'The Battle.net proof of Thoren passed to the account Erin E, which proved it more recently'],
     [row('character.proof_supersede', 'character', 'c_th', { userId: 'u_bob' }, { userId: 'u_gone' }), 'The Battle.net proof of Thoren passed to another account, which proved it more recently'],
+    // Hierarchy B7a: blocks, tombstone matches, the per-person detail of a sync run and the coalesced failures.
+    [row('person.block', 'person', 'p_thoren', { blocked: false }, { blocked: true }), 'Removed the access of Thoren, who has no account yet'],
+    [row('person.unblock', 'person', 'p_thoren', { blocked: true }, { blocked: false }), 'Restored the access of Thoren'],
+    [row('block.match', 'user', 'u_erin', null, { refs: 1 }), 'Erin E matched an earlier block and was removed until an officer reviews it'],
+    [row('block.match_held', 'user', 'u_erin', null, { reason: 'owner' }), 'Erin E matched an earlier block but was not removed (they hold the Owner seat or a Guild Master role); an officer needs to review it'],
+    [row('block.match_held', 'user', 'u_erin', null, { reason: 'senior' }), 'Erin E matched an earlier block but was not removed (they rank the same as the officer who blocked, or above); an officer needs to review it'],
+    [row('person.core_rank', 'person', 'p_thoren', { coreRank: 'trial' }, { coreRank: 'raider' }), 'Thoren went from Trial to Raider'],
+    [row('person.ingame_rank', 'person', 'p_thoren', { rank: 4 }, { rank: 2 }), 'The in-game rank of Thoren went from 4 to 2'],
+    [row('person.former', 'person', 'p_thoren'), 'Thoren left the in-game guild and is now Former'],
+    [row('fresh.failed', 'user', 'u_erin', null, { count: 1 }), 'A sign-in check for a sensitive act failed'],
+    [row('fresh.failed', 'user', 'u_erin', null, { count: 7, coalesced: true }), 'A sign-in check for a sensitive act failed 7 times in an hour'],
+    [row('guild.claim_failed', 'user', 'u_erin', null, { count: 3, coalesced: true }), 'A claim of the Guild Master seat failed 3 times in an hour'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {
@@ -1042,9 +1054,9 @@ check('audit route: 50 rows a page by keyset (ties on the same millisecond inclu
   assert.deepEqual(seen.slice(10, 60), [...seen.slice(10, 60)].sort().reverse());
   const exactly50 = await s.call('alice', 'GET', '/audit?type=roster&to=2027-01-10&from=2027-01-10&actor=');
   assert.equal(exactly50.json.rows.length, 50);
-  // A page that ends exactly on the last row has no "next" (the 51st row is what tells).
-  s.w.exec(`DELETE FROM audit_log WHERE action = 'person.notes' AND id NOT IN (SELECT id FROM audit_log WHERE action = 'person.notes' ORDER BY created_at DESC, id DESC LIMIT 50)`);
-  const last = await s.call('alice', 'GET', '/audit?type=roster');
+  // A page that ends exactly on the last row has no "next" (the 51st row is what tells). The log is append-only (migration 0034), so instead of deleting
+  // rows the page starts after the 80th row seen: exactly 50 are older.
+  const last = await s.call('alice', 'GET', `/audit?type=roster&before=${encodeURIComponent(`${iso('2027-01-10T12:00:00Z')}:${seen[79]}`)}`);
   assert.deepEqual([last.json.rows.length, last.json.next], [50, null]);
 });
 

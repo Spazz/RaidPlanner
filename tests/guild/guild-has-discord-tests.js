@@ -247,6 +247,7 @@ const countOf = (text, token) => text.split(token).length - 1;
 const SERVER_ID_FILES = {
   'worker/attendance-view.js': { how: 'guard', count: 1 },
   'worker/bnet-store.js': { how: 'fragment', count: 1 },
+  'worker/block-tombstones.js': { how: 'data', count: 1 },
   'worker/discord-guard.js': { how: 'data', count: 3 },
   'worker/discord-sync.js': { how: 'guard', count: 7 },
   'worker/event-refresh.js': { how: 'guard', count: 2 },

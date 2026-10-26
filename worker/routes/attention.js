@@ -50,6 +50,14 @@ const UNMAPPED_RANKS_SQL = `SELECT g.rank AS rank, COUNT(*) AS members FROM guil
     AND NOT EXISTS (SELECT 1 FROM source_rank_maps m WHERE m.guild_id = g.guild_id AND m.source = 'ingame' AND m.source_key = CAST(g.rank AS TEXT))
   GROUP BY g.rank ORDER BY g.rank`;
 
+// Blocks that wait for an officer (lane B7a), for the holders of guild.access only (?2 = 1 when the viewer holds it; anyone else gets none):
+//   pending: blocks a tombstone match inserted (pending_review = 1; they ENFORCE already)
+//   held: accounts that matched a block but were NOT blocked (the Owner, a Guild Master, an account ranking with or above the officer who blocked), the last 30 days
+const BLOCK_REVIEW_SQL = `SELECT
+    (SELECT COUNT(*) FROM guild_blocks WHERE guild_id = ?1 AND pending_review = 1 AND ?2 = 1) AS pending,
+    (SELECT COUNT(DISTINCT entity_id) FROM audit_log WHERE guild_id = ?1 AND action = 'block.match_held' AND created_at > ?3 AND ?2 = 1) AS held`;
+const BLOCK_REVIEW_DAYS = 30;
+
 // Everyone who gets the page: the viewer holds at least one of the editing rights somewhere.
 export const canSeeAttention = (can) => VIEW_ACTIONS.some((action) => isGranted(can[action]));
 
@@ -108,7 +116,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, raids, rows, borrowed, people, characters, rosterDeclined, applications, teamRequests, unmappedRanks, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, weekSignups, weekRoster, weekCharacters, weekLate, guestIdentities, onboarding] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, raids, rows, borrowed, people, characters, rosterDeclined, applications, teamRequests, unmappedRanks, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, weekSignups, weekRoster, weekCharacters, weekLate, guestIdentities, blockReview, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -261,6 +269,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
       weekFrom, weekTo,
     ),
     guestIdentityStatement(db, guild.id),
+    db.prepare(BLOCK_REVIEW_SQL).bind(guild.id, isGranted(can['guild.access']) ? 1 : 0, now - BLOCK_REVIEW_DAYS * DAY_MS),
     // The setup checklist's flags, for the people who set the guild up (no statement for anyone else: `onboarding` is then undefined).
     ...[onboardingStatement(db, guildContext)].filter(Boolean),
   ]);
@@ -331,6 +340,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     applications: applications.results,
     teamRequests: teamRequests.results,
     unmappedRanks: unmappedRanks.results,
+    blockReview: blockReview.results[0],
     rosterPending: rosterPending.results,
     eventMoved: eventMoved.results,
     webhooksOff: webhooksOff.results,
