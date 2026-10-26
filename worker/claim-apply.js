@@ -12,7 +12,9 @@
 //   new_person    the claimant has no person and the character is on no roster: a new person (status trial) with the character as Main, on the team asked for or none
 //   link_person   the character is on a person nobody linked and the claimant has none: the claimant's account links to that person (no character is added)
 // A hand-typed character is not proven by anything: `source: 'hand'` marks it (owner_proof 'hand'), and a hand-typed name that is on an unlinked person is
-// NOT linked at once (anyone could type anybody's name): it waits for an officer like any conflict.
+// NOT linked at once (anyone could type anybody's name): it waits for an officer like any conflict. Typing a name never blocks the one whom Battle.net proves
+// owns it: a Battle.net claim on a name closes a pending TYPED claim on it (level NULL), and a Battle.net claim on a character somebody else typed in
+// (owner_proof 'hand' on another person) waits for an officer instead of being refused. Re-homing such a character is lane B6a ("Battle.net wins").
 import { auditStatement } from './audit.js';
 import { markPersonRaidsStale, markRaidsStale } from './attendance-store.js';
 import { planClaims } from './bnet-store.js';
@@ -104,7 +106,8 @@ export function applyClaimPlan(ctx, { guild, plan, claimant, character, source, 
 // Decides, in order and against the roster as it is now, what each pick does, remembering what the earlier picks of the SAME request make true: the first
 // character of a claimant with no person creates (or links) their person, the next ones then join it. -> [{ pick, kind, plan, personId?, reason? }]
 //   add_alt | new_person | link_person   applied at once
-//   conflict                             a pending claim for the officers (reason other_person; link_person for a hand-typed name, which proves nothing)
+//   conflict                             a pending claim for the officers (reason other_person; link_person for a hand-typed name, which proves nothing;
+//                                        hand_added for a Battle.net claim on a character someone else typed in)
 //   already | taken                      refused (409)
 // planClaims reads the roster ONCE for all picks, so a claimant with no person sees new_person (or link_person) for every pick: the loop below turns the
 // later ones into joins of the person the first one made.
@@ -115,7 +118,11 @@ export async function planPicks(ctx, guild, claimant, picks, { source }) {
   return picks.map((pick, i) => {
     const plan = plans.get(String(i));
     if (plan.kind === 'already') return { pick, kind: 'already', plan };
-    if (plan.kind === 'blocked') return { pick, kind: plan.reason === 'taken' ? 'taken' : 'conflict', reason: plan.reason, plan };
+    if (plan.kind === 'blocked') {
+      // Someone typed this character in on their own record, which proves nothing: the owner Battle.net proves goes to an officer, not to a refusal.
+      if (source === 'bnet' && plan.reason === 'taken' && plan.proof === 'hand') return { pick, kind: 'conflict', reason: 'hand_added', plan };
+      return { pick, kind: plan.reason === 'taken' ? 'taken' : 'conflict', reason: plan.reason, plan };
+    }
     if (plan.kind === 'add_alt') return { pick, kind: 'add_alt', plan };
     if (plan.kind === 'new_person') {
       if (mine) return { pick, kind: 'add_alt', plan: { ...plan, kind: 'add_alt', person: { id: mine } } };
@@ -155,14 +162,20 @@ export async function applyPicks(ctx, guildContext, picks, { source, field = 'ch
     if (entry.kind === 'taken') throw new HttpError(409, 'name_taken', `${entry.pick.name} is already on someone else's record in this guild.`, at(entry));
   }
   const [pendingResult, openResult] = await db.batch([
-    db.prepare("SELECT name_key, realm_key FROM character_claims WHERE guild_id = ? AND status = 'pending'").bind(guild.id),
+    db.prepare("SELECT id, name_key, realm_key, level FROM character_claims WHERE guild_id = ? AND status = 'pending'").bind(guild.id),
     db.prepare("SELECT COUNT(*) AS n FROM character_claims WHERE guild_id = ? AND user_id = ? AND status = 'pending'").bind(guild.id, claimant.userId),
   ]);
-  const pendingKeys = new Set(pendingResult.results.map((row) => `${row.name_key}|${row.realm_key}`));
+  const waitingBy = new Map(pendingResult.results.map((row) => [`${row.name_key}|${row.realm_key}`, row]));
+  // A claim waiting on a name blocks a second one, except that a Battle.net claim closes a TYPED one (no level): typing a name proves nothing, the Battle.net list does.
+  const superseded = [];
   for (const entry of planned) {
-    if (pendingKeys.has(`${nameKey(entry.pick.name)}|${entry.pick.realm.key}`)) {
-      throw new HttpError(409, 'claim_pending', `${entry.pick.name} already has a claim waiting for officers.`, at(entry));
+    const waiting = waitingBy.get(`${nameKey(entry.pick.name)}|${entry.pick.realm.key}`);
+    if (!waiting) continue;
+    if (source === 'bnet' && waiting.level === null) {
+      superseded.push(waiting.id);
+      continue;
     }
+    throw new HttpError(409, 'claim_pending', `${entry.pick.name} already has a claim waiting for officers.`, at(entry));
   }
   const conflicts = planned.filter((entry) => entry.kind === 'conflict').length;
   if (conflicts && openResult.results[0].n + conflicts > MAX_PENDING_PER_GUILD) {
@@ -171,6 +184,14 @@ export async function applyPicks(ctx, guildContext, picks, { source, field = 'ch
 
   const now = ctx.now();
   const statements = [];
+  // Closed first, in the same batch: the pending claim of the Battle.net owner (if any) takes the one open slot of the name.
+  for (const id of superseded) {
+    statements.push(
+      db.prepare("UPDATE character_claims SET status = 'rejected', decided_by = ?, decided_at = ? WHERE id = ? AND guild_id = ? AND status = 'pending' AND level IS NULL")
+        .bind(claimant.userId, now, id, guild.id),
+      auditStatement(ctx, { guildId: guild.id, actorUserId: claimant.userId, action: 'claim.reject', entityType: 'claim', entityId: id, after: { superseded: true } }, CHANGED_ONE),
+    );
+  }
   const slots = planned.map((entry) => {
     const pick = entry.pick;
     if (entry.kind === 'conflict') {

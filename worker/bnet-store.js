@@ -77,6 +77,7 @@ export async function loadMemberGuilds(db, userId) {
 //   link_person  the character is on a person nobody has linked yet and the claimant has no person: the claimant's account links to that person
 //   already      the character is already on the claimant's own person: approving only closes the claim
 //   blocked      cannot be approved: reason not_member | taken (on a person linked to someone else, by account or Discord ID) | other_person (on an unlinked person, but the claimant has their own)
+//                a blocked plan also says `proof`: how the character got on the roster (characters.owner_proof; 'hand' = typed in, which proves nothing)
 // claims: character_claims rows (user_id, name_key, realm_key). -> Map(claim id -> { kind, reason, person: { id, name } | null, homeTeamId, defaultTeamId })
 export async function planClaims(db, guild, claims) {
   const plans = new Map();
@@ -95,7 +96,7 @@ export async function planClaims(db, guild, claims) {
                                   OR p.discord_user_id IN (SELECT u.discord_id FROM users u WHERE u.id IN (SELECT value FROM json_each(?))))`,
     ).bind(guild.id, userIds, userIds),
     db.prepare(
-      `SELECT c.id AS character_id, c.name_key, c.realm_key, p.id AS player_id, p.discord_user_id, p.user_id, m.name AS main_name, m.team_id AS home_team_id
+      `SELECT c.id AS character_id, c.name_key, c.realm_key, c.owner_proof, p.id AS player_id, p.discord_user_id, p.user_id, m.name AS main_name, m.team_id AS home_team_id
          FROM characters c JOIN players p ON p.id = c.player_id JOIN characters m ON m.player_id = p.id AND m.is_main = 1
         WHERE c.guild_id = ? AND c.name_key IN (SELECT value FROM json_each(?))`,
     ).bind(guild.id, names),
@@ -107,7 +108,10 @@ export async function planClaims(db, guild, claims) {
     const viewer = user ? { userId: user.id, discordId: user.discord_id } : null;
     const own = viewer ? personResult.results.find((row) => isOwnPlayer(row, viewer)) || null : null;
     const owner = owners.get(`${claim.name_key}|${claim.realm_key}`) || null;
-    const blocked = (reason) => ({ kind: 'blocked', reason, person: owner ? { id: owner.player_id, name: owner.main_name } : null, homeTeamId: null, defaultTeamId: null, characterId: null });
+    const blocked = (reason) => ({
+      kind: 'blocked', reason, person: owner ? { id: owner.player_id, name: owner.main_name } : null, homeTeamId: null, defaultTeamId: null, characterId: null,
+      proof: owner ? owner.owner_proof : null,
+    });
     let plan;
     if (!user || user.member !== 1) plan = blocked('not_member');
     else if (owner && isOwnPlayer(owner, viewer)) {

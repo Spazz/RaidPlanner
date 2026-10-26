@@ -374,6 +374,7 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('claim.withdraw', 'claim', 'cl_gone'), 'Withdrew a character claim'],
     [row('claim.approve', 'claim', 'cl_1'), 'Approved the claim for Mirabel'],
     [row('claim.reject', 'claim', 'cl_gone'), 'Rejected the claim for a character'],
+    [row('claim.reject', 'claim', 'cl_1', null, { superseded: true }), "Closed the typed claim for Mirabel: the character's Battle.net owner claimed it"],
     // PM wave 3: the intent board, recruitment needs and the applications inbox.
     [row('intent.open', 'intent', 'ir_1', null, { teamId: 't_a' }), 'Opened a spec poll for Alpha'],
     [row('intent.close', 'intent', 'ir_1', null, { teamId: 't_a' }), 'Closed the spec poll of Alpha'],

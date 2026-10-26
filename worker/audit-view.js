@@ -438,7 +438,9 @@ export function describeRow(row, names = {}) {
     case 'claim.create': return `Claimed ${get('claim', ent, 'a character')}`;
     case 'claim.withdraw': return 'Withdrew a character claim';
     case 'claim.approve': return `Approved the claim for ${get('claim', ent, 'a character')}`;
-    case 'claim.reject': return `Rejected the claim for ${get('claim', ent, 'a character')}`;
+    case 'claim.reject': return after.superseded
+      ? `Closed the typed claim for ${get('claim', ent, 'a character')}: the character's Battle.net owner claimed it`
+      : `Rejected the claim for ${get('claim', ent, 'a character')}`;
     default: return String(row.action || 'Unknown action');
   }
 }

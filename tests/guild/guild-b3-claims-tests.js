@@ -3,11 +3,13 @@
  * the one-off for claims that were already waiting (D2e), and an accepted application that places the character
  * Run: node tests/guild/guild-b3-claims-tests.js
  *
- * The Battle.net side of D2 (POST /claims) is in guild-bnet-worker-tests.js, which owns the fake Battle.net; this suite drives the parts that need none:
+ * The Battle.net side of D2 (POST /claims) is in guild-bnet-worker-tests.js, which owns the fake Battle.net; this suite drives the parts that need none (where a Battle.net list is needed it stores the list a link would have fetched):
  *   - POST /me/characters adds a typed character at once (a new Trial person on no team, or an alt of the member's person), marks it owner_proof 'hand',
  *     refuses a name on someone else's linked person (409 name_taken) or on the member's own record (409 already_yours), never links an account to a person
  *     by a typed name (it waits for an officer), and is refused outright in a guild whose rank source is the in-game roster (409 battlenet_only);
  *   - the shared applyClaimPlan: every write is guarded (the claimant must still own the person, still have none, the person still be unlinked);
+ *   - typing a name never blocks the one whom Battle.net proves owns it: a Battle.net claim closes a pending typed claim on the name (audited), and a
+ *     Battle.net claim on a character somebody else typed in waits for an officer instead of being refused (officer- or Battle.net-proven ones still refuse it);
  *   - POST /claims/apply applies the claims that were waiting (a new person, a link, an already-done one), leaves conflicts and hand-typed links, is for
  *     roster.edit over the whole guild, and works through at most 50 claims a call;
  *   - accepting an application whose character is the applicant's own, on no team, places it (the same guarded statement as the team routes).
@@ -254,6 +256,96 @@ check('accepting an application whose character is the applicant\'s own and on n
   const third = (await s.ok('o1', 'GET', '/applications?status=new')).applications.find((a) => a.name === 'Strangermain');
   await s.fail('o1', 'POST', `/applications/${third.id}/accept`, {}, 409, 'name_taken');
   assert.equal(other.pid.length > 0, true);
+});
+
+// The Battle.net list POST /claims reads: a link whose stored snapshot holds these characters of the guild's realm (no Blizzard call is made).
+async function bnetList(s, who, names) {
+  const { bnetSupport } = await load('worker/battlenet.js');
+  const namespace = bnetSupport('tbc', 'US').namespace;
+  const snapshot = { [namespace]: { fetchedAt: s.w.clock.now, characters: names.map((name) => ({ name, realm: 'Nightslayer', realmSlug: 'nightslayer', class: 'MAGE', level: 70 })) } };
+  bnetList.n = (bnetList.n || 0) + 1;
+  await s.w.db.prepare('DELETE FROM bnet_links WHERE user_id = ?').bind(s.uids[who]).run();
+  await s.w.db.prepare('INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(s.uids[who], String(700000 + bnetList.n), `Tag#${1000 + bnetList.n}`, s.w.clock.now, JSON.stringify(snapshot), s.w.clock.now).run();
+}
+const bnetClaim = (s, who, ...names) => s.call(who, 'POST', '/claims', { characters: names.map((name) => ({ name, realmSlug: 'nightslayer' })) });
+
+check('a Battle.net claim closes a pending TYPED claim on the same name (audited) instead of being blocked by it; other pending claims still block', async () => {
+  const s = await world();
+  const owner = await s.member('m4', 'Memberfour');
+  const unlinked = await s.person({ name: 'Realchar' });
+  // m1 has a person of their own and types the name of a roster character nobody linked: a pending typed claim.
+  assert.equal((await add(s, 'm1', { name: 'Squatmain' })).json.claims[0].outcome, 'new_person');
+  const typed = (await add(s, 'm1', { name: 'Realchar' })).json.claims[0];
+  assert.deepEqual([typed.status, typed.outcome, typed.reason], ['pending', 'needs_officer', 'other_person']);
+  // A second typed claim on the name still waits behind it.
+  assert.equal((await add(s, 'm2', { name: 'Realchar' })).json.error, 'claim_pending');
+  // The real owner has it on their Battle.net list and no person: the claim is applied at once and the typed claim is closed.
+  await bnetList(s, 'm4', ['Realchar']);
+  const res = await bnetClaim(s, 'm4', 'Realchar');
+  assert.equal(res.status, 201, res.text);
+  assert.deepEqual([res.json.claims[0].status, res.json.claims[0].outcome], ['applied', 'link_person']);
+  assert.equal((await s.one('SELECT user_id FROM players WHERE id = ?', unlinked.pid)).user_id, owner, 'the real owner is linked to the person');
+  const closed = await s.one('SELECT status, decided_by, decided_at FROM character_claims WHERE id = ?', typed.id);
+  assert.deepEqual([closed.status, closed.decided_by, closed.decided_at !== null], ['rejected', owner, true]);
+  const audit = await s.rows("SELECT actor_user_id, entity_id, after FROM audit_log WHERE action = 'claim.reject'");
+  assert.deepEqual(audit.map((a) => [a.actor_user_id, a.entity_id, JSON.parse(a.after)]), [[owner, typed.id, { superseded: true }]]);
+  assert.equal((await s.rows("SELECT id FROM character_claims WHERE status = 'pending'")).length, 0);
+
+  // When the Battle.net claim is itself a conflict (the owner has a person), it takes the one open slot of the name.
+  const second = await s.person({ name: 'Otherchar' });
+  const squat = (await add(s, 'm1', { name: 'Otherchar' })).json.claims[0];
+  assert.equal(squat.status, 'pending');
+  await s.member('m5', 'Memberfive');
+  assert.equal((await add(s, 'm5', { name: 'Fivemain' })).json.claims[0].outcome, 'new_person');
+  await bnetList(s, 'm5', ['Otherchar']);
+  const conflict = await bnetClaim(s, 'm5', 'Otherchar');
+  assert.equal(conflict.status, 201, conflict.text);
+  assert.deepEqual([conflict.json.claims[0].status, conflict.json.claims[0].outcome, conflict.json.claims[0].reason], ['pending', 'needs_officer', 'other_person']);
+  const waiting = await s.rows("SELECT user_id, level FROM character_claims WHERE name_key = 'otherchar' AND status = 'pending'");
+  assert.deepEqual(waiting.map((r) => [r.user_id, r.level]), [[s.uids.m5, 70]]);
+  assert.equal((await s.one('SELECT status FROM character_claims WHERE id = ?', squat.id)).status, 'rejected');
+  assert.equal((await s.one('SELECT user_id FROM players WHERE id = ?', second.pid)).user_id, null);
+
+  // A pending BATTLE.NET claim is not closed by another one, and a typed claim never closes anything.
+  await s.member('m6', 'Membersix');
+  assert.equal((await add(s, 'm6', { name: 'Sixmain' })).json.claims[0].outcome, 'new_person');
+  await bnetList(s, 'm6', ['Otherchar']);
+  assert.equal((await bnetClaim(s, 'm6', 'Otherchar')).json.error, 'claim_pending');
+  assert.equal((await add(s, 'm6', { name: 'Otherchar' })).json.error, 'claim_pending');
+  assert.equal((await s.rows("SELECT id FROM character_claims WHERE name_key = 'otherchar' AND status = 'pending'")).length, 1);
+});
+
+check('a Battle.net claim on a character somebody typed in on another person waits for an officer (not name_taken); officer- or Battle.net-proven characters on other people still refuse it', async () => {
+  const s = await world();
+  const owner = await s.member('m4', 'Memberfour');
+  // m1 types Futurechar onto their own new person (owner_proof hand).
+  assert.equal((await add(s, 'm1', { name: 'Squatmain' })).json.claims[0].outcome, 'new_person');
+  assert.equal((await add(s, 'm1', { name: 'Futurechar' })).json.claims[0].outcome, 'add_alt');
+  assert.equal((await charOf(s, 'Futurechar')).owner_proof, 'hand');
+  await bnetList(s, 'm4', ['Futurechar', 'Provenchar', 'Linkedchar']);
+  const res = await bnetClaim(s, 'm4', 'Futurechar');
+  assert.equal(res.status, 201, res.text);
+  const claim = res.json.claims[0];
+  assert.deepEqual([claim.status, claim.outcome, claim.reason, claim.level], ['pending', 'needs_officer', 'hand_added', 70]);
+  assert.equal((await s.one('SELECT user_id, level, status FROM character_claims WHERE id = ?', claim.id)).user_id, owner);
+  // Nothing moved: the typed character is still on the typist's person, and the officer sees a claim that cannot be approved until the roster is fixed.
+  assert.equal((await s.one('SELECT user_id FROM players WHERE id = ?', (await charOf(s, 'Futurechar')).player_id)).user_id, s.uids.m1);
+  const queued = (await s.ok('o1', 'GET', '/claims')).claims.find((c) => c.id === claim.id);
+  assert.deepEqual([queued.plan.kind, queued.plan.reason, queued.plan.canDecide], ['blocked', 'taken', false]);
+  // A typed claim on a typed character stays name_taken: typing never outranks typing.
+  assert.equal((await add(s, 'm2', { name: 'Futurechar' })).json.error, 'name_taken');
+  // An officer-placed character on a linked person, and a Battle.net-proven one, still refuse the claim outright.
+  const linked = await s.person({ name: 'Linkedchar' });
+  await s.link(linked.pid, 'm3');
+  const proven = await s.person({ name: 'Provenchar' });
+  await s.link(proven.pid, 'm2');
+  s.exec(`UPDATE characters SET owner_proof = 'bnet' WHERE id = '${proven.cid}'`);
+  for (const name of ['Linkedchar', 'Provenchar']) {
+    const refused = await bnetClaim(s, 'm4', name);
+    assert.deepEqual([refused.status, refused.json.error], [409, 'name_taken'], name);
+  }
+  assert.equal((await s.rows("SELECT id FROM character_claims WHERE status = 'pending'")).length, 1);
 });
 
 runChecks(checks);
