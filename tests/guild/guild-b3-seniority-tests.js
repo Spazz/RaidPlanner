@@ -6,7 +6,8 @@
  *   - the rank matrix of the SQL helper itself (Owner seat seeded in owner_user_id, and the legacy case where the stored Guild Master is the Owner);
  *   - the plan's three named tests through the routes (Officer deletes the Owner's person: refused; Team Lead deletes a Raid Leader's person: refused;
  *     Officer deletes a Member's person: allowed), a person owned only by a Discord id, a person with no account, one's own person;
- *   - every guarded writer: delete person, remove character, rename and move a character, relink a Discord account, link and unlink an account;
+ *   - every guarded writer: delete person, remove character, rename and move a character, relink a Discord account, link and unlink an account,
+ *     and the three routes that swap a person's Main (a new Main, Make Main, an Unmatched-names link as the Main), each also inside its batch;
  *   - a Battle.net-proven character, or a person holding one, is deleted only by a GM-tier actor;
  *   - the guard sits INSIDE the write: a promotion between the read and the write stops the write.
  */
@@ -192,6 +193,84 @@ check('a refused request names the reason in the body: error "seniority", status
   assert.deepEqual([refused.status, refused.json.error], [403, 'seniority']);
   const noRight = await s.call('m1', 'DELETE', `/roster/${s.people.m2.pid}`, {});
   assert.deepEqual([noRight.status, noRight.json.error], [403, 'forbidden']);
+});
+
+check('a new Main on a person (makeMain: true) is refused for a junior and works for a senior, an equal-rank actor\'s own person included; a refusal changes nothing', async () => {
+  const s = await world();
+  const alpha = s.tids[0];
+  const namesOf = async (pid) => (await s.rows('SELECT name, is_main, team_id FROM characters WHERE player_id = ? ORDER BY name', pid)).map((r) => [r.name, r.is_main, r.team_id]);
+  const intruder = (name) => ({ name, class: 'ROGUE', mainSpec: 'Combat', makeMain: true, teamId: alpha });
+  const gmBefore = await namesOf(s.people.gm.pid);
+  // A Team Lead cannot put a new Main on the Guild Master's person, nor an Officer on the equal Officer's.
+  await s.fail('tl', 'POST', `/roster/${s.people.gm.pid}/characters`, intruder('Gmintruder'), 403, 'seniority');
+  await s.fail('o1', 'POST', `/roster/${s.people.o2.pid}/characters`, intruder('Intrudertwo'), 403, 'seniority');
+  assert.deepEqual(await namesOf(s.people.gm.pid), gmBefore, 'the Guild Master\'s Main is where it was');
+  assert.equal((await s.rows("SELECT id FROM characters WHERE name IN ('Gmintruder', 'Intrudertwo')")).length, 0);
+  assert.equal((await s.rows("SELECT id FROM audit_log WHERE action IN ('character.create', 'character.main') AND entity_id NOT IN (SELECT id FROM characters)")).length, 0);
+  // An alt (no makeMain) is not a re-key: the Team Lead still adds one to the Guild Master's person.
+  await s.ok('tl', 'POST', `/roster/${s.people.gm.pid}/characters`, { name: 'Gmplainalt', class: 'ROGUE', mainSpec: 'Combat' }, 201);
+  // An Officer puts a new Main on a Member's person; the actor on their own person passes whatever their rank.
+  const swapped = await s.ok('o1', 'POST', `/roster/${s.people.m1.pid}/characters`, intruder('Memnewmain'), 201);
+  assert.equal(swapped.characters.find((c) => c.name === 'Memnewmain').isMain, true);
+  await s.ok('tl', 'POST', `/roster/${s.people.tl.pid}/characters`, intruder('Leadnewmain'), 201);
+  assert.equal((await s.one('SELECT is_main FROM characters WHERE name = ?', 'Leadnewmain')).is_main, 1);
+});
+
+check('Make Main is refused for a junior on a senior\'s person and works on a Member\'s and on the actor\'s own person; a refusal changes nothing', async () => {
+  const s = await world();
+  const mainOf = async (pid) => (await s.one('SELECT name FROM characters WHERE player_id = ? AND is_main = 1', pid)).name;
+  const gmAlt = await s.alt(s.people.gm.pid, 'Gmalt');
+  const memberAlt = await s.alt(s.people.m1.pid, 'Memberalt');
+  const officerAlt = await s.alt(s.people.o1.pid, 'Officeralt');
+  await s.fail('o1', 'POST', `/roster/${s.people.gm.pid}/characters/${gmAlt}/main`, {}, 403, 'seniority');
+  await s.fail('tl', 'POST', `/roster/${s.people.o1.pid}/characters/${officerAlt}/main`, {}, 403, 'seniority');
+  assert.deepEqual([await mainOf(s.people.gm.pid), await mainOf(s.people.o1.pid)], ['Gmperson', 'Officerone']);
+  assert.equal((await s.rows("SELECT id FROM audit_log WHERE action = 'character.main'")).length, 0, 'a refused swap leaves no audit row');
+  await s.ok('o1', 'POST', `/roster/${s.people.m1.pid}/characters/${memberAlt}/main`, {}, 200);
+  assert.equal(await mainOf(s.people.m1.pid), 'Memberalt');
+  await s.ok('o1', 'POST', `/roster/${s.people.o1.pid}/characters/${officerAlt}/main`, {}, 200);
+  assert.equal(await mainOf(s.people.o1.pid), 'Officeralt');
+  await s.ok('gm', 'POST', `/roster/${s.people.gm.pid}/characters/${gmAlt}/main`, {}, 200);
+  assert.equal(await mainOf(s.people.gm.pid), 'Gmalt');
+});
+
+check('the Main swap sits inside the batch: a target promoted after the read changes nothing (the first UPDATE matches no row), and the builders refuse to run without the guard', async () => {
+  const { makeMainStatements, newMainStatements } = await load('worker/routes/roster.js');
+  const { seniorityOk } = await load('worker/seniority.js');
+  const s = await world();
+  const alt = await s.alt(s.people.m1.pid, 'Memberalt');
+  assert.throws(() => makeMainStatements(s.w.db, s.people.m1.pid, alt, 1, { homeTeamId: s.tids[0], targetTeamId: null }), /Seniority guard is required/);
+  assert.throws(() => newMainStatements(s.w.db, { playerId: s.people.m1.pid, characterId: alt, previousMain: { id: s.people.m1.cid, team_id: s.tids[0] }, teamId: null, now: 1 }), /Seniority guard is required/);
+  const swap = () => makeMainStatements(s.w.db, s.people.m1.pid, alt, s.w.clock.now, {
+    homeTeamId: s.tids[0], targetTeamId: null, senior: seniorityOk(s.gid, s.uids.o1, s.people.m1.pid),
+  });
+  // The Member's account is made an Officer after the route's read: an equal rank now.
+  await s.ok('gm', 'PUT', `/people/${s.uids.m1}/roles`, { officer: true, teamLeadTeamIds: [] }, 200);
+  const refused = await s.w.db.batch(swap());
+  assert.deepEqual(refused.map((r) => r.meta.changes), [0, 0], 'neither UPDATE happened');
+  assert.equal((await s.one('SELECT is_main FROM characters WHERE id = ?', s.people.m1.cid)).is_main, 1);
+  // The same swap for an actor who outranks the account goes through.
+  await s.ok('gm', 'PUT', `/people/${s.uids.m1}/roles`, { officer: false, teamLeadTeamIds: [] }, 200);
+  const done = await s.w.db.batch(swap());
+  assert.deepEqual(done.map((r) => r.meta.changes), [1, 1]);
+});
+
+check('linking an unmatched raid name as a new Main (attendance) is guarded too: refused on a senior\'s person, allowed on a Member\'s', async () => {
+  const s = await world();
+  const alpha = s.tids[0];
+  const raid = (await s.ok('gm', 'POST', '/raids', { teamId: alpha, raidOn: '2026-10-01', startTime: '20:00', zone: 'Karazhan' })).raid.id;
+  const log = (name) => s.exec(`INSERT INTO raid_manual_names (raid_id, guild_id, name, name_key, realm, realm_key) VALUES ('${raid}', '${s.gid}', '${name}', '${name.toLowerCase()}', 'Nightslayer', 'nightslayer')`);
+  log('Gmnewmain');
+  log('Memnewmain');
+  const link = (who, name, pid) => s.call(who, 'POST', `/raids/${raid}/unmatched`, { key: `${name.toLowerCase()}|nightslayer`, action: 'alt', class: 'ROGUE', personId: pid, makeMain: true });
+  const before = (await s.rows('SELECT name FROM characters WHERE is_main = 1 AND player_id = ?', s.people.gm.pid)).map((r) => r.name);
+  const refused = await link('o1', 'Gmnewmain', s.people.gm.pid);
+  assert.deepEqual([refused.status, refused.json && refused.json.error], [403, 'seniority'], refused.text);
+  assert.deepEqual((await s.rows('SELECT name FROM characters WHERE is_main = 1 AND player_id = ?', s.people.gm.pid)).map((r) => r.name), before);
+  assert.equal((await s.rows('SELECT id FROM characters WHERE name = ?', 'Gmnewmain')).length, 0);
+  const allowed = await link('o1', 'Memnewmain', s.people.m1.pid);
+  assert.equal(allowed.status, 200, allowed.text);
+  assert.equal((await s.one('SELECT is_main FROM characters WHERE name = ?', 'Memnewmain')).is_main, 1);
 });
 
 runChecks(checks);

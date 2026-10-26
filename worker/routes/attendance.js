@@ -18,6 +18,7 @@ import { winnerNameKeySql } from '../name-alias.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { characterRankColumns, trialDatesFollowMainStatements } from '../person-legacy.js';
 import { characterOfRow, homeTeamId } from '../person-rank.js';
+import { assertSenior, seniorityOk } from '../seniority.js';
 import { CLASS_IDS, CREATE_STATUSES, cleanCharacterName, DEFAULT_WCL_FLAVOUR, isRealDate, nameKey } from '../roster-data.js';
 import { guildToday, personColumnsOf, viewerOf } from '../roster-view.js';
 import { listWclReports, requireWclConfigured } from '../sources.js';
@@ -476,6 +477,8 @@ export async function postUnmatched(ctx) {
     if (!allows(guildContext.can, 'roster.edit', home.team_id)) throw forbidden();
     // A new alt starts on no team (U R3-Q1/R4-Q1); only a new Main takes the raid's team, and another character on it refuses the request.
     if (body.makeMain === true) {
+      // A new Main swaps the person's Main: the Seniority guard (worker/seniority.js) applies, here and inside the swap.
+      await assertSenior(db, guildContext, body.personId);
       const taken = await db.prepare('SELECT 1 AS x FROM characters WHERE guild_id = ? AND player_id = ? AND team_id = ? AND id != ? LIMIT 1').bind(guild.id, body.personId, team.id, home.main_id).first();
       if (taken) throw new HttpError(409, 'team_taken', 'That person already has a character on the raid team.', { field: 'personId' });
     }
@@ -502,7 +505,10 @@ export async function postUnmatched(ctx) {
       bumpRaidStatement(db, guild.id, raid.id),
     );
     if (body.makeMain === true) {
-      const main = newMainStatements(db, { playerId: body.personId, characterId, previousMain: { id: home.main_id, team_id: home.team_id }, teamId: team.id, now });
+      const main = newMainStatements(db, {
+        playerId: body.personId, characterId, previousMain: { id: home.main_id, team_id: home.team_id }, teamId: team.id, now,
+        senior: seniorityOk(guild.id, ctx.session.user.id, body.personId),
+      });
       mainIndex = statements.length + main.swapAt;
       statements.push(
         ...main.statements,

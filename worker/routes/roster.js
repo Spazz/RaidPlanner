@@ -175,12 +175,15 @@ export function insertCharacter(db, guildId, row, now) {
 // The two statements that move the Main (spec: "The Main invariant").
 // homeTeamId / targetTeamId repeat the authorization inside the writes: the old Main must still be on the home
 // team and the new Main still on the team the caller was authorized against. Either may be null (a character on no team): `IS ?` matches NULL, `= ?` never does.
-export function makeMainStatements(db, playerId, characterId, now, { homeTeamId, targetTeamId }) {
+// senior ({ sql, params } of worker/seniority.js seniorityOk) is required: swapping the Main re-keys the person, so the first UPDATE also carries the Seniority guard
+// (the second only acts after the first, see its NOT EXISTS).
+export function makeMainStatements(db, playerId, characterId, now, { homeTeamId, targetTeamId, senior }) {
+  if (!senior) throw new Error('makeMainStatements: the Seniority guard is required');
   return [
     db.prepare(
       `UPDATE characters SET is_main = 0, updated_at = ? WHERE player_id = ? AND is_main = 1 AND team_id IS ?
-         AND EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ?)`,
-    ).bind(now, playerId, homeTeamId, characterId, playerId, targetTeamId),
+         AND EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ?) AND ${senior.sql}`,
+    ).bind(now, playerId, homeTeamId, characterId, playerId, targetTeamId, ...senior.params),
     db.prepare(
       `UPDATE characters SET is_main = 1, updated_at = ? WHERE id = ? AND player_id = ? AND team_id IS ?
          AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND is_main = 1)`,
@@ -598,9 +601,9 @@ export async function characterMoved(ctx, guildContext, personId, characterId) {
 // After a new character was inserted as an alt (on no team): the statements that make it the person's Main on `teamId` (null = no team). The Main swap comes
 // first and everything after it only acts when the swap happened (the previous Main is an alt by then; the new character is the Main), so a lost race changes
 // nothing. One character per person per team: the previous Main steps off the team when it sits there (an alt from now on, and alts start teamless); the caller
-// has refused the request when another character holds the team. -> { statements, swapAt } (swapAt: the write whose changes() says the swap happened).
-export function newMainStatements(db, { playerId, characterId, previousMain, teamId, now }) {
-  const statements = makeMainStatements(db, playerId, characterId, now, { homeTeamId: previousMain.team_id, targetTeamId: null });
+// has refused the request when another character holds the team. senior: see makeMainStatements. -> { statements, swapAt } (swapAt: the write whose changes() says the swap happened).
+export function newMainStatements(db, { playerId, characterId, previousMain, teamId, now, senior }) {
+  const statements = makeMainStatements(db, playerId, characterId, now, { homeTeamId: previousMain.team_id, targetTeamId: null, senior });
   const swapAt = statements.length - 1;
   if (teamId) {
     if (previousMain.team_id === teamId) {
@@ -629,6 +632,8 @@ export async function addCharacter(ctx) {
   const team = makeMain ? asked : null;
   if (team) requireEdit(guildContext, team.id);
   else if (makeMain) requireGuildWideEditForTeamlessMain(guildContext);
+  // A new Main swaps the person's Main: the Seniority guard (worker/seniority.js) applies, here and inside the swap.
+  if (makeMain) await assertSenior(db, guildContext, data.player.id);
   const name = readName(body.name, 'name', {}, guild.game_version);
   const classId = readClass(body.class);
   const { mainSpec, offSpec } = readSpecs(body.mainSpec, body.offSpec, classId);
@@ -650,7 +655,9 @@ export async function addCharacter(ctx) {
   ];
   let mainAt = -1;
   if (makeMain) {
-    const main = newMainStatements(db, { playerId: player.id, characterId, previousMain: previous, teamId: team ? team.id : null, now });
+    const main = newMainStatements(db, {
+      playerId: player.id, characterId, previousMain: previous, teamId: team ? team.id : null, now, senior: seniorityOk(guild.id, ctx.session.user.id, player.id),
+    });
     mainAt = statements.length + main.swapAt;
     statements.push(
       ...main.statements,
@@ -753,10 +760,14 @@ export async function makeMain(ctx) {
   requireEdit(guildContext, editTeamOf(target, home));
   if (target.is_main === 1) return jsonResponse(await personReply(ctx, guildContext, data.player.id));
   if (target.team_id === null) requireGuildWideEditForTeamlessMain(guildContext);
+  // Swapping the Main re-keys the person: the Seniority guard (worker/seniority.js) applies, here and inside the swap.
+  await assertSenior(db, guildContext, data.player.id);
   const previous = data.characters.find((candidate) => candidate.row.is_main === 1).row;
   const now = ctx.now();
   const results = await db.batch([
-    ...makeMainStatements(db, data.player.id, target.id, now, { homeTeamId: home.id, targetTeamId: target.team_id }),
+    ...makeMainStatements(db, data.player.id, target.id, now, {
+      homeTeamId: home.id, targetTeamId: target.team_id, senior: seniorityOk(guildContext.guild.id, ctx.session.user.id, data.player.id),
+    }),
     audit(ctx, guildContext, 'character.main', 'character', target.id, { mainCharacterId: previous.id }, { mainCharacterId: target.id },
       CHANGED_ONE),
     // The trial dates sit on the main character: they move with it.
