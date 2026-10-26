@@ -6,6 +6,10 @@
 //     POST   /api/guild/:gid/raids/:rid/join-links              { maxUses? }  make one -> { links, created: { id, token, path } }
 //     DELETE /api/guild/:gid/raids/:rid/join-links/:jid          turn a link off
 //     DELETE /api/guild/:gid/raids/:rid/guests/:sid              remove one guest sign-up -> the sign-ups view
+//     DELETE /api/guild/:gid/raids/:rid/guests                    remove EVERY guest sign-up of the raid (links and the open raid) -> the sign-ups view
+//   Guild settings (guild.access; U R7-Q1: a join link belongs to the GUILD, not to whoever made it - it keeps working when its maker is demoted or gone):
+//     GET    /api/guild/:gid/join-links                           every link of the guild's raids that have not started, whoever made it, with the raid
+//     DELETE /api/guild/:gid/join-links/:jid                      turn any of them off -> the same list
 //   Visitors (no account, no session):
 //     POST /api/join/view  { token }                              the raid the link is for and the form's choices; hands out the browser's cookie
 //     POST /api/join       { token, name, class, spec, note?, website }   sign up as a guest
@@ -16,7 +20,8 @@ import { HttpError, jsonResponse, parseCookies, serializeCookie } from '../http.
 import { auditStatement } from '../audit.js';
 import { oneLine } from '../apply-data.js';
 import { base64url, newId } from '../ids.js';
-import { allows, loadGuildContext } from '../permissions.js';
+import { allows, loadGuildContext, requireAction } from '../permissions.js';
+import { toPerson } from '../person.js';
 import { checkRateLimit } from '../ratelimit.js';
 import { isSpecOf, nameKey, rosterOptions } from '../roster-data.js';
 import { hashToken } from '../session.js';
@@ -45,6 +50,31 @@ function statusOf(row, nowMs) {
   if (row.starts_at <= nowMs) return 'started';
   return row.uses >= row.max_uses ? 'full' : 'active';
 }
+
+// The sign-up form's fields of a guest, the same for a join link and for an open raid (worker/routes/open-raids.js): name, class, spec, note.
+export function readGuestFields(body, gameVersion) {
+  const name = readName(body.name, 'name', {}, gameVersion);
+  const classId = readClass(body.class);
+  if (typeof body.spec !== 'string' || !isSpecOf(classId, body.spec)) throw bad('Pick a spec of that class.', 'spec');
+  let note = null;
+  if (body.note !== undefined && body.note !== null) {
+    note = oneLine(body.note);
+    if (Array.from(note).length > NOTE_MAX) throw bad(`A note is at most ${NOTE_MAX} characters.`, 'note');
+    if (!note) note = null;
+  }
+  return { name, classId, className: raidHelperClassName(classId), specKey: raidHelperSpecKey(classId, body.spec), note };
+}
+
+// What a guest is shown about the raid before signing up - the same for a link and for an open raid. row: guild_name, game_version, realm_kind, time_zone,
+// raid_on, starts_at, time_known, zone, title, team_name. Nothing of the roster.
+// timeZone: the guild's, so the page writes the raid's start the way the guild does ("8:00 PM ET"), not in the visitor's zone.
+export const joinViewOf = (row, spotsLeft) => ({
+  guild: { name: row.guild_name, gameVersion: row.game_version, realmKind: row.realm_kind, timeZone: row.time_zone },
+  raid: { raidOn: row.raid_on, startsAt: row.starts_at, timeKnown: row.time_known !== 0, zone: row.zone, title: row.title, teamName: row.team_name },
+  spotsLeft,
+  rosterOptions: rosterOptions(),
+  noteMax: NOTE_MAX,
+});
 
 // ---------------------------------------------------------------------------
 // Officers
@@ -124,6 +154,64 @@ export async function deleteGuestSignup(ctx) {
   return jsonResponse(await buildView(ctx, guildContext, raid));
 }
 
+export async function deleteAllGuestSignups(ctx) {
+  const { db } = ctx;
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
+  const raid = await loadRaid(ctx, guildContext, { edit: true });
+  const results = await db.batch([
+    db.prepare("DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1 RETURNING signup_id").bind(raid.id),
+    raidAudit(ctx, guildContext, 'signup.guests_clear', raid.id, null, null, { sql: 'changes() > 0', params: [] }),
+  ]);
+  if (!results[0].results.length) throw new HttpError(404, 'not_found', 'That raid has no guest sign-ups.');
+  if (raid.reports > 0 || raid.log_mode === 'manual') await recomputeRaid(ctx, guildContext.guild, raid.id);
+  return jsonResponse({ ...(await buildView(ctx, guildContext, raid)), removed: results[0].results.length });
+}
+
+// The guild's own list (Guild settings, next to the API keys and guest links): every link of a raid that has not started, whoever made it.
+const GUILD_LINKS_LIMIT = 200;
+async function guildLinksPayload(ctx, guild) {
+  const now = ctx.now();
+  const result = await ctx.db.prepare(
+    `SELECT l.id, l.raid_id, l.max_uses, l.uses, l.revoked_at, l.created_at, r.raid_on, r.starts_at, r.zone, COALESCE(r.title, r.event_title) AS title, t.name AS team_name,
+            u.id AS user_id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar
+       FROM raid_join_links l JOIN raids r ON r.id = l.raid_id AND r.guild_id = l.guild_id JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id
+       LEFT JOIN users u ON u.id = l.created_by
+      WHERE l.guild_id = ? AND r.starts_at > ? ORDER BY r.starts_at, l.created_at, l.id LIMIT ?`,
+  ).bind(guild.id, now, GUILD_LINKS_LIMIT).all();
+  return {
+    links: result.results.map((row) => ({
+      id: row.id, raidId: row.raid_id, maxUses: row.max_uses, uses: row.uses, status: statusOf(row, now), createdAt: row.created_at,
+      // The maker, by the name the account shows (null once the account is gone). Never an avatar: it carries a Discord ID.
+      createdBy: row.user_id ? toPerson({ id: row.user_id, discord_id: row.discord_id, username: row.username, global_name: row.global_name, display_name: row.display_name, avatar: row.avatar }, { avatar: false }) : null,
+      raid: { raidOn: row.raid_on, startsAt: row.starts_at, zone: row.zone, title: row.title, teamName: row.team_name },
+    })),
+    limits: { defaultUses: DEFAULT_MAX_USES, maxUses: MAX_USES_LIMIT, perRaid: LINKS_PER_RAID },
+  };
+}
+
+export async function listGuildJoinLinks(ctx) {
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
+  requireAction(guildContext, 'guild.access');
+  return jsonResponse(await guildLinksPayload(ctx, guildContext.guild));
+}
+
+// Anyone holding guild.access turns any link off, regardless of who made it (a link is the guild's, U R7-Q1). A link already off answers the same list.
+export async function revokeGuildJoinLink(ctx) {
+  const { db } = ctx;
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
+  requireAction(guildContext, 'guild.access');
+  const guild = guildContext.guild;
+  const link = await db.prepare('SELECT id, raid_id, revoked_at FROM raid_join_links WHERE id = ? AND guild_id = ?').bind(ctx.params.jid, guild.id).first();
+  if (!link) throw new HttpError(404, 'not_found', 'That sign-up link does not exist.');
+  if (link.revoked_at === null) {
+    await db.batch([
+      db.prepare('UPDATE raid_join_links SET revoked_at = ? WHERE id = ? AND guild_id = ? AND revoked_at IS NULL').bind(ctx.now(), link.id, guild.id),
+      raidAudit(ctx, guildContext, 'join.revoke', link.raid_id, null, null, CHANGED_ONE),
+    ]);
+  }
+  return jsonResponse(await guildLinksPayload(ctx, guild));
+}
+
 // ---------------------------------------------------------------------------
 // Visitors
 
@@ -156,14 +244,7 @@ const spotsOf = (row) => Math.max(0, Math.min(row.max_uses - row.uses, GUESTS_PE
 export async function viewJoin(ctx) {
   const row = await findWorkingLink(ctx, ctx.body.token);
   const minted = cookieOf(ctx.request) ? null : base64url(ctx.randomBytes(16));
-  return jsonResponse({
-    // timeZone: the guild's, so the page writes the raid's start the way the guild does ("8:00 PM ET"), not in the visitor's zone.
-    guild: { name: row.guild_name, gameVersion: row.game_version, realmKind: row.realm_kind, timeZone: row.time_zone },
-    raid: { raidOn: row.raid_on, startsAt: row.starts_at, timeKnown: row.time_known !== 0, zone: row.zone, title: row.title, teamName: row.team_name },
-    spotsLeft: spotsOf(row),
-    rosterOptions: rosterOptions(),
-    noteMax: NOTE_MAX,
-  }, 200, {}, minted ? [serializeCookie(JOIN_COOKIE, minted, { maxAge: JOIN_COOKIE_TTL, path: '/' })] : []);
+  return jsonResponse(joinViewOf(row, spotsOf(row)), 200, {}, minted ? [serializeCookie(JOIN_COOKIE, minted, { maxAge: JOIN_COOKIE_TTL, path: '/' })] : []);
 }
 
 export async function submitJoin(ctx) {
@@ -173,17 +254,7 @@ export async function submitJoin(ctx) {
   // The hidden field only a script fills in: say it worked and store nothing.
   if (typeof body.website === 'string' && body.website.trim() !== '') return jsonResponse({ ok: true }, 201);
   const row = await findWorkingLink(ctx, body.token);
-  const name = readName(body.name, 'name', {}, row.game_version);
-  const classId = readClass(body.class);
-  if (typeof body.spec !== 'string' || !isSpecOf(classId, body.spec)) throw bad('Pick a spec of that class.', 'spec');
-  let note = null;
-  if (body.note !== undefined && body.note !== null) {
-    note = oneLine(body.note);
-    if (Array.from(note).length > NOTE_MAX) throw bad(`A note is at most ${NOTE_MAX} characters.`, 'note');
-    if (!note) note = null;
-  }
-  const className = raidHelperClassName(classId);
-  const specKey = raidHelperSpecKey(classId, body.spec);
+  const { name, classId, className, specKey, note } = readGuestFields(body, row.game_version);
   const now = ctx.now();
 
   const limit = await checkRateLimit(db, null, now, {

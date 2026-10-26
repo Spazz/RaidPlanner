@@ -273,7 +273,7 @@ export async function listRaids(ctx) {
     policyRowsStatement(ctx.db, guild.id),
     // Raids that have not started: all of them, soonest first, outside the paging of the past ones.
     ctx.db.prepare(
-      `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.signup_close_hours, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.event_moved_on, r.plan_synced, r.plan_live, r.signups_locked,
+      `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.signup_close_hours, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.event_moved_on, r.plan_synced, r.plan_live, r.signups_locked, r.guests_open,
               ${SLOT_TIME_SQL} AS slot_time,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'signed' AND s.standby = 0) AS n_signed,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'late') AS n_late,
@@ -353,6 +353,7 @@ export async function listRaids(ctx) {
       otherServer: hasDiscord(guild) && row.event_server !== null && row.event_server !== guild.discord_server_id,
       signups: seeCounts ? Object.fromEntries(SIGNUP_KINDS.map((kind) => [kind, row[`n_${kind}`] + (kind === 'absence' ? awayOf(row).length : 0)])) : null,
       locked: row.signups_locked === 1,
+      guestsOpen: row.guests_open === 1,
       signupsOpen: !closedReason(windowOf(row), now, rowCloseHours(row)),
       closesAt: closesAtOf(windowOf(row), rowCloseHours(row)),
       closeHours: rowCloseHours(row),
@@ -468,6 +469,9 @@ export async function createRaid(ctx) {
   const startTimeInput = readStartTime(body.startTime);
   const titleInput = readTitle(body.title);
   const sizeInput = readRaidSize(body.size);
+  // "Open to guests" (U R8-Q3): a signed-in non-member may sign up without a join link. Raid edit changes it later.
+  if (body.guestsOpen !== undefined && typeof body.guestsOpen !== 'boolean') throw bad('guestsOpen must be true or false.', 'guestsOpen');
+  const guestsOpen = body.guestsOpen === true ? 1 : 0;
   if (body.acceptOtherServer !== undefined && typeof body.acceptOtherServer !== 'boolean') throw bad('acceptOtherServer must be true or false.', 'acceptOtherServer');
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
@@ -509,11 +513,11 @@ export async function createRaid(ctx) {
   const statements = [
     db.prepare(
       `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, event_id, event_title, title, event_server, event_synced,
-                          log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at, size, time_known)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'log', 0, '', 1, ?, ?, ?, ?, ?
+                          log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at, size, time_known, guests_open)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'log', 0, '', 1, ?, ?, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)`,
     ).bind(raidId, guild.id, teamId, raidOn, startsAt, zoneInput || (firstReport ? firstReport.zone : null), event ? eventId : null, event ? event.title : null, titleInput,
-      event ? event.serverId : null, event ? now : null, ctx.session.user.id, now, now, sizeInput, timeKnown, teamId, guild.id),
+      event ? event.serverId : null, event ? now : null, ctx.session.user.id, now, now, sizeInput, timeKnown, guestsOpen, teamId, guild.id),
   ];
   let eventCount = 0;
   if (event) {
@@ -530,7 +534,7 @@ export async function createRaid(ctx) {
   // A new raid changes the fill-in pass of the other teams' raids on the same date: they show "Recalculate" (only when the raid went in).
   statements.push(
     bumpDayStatement(db, guild.id, raidOn, raidId, guard),
-    raidAudit(ctx, guildContext, 'raid.create', raidId, null, { teamId, raidOn, event: !!event, reports: reportCount, signups: eventCount }, guard),
+    raidAudit(ctx, guildContext, 'raid.create', raidId, null, { teamId, raidOn, event: !!event, reports: reportCount, signups: eventCount, ...(guestsOpen ? { guestsOpen: true } : {}) }, guard),
   );
   let results;
   try {
@@ -1088,23 +1092,28 @@ export async function patchRaid(ctx) {
   const { body, db } = ctx;
   const hasSize = body.size !== undefined;
   const hasHours = body.signupCloseHours !== undefined;
-  if (!hasSize && !hasHours) throw new HttpError(400, 'bad_request', 'Send size, signupCloseHours, or both.');
+  const hasGuests = body.guestsOpen !== undefined;
+  if (!hasSize && !hasHours && !hasGuests) throw new HttpError(400, 'bad_request', 'Send size, signupCloseHours, guestsOpen, or any of them.');
+  if (hasGuests && typeof body.guestsOpen !== 'boolean') throw bad('guestsOpen must be true or false.', 'guestsOpen');
   const size = hasSize ? readRaidSize(body.size) : null;
   const hours = hasHours ? readRaidCloseHours(body.signupCloseHours) : null;
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const nextSize = hasSize ? size : raid.size;
   const nextHours = hasHours ? hours : raid.signup_close_hours;
-  if (nextSize !== raid.size || nextHours !== raid.signup_close_hours) {
+  const nextGuests = hasGuests ? (body.guestsOpen ? 1 : 0) : raid.guests_open;
+  if (nextSize !== raid.size || nextHours !== raid.signup_close_hours || nextGuests !== raid.guests_open) {
     await db.batch([
       // CASE keeps the key that was not sent at whatever it is now, so two officers changing different keys do not undo each other.
       db.prepare(
-        `UPDATE raids SET size = CASE WHEN ? = 1 THEN ? ELSE size END, signup_close_hours = CASE WHEN ? = 1 THEN ? ELSE signup_close_hours END, updated_at = ?
+        `UPDATE raids SET size = CASE WHEN ? = 1 THEN ? ELSE size END, signup_close_hours = CASE WHEN ? = 1 THEN ? ELSE signup_close_hours END,
+                guests_open = CASE WHEN ? = 1 THEN ? ELSE guests_open END, updated_at = ?
           WHERE id = ? AND guild_id = ?`,
-      ).bind(hasSize ? 1 : 0, size, hasHours ? 1 : 0, hours, ctx.now(), raid.id, guildContext.guild.id),
+      ).bind(hasSize ? 1 : 0, size, hasHours ? 1 : 0, hours, hasGuests ? 1 : 0, nextGuests, ctx.now(), raid.id, guildContext.guild.id),
       raidAudit(
         ctx, guildContext, 'raid.settings', raid.id,
-        { size: raid.size, signupCloseHours: raid.signup_close_hours }, { size: nextSize, signupCloseHours: nextHours }, CHANGED_ONE,
+        { size: raid.size, signupCloseHours: raid.signup_close_hours, guestsOpen: raid.guests_open === 1 },
+        { size: nextSize, signupCloseHours: nextHours, guestsOpen: nextGuests === 1 }, CHANGED_ONE,
       ),
     ]);
   }

@@ -32,7 +32,7 @@ import {
   addCharacter, createPerson, deletePerson, getLinkable, getPerson, getRoster, makeMain, patchCharacter, patchPerson,
   removeCharacter, saveNotes,
 } from './routes/roster.js';
-import { deleteCharacterTeam, getTeamSignups, putCharacterTeam } from './routes/team-placement.js';
+import { deleteCharacterTeam, getTeamSignups, listUnassigned, putCharacterTeam } from './routes/team-placement.js';
 import { approveTeamRequest, createTeamRequest, listTeamRequests, rejectTeamRequest, withdrawTeamRequest } from './routes/team-requests.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
 import { commitCsv, previewCsv } from './routes/roster-import-csv.js';
@@ -67,7 +67,10 @@ import { getApiData } from './routes/api-v1.js';
 import { getTeamProgress } from './routes/progress.js';
 import { dismissRankSuggestion, putPersonRank } from './routes/ranks.js';
 import { getDuties, putDuties } from './routes/duties.js';
-import { createJoinLink, deleteGuestSignup, listJoinLinks, revokeJoinLink, submitJoin, viewJoin } from './routes/join.js';
+import {
+  createJoinLink, deleteAllGuestSignups, deleteGuestSignup, listGuildJoinLinks, listJoinLinks, revokeGuildJoinLink, revokeJoinLink, submitJoin, viewJoin,
+} from './routes/join.js';
+import { signUpOpenRaid, viewOpenRaid, withdrawOpenSignup } from './routes/open-raids.js';
 import { getLaunch, putLaunchStatus, putLaunchTeam } from './routes/launch.js';
 import { commitPaste, previewPaste } from './routes/paste.js';
 import { getPlanDoc, getRaidForEvent, putPlanDoc } from './routes/plan-doc.js';
@@ -138,6 +141,7 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/roster', auth: true, handler: createPerson },
   // Literal paths are registered before `:pid`, so "linkable" and "import" are never read as a person id.
   { method: 'GET', path: '/api/guild/:gid/roster/linkable', auth: true, handler: getLinkable },
+  { method: 'GET', path: '/api/guild/:gid/roster/unassigned', auth: true, handler: listUnassigned },
   { method: 'GET', path: '/api/guild/:gid/accounts', auth: true, handler: lookupAccounts },
   { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/preview', auth: true, handler: previewRaidHelper },
   { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/commit', auth: true, handler: commitRaidHelper, maxBody: COMMIT_MAX_BODY },
@@ -312,6 +316,14 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/join-links', auth: true, handler: createJoinLink },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/join-links/:jid', auth: true, handler: revokeJoinLink },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/guests/:sid', auth: true, handler: deleteGuestSignup },
+  // Lane B3: remove every guest of a raid; the guild's own list of join links (guild.access, whoever made them); and open raids - a signed-in non-member signs up
+  // without a link (a session, keyed by guild + raid; a raid that is not open answers 404).
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/guests', auth: true, handler: deleteAllGuestSignups },
+  { method: 'GET', path: '/api/guild/:gid/join-links', auth: true, handler: listGuildJoinLinks },
+  { method: 'DELETE', path: '/api/guild/:gid/join-links/:jid', auth: true, handler: revokeGuildJoinLink },
+  { method: 'GET', path: '/api/open/:gid/raids/:rid', auth: true, handler: viewOpenRaid },
+  { method: 'POST', path: '/api/open/:gid/raids/:rid', auth: true, handler: signUpOpenRaid, maxBody: APPLY_MAX_BODY },
+  { method: 'DELETE', path: '/api/open/:gid/raids/:rid', auth: true, handler: withdrawOpenSignup },
   { method: 'POST', path: '/api/join/view', auth: false, handler: viewJoin, maxBody: APPLY_MAX_BODY },
   { method: 'POST', path: '/api/join', auth: false, handler: submitJoin, maxBody: APPLY_MAX_BODY },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/manual/paste/preview', auth: true, handler: previewPaste, maxBody: COMMIT_MAX_BODY },

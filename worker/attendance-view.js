@@ -206,6 +206,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       stale: isStale(state),
       version: raid.version,
       signupsLocked: raid.signups_locked === 1,
+      guestsOpen: raid.guests_open === 1, // "Open to guests": a signed-in non-member may sign up without a join link
       closesAt: closesAtOf(raid), // when members' sign-ups close: the start less the deadline (the raid's own, else the team's)
       // 'slot' | 'default' for a raid with only a date (the team slot time that day, else 18:00 guild time); a raid with a start time has no closesSource
       ...(raid.window_source ? { closesSource: raid.window_source } : {}),

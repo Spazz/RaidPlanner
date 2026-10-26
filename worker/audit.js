@@ -114,6 +114,9 @@ export const AUDIT_ACTIONS = [
   'signup.guest',
   'signup.guest_remove',
   'signup.guest_resolve',
+  'signup.guests_clear',
+  'signup.open',
+  'signup.open_withdraw',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

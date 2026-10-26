@@ -440,6 +440,8 @@ export async function deleteMe(ctx) {
   // and so do the notes it wrote on intent picks (the picks stay with the person).
   statements.push(db.prepare('DELETE FROM applications WHERE user_id = ?').bind(userId));
   statements.push(db.prepare('UPDATE intent_picks SET note = NULL WHERE updated_by = ?').bind(userId));
+  // The guest sign-ups the account made on open raids go with it (the row names the character the account typed; guest_user_id would only be unlinked).
+  statements.push(db.prepare('DELETE FROM raid_signups WHERE guest = 1 AND guest_user_id = ?').bind(userId));
   // Team requests still waiting go with the account (the decided rows stay, unlinked: requested_by and decided_by are ON DELETE SET NULL).
   statements.push(db.prepare("DELETE FROM team_requests WHERE requested_by = ? AND status = 'pending'").bind(userId));
   // The roster people linked to this account stay (officers own the roster); the link goes. The version moves so an officer's open page sees it.

@@ -184,6 +184,30 @@ check('the Seniority guard stops a release or a move of a senior character, and 
   await s.ok('tlbc', 'DELETE', mine, {}, 200);
 });
 
+check('unassigned: the characters on no team (what Add to team offers) for whoever may edit a roster, filterable by the start of the name; placed ones are not listed; a pending request is shown', async () => {
+  const s = await world();
+  await s.member('m2', 'Membertwo');
+  const other = await s.person({ name: 'Otherguy' });
+  await s.link(other.pid, 'm2');
+  const loose = await s.alt(other.pid, 'Looseone');
+  const all = await s.ok('tla', 'GET', '/roster/unassigned');
+  assert.deepEqual(all.characters.map((c) => c.name), ['Altone', 'Alttwo', 'Looseone']);
+  assert.equal(all.more, false);
+  const entry = all.characters.find((c) => c.name === 'Looseone');
+  assert.deepEqual([entry.id, entry.class, entry.isMain, entry.person, entry.requestedTeamId, entry.status, entry.left], [loose, 'ROGUE', false, { id: other.pid, name: 'Otherguy' }, null, 'raider', false]);
+  assert.deepEqual((await s.ok('tla', 'GET', '/roster/unassigned?q=alt')).characters.map((c) => c.name), ['Altone', 'Alttwo']);
+  assert.deepEqual((await s.ok('tla', 'GET', '/roster/unassigned?q=ALTO')).characters.map((c) => c.name), ['Altone']);
+  assert.deepEqual((await s.ok('tla', 'GET', '/roster/unassigned?q=%25')).characters, [], 'a percent sign is a letter, not a wildcard');
+  assert.deepEqual((await s.ok('tla', 'GET', '/roster/unassigned?q=_')).characters, []);
+  // A placed character leaves the list; a member's request shows on it.
+  await s.ok('o1', 'PUT', `/roster/${s.m1.pid}/characters/${s.alt1}/team`, { teamId: s.bravo }, 200);
+  s.exec(`INSERT INTO team_requests (id, guild_id, team_id, character_id, requested_by, created_at) VALUES ('tq_AAAAAAAAAAAAAAAAAAAAAA', '${s.gid}', '${s.charlie}', '${loose}', '${s.uids.m2}', 1)`);
+  const after = await s.ok('tla', 'GET', '/roster/unassigned');
+  assert.deepEqual(after.characters.map((c) => [c.name, c.requestedTeamId]), [['Alttwo', null], ['Looseone', s.charlie]]);
+  await s.fail('m1', 'GET', '/roster/unassigned', undefined, 403, 'forbidden');
+  assert.equal((await s.w.call({}, 'GET', `${s.base}/roster/unassigned`)).status, 401);
+});
+
 // Sign-ups: an upcoming raid on Alpha and one on Bravo, a finished raid on Alpha; the person's native sign-ups on them, a standing entry, a Raid-Helper row, a guest.
 async function signupWorld() {
   const s = await world();

@@ -1977,7 +1977,7 @@ check('sizes: PATCH /raids/:rid sets or clears a raid\'s size and sign-up deadli
   assert.deepEqual([now.size, now.signup_close_hours], [20, null]);
   assert.deepEqual([now.version, now.policy_fp], [start.version, start.policy_fp], 'no recompute is needed: the version and the fingerprint are untouched');
   assert(now.updated_at > start.updated_at);
-  assert.deepEqual(await s.audits('raid.settings'), [{ entity: raid.id, before: { size: null, signupCloseHours: null }, after: { size: 20, signupCloseHours: null } }]);
+  assert.deepEqual(await s.audits('raid.settings'), [{ entity: raid.id, before: { size: null, signupCloseHours: null, guestsOpen: false }, after: { size: 20, signupCloseHours: null, guestsOpen: false } }]);
 
   // signupCloseHours alone keeps the size; both together; null clears one and keeps the other.
   assert.equal((await patch('bob', { signupCloseHours: 12 })).status, 200);
@@ -1995,7 +1995,7 @@ check('sizes: PATCH /raids/:rid sets or clears a raid\'s size and sign-up deadli
   assert.deepEqual([now.size, now.signup_close_hours], [null, null]);
   const audits = await s.audits('raid.settings');
   assert.equal(audits.length, 5);
-  assert.deepEqual(audits[4], { entity: raid.id, before: { size: null, signupCloseHours: 0 }, after: { size: null, signupCloseHours: null } });
+  assert.deepEqual(audits[4], { entity: raid.id, before: { size: null, signupCloseHours: 0, guestsOpen: false }, after: { size: null, signupCloseHours: null, guestsOpen: false } });
   // A change that changes nothing writes nothing and still answers the detail.
   assert.equal((await patch('bob', { size: null, signupCloseHours: null })).status, 200);
   assert.equal((await s.audits('raid.settings')).length, 5);
@@ -2011,7 +2011,7 @@ check('sizes: PATCH /raids/:rid sets or clears a raid\'s size and sign-up deadli
   }
   for (const body of [{}, { other: 1 }]) {
     const none = await patch('bob', body);
-    assert.deepEqual([none.status, none.json.error, none.json.message], [400, 'bad_request', 'Send size, signupCloseHours, or both.'], JSON.stringify(body));
+    assert.deepEqual([none.status, none.json.error, none.json.message], [400, 'bad_request', 'Send size, signupCloseHours, guestsOpen, or any of them.'], JSON.stringify(body));
   }
   now = await row();
   assert.deepEqual([now.size, now.signup_close_hours], [null, null]);

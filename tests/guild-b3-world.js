@@ -53,6 +53,12 @@ async function scenario({ teams = ['Alpha', 'Bravo'], env = {}, serverId = SERVE
       uids[key] = (await w.call(jars[key], 'GET', '/auth/me')).json.user.id;
       return uids[key];
     },
+    // A signed-in account that is in NO server of the guild and is linked to no person: not a member.
+    async outsider(key, name) {
+      jars[key] = (await signIn(w, discord(key, name), [])).jar;
+      uids[key] = (await w.call(jars[key], 'GET', '/auth/me')).json.user.id;
+      return uids[key];
+    },
     async officer(key, name) {
       const id = await s.member(key, name);
       await s.ok('gm', 'PUT', `/people/${id}/roles`, { officer: true, teamLeadTeamIds: [] }, 200);

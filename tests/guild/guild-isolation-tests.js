@@ -321,6 +321,7 @@ check('every route of ROUTES: another guild\'s ids, a guest cookie and no sessio
     'GET /api/guild/:gid/raids/:rid/signup -> 403',                    // the caller's OWN sign-up: the Guild Master is no roster person here
     'GET /api/guild/:gid/attendance/backfill/reports -> 502',          // asks Warcraft Logs, which the fixture cannot reach
     'GET /api/dev/guild/:gid/viewer -> 404',                           // dev "View as": the flag is off here, so it is a plain 404
+    'GET /api/open/:gid/raids/:rid -> 404',                            // the fixture's raid is a finished one, never open to guests: nothing says it exists
   ];
   assert.deepEqual(control.notOk.filter((entry) => !expectedOdd.some((pattern) => entry.startsWith(pattern))), [], 'GET routes on the member\'s own guild that did not answer 200');
 
@@ -520,6 +521,37 @@ check('the join routes (open): a link shows only its own raid, the form needs it
   assert.equal((await guestsOf(alpha.gid)).length, after.length, 'nothing stored after it was turned off');
   // Beta's link still works, for Beta only.
   assert.equal((await w.call(newJar(), 'POST', '/api/join/view', { token: beta.joinToken })).json.guild.name, 'Guild Beta');
+});
+
+check('the open-raid routes (a session, no token): a raid open to guests answers its own guild\'s address only, shows nothing of any roster, and writes into its own guild only', async () => {
+  const f = await fixture();
+  const { w, alpha, beta } = f;
+  const upcoming = async (side) => (await w.rows("SELECT id FROM raids WHERE guild_id = ? AND title = ?", side.gid, `${side.label}title`))[0].id;
+  const [alphaRaid, betaRaid] = [await upcoming(alpha), await upcoming(beta)];
+  for (const side of [alpha, beta]) {
+    assert.equal((await w.call(side.jars.gm, 'PATCH', `/api/guild/${side.gid}/raids/${await upcoming(side)}`, { guestsOpen: true })).status, 200);
+  }
+  const outsider = (await signIn(w, person(91, 'Outsider'), [])).jar;
+  const url = (gid, rid) => `/api/open/${gid}/raids/${rid}`;
+  const view = await w.call(outsider, 'GET', url(alpha.gid, alphaRaid));
+  assert.equal(view.status, 200, view.text);
+  assert.equal(view.json.guild.name, 'Guild Alpha');
+  for (const word of [...beta.words, 'Alphaperson', 'Alpha officer note']) assert(!view.text.includes(word), `the open view leaked ${word}`);
+  // The other guild's raid under this guild's address (and the other way round) is not found.
+  for (const [gid, rid] of [[alpha.gid, betaRaid], [beta.gid, alphaRaid]]) {
+    for (const method of ['GET', 'POST', 'DELETE']) {
+      const res = await w.call(outsider, method, url(gid, rid), method === 'POST' ? { name: 'Crossguy', class: 'MAGE', spec: 'Fire' } : undefined);
+      assert.equal(res.status, 404, `${method} ${gid} ${rid}: ${res.text}`);
+    }
+  }
+  const sent = await w.call(outsider, 'POST', url(alpha.gid, alphaRaid), { name: 'Outsidermage', class: 'MAGE', spec: 'Fire', website: '' });
+  assert.equal(sent.status, 201, sent.text);
+  const rows = await w.rows("SELECT guild_id, raid_id FROM raid_signups WHERE nickname = 'Outsidermage'");
+  assert.deepEqual(rows, [{ guild_id: alpha.gid, raid_id: alphaRaid }]);
+  assert.equal((await w.rows("SELECT 1 FROM raid_signups WHERE guild_id = ? AND nickname = 'Outsidermage'", beta.gid)).length, 0);
+  // A member of the other guild is just an outsider here; a visitor with no session is refused.
+  assert.equal((await w.call(beta.jars.member, 'GET', url(alpha.gid, alphaRaid))).status, 200);
+  assert.equal((await w.call(newJar(), 'GET', url(alpha.gid, alphaRaid))).status, 401);
 });
 
 check('the walker catches a leaky route: one that answers the other guild\'s data to any member', async () => {

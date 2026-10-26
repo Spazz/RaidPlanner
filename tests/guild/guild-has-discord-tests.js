@@ -259,6 +259,7 @@ const SERVER_ID_FILES = {
   'worker/routes/guild-data.js': { how: 'guard', count: 2 },
   'worker/routes/guild.js': { how: 'guard', count: 6 },
   'worker/routes/people.js': { how: 'fragment', count: 2 },
+  'worker/routes/open-raids.js': { how: 'fragment', count: 1 },
   'worker/routes/raids.js': { how: 'guard', count: 3 },
   'worker/routes/roster-import.js': { how: 'guard', count: 3 },
   'worker/routes/roster.js': { how: 'fragment', count: 2 },

@@ -55,14 +55,16 @@ const SECTION_READS = {
   },
   raids: {
     statements: (db, guild, team, nowMs) => [
-      db.prepare('SELECT raid_on, starts_at, zone, title FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at > ? ORDER BY starts_at, id LIMIT ?')
+      db.prepare('SELECT id, guests_open, raid_on, starts_at, zone, title FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at > ? ORDER BY starts_at, id LIMIT ?')
         .bind(guild.id, team.id, nowMs, UPCOMING_LIMIT),
       db.prepare('SELECT raid_on, starts_at, zone, title FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at <= ? ORDER BY starts_at DESC, id LIMIT ?')
         .bind(guild.id, team.id, nowMs, RECENT_LIMIT),
     ],
     shape: (team, [upcoming, recent]) => {
       const shape = (row) => ({ raidOn: row.raid_on, startsAt: row.starts_at, zone: row.zone, title: row.title });
-      return { team, upcoming: upcoming.results.map(shape), recent: recent.results.map(shape) };
+      // An upcoming raid open to guests (U R8-Q3) carries open: true and its id, which is all the sign-up page needs (GET /api/open/:gid/raids/:rid); no other raid shows its id.
+      const shapeUpcoming = (row) => ({ ...shape(row), ...(row.guests_open === 1 ? { open: true, raidId: row.id } : {}) });
+      return { team, upcoming: upcoming.results.map(shapeUpcoming), recent: recent.results.map(shape) };
     },
   },
   // PM wave 7: the team's boss kills, from the stored pulls (worker/progress.js). No raid ids, no report codes.

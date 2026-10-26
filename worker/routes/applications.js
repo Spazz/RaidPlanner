@@ -14,6 +14,7 @@
 import { HttpError, jsonResponse, parseCookies, serializeCookie } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { addDays } from '../attendance-calendar.js';
+import { assertNotBlocked } from '../block-check.js';
 import { markRaidsStale } from '../attendance-store.js';
 import { base64url, isId, newId } from '../ids.js';
 import { ownPersonStatement } from '../membership.js';
@@ -115,8 +116,7 @@ export async function submitApplication(ctx) {
   const userId = session ? session.user.id : null;
   const now = ctx.now();
   if (userId) {
-    const blocked = await db.prepare('SELECT 1 AS x FROM guild_blocks WHERE guild_id = ? AND user_id = ?').bind(guild.id, userId).first();
-    if (blocked) throw new HttpError(403, 'access_removed', 'An officer has removed your access to this guild.');
+    await assertNotBlocked(db, guild.id, userId);
   }
 
   // Anti-spam, cheapest first: this browser's few an hour, then the guild's daily cap (counted from the stored applications).
