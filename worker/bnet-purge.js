@@ -5,6 +5,8 @@
 // link and kept while it is linked (disconnecting, or Delete my data, removes it at once). Deleting the row would sign the person out of the
 // only identity some accounts have.
 // A roster person or character an approved claim created is the guild's own record (like a Warcraft Logs import) and stays.
+// guild_roster (the guild's synced in-game roster, worker/roster-sync.js) is the guild's public roster data, not a member's Battle.net snapshot: it is kept
+// while the guild lives and replaced by each changed good sync, so nothing here touches it (a test pins that).
 import { DATA_TTL_MS } from './bnet-store.js';
 
 // -> { snapshots, pendingClaims, decidedClaims } (rows changed or deleted)
