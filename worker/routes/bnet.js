@@ -7,6 +7,7 @@ import { auditStatement } from '../audit.js';
 import {
   BnetError, authorizeUrl, bnetSupport, canonicalOrigin, exchangeCode, fetchAccountCharacters, fetchUserInfo, isConfigured,
 } from '../battlenet.js';
+import { clearBnetProofStatement, loadIngameCombos, runBnetMatch } from '../bnet-match.js';
 import { CLAIM_BATCH_MAX, DATA_TTL_MS, loadMemberGuilds, parseSnapshot, realmDisplayName } from '../bnet-store.js';
 import { bnetNameOf, findUserByBnet, hasDiscordSql, insertBnetAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
@@ -33,6 +34,9 @@ const signinRedirect = (reason) => `/#/signin?error=${reason}`;
 const MAX_COMBOS = 8;
 const LINK_LIMIT = 10;
 const LINK_WINDOW_MS = 10 * 60 * 1000;
+// D1 statements a callback has used by the time the sign-in match starts (nonce, rate limits, look-ups, the Battle.net reads of the callback and its own writes);
+// the match counts its own on top and stays inside CALLBACK_STATEMENT_BUDGET. tests/guild/guild-b6a-match-tests.js measures both modes and fails when one grows past this.
+export const STATEMENTS_BEFORE_MATCH = { signin: 12, link: 9 };
 
 // ---------------------------------------------------------------------------
 // Link
@@ -61,7 +65,8 @@ export async function bnetLogin(ctx) {
   return redirectResponse(authorizeUrl(env, state), [bnetStateCookie(state)]);
 }
 
-// The distinct profile namespaces (game version + region) among the person's guilds, with Battle.net support: [{ key, version, region, namespace }].
+// The distinct profile namespaces (game version + region) among the guilds, with Battle.net support: [{ namespace, version, region }], in the order given.
+// Callers put the guilds that run on the in-game roster FIRST: they are how a Battle.net account becomes a member, so the cap keeps them.
 function namespacesOf(guilds) {
   const found = new Map();
   for (const guild of guilds) {
@@ -89,6 +94,10 @@ async function buildSnapshot(ctx, accessToken, guilds, now) {
             realmSlug: character.realmSlug,
             class: character.class,
             level: character.level,
+            // The identity key (namespace + realm id + character id): the sign-in match finds the character on a guild's in-game roster through it.
+            characterId: character.characterId,
+            realmId: character.realmId,
+            namespace: combo.namespace,
           })),
         },
       };
@@ -151,9 +160,12 @@ export async function bnetCallback(ctx) {
     const accessToken = await exchangeCode(ctx, code);
     info = await fetchUserInfo(ctx, accessToken);
     if (!(await callbackAllowed(ctx, info.id, now))) return fail('busy');
-    // Whose characters to look for: the member linking, or whoever already signs in with this Battle.net account (nobody yet: a new account).
+    // Whose characters to look for: the member linking, or whoever already signs in with this Battle.net account (nobody yet: a new account). The namespaces
+    // are the ones of the guilds that run on the in-game roster (first: a new account has no member guild, and these are how it becomes one) and of the guilds
+    // the account is a member of.
     const userId = mode === 'link' ? session.user.id : await findUserByBnet(db, info.id);
-    snapshot = await buildSnapshot(ctx, accessToken, userId ? await loadMemberGuilds(db, userId) : [], now);
+    const memberGuilds = userId ? await loadMemberGuilds(db, userId) : [];
+    snapshot = await buildSnapshot(ctx, accessToken, [...(await loadIngameCombos(db)), ...memberGuilds], now);
   } catch (error) {
     ctx.log(`bnet ${mode}: Battle.net step failed: ${error && error.message}`);
     return fail('bnet');
@@ -182,7 +194,19 @@ export async function bnetCallback(ctx) {
     ctx.log(`bnet ${mode}: saving failed: ${error && error.message}`);
     return fail('bnet');
   }
+  // A first link and the same Battle.net account again ("Re-verify with Battle.net") both prove the account's characters afresh.
+  await matchAfterCallback(ctx, { userId: session.user.id, bnetAccountId: info.id, snapshot, now, spent: STATEMENTS_BEFORE_MATCH.link });
   return redirectResponse(CHARACTERS_REDIRECT, [clear]);
+}
+
+// The sign-in match runs after the callback's own writes and never fails the callback: whatever it could not do waits for the next sign-in.
+async function matchAfterCallback(ctx, input) {
+  try {
+    return await runBnetMatch(ctx, input);
+  } catch (error) {
+    ctx.log(`bnet match failed: ${error && error.message}`);
+    return null;
+  }
 }
 
 // Sign in with Battle.net: the account that holds this Battle.net account signs in (its BattleTag and snapshot refreshed); a Battle.net
@@ -220,18 +244,22 @@ async function finishSignin(ctx, info, snapshot, now, clear) {
     ctx.log(`bnet signin: saving failed: ${error && error.message}`);
     return redirectResponse(signinRedirect('bnet'), [clear]);
   }
+  await matchAfterCallback(ctx, { userId, bnetAccountId: info.id, snapshot, now, spent: STATEMENTS_BEFORE_MATCH.signin });
   return redirectResponse(HOME_REDIRECT, [clear, sessionCookie(token)]);
 }
 
 export async function disconnectBnet(ctx) {
   const { db, session } = ctx;
-  // The last identity cannot go: the link is deleted only while the account keeps a Discord to sign in with.
+  // The last identity cannot go: the link is deleted only while the account keeps a Discord to sign in with. Every proof the link gave goes with it (a proof
+  // belongs to the Battle.net account that earned it); the clearing is written first, with the same condition, so a refused disconnect clears nothing.
+  const keepsDiscord = { sql: hasDiscordSql('?'), params: [session.user.id] };
   const results = await db.batch([
+    clearBnetProofStatement(db, session.user.id, keepsDiscord),
     db.prepare(`DELETE FROM bnet_links WHERE user_id = ? AND ${hasDiscordSql('?')}`).bind(session.user.id, session.user.id),
     auditStatement(ctx, { guildId: null, actorUserId: session.user.id, action: 'bnet.unlink', entityType: 'user', entityId: session.user.id },
       { sql: 'changes() = 1', params: [] }),
   ]);
-  if (results[0].meta.changes === 1) return jsonResponse({ ok: true, removed: true });
+  if (results[1].meta.changes === 1) return jsonResponse({ ok: true, removed: true });
   const link = await db.prepare('SELECT 1 AS found FROM bnet_links WHERE user_id = ?').bind(session.user.id).first();
   if (link) {
     throw new HttpError(409, 'last_identity', 'Battle.net is the only way you sign in to this account. Connect Discord first, or delete your data on the privacy page.');

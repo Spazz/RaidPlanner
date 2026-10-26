@@ -525,6 +525,7 @@ const USER_SERVERS_ALLOWED = {
 };
 
 const PLAYERS_USER_ID_ALLOWED = {
+  'worker/bnet-match.js': { count: 9, reason: 'the Battle.net sign-in match: which person is the signing-in account\'s (players.user_id), the person it creates or is linked to, and the stamping of that person\'s characters; membership itself stays memberSql (a person on the roster is what makes the roster rule true)' },
   'worker/bnet-store.js': { count: 2, reason: 'claim planning: which person is the claimant\'s own (ownership of a person; the member test is memberSql)' },
   'worker/claim-apply.js': { count: 3, reason: 'writes and guards of an applied claim: the person is still the claimant\'s' },
   'worker/flip-preview.js': { count: 3, reason: 'the flip dry run: the person each account has today and would have after the flip links the Discord-owned ones' },
