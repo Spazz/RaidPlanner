@@ -16,8 +16,9 @@ import { shapeRoles } from '../permissions.js';
 import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
 import { parsePrefs, personFromSession, toPerson } from '../person.js';
 import {
-  STATE_COOKIE, clearSessionCookie, clearStateCookie, discordStateMode, hashToken, loadSession, newSessionToken, presentedToken, readManageable,
-  sessionCookie, signDiscordLinkState, signState, startSessionStatements, stateCookie, verifyDiscordLinkState, verifyState,
+  FRESH_MODE, STATE_COOKIE, claimStateNonce, clearSessionCookie, clearStateCookie, discordStateMode, hashToken, loadSession, newSessionToken,
+  presentedToken, readManageable, sessionCookie, signDiscordLinkState, signState, startSessionStatements, stateCookie, verifyDiscordLinkState,
+  verifyState,
 } from '../session.js';
 
 // Fixed targets inside the app shell (index.html); the hash router reads them. No user input reaches a Location header.
@@ -49,9 +50,9 @@ export async function login(ctx) {
     const session = await loadSession(ctx);
     if (!session) return redirectResponse(SIGNIN_REDIRECT);
     // Bound to the member who starts it, so a state copied into another browser is refused there.
-    state = await signDiscordLinkState(env, session.user.id, nonce);
+    state = await signDiscordLinkState(env, session.user.id, nonce, ctx.now());
   } else {
-    state = await signState(env, nonce);
+    state = await signState(env, nonce, ctx.now());
   }
   return redirectResponse(authorizeUrl(env, state), [stateCookie(state)]);
 }
@@ -69,7 +70,10 @@ export async function callback(ctx) {
   const clear = clearStateCookie();
   const state = url.searchParams.get('state');
   const mode = discordStateMode(state);
+  const now = ctx.now();
   const fail = (reason) => redirectResponse(mode === 'link' ? LINKED_ERROR_REDIRECT(reason) : ERROR_REDIRECT(reason), [clear]);
+  // B6b seam: the fresh-auth callback replaces this refusal. Until then a fresh-shaped state ends here, before the session, the cookie or the MAC.
+  if (mode === FRESH_MODE) return fail('state');
 
   let session = null;
   if (mode === 'link') {
@@ -79,11 +83,13 @@ export async function callback(ctx) {
   if (!cookieState || !state || !safeEqual(state, cookieState)) return fail('state');
   if (!isConfigured(env)) return fail('discord');
   // A state this Worker did not sign for this flow (and, for a link, for THIS member) never reaches an outbound Discord call.
-  const genuine = mode === 'link' ? await verifyDiscordLinkState(env, session.user.id, state) : await verifyState(env, state);
+  const genuine = mode === 'link' ? await verifyDiscordLinkState(env, session.user.id, state, now) : await verifyState(env, state, now);
   if (!genuine) return fail('state');
   if (url.searchParams.get('error')) return fail('denied');
   const code = url.searchParams.get('code');
   if (!code || code.length > 512) return fail('state');
+  // Single use: a replayed state is refused here, before the first outbound call (the begin step wrote nothing, the first callback writes the row).
+  if (!(await claimStateNonce(db, state, now))) return fail('state');
 
   let discordUser;
   let servers;
@@ -446,6 +452,8 @@ export async function deleteMe(ctx) {
   statements.push(db.prepare(
     'UPDATE players SET user_id = NULL, version = version + 1, updated_at = ? WHERE user_id = ?',
   ).bind(now, userId));
+  // The Battle.net callback window of the account's Blizzard id (key bnetcb:<id>) goes with it; this reads bnet_links, so it runs before the user row (and its link) is deleted.
+  statements.push(db.prepare("DELETE FROM rate_limits WHERE key IN (SELECT 'bnetcb:' || bnet_account_id FROM bnet_links WHERE user_id = ?)").bind(userId));
   // Sessions, servers, roles, blocks, the Battle.net link and the claims cascade; actor columns become NULL (roadmap_ideas.submitted_by too: the ideas stay, unlinked).
   statements.push(db.prepare('DELETE FROM users WHERE id = ?').bind(userId));
   // A person linked through the Discord ID stays too, unlinked; an account that never had Discord has nothing to clear here.

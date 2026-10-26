@@ -12,6 +12,7 @@
     discord: 'Discord could not finish the sign-in. Try again in a minute.',
     bnet: 'Battle.net could not finish the sign-in. Try again in a minute.',
     not_configured: 'That sign-in isn\'t set up on this server.',
+    busy: 'That Battle.net account has signed in a lot of times just now. Wait a few minutes, then try again.',
   };
   const DISCORD_HREF = '/auth/login';
   const BNET_HREF = '/auth/bnet/login?mode=signin';

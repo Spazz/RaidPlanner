@@ -90,9 +90,10 @@ function withApi(stubs, fn) {
   await check('router: every reason a sign-in or a link can come back with parses, formats back, and has words', () => {
     assert.deepEqual(plain(G.router.parse('#/signin?error=bnet')), { name: 'signin', error: 'bnet' });
     assert.deepEqual(plain(G.router.parse('#/signin?error=not_configured')), { name: 'signin', error: 'not_configured' });
+    assert.deepEqual(plain(G.router.parse('#/signin?error=busy')), { name: 'signin', error: 'busy' });
     assert.deepEqual(plain(G.router.parse('#/signin?error=<script>')), { name: 'signin', error: null });
     assert.equal(G.router.format({ name: 'signin', error: 'bnet' }), '#/signin?error=bnet');
-    for (const key of ['denied', 'state', 'discord', 'bnet', 'not_configured']) {
+    for (const key of ['denied', 'state', 'discord', 'bnet', 'not_configured', 'busy']) {
       assert(G.pages.signin.SIGNIN_ERROR_TEXT[key], key);
       assert(G.pages.signin.signinHtml({ error: key }).includes('role="alert"'), key);
     }

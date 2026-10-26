@@ -13,6 +13,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const ROSTER_SYNC_KEEP_MS = 90 * DAY_MS;
 export const FRESH_MARKER_KEEP_MS = 15 * 60 * 1000;
 export const APPROVAL_KEEP_MS = 30 * DAY_MS;
+// Never shorter than STATE_TTL_MS (worker/session.js, the validity window of an OAuth state): claimStateNonce stores created_at no earlier than the state's
+// issue time, so a nonce row outlives its state and a replay is refused by the age check once the row is gone. Pinned by tests/guild/guild-b6a-oauth-tests.js.
 export const OAUTH_NONCE_TTL_MS = 10 * 60 * 1000;
 
 // name -> (nowMs) -> { sql, values }

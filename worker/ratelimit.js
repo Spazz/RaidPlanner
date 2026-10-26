@@ -27,29 +27,55 @@ export const RANK_MAP_WINDOW_MS = 10 * 60 * 1000;
 // Flip dry runs (per Owner): each one reads every account and person of the guild and writes an approval token.
 export const FLIP_DRY_RUN_LIMIT = 10;
 export const FLIP_DRY_RUN_WINDOW_MS = 10 * 60 * 1000;
+// Battle.net OAuth callbacks (worker/routes/bnet.js), checked after the token exchange and user info, before the snapshot fan-out of Blizzard calls.
+// Per Blizzard account id: a limit that answers 'busy'. Global: a budget that NEVER refuses (a gate would let a few accounts stop everyone); the callback
+// that takes the window's count past it logs one ALARM line for the operator.
+export const BNET_CALLBACK_LIMIT = 10;
+export const BNET_CALLBACK_WINDOW_MS = 10 * 60 * 1000;
+export const BNET_CALLBACK_BUDGET = 300;
+export const BNET_CALLBACK_BUDGET_KEY = 'bnetcb:global';
+export const bnetCallbackKey = (bnetAccountId) => `bnetcb:${bnetAccountId}`;
 // The longest windowMs any caller passes (api keys, join and apply cookies, ideas, test posts, on-demand syncs: one hour). A rate_limits row whose window
 // started longer ago than this is dead for every key, so the daily retention job (worker/retention.js) deletes it. A test pins that no *_WINDOW_MS
 // constant in worker/ is longer; raising a window means raising this.
 export const LONGEST_WINDOW_MS = 60 * 60 * 1000;
 const UNAVAILABLE_RETRY_SECONDS = 30;
 
+// Counts one hit into the key's fixed window (a new window starts once the old one is windowMs old): one UPSERT ... RETURNING -> { count, window_start }.
+function bumpWindow(db, key, nowMs, windowMs) {
+  const cutoff = nowMs - windowMs;
+  return db.prepare(
+    `INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 1)
+     ON CONFLICT(key) DO UPDATE SET
+       count = CASE WHEN window_start <= ? THEN 1 ELSE count + 1 END,
+       window_start = CASE WHEN window_start <= ? THEN ? ELSE window_start END
+     RETURNING count, window_start`,
+  ).bind(key, nowMs, cutoff, cutoff, nowMs).first();
+}
+
 // Fixed window per key (default `w:<userId>`), one UPSERT ... RETURNING.
 // Fails open (the default): if D1 errors, the request goes through. With failClosed the request is refused
 // instead and the result says `unavailable`.
 export async function checkRateLimit(db, userId, nowMs, { limit = RATE_LIMIT, windowMs = RATE_WINDOW_MS, key, failClosed = false } = {}) {
   try {
-    const cutoff = nowMs - windowMs;
-    const row = await db.prepare(
-      `INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 1)
-       ON CONFLICT(key) DO UPDATE SET
-         count = CASE WHEN window_start <= ? THEN 1 ELSE count + 1 END,
-         window_start = CASE WHEN window_start <= ? THEN ? ELSE window_start END
-       RETURNING count, window_start`,
-    ).bind(key || `w:${userId}`, nowMs, cutoff, cutoff, nowMs).first();
+    const row = await bumpWindow(db, key || `w:${userId}`, nowMs, windowMs);
     if (!row || row.count <= limit) return { limited: false };
     return { limited: true, retryAfter: Math.max(1, Math.ceil((row.window_start + windowMs - nowMs) / 1000)) };
   } catch {
     return failClosed ? { limited: true, unavailable: true, retryAfter: UNAVAILABLE_RETRY_SECONDS } : { limited: false };
+  }
+}
+
+// A budget that never refuses: counts into the same fixed window as checkRateLimit and says when it has run out -> { spent, alarm }. spent: this window's
+// count is past `limit`. alarm: true for exactly ONE call per window (the first past the limit), so the caller can log one operator line per window.
+// If D1 errors the budget is not spent (it is a tripwire, never a gate).
+export async function spendBudget(db, nowMs, { key, limit, windowMs }) {
+  try {
+    const row = await bumpWindow(db, key, nowMs, windowMs);
+    if (!row) return { spent: false, alarm: false };
+    return { spent: row.count > limit, alarm: row.count === limit + 1 };
+  } catch {
+    return { spent: false, alarm: false };
   }
 }
 

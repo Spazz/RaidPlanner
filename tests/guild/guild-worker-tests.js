@@ -292,7 +292,7 @@ check('login: redirects to the canonical origin first, then to Discord with prom
   assert.equal(location.searchParams.get('client_id'), 'client-id');
   assert.equal(location.searchParams.get('redirect_uri'), `${ORIGIN}/auth/callback`);
   const cookie = login.headers.getSetCookie()[0];
-  assert.match(cookie, /^__Host-rs_state=[A-Za-z0-9_-]{22}.[A-Za-z0-9_-]{43};/);
+  assert.match(cookie, /^__Host-rs_state=[A-Za-z0-9_-]{22}\.\d{13}\.[A-Za-z0-9_-]{43};/);
   for (const part of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/', 'Max-Age=600']) assert(cookie.includes(part), part);
   assert(!cookie.includes('Domain'), '__Host- cookies carry no Domain');
   assert.equal(cookie.split(';')[0].split('=')[1], location.searchParams.get('state'));

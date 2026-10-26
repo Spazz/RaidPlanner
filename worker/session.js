@@ -105,34 +105,104 @@ export function readManageable(session, nowMs) {
 }
 
 // ---------------------------------------------------------------------------
-// Sign-in state: nonce + "." + HMAC-SHA256(key, nonce). The key is derived from the Discord client
-// secret, so a state the Worker did not issue is rejected before any outbound Discord call.
+// OAuth states. Each MODE has its own shape and its own MAC key domain, so a state minted for one flow never verifies in another, and the callback
+// learns the mode only from a state whose MAC checked out:
+//   Discord sign-in    <nonce>.<issued>.<mac>            key raidsmith-state:
+//   Discord link       link.<nonce>.<issued>.<mac>       key raidsmith-discord-link-state:   bound to the signed-in user
+//   Battle.net link    <nonce>.<issued>.<mac>            key raidsmith-bnet-state:           bound to the signed-in user
+//   Battle.net sign-in signin.<nonce>.<issued>.<mac>     key raidsmith-bnet-signin-state:
+//   fresh-auth         fresh.<nonce>.<issued>.<mac>      lane B6b, not built: only the shape is recognised below (FRESH_MODE)
+// <issued> is the issue time in milliseconds and is part of the MAC'd text. A state is good for STATE_TTL_MS after it and not more than
+// STATE_FUTURE_SKEW_MS before it; an older or future-dated state is refused like a bad MAC. The keys derive from the provider's client secret, so a
+// state this Worker did not issue is refused before any outbound call. Single use is claimStateNonce: a callback claims the nonce AFTER the MAC and
+// age checks and BEFORE the code exchange. The begin routes write nothing.
 
+export const STATE_TTL_MS = STATE_TTL_SECONDS * 1000;
+const STATE_FUTURE_SKEW_MS = 60 * 1000;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+const ISSUED_PATTERN = /^(?:0|[1-9][0-9]{0,14})$/;
 
-async function stateMac(env, nonce) {
-  const secret = new TextEncoder().encode(`raidsmith-state:${env.DISCORD_CLIENT_SECRET}`);
-  const keyBytes = await crypto.subtle.digest('SHA-256', secret);
+async function macOf(secret, domain, message) {
+  const keyBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${domain}:${secret}`));
   const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(nonce));
-  return base64url(new Uint8Array(mac));
+  return base64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))));
 }
 
-export async function signState(env, nonce) {
-  return `${nonce}.${await stateMac(env, nonce)}`;
+// The text a MAC covers: the nonce and the issue time, behind the user id for a state bound to a user.
+const macText = (userId, nonce, issuedAt) => (userId === undefined ? `${nonce}.${issuedAt}` : `${userId}.${nonce}.${issuedAt}`);
+
+// The last three dot-separated parts of any state are <nonce>.<issued>.<mac>, whatever the mode prefix -> { nonce, issuedAt, mac } or null.
+function tailOf(parts) {
+  if (parts.length < 3) return null;
+  const [nonce, issued, mac] = parts.slice(-3);
+  if (!NONCE_PATTERN.test(nonce) || !ISSUED_PATTERN.test(issued)) return null;
+  return { nonce, issuedAt: Number(issued), mac };
 }
 
-export async function verifyState(env, state) {
-  if (typeof state !== 'string' || !env.DISCORD_CLIENT_SECRET) return false;
+// A state of exactly this mode's shape (mode null = no prefix) -> { nonce, issuedAt, mac }, else null.
+function stateParts(state, mode) {
+  if (typeof state !== 'string') return null;
   const parts = state.split('.');
-  if (parts.length !== 2 || !NONCE_PATTERN.test(parts[0])) return false;
-  return safeEqual(parts[1], await stateMac(env, parts[0]));
+  if (parts.length !== (mode ? 4 : 3) || (mode && parts[0] !== mode)) return null;
+  return tailOf(parts);
 }
 
-// ---------------------------------------------------------------------------
-// Battle.net link state: the same nonce + MAC idea, but keyed from the Battle.net client secret and BOUND TO THE SIGNED-IN USER, so a
-// state copied from one member's browser is refused in another's. Its own short-lived cookie, apart from the sign-in one.
+function isCurrent(issuedAt, now) {
+  if (!Number.isFinite(now)) return false;
+  const age = now - issuedAt;
+  return age >= -STATE_FUTURE_SKEW_MS && age <= STATE_TTL_MS;
+}
 
+// The two halves every mode is built from. Lane B6b makes the fresh-auth pair from these (mode FRESH_MODE, its own domain, bound to the user).
+async function signStateWith({ secret, domain, mode, userId, nonce, issuedAt }) {
+  if (!Number.isSafeInteger(issuedAt) || issuedAt < 0) throw new TypeError('issuedAt must be a millisecond timestamp');
+  return `${mode ? `${mode}.` : ''}${nonce}.${issuedAt}.${await macOf(secret, domain, macText(userId, nonce, issuedAt))}`;
+}
+
+async function verifyStateWith({ secret, domain, mode, userId, state, now }) {
+  const parts = stateParts(state, mode);
+  if (!parts || !secret || !isCurrent(parts.issuedAt, now)) return false;
+  return safeEqual(parts.mac, await macOf(secret, domain, macText(userId, parts.nonce, parts.issuedAt)));
+}
+
+// Single use. The first call for a state's nonce records its SHA-256 and returns true; every later call (a replay) returns false. Call it only for a
+// state that passed its verify, before any outbound call. The row's created_at is never earlier than the state's issue time, so the retention job
+// (OAUTH_NONCE_TTL_MS = STATE_TTL_MS) cannot drop a nonce while its state could still pass the age check. A D1 failure returns false too: a state
+// that cannot be shown unused is refused.
+export async function claimStateNonce(db, state, now) {
+  const tail = typeof state === 'string' ? tailOf(state.split('.')) : null;
+  if (!tail || !Number.isFinite(now)) return false;
+  try {
+    const result = await db.prepare(
+      'INSERT INTO oauth_state_nonces (nonce_hash, created_at, used_at) VALUES (?, ?, ?) ON CONFLICT(nonce_hash) DO NOTHING',
+    ).bind(await hashToken(tail.nonce), Math.max(now, tail.issuedAt), now).run();
+    return result.meta.changes === 1;
+  } catch {
+    return false;
+  }
+}
+
+// Discord sign-in.
+export function signState(env, nonce, issuedAt) {
+  return signStateWith({ secret: env.DISCORD_CLIENT_SECRET, domain: 'raidsmith-state', mode: null, nonce, issuedAt });
+}
+
+export function verifyState(env, state, now) {
+  return verifyStateWith({ secret: env.DISCORD_CLIENT_SECRET, domain: 'raidsmith-state', mode: null, state, now });
+}
+
+// Discord link, bound to the member who starts it, so a state copied into another browser is refused there.
+export function signDiscordLinkState(env, userId, nonce, issuedAt) {
+  if (typeof userId !== 'string') throw new TypeError('a link state is bound to a user id');
+  return signStateWith({ secret: env.DISCORD_CLIENT_SECRET, domain: 'raidsmith-discord-link-state', mode: 'link', userId, nonce, issuedAt });
+}
+
+export async function verifyDiscordLinkState(env, userId, state, now) {
+  if (typeof userId !== 'string') return false;
+  return verifyStateWith({ secret: env.DISCORD_CLIENT_SECRET, domain: 'raidsmith-discord-link-state', mode: 'link', userId, state, now });
+}
+
+// Battle.net link, bound to the signed-in user too. Its own short-lived cookie, apart from the sign-in one.
 export const BNET_STATE_COOKIE = '__Host-rs_bnet_state';
 
 export function bnetStateCookie(state) {
@@ -143,75 +213,42 @@ export function clearBnetStateCookie() {
   return serializeCookie(BNET_STATE_COOKIE, '', { maxAge: 0, path: '/' });
 }
 
-async function bnetStateMac(env, userId, nonce) {
-  const secret = new TextEncoder().encode(`raidsmith-bnet-state:${env.BNET_CLIENT_SECRET}`);
-  const keyBytes = await crypto.subtle.digest('SHA-256', secret);
-  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${userId}.${nonce}`));
-  return base64url(new Uint8Array(mac));
+export function signBnetState(env, userId, nonce, issuedAt) {
+  if (typeof userId !== 'string') throw new TypeError('a link state is bound to a user id');
+  return signStateWith({ secret: env.BNET_CLIENT_SECRET, domain: 'raidsmith-bnet-state', mode: null, userId, nonce, issuedAt });
 }
 
-export async function signBnetState(env, userId, nonce) {
-  return `${nonce}.${await bnetStateMac(env, userId, nonce)}`;
+export async function verifyBnetState(env, userId, state, now) {
+  if (typeof userId !== 'string') return false;
+  return verifyStateWith({ secret: env.BNET_CLIENT_SECRET, domain: 'raidsmith-bnet-state', mode: null, userId, state, now });
 }
 
-export async function verifyBnetState(env, userId, state) {
-  if (typeof state !== 'string' || !env.BNET_CLIENT_SECRET || typeof userId !== 'string') return false;
-  const parts = state.split('.');
-  if (parts.length !== 2 || !NONCE_PATTERN.test(parts[0])) return false;
-  return safeEqual(parts[1], await bnetStateMac(env, userId, parts[0]));
+// Battle.net sign-in.
+export function signBnetSigninState(env, nonce, issuedAt) {
+  return signStateWith({ secret: env.BNET_CLIENT_SECRET, domain: 'raidsmith-bnet-signin-state', mode: 'signin', nonce, issuedAt });
 }
 
-// ---------------------------------------------------------------------------
-// The other sign-in states (accounts, Phase 7a). Each MODE has its own shape and its own key domain, so a state minted for one flow never
-// verifies in another, and the callback learns the mode only from a state whose MAC checked out:
-//   Discord sign-in   nonce.mac                (above)                     key raidsmith-state:
-//   Discord link      link.nonce.mac           bound to the signed-in user key raidsmith-discord-link-state:
-//   Battle.net link   nonce.mac                (above, bound to the user)  key raidsmith-bnet-state:
-//   Battle.net signin signin.nonce.mac                                     key raidsmith-bnet-signin-state:
-
-async function macOf(secret, domain, message) {
-  const keyBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${domain}:${secret}`));
-  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  return base64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))));
+export function verifyBnetSigninState(env, state, now) {
+  return verifyStateWith({ secret: env.BNET_CLIENT_SECRET, domain: 'raidsmith-bnet-signin-state', mode: 'signin', state, now });
 }
 
-// "link.<nonce>.<mac>" -> { nonce, mac } for a state of that mode, else null.
-function modeParts(state, mode) {
-  if (typeof state !== 'string') return null;
-  const parts = state.split('.');
-  if (parts.length !== 3 || parts[0] !== mode || !NONCE_PATTERN.test(parts[1])) return null;
-  return { nonce: parts[1], mac: parts[2] };
-}
+// Which flow a state belongs to, by shape only; the callback verifies the MAC of that mode before it trusts it. A state starting "fresh." is its own
+// mode and is recognised BEFORE the default branch of both functions, so it can never be taken for a link or a sign-in (verifyStateWith needs the
+// exact shape of its own mode, and "fresh" is not a nonce). Lane B6b builds the fresh-auth flow on this: its callback replaces the refusals marked
+// "B6b seam" in routes/auth.js and routes/bnet.js.
+export const FRESH_MODE = 'fresh';
+const isFreshShaped = (state) => typeof state === 'string' && state.startsWith(`${FRESH_MODE}.`);
 
-// Which Discord flow a state belongs to ('link' | 'signin'), by shape only. The callback verifies the MAC of that mode before it trusts it.
+// 'link' | 'signin' | 'fresh'
 export function discordStateMode(state) {
-  return modeParts(state, 'link') ? 'link' : 'signin';
+  if (isFreshShaped(state)) return FRESH_MODE;
+  return stateParts(state, 'link') ? 'link' : 'signin';
 }
 
-export async function signDiscordLinkState(env, userId, nonce) {
-  return `link.${nonce}.${await macOf(env.DISCORD_CLIENT_SECRET, 'raidsmith-discord-link-state', `${userId}.${nonce}`)}`;
-}
-
-export async function verifyDiscordLinkState(env, userId, state) {
-  const parts = modeParts(state, 'link');
-  if (!parts || !env.DISCORD_CLIENT_SECRET || typeof userId !== 'string') return false;
-  return safeEqual(parts.mac, await macOf(env.DISCORD_CLIENT_SECRET, 'raidsmith-discord-link-state', `${userId}.${parts.nonce}`));
-}
-
-// Which Battle.net flow a state belongs to ('signin' | 'link'), by shape only.
+// 'signin' | 'link' | 'fresh'
 export function bnetStateMode(state) {
-  return modeParts(state, 'signin') ? 'signin' : 'link';
-}
-
-export async function signBnetSigninState(env, nonce) {
-  return `signin.${nonce}.${await macOf(env.BNET_CLIENT_SECRET, 'raidsmith-bnet-signin-state', nonce)}`;
-}
-
-export async function verifyBnetSigninState(env, state) {
-  const parts = modeParts(state, 'signin');
-  if (!parts || !env.BNET_CLIENT_SECRET) return false;
-  return safeEqual(parts.mac, await macOf(env.BNET_CLIENT_SECRET, 'raidsmith-bnet-signin-state', parts.nonce));
+  if (isFreshShaped(state)) return FRESH_MODE;
+  return stateParts(state, 'signin') ? 'signin' : 'link';
 }
 
 // Starting a session. The statements for one sign-in, to go into the same DB.batch as the user write:
