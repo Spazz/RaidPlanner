@@ -340,7 +340,8 @@ check('an unsuspended Owner cannot be blocked: the route refuses a Guild Master 
   assert.equal((await s.call('own', 'GET', '')).status, 200, 'loadGuildContext ignores the row');
   const people = await s.ok('dgm', 'GET', '/people');
   assert(people.people.some((entry) => entry.person.id === s.uids.own), 'the Owner is listed among the people');
-  assert(!people.removed.some((entry) => entry.person.id === s.uids.own), 'and not among the removed');
+  // The row is kept, not deleted, and listed apart so somebody can see and restore it (guild-b6b-fix-tests.js F9).
+  assert.deepEqual(people.removed.filter((entry) => entry.person.id === s.uids.own).map((entry) => [entry.ignoredWhileOwner, entry.actions.restoreAccess]), [[true, true]], 'and the ignored row is listed among the removed, flagged');
   assert.equal((await s.call('own', 'GET', '/auth/me')).status, 200);
   const me = await s.ok('own', 'GET', '/auth/me');
   assert.deepEqual(me.guilds.map((guild) => guild.id), [s.gid], 'the guild is in My guilds');
@@ -416,6 +417,7 @@ check('probe, the post-flip shape (seat set, no stored Guild Master row): the Ow
   s.suspend();
   const suspended = (await s.ok('own', 'GET', '/auth/me')).deleteImpact;
   assert.deepEqual([suspended.handOverFirst, suspended.autoPromote, suspended.succession.map((entry) => [entry.guild.id, entry.to && entry.to.userId, entry.rule])], [[], [], [[s.gid, s.uids.dgm, 'ingame_gm']]]);
+  await s.grant('own', { purpose: 'account_delete' });
   const passed = await s.call('own', 'DELETE', '/auth/me', { deleteGuildIds: [] });
   assert.equal(passed.status, 200, passed.text);
   assert.equal(await s.seat(), s.uids.dgm, 'the derived Guild Master holds the seat now');
@@ -429,7 +431,7 @@ check('probe, the post-flip shape (seat set, no stored Guild Master row): the Ow
   assert.equal(await s.w.count('role_assignments', "guild_id = ? AND role_id = 'guild_master'", s.gid), 0);
 });
 
-check('deleteImpact: a seat holder alone in the guild deletes it with their account (guildsDeleted); a legacy Guild Master with others still hands over first; an unseated former holder is not listed', async () => {
+check('deleteImpact: a seat holder alone in the guild deletes it with their account (guildsDeleted, with a fresh grant); a legacy Guild Master with others still hands over first; an unseated former holder is not listed', async () => {
   const s = await legacyWorld();
   s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'guild_master'`);
   await s.setOwner('own');
@@ -440,6 +442,7 @@ check('deleteImpact: a seat holder alone in the guild deletes it with their acco
   const impact = (await solo.ok('gm', 'GET', '/auth/me')).deleteImpact;
   assert.deepEqual([impact.handOverFirst, impact.autoPromote], [[], []]);
   assert.deepEqual(impact.guildsDeleted.map((entry) => entry.id), [solo.gid]);
+  await solo.grant('gm', { purpose: 'account_delete' });
   const done = await solo.call('gm', 'DELETE', '/auth/me', { deleteGuildIds: [solo.gid] });
   assert.equal(done.status, 200, done.text);
   assert.equal(await solo.w.count('guilds'), 0);

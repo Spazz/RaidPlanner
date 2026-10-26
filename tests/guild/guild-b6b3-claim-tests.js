@@ -36,7 +36,7 @@ function check(name, fn) {
 }
 
 const {
-  SLUG, BLIZZARD_GUILD_ID, ID, ACCOUNT, KEY, OLD_KEY, DONE, refused, entry, profileOf, rosterBody, claimWorld, rosterRow, claim, seatOf, auditRows, charactersOf, personOf, jsonOf, signInAgain, addBulkMembers,
+  SLUG, BLIZZARD_GUILD_ID, ID, ACCOUNT, KEY, OLD_KEY, DONE, refused, entry, profileOf, rosterBody, claimWorld, rosterRow, claim, tieToGuild, seatOf, auditRows, charactersOf, personOf, jsonOf, signInAgain, addBulkMembers,
 } = require('../guild-claim');
 
 // ---------------------------------------------------------------------------
@@ -117,6 +117,9 @@ check('refused: not the rank-0 member / another Blizzard guild / two rank-0 memb
   await s.bnetSignUp('oth', ACCOUNT.oth);
   s.live.profiles[ACCOUNT.oth.id] = [entry('Memberone', ID.mem)];
   s.exec(`INSERT INTO guild_blocks (guild_id, user_id, blocked_by, created_at) VALUES ('${s.gid}', '${s.uids.igm}', '${s.uids.gm}', 1)`);
+  // Both claimants have a tie to the guild (a failure of a stranger is logged only: guild-b6b-fix-tests.js).
+  tieToGuild(s, 'oth');
+  tieToGuild(s, 'igm');
   const before = await snapshotOf(s);
 
   const notGm = await claim(s, 'oth');
@@ -131,7 +134,8 @@ check('refused: not the rank-0 member / another Blizzard guild / two rank-0 memb
   assert.equal(jsonOf(failedRow.after).detail, 'gm_claim:not_rank_zero');
   const counterKey = `auditfail:guild.claim_failed:${s.gid}:${s.uids.oth}:${Math.floor(s.w.clock.now / 3600000)}`;
   assert.equal((await s.one('SELECT count FROM rate_limits WHERE key = ?', counterKey)).count, 1);
-  assert(!notGm.statements.some((statement) => TOUCHES_STORED.test(statement.sql)), 'a refusal reads no characters, players, guild_blocks or tombstones');
+  assert.deepEqual(notGm.statements.filter((statement) => TOUCHES_STORED.test(statement.sql)).map((statement) => /AS tied/.test(statement.sql)), [true],
+    'a refusal reads stored data for ONE thing, after the verdict: whether the account has a tie to the guild (where the failure is counted)');
   assert.equal(await seatOf(s), s.uids.gm);
 
   // The same account again within the hour: counted (the counter), not written again.
@@ -167,6 +171,7 @@ check('refused: not the rank-0 member / another Blizzard guild / two rank-0 memb
 
 check('refused: a Blizzard failure is "provider" and counts nothing; the account that comes back from Battle.net must be the linked one (mismatch, counted as a failed sign-in check)', async () => {
   const s = await claimWorld();
+  tieToGuild(s, 'igm');
   const before = await snapshotOf(s);
   for (const which of ['roster', 'profile', 'token', 'userinfo']) {
     s.bnet.state.fail[which] = which === 'profile' ? 403 : 500;

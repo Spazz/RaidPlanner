@@ -5,7 +5,8 @@
 //   former ........ the person's characters are ALL Former (left_on): an account with such a person, or an account-less person
 //   nonmembers .... everyone else: accounts that are no member (applicants, Discord server members the source does not let in, Discord sign-ins, open-raid guests), persons
 //                   not on the in-game roster, and NAMES (kind 'name'): sightings that resolve to no character (guest sign-ups, Raid-Helper sign-ups, applications, raid log, loot)
-//   blocked ....... guild_blocks (accounts; a block on the unsuspended Owner is ignored, as everywhere) and person_blocks (account-less persons)
+//   blocked ....... guild_blocks (accounts) and person_blocks (account-less persons). A block row on the unsuspended Owner blocks nobody (ignored, as everywhere) but is KEPT, so it is
+//                   listed here too with flags.ignoredWhileOwner (the Owner stays a member as well): somebody must be able to see it and restore it
 // A person who HAS an account (players.user_id, or the Discord id they carry) is listed once, as the account. Precedence: blocked > member (the rank source's rule, which already lets the
 // live Owner of an 'ingame' guild in; the Owner is never Former) > former > non-member.
 //
@@ -147,6 +148,9 @@ const ACCOUNT_NAME = 'COALESCE(a.display_name, a.global_name, a.username)';
 export const personNameSql = () => `COALESCE(${mainNameSql('solo.id')},
     (SELECT fc.name FROM characters fc WHERE fc.player_id = solo.id AND ${visibleCharacterSql('fc')} ORDER BY fc.name LIMIT 1), solo.nick, 'Unnamed')`;
 
+// The account has a guild_blocks row that is ignored because it is the unsuspended Owner's (worker/membership.js blockedSql): it blocks nobody and is listed apart (alias: the account's table).
+export const ignoredBlockSql = (sc, alias) => `EXISTS (SELECT 1 FROM guild_blocks ib WHERE ib.guild_id = ${sc.g()} AND ib.user_id = ${alias}.id AND ${ownerSql('ib.guild_id', 'ib.user_id')})`;
+
 // The segment of an account as ONE SQL test (segment given) or as the CASE the counts group by (segment null). The account rule: a block wins (the live Owner is never
 // blocked), then the rank source's membership rule (worker/membership.js reachesGuildSql: for an 'ingame' guild it already lets the live Owner in); an account that reaches the
 // guild is a member unless its person's characters have all left (Former), and the Owner is never Former; an account that does not reach it is Former when its person has all
@@ -160,7 +164,7 @@ export function accountSegmentSql(sc, segment) {
     case 'members': return `NOT ${blocked()} AND ${reaches()} AND (${owner()} OR NOT ${former()})`;
     case 'former': return `NOT ${blocked()} AND ${former()} AND NOT (${reaches()} AND ${owner()})`;
     case 'nonmembers': return `NOT ${blocked()} AND NOT ${former()} AND NOT ${reaches()}`;
-    case 'blocked': return blocked();
+    case 'blocked': return `${blocked()} OR ${ignoredBlockSql(sc, 'a')}`;
     default: return `CASE WHEN ${blocked()} THEN 'blocked' WHEN ${reaches()} AND (${owner()} OR NOT ${former()}) THEN 'members' WHEN ${former()} THEN 'former' ELSE 'nonmembers' END`;
   }
 }
@@ -345,13 +349,15 @@ function namesPageStatement(db, sc, query, window) {
   return db.prepare(sql).bind(...sc.values);
 }
 
-// The four counts in one statement: accounts and persons by segment, and every name is a non-member. -> rows { seg, n }.
+// The four counts in one statement: accounts and persons by segment, and every name is a non-member. The live Owner whose block row is ignored is counted a second time, as blocked
+// (the Owner is a member as well). -> rows { seg, n }.
 function countsStatement(db, sc) {
   const sql = `WITH RECURSIVE ${accountsCte(sc)},\n${personsCte(sc)},\n${namesCtes(sc)}
     SELECT seg, COUNT(*) AS n FROM (
       SELECT ${accountSegmentSql(sc, null)} AS seg FROM a
       UNION ALL SELECT ${personSegmentSql(sc, null)} FROM solo
-      UNION ALL SELECT 'nonmembers' FROM nm) GROUP BY seg`;
+      UNION ALL SELECT 'nonmembers' FROM nm
+      UNION ALL SELECT 'blocked' FROM a WHERE ${ignoredBlockSql(sc, 'a')}) GROUP BY seg`;
   return db.prepare(sql).bind(...sc.values);
 }
 
@@ -368,7 +374,7 @@ function accountDetailsStatement(db, sc, ids, withTags) {
       ${bestBuiltinSql(g, 'u.id')} AS best, ${customNameSql(g, 'u.id')} AS custom,
       ${lastSeenSql(sc, { pid, uid: 'u.id', signInExpr: 'u.last_seen_at' })} AS seen,
       ${ownerSql(g, 'u.id')} AS is_owner, (${seatHeldBySql(g, 'u.id')} AND NOT ${ownerSql(g, 'u.id')}) AS is_suspended,
-      (SELECT gb.pending_review FROM guild_blocks gb WHERE gb.guild_id = ${g} AND gb.user_id = u.id AND NOT ${ownerSql(g, 'u.id')}) AS pending,
+      (SELECT gb.pending_review FROM guild_blocks gb WHERE gb.guild_id = ${g} AND gb.user_id = u.id AND NOT ${ownerSql(g, 'u.id')}) AS pending, ${ignoredBlockSql(sc, 'u')} AS ignored_block,
       ${tags}
     FROM users u WHERE u.id IN (SELECT value FROM json_each(${list}))`;
   return db.prepare(sql).bind(...sc.values);
@@ -467,6 +473,7 @@ export async function listUsers(ctx, guildContext, requested, { signIn = LAST_SE
     if (extra.pending === 1) flags.pendingReview = true;
     if (extra.is_owner === 1) flags.owner = true;
     if (extra.is_suspended === 1) flags.suspended = true;
+    if (extra.ignored_block === 1) flags.ignoredWhileOwner = true;
     return {
       key: row.id, kind: 'account', name: row.name, main: mainOf(extra), permission: permissionOf(extra.best, extra.custom), lastSeen: extra.seen || null,
       tags: sortedTags(ACCOUNT_TAGS.filter((tag) => extra[`t_${tag}`] === 1)), flags,

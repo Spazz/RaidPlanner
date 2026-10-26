@@ -161,6 +161,7 @@ const ALLOWED = [
   ["worker/loot-store.js", "id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT value", "evidence"],
   ["worker/loot-store.js", "id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT ? FROM", "evidence"],
   ["worker/membership.js", "EXISTS (SELECT 1 FROM characters mx_ch JOIN guild_roster mx_gr ON", "key"],
+  ["worker/membership.js", "EXISTS (SELECT 1 FROM characters tc WHERE tc.guild_id = ? AND tc.proof_user_id = ?", "key"],
   ["worker/name-alias.js", "nal JOIN characters nlc ON nlc.guild_id = nal.guild_id AND", "evidence"],
   ["worker/notify-run.js", "?, (SELECT c.name FROM characters c WHERE c.player_id = p.id AND c.team_id =", "team"],
   ["worker/notify-run.js", "?, (SELECT c.name FROM characters c WHERE c.player_id = p.id ORDER BY", "display"],

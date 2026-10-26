@@ -244,8 +244,10 @@ export async function bnetCallback(ctx) {
       }
     }
     const gate = act ? act.guard : ALWAYS;
+    // A link that already exists when the first-link INSERT runs (a race) is a refresh like any other: first_linked_at is only ever filled in, never moved.
     const linkUpdate = `ON CONFLICT(user_id) DO UPDATE SET battletag = excluded.battletag,
-           linked_at = excluded.linked_at, snapshot = excluded.snapshot, snapshot_at = excluded.snapshot_at
+           linked_at = excluded.linked_at, snapshot = excluded.snapshot, snapshot_at = excluded.snapshot_at,
+           first_linked_at = COALESCE(bnet_links.first_linked_at, bnet_links.linked_at)
          WHERE bnet_links.bnet_account_id = excluded.bnet_account_id`;
     const linkValues = [userId, info.id, info.battletag, now, JSON.stringify(snapshot), now, now];
     const saved = await db.batch([
@@ -253,10 +255,14 @@ export async function bnetCallback(ctx) {
         ...act.statements,
         ...identityChangeStatements(ctx, { userId, provider: 'bnet', change: 'link', guard: allOf(gate, { sql: 'NOT EXISTS (SELECT 1 FROM bnet_links WHERE user_id = ?)', params: [userId] }) }),
       ] : []),
-      // The first link is an INSERT ... SELECT so the act's guard can sit on it; a refresh is the plain UPSERT. first_linked_at is written by the INSERT only.
+      // The first link is an INSERT ... SELECT so the act's guard can sit on it. A refresh is an UPDATE of the row of THIS Battle.net account and nothing else, so a link that went away
+      // since the read is never made again here without the grant, the audit row and the nulling of other sessions' grants. The first-link time is written by the INSERT; a refresh
+      // fills it in once when it is missing (a link written before the column existed) with the time of the link as it stands BEFORE this refresh overwrites it, then it ages.
       first
         ? db.prepare(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${gate.sql} ${linkUpdate}`).bind(...linkValues, ...gate.params)
-        : db.prepare(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES (?, ?, ?, ?, ?, ?, ?) ${linkUpdate}`).bind(...linkValues),
+        : db.prepare(
+          `UPDATE bnet_links SET battletag = ?, linked_at = ?, snapshot = ?, snapshot_at = ?, first_linked_at = COALESCE(first_linked_at, linked_at) WHERE user_id = ? AND bnet_account_id = ?`,
+        ).bind(info.battletag, now, JSON.stringify(snapshot), now, userId, info.id),
       // An account without Discord is named after its BattleTag; a new BattleTag renames it.
       db.prepare(`UPDATE users SET username = ? WHERE id = ? AND discord_id IS NULL AND ${here.sql} AND ${gate.sql}`)
         .bind(bnetNameOf(info.battletag), userId, ...here.params, ...gate.params),
@@ -264,8 +270,11 @@ export async function bnetCallback(ctx) {
     ]);
     if (act && !act.consumed(saved)) return fail('fresh_required');
     if (saved[act ? act.offset + 2 : 0].meta.changes !== 1) {
-      // Nothing was linked: another Battle.net account is linked already, or (a first link) the account became staff between the read and the write.
-      return fail(first && (await isProtectedAccount(db, userId)) ? 'fresh_required' : 'has_bnet');
+      // Nothing was linked. A first link: the account became staff between the read and the write (fresh_required), or another Battle.net account is linked already. A refresh: another
+      // Battle.net account is linked now (has_bnet), or none is any more (it was disconnected since the read: a lost race, 'state' = connect again).
+      if (first) return fail((await isProtectedAccount(db, userId)) ? 'fresh_required' : 'has_bnet');
+      const linkedNow = await db.prepare('SELECT 1 AS found FROM bnet_links WHERE user_id = ?').bind(userId).first();
+      return fail(linkedNow ? 'has_bnet' : 'state');
     }
   } catch (error) {
     if (isUniqueViolation(error)) return fail('taken');

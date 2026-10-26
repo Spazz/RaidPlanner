@@ -113,14 +113,17 @@ check('CI grep: every worker statement that attaches a Discord id to an account 
   // INSERT INTO users: the Discord sign-in (a new account's Discord id) writes discord_linked_at; the Battle.net account insert has discord_id NULL and so no Discord time.
   assert.equal(found.users.length, 2, found.users.map(([file]) => file).join(', '));
   for (const [file, sql] of found.users) assert(/discord_linked_at/.test(sql) || /VALUES \(\?, \?, NULL,/.test(sql), `${file}: an account insert that sets a Discord id must set discord_linked_at`);
-  assert.equal(found.bnet.length, 3, 'the Battle.net link inserts: sign-up, first link, refresh (the UPSERT)');
+  assert.equal(found.bnet.length, 2, 'the Battle.net link inserts: sign-up and first link (a refresh is an UPDATE of the account\'s own row, see guild-b6b-fix-tests.js)');
   for (const [file, sql] of found.bnet) assert(/first_linked_at/.test(sql), `${file}: a Battle.net link insert must set first_linked_at`);
   assert(found.bnet.some(([file]) => file === 'worker/routes/bnet.js'));
   // UPDATE users SET discord_id = ...: linking (sets discord_linked_at) and unlinking (clears it); no other statement moves a Discord id.
   assert.equal(found.discordUpdate.length, 2, found.discordUpdate.map(([file]) => file).join(', '));
   for (const [file, sql] of found.discordUpdate) assert(/discord_linked_at/.test(sql), `${file}: a statement that changes users.discord_id must write discord_linked_at`);
-  // The link UPSERT never touches first_linked_at in its DO UPDATE branch.
-  for (const [, sql] of found.bnet) assert(!/DO UPDATE SET[^]*first_linked_at\s*=/.test(sql), 'the UPSERT leaves first_linked_at alone');
+  // The link UPSERT's DO UPDATE branch only FILLS IN first_linked_at (a missing value, with the link time as it stands before the overwrite); it never moves one.
+  for (const [, sql] of found.bnet) {
+    const branch = /DO UPDATE SET([^]*)$/.exec(sql);
+    if (branch && /first_linked_at\s*=/.test(branch[1])) assert(/first_linked_at\s*=\s*COALESCE\(bnet_links\.first_linked_at, bnet_links\.linked_at\)/.test(branch[1]), 'the UPSERT never moves first_linked_at');
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -30,7 +30,7 @@
 // fixed: a caller must not use them for its own tables.
 
 import { serverIdIsDiscordSql } from './discord-guard.js';
-import { ownedGuildsSql, ownerCandidatesSql, ownerSql } from './owner.js';
+import { ownedGuildsSql, ownerCandidatesSql, ownerSql, seatHeldBySql } from './owner.js';
 
 // Pure form of the rule, for the places that already hold the facts. `source` is guilds.rank_source (null = legacy; a value this file does not know is legacy too).
 //   inServer         a user_servers row for the guild's Discord server
@@ -107,6 +107,21 @@ export const reachesGuildSql = (userExpr, guildExpr, serverExpr) =>
 // The rule itself: a current, unblocked member.
 export const memberSql = (userExpr, guildExpr, serverExpr) =>
   `(NOT ${blockedSql(userExpr, guildExpr)} AND ${reachesGuildSql(userExpr, guildExpr, serverExpr)})`;
+
+// The account has SOME tie to the guild: a member, the seat holder (suspended or not), or the owner of a person or of a character proved by Battle.net in it (players.user_id,
+// characters.proof_user_id). Not a membership decision: it says whose refused sign-in checks are written into the guild's own activity log (a stranger's are logged only, so nobody
+// can fill another guild's log). The guild and server expressions are columns, the user expression is used four times.
+export const guildTieSql = (userExpr, guildExpr, serverExpr) =>
+  `(${memberSql(userExpr, guildExpr, serverExpr)} OR ${seatHeldBySql(guildExpr, userExpr)} OR ${rosterLinkSql(userExpr, guildExpr)}
+    OR EXISTS (SELECT 1 FROM characters tc WHERE tc.guild_id = ${guildExpr} AND tc.proof_user_id = ${userExpr}))`;
+
+// -> true when the account has a tie to the guild (guildTieSql). One statement, two numbered parameters.
+export async function hasGuildTie(db, userId, guildId) {
+  const row = await db.prepare(
+    `SELECT 1 AS tied FROM guilds tg, (SELECT ?1 AS uid) tu WHERE tg.id = ?2 AND ${guildTieSql('tu.uid', 'tg.id', 'tg.discord_server_id')}`,
+  ).bind(userId, guildId).first();
+  return !!row;
+}
 
 // The accounts that can be members of a guild at all (a one-column subquery of user ids), per source: the Discord server's members only while the source is
 // legacy, everyone linked to one of its people, and the Owner candidates (ownerCandidatesSql) only while it is 'ingame'. A SUPERSET: list screens start from

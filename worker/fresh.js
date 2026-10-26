@@ -26,6 +26,7 @@
 import { auditEachMemberGuildStatement, failureAuditStatements } from './audit.js';
 import { HttpError } from './http.js';
 import { isId } from './ids.js';
+import { hasGuildTie } from './membership.js';
 import { markerGuard, newMarkerId } from './dry-run.js';
 import { ownedGuildsSql } from './owner.js';
 import { hashToken } from './session.js';
@@ -33,9 +34,13 @@ import { hashToken } from './session.js';
 export const FRESH_TTL_MS = 15 * 60 * 1000;
 export const FOUNDING_WINDOW_MS = 60 * 1000;
 export const NEW_IDENTITY_MS = 7 * 24 * 60 * 60 * 1000;
-// POST .../fresh/start: per account, fail closed (a limiter that cannot answer refuses).
+// POST .../fresh/start, fail closed (a limiter that cannot answer refuses): per SESSION (a thief with one cookie runs out of its own budget and leaves the real Owner's
+// session untouched) and, above it, a higher ceiling per account.
 export const FRESH_START_LIMIT = 10;
+export const FRESH_START_ACCOUNT_LIMIT = 30;
 export const FRESH_START_WINDOW_MS = 10 * 60 * 1000;
+export const freshSessionKey = (tokenHash) => `fresh:s:${tokenHash}`;
+export const freshAccountKey = (userId) => `fresh:${userId}`;
 
 export const IDENTITY_CHANGES = Object.freeze(['link_discord', 'unlink_discord', 'link_bnet', 'unlink_bnet']);
 
@@ -49,6 +54,7 @@ export const FRESH_PURPOSES = Object.freeze({
   gm_claim: { providers: ['bnet'], identityRule: false, scope: 'guild', owner: false },
   ingame_create: { providers: ['bnet'], identityRule: false, scope: 'account', owner: false },
   identity_change: { providers: ['bnet', 'discord'], identityRule: true, scope: 'account', owner: false },
+  account_delete: { providers: ['bnet', 'discord'], identityRule: true, scope: 'account', owner: false },
 });
 export const isFreshPurpose = (purpose) => typeof purpose === 'string' && Object.prototype.hasOwnProperty.call(FRESH_PURPOSES, purpose);
 
@@ -88,6 +94,7 @@ export function paramsProblem(purpose, params) {
     case 'handover': return keysOf(params) === 'targetUserId' && isId('u', params.targetUserId) ? null : 'A hand-over needs params { targetUserId }.';
     case 'identity_change': return keysOf(params) === 'change' && IDENTITY_CHANGES.includes(params.change) ? null : `An identity change needs params { change } (${IDENTITY_CHANGES.join(', ')}).`;
     case 'guild_delete':
+    case 'account_delete':
     case 'gm_claim': return entries.length === 0 ? null : 'This act takes no params.';
     default: return null;
   }
@@ -162,11 +169,13 @@ export const freshDoneRoute = (purpose) => `${FRESH_ROUTE}?done=${purpose}`;
 export const freshErrorRoute = (reason, purpose = null) => `${FRESH_ROUTE}?error=${reason}${purpose ? `&purpose=${purpose}` : ''}`;
 
 // A failed check that looks like someone else at the keyboard (the provider returned another identity than the account's, or one that is too new): counted with the
-// coalescing helper of lane B7a (one audit row per user, guild and hour plus a counter) in the state's guild; an account act has no guild and is logged only. Best effort.
+// coalescing helper of lane B7a (one audit row per user, guild and hour plus a counter) in the state's guild, but only for an account that has a tie to that guild (a member, the
+// seat holder, the owner of a person or of a proved character in it: worker/membership.js guildTieSql). A stranger's refusal, like an account act's (no guild), is logged only, so
+// nobody can write security-looking rows into another guild's log. Best effort.
 // `action`: 'guild.claim_failed' for a refused GM claim (worker/gm-claim.js), counted the same way.
 export async function noteFreshFailure(ctx, { userId, guildId, purpose, reason, action = 'fresh.failed' }) {
   try {
-    if (guildId) await ctx.db.batch(failureAuditStatements(ctx, { guildId, userId, action, detail: `${purpose}:${reason}` }));
+    if (guildId && (await hasGuildTie(ctx.db, userId, guildId))) await ctx.db.batch(failureAuditStatements(ctx, { guildId, userId, action, detail: `${purpose}:${reason}` }));
     else ctx.log(`fresh-auth refused: ${purpose} ${reason}`);
   } catch (error) {
     ctx.log(`fresh-auth failure not counted: ${error && error.message}`);
@@ -267,6 +276,25 @@ export async function beginIdentityChange(ctx, { userId, change, protectedAccoun
   return {
     required: false, protectedAccount: false, statements: [], offset: 0, consumed: () => true,
     guard: { sql: `NOT ${guard.sql}`, params: guard.params },
+  };
+}
+
+// The begin of DELETE /auth/me (purpose account_delete, params {}). The account must hold a fresh grant when it is PROTECTED (it would destroy both identities of an Owner, an
+// Officer or a Team Lead) or when the delete would take a guild with it (`deletesGuild`: the guild_delete act without its grant). Any other account needs none, but its batch opens
+// with a marker written `WHERE NOT protected`, so an account that became staff between the read and the write deletes nothing. Either way every statement of the delete carries
+// `act.guard` (the marker) and the batch is all or nothing: -> the shape of beginFreshAct, with `consumed(results)` true when the marker was written.
+export async function beginAccountDelete(ctx, { userId, deletesGuild }) {
+  if (deletesGuild || (await isProtectedAccount(ctx.db, userId))) return beginFreshAct(ctx, { required: true, purpose: 'account_delete', params: {} });
+  const markerId = newMarkerId(ctx.randomBytes);
+  const guard = protectedGuard(userId);
+  return {
+    required: false,
+    guard: markerGuard(markerId),
+    offset: 1,
+    consumed: (results) => results[0].meta.changes === 1,
+    statements: [ctx.db.prepare(
+      `INSERT INTO fresh_act_markers (act_id, session_token_hash, purpose, at) SELECT ?, ?, 'account_delete', ? WHERE NOT ${guard.sql}`,
+    ).bind(markerId, ctx.session.tokenHash, ctx.now(), ...guard.params)],
   };
 }
 

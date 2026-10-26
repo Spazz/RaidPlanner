@@ -12,7 +12,7 @@ import { ownerSql, seatHeldBySql } from './owner.js';
 import { todayIn } from './roster-data.js';
 import {
   ACCOUNT_TAGS, LAST_SEEN_INCLUDES_SIGN_IN, ROLE_LABELS, USERS_TAGS, accountSegmentSql, accountTagSql, accountsCte, bestBuiltinSql, customNameSql, lastSeenSql, newScope,
-  permissionOf, personNameSql, personOfAccountSql, personSegmentSql, personsCte, sortedTags, unresolvedSql,
+  ignoredBlockSql, permissionOf, personNameSql, personOfAccountSql, personSegmentSql, personsCte, sortedTags, unresolvedSql,
 } from './users-list.js';
 
 // How many sightings a page lists per source.
@@ -134,7 +134,7 @@ async function accountPage(ctx, scope, guildContext, userId, mayDecide) {
             EXISTS (SELECT 1 FROM bnet_links bl WHERE bl.user_id = a.id) AS has_bnet, ${accountSegmentSql(head, null)} AS seg,
             ${lastSeenSql(head, { pid: 'a.pid', uid: 'a.id', signInExpr: 'a.last_seen_at' })} AS seen,
             ${bestBuiltinSql(g, 'a.id')} AS best, ${customNameSql(g, 'a.id')} AS custom,
-            ${ownerSql(g, 'a.id')} AS is_owner, (${seatHeldBySql(g, 'a.id')} AND NOT ${ownerSql(g, 'a.id')}) AS is_suspended, ${tags}
+            ${ownerSql(g, 'a.id')} AS is_owner, (${seatHeldBySql(g, 'a.id')} AND NOT ${ownerSql(g, 'a.id')}) AS is_suspended, ${ignoredBlockSql(head, 'a')} AS ignored_block, ${tags}
        FROM a`);
 
   const chars = scope();
@@ -177,6 +177,7 @@ async function accountPage(ctx, scope, guildContext, userId, mayDecide) {
   if (blockRow && blockRow.pending_review === 1) flags.pendingReview = true;
   if (row.is_owner === 1) flags.owner = true;
   if (row.is_suspended === 1) flags.suspended = true;
+  if (row.ignored_block === 1) flags.ignoredWhileOwner = true;
   return {
     key: userId,
     kind: 'account',

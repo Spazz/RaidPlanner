@@ -1,13 +1,14 @@
 // Fresh-auth, the start step (lane B6b part 2a; the plan: "Fresh-auth"). worker/fresh.js says what fresh-auth is and how an act consumes it.
 //   POST /api/guild/:gid/fresh/start   { purpose, params, provider? }   handover, guild_delete, pin, source_switch (the Owner), gm_claim (anyone; the claim itself decides)
-//   POST /api/fresh/start              { purpose, params, provider? }   ingame_create, identity_change (acts that belong to no guild)
+//   POST /api/fresh/start              { purpose, params, provider? }   ingame_create, identity_change, account_delete (acts that belong to no guild)
 // -> 200 { authorizeUrl, provider, purpose, validForSeconds }. The browser then goes to authorizeUrl; the state cookie comes with this answer. The callback
 // (routes/auth.js discordFreshCallback, routes/bnet.js bnetFreshCallback) writes the grant and redirects to /#/fresh?done=<purpose> or /#/fresh?error=<reason>. gm_claim writes no
 // grant: the Battle.net callback runs the claim itself (worker/gm-claim.js) and redirects to /#/fresh?done=gm_claim, or ?error=not_gm | conflict | provider | mismatch | ...
 // and &purpose=gm_claim.
-//   provider: 'bnet' | 'discord'. Battle.net for gm_claim, ingame_create, pin, source_switch; Battle.net OR Discord (the account's choice) for handover, guild_delete and
-//   identity_change. Left out, the account's only linked identity is used; with both linked, 400 provider_required.
-// Writes nothing (the state is stateless until its callback claims the nonce). One per account per 10 minutes x 10, FAIL CLOSED: a limiter that cannot answer refuses (503).
+//   provider: 'bnet' | 'discord'. Battle.net for gm_claim, ingame_create, pin, source_switch; Battle.net OR Discord (the account's choice) for handover, guild_delete,
+//   identity_change and account_delete. Left out, the account's only linked identity is used; with both linked, 400 provider_required.
+// Writes nothing (the state is stateless until its callback claims the nonce). 10 per SESSION per 10 minutes, and 30 per account above that, FAIL CLOSED: a limiter that cannot answer
+// refuses (503). Per session, so whoever holds a stolen cookie can only use up that session's own budget, never the real Owner's.
 // Errors: 400 bad_request (purpose, params, provider), 403 forbidden (not the Owner / not a member) or identity_too_new { provider, eligibleAt }, 404 not_found (gm_claim for a
 // guild that does not exist), 409 not_configured | identity_not_linked | wrong_origin | claim_not_available (gm_claim: the guild's rank source is not 'ingame' or its pin is
 // incomplete) | already_owner (gm_claim: the caller holds the seat and is not suspended), 429 / 503 rate_limited.
@@ -15,7 +16,8 @@ import { HttpError, jsonResponse } from '../http.js';
 import { authorizeUrl as bnetAuthorizeUrl, canonicalOrigin as bnetOrigin, isConfigured as bnetConfigured } from '../battlenet.js';
 import { authorizeUrl as discordAuthorizeUrl, canonicalOrigin as discordOrigin, isConfigured as discordConfigured } from '../discord.js';
 import {
-  FRESH_PURPOSES, FRESH_START_LIMIT, FRESH_START_WINDOW_MS, freshHash, identityStanding, isFreshPurpose, loadIdentityRow, paramsProblem,
+  FRESH_PURPOSES, FRESH_START_ACCOUNT_LIMIT, FRESH_START_LIMIT, FRESH_START_WINDOW_MS, freshAccountKey, freshHash, freshSessionKey, identityStanding, isFreshPurpose, loadIdentityRow,
+  paramsProblem,
 } from '../fresh.js';
 import { claimPreflight } from '../gm-claim.js';
 import { base64url } from '../ids.js';
@@ -25,8 +27,6 @@ import { checkRateLimit } from '../ratelimit.js';
 import { STATE_TTL_SECONDS, bnetStateCookie, signFreshState, stateCookie } from '../session.js';
 
 const bad = (message, field) => new HttpError(400, 'bad_request', message, { field });
-
-export const freshKey = (userId) => `fresh:${userId}`;
 
 export async function startFresh(ctx) {
   const { db, env, session, body } = ctx;
@@ -42,11 +42,12 @@ export async function startFresh(ctx) {
   if (problem) throw bad(problem, 'params');
   if (body.provider !== undefined && body.provider !== 'bnet' && body.provider !== 'discord') throw bad('provider must be bnet or discord.', 'provider');
 
-  // Per account, fail closed, before any read.
-  const limit = await checkRateLimit(db, userId, ctx.now(), { key: freshKey(userId), limit: FRESH_START_LIMIT, windowMs: FRESH_START_WINDOW_MS, failClosed: true });
-  if (limit.limited) {
-    if (limit.unavailable) throw new HttpError(503, 'rate_limited', 'Sign-in checks are paused for a moment. Try again shortly.', { retryAfter: limit.retryAfter });
-    throw new HttpError(429, 'rate_limited', 'Too many sign-in checks. Wait a few minutes and try again.', { retryAfter: limit.retryAfter });
+  // Per session first, then the account's ceiling; fail closed, before any read. A session over its own budget is refused before it can count against the account's.
+  for (const [key, limit] of [[freshSessionKey(session.tokenHash), FRESH_START_LIMIT], [freshAccountKey(userId), FRESH_START_ACCOUNT_LIMIT]]) {
+    const result = await checkRateLimit(db, userId, ctx.now(), { key, limit, windowMs: FRESH_START_WINDOW_MS, failClosed: true });
+    if (!result.limited) continue;
+    if (result.unavailable) throw new HttpError(503, 'rate_limited', 'Sign-in checks are paused for a moment. Try again shortly.', { retryAfter: result.retryAfter });
+    throw new HttpError(429, 'rate_limited', 'Too many sign-in checks. Wait a few minutes and try again.', { retryAfter: result.retryAfter });
   }
 
   // Who may even ask. The act checks again inside its own batch; this only spares the others a trip to the provider.

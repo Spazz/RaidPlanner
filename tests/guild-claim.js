@@ -95,6 +95,10 @@ async function claim(s, key, { account = ACCOUNT[key], guildId = s.gid } = {}) {
   };
 }
 
+// A person of the guild linked to the account (players.user_id) and nothing else: the account has a TIE to the guild, so its refused sign-in checks are counted in the guild's log
+// (worker/membership.js guildTieSql); a stranger's are logged only.
+const tieToGuild = (s, key) => s.exec(`INSERT INTO players (id, guild_id, status, user_id, created_at, updated_at) VALUES ('p_tie_${key}', '${s.gid}', 'raider', '${s.uids[key]}', 1, 1)`);
+
 const seatOf = async (s) => (await s.one('SELECT owner_user_id FROM guilds WHERE id = ?', s.gid)).owner_user_id;
 const auditRows = (s, action) => s.rows('SELECT actor_user_id, actor_role, entity_id, before, after FROM audit_log WHERE guild_id = ? AND action = ? ORDER BY created_at, id', s.gid, action);
 const charactersOf = (s, personId) => s.rows('SELECT id, name, name_key, owner_proof, proof_user_id, proof_bnet_account_id, blizzard_char_id, is_main, left_on, player_id FROM characters WHERE player_id = ? ORDER BY name_key', personId);
@@ -145,5 +149,5 @@ function addBulkMembers(s, bulk) {
 }
 
 module.exports = {
-  SLUG, BLIZZARD_GUILD_ID, ID, ACCOUNT, KEY, OLD_KEY, DONE, refused, entry, profileOf, rosterBody, claimWorld, rosterRow, claim, seatOf, auditRows, charactersOf, personOf, jsonOf, signInAgain, addBulkMembers,
+  SLUG, BLIZZARD_GUILD_ID, ID, ACCOUNT, KEY, OLD_KEY, DONE, refused, entry, profileOf, rosterBody, claimWorld, rosterRow, claim, tieToGuild, seatOf, auditRows, charactersOf, personOf, jsonOf, signInAgain, addBulkMembers,
 };

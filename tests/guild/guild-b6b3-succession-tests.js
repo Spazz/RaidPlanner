@@ -65,7 +65,11 @@ async function successionWorld({ gm = true, officers = true, manual = false } = 
   if (manual) s.exec(`UPDATE guilds SET rank_source = 'manual' WHERE id = '${s.gid}'`);
   s.suspendOwner();
   s.impact = async (key = 'gm') => (await s.ok(key, 'GET', '/auth/me')).deleteImpact;
-  s.deleteAccount = (key = 'gm', deleteGuildIds = []) => s.call(key, 'DELETE', '/auth/me', { deleteGuildIds });
+  // Delete my data needs a fresh grant (purpose account_delete) for a protected account and for a delete that takes a guild with it (worker/fresh.js beginAccountDelete).
+  s.deleteAccount = async (key = 'gm', deleteGuildIds = []) => {
+    await s.grant(key, { purpose: 'account_delete' });
+    return s.call(key, 'DELETE', '/auth/me', { deleteGuildIds });
+  };
   return s;
 }
 // A hook on db.batch: `action` runs just before the delete's batch (the one that deletes the account row).
@@ -246,6 +250,7 @@ check('the guild is deleted only when NO other member exists: a Discord-server-o
   // The impact is echoed: the guild goes with the account.
   const wrong = await s.call('gm', 'DELETE', '/auth/me', { deleteGuildIds: [] });
   assert.deepEqual([wrong.status, wrong.json.error], [409, 'confirm_mismatch']);
+  await s.grant('gm', { purpose: 'account_delete' });
   const done = await s.call('gm', 'DELETE', '/auth/me', { deleteGuildIds: [s.gid] });
   assert.equal(done.status, 200, done.text);
   assert.equal(await s.w.count('guilds', 'id = ?', s.gid), 0);

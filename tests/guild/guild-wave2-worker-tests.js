@@ -3209,7 +3209,8 @@ check('away: notices go with the person (delete cascades), stay when the account
   // Erin deletes her account: her reason goes, her notice stays with Eliora (created_by is cleared with the account), Carol's keeps hers.
   assert.equal((await s.w.call(s.jars.erin, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
   assert.deepEqual((await s.stored('player_id = ?', s.p.eliora)).map((r) => [r.id, r.reason, r.created_by]), [[own.id, null, null], [byCarol.id, 'carol\'s reason', s.ids.carol]]);
-  // Carol's account too: the reason of the notice she wrote for someone else goes as well.
+  // Carol's account too: the reason of the notice she wrote for someone else goes as well. (A Team Lead's account is protected: Delete my data needs a fresh grant.)
+  await require('../guild-auto-fresh').grantFor(s.w, s.jars.carol, 'account_delete', null, {});
   assert.equal((await s.w.call(s.jars.carol, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
   assert.deepEqual((await s.stored('player_id = ?', s.p.eliora)).map((r) => [r.reason, r.created_by]), [[null, null], [null, null]]);
   assert.equal((await s.stored('id = ?', gina.id))[0].reason, 'gina\'s reason', 'other accounts\' notices are untouched');

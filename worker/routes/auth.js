@@ -10,7 +10,8 @@ import { botConfigured } from '../discord-bot.js';
 import { hasDiscordServerId, serverIdIsDiscordSql } from '../discord-guard.js';
 import { syncSignIn } from '../discord-sync.js';
 import {
-  ALWAYS, allOf, beginIdentityChange, freshDoneRoute, freshErrorRoute, identityChangeBlocked, identityChangeStatements, isProtectedAccount, noteFreshFailure, writeFreshGrant,
+  ALWAYS, allOf, beginAccountDelete, beginIdentityChange, freshDoneRoute, freshErrorRoute, freshRequiredError, identityChangeBlocked, identityChangeStatements, isProtectedAccount, noteFreshFailure,
+  writeFreshGrant,
 } from '../fresh.js';
 import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
@@ -236,9 +237,11 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
     ] : []),
     db.prepare(
       // discord_linked_at starts with the first link (or a row whose value is missing) and is never moved by a refresh of the same Discord account; unlink clears it.
+      // Whether this is a first link or a refresh was decided BEFORE the batch (the grant above belongs to the first link): a refresh only ever updates the account that still holds
+      // this very Discord id, so a link removed in between is not silently made again here, without a grant, an audit row or the nulling of other sessions' grants.
       `UPDATE users SET discord_id = ?, username = ?, global_name = ?, avatar = ?, last_seen_at = ?,
               discord_linked_at = CASE WHEN discord_id IS NULL OR discord_linked_at IS NULL THEN ? ELSE discord_linked_at END
-        WHERE id = ? AND (discord_id IS NULL OR discord_id = ?) AND ${clash.sql} AND ${gate.sql}`,
+        WHERE id = ? AND ${firstLink ? '(discord_id IS NULL OR discord_id = ?)' : 'discord_id = ?'} AND ${clash.sql} AND ${gate.sql}`,
     ).bind(discordUser.id, discordUser.username, discordUser.globalName, discordUser.avatar, now, now, userId, discordUser.id, ...clash.params, ...gate.params),
     ...serverStatements(db, '?', [userId], servers, now, allOf(linked, gate)),
     // The creator's server list lives 30 minutes on this session, like after a sign-in.
@@ -250,11 +253,19 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
     }, allOf(linked, gate))] : []),
   ]);
   if (act && !act.consumed(results)) return fail('fresh_required');
-  if (results[act ? act.offset + 2 : 0].meta.changes !== 1) return fail(firstLink && (await isProtectedAccount(db, userId)) ? 'fresh_required' : 'roster_conflict');
+  if (results[act ? act.offset + 2 : 0].meta.changes !== 1) return fail(await linkNotWrittenReason(db, { userId, discordId: discordUser.id, firstLink }));
   // The Discord id just joined this account: match it (and the account's other keys) against the tombstones of the guilds it reaches (sec A9-11).
   await matchAccountAtSignIn(ctx, userId);
   await syncSignIn(ctx, userId);
   return redirectResponse(LINKED_REDIRECT, [clear]);
+}
+
+// Why the Discord link UPDATE changed no row: a first link by an account that became staff since the read needs its grant (fresh_required); a refresh whose link is gone by now
+// (disconnected in another tab) is a lost race, 'state' ("that link expired, connect again"); anything else is the roster clash the check before the batch looks for.
+async function linkNotWrittenReason(db, { userId, discordId, firstLink }) {
+  if (firstLink) return (await isProtectedAccount(db, userId)) ? 'fresh_required' : 'roster_conflict';
+  const held = await db.prepare('SELECT 1 AS found FROM users WHERE id = ? AND discord_id = ?').bind(userId, discordId).first();
+  return held ? 'roster_conflict' : 'state';
 }
 
 // ---------------------------------------------------------------------------
@@ -467,6 +478,9 @@ export async function logout(ctx) {
   return jsonResponse({ ok: true }, 200, {}, [clearSessionCookie()]);
 }
 
+// The marker guard (one bare `?`) for a statement that numbers its own placeholders: the same test with the placeholder numbered `n`.
+const numbered = (guard, n) => guard.sql.replace('?', `?${n}`);
+
 export async function deleteMe(ctx) {
   const { db, session, body } = ctx;
   const userId = session.user.id;
@@ -487,63 +501,68 @@ export async function deleteMe(ctx) {
   }
 
   const now = ctx.now();
+  // A protected account (Owner seat, Officer, Team Lead) or a delete that takes a guild with it needs a fresh sign-in (purpose account_delete): 403 fresh_required without one.
+  // The grant is consumed in the batch below and EVERY statement of the batch carries the marker (worker/fresh.js beginAccountDelete), so the delete is all or nothing.
+  const act = await beginAccountDelete(ctx, { userId, deletesGuild: expected.length > 0 });
+  const guard = act.guard;
   // A guild is deleted only while nobody else is a current member (the same test as the impact query).
   const noOthers = (guildId) => ({ sql: `EXISTS (SELECT 1 FROM guilds g WHERE g.id = ? AND NOT ${othersSql('?')})`, params: [guildId, userId] });
   const statements = [
-    auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'account.delete', entityType: 'user', entityId: userId }),
+    ...act.statements,
+    auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'account.delete', entityType: 'user', entityId: userId }, guard),
     ...expected.map((guildId) => auditStatement(ctx, {
       guildId: null, actorUserId: userId, action: 'guild.delete', entityType: 'guild', entityId: guildId,
-    }, noOthers(guildId))),
+    }, allOf(guard, noOthers(guildId)))),
     // A seat holder who is not handing over (suspended), or whose guild gained a member after the read, passes the seat on first (lane B6b part 2b, worker/succession.js).
-    ...impact.seatGuildIds.flatMap((guildId) => successionStatements(ctx, { guildId, departingUserId: userId })),
+    ...impact.seatGuildIds.flatMap((guildId) => successionStatements(ctx, { guildId, departingUserId: userId, guard })),
   ];
   if (expected.length) {
     statements.push(db.prepare(
       `DELETE FROM guilds WHERE id IN (
-         SELECT g.id FROM guilds g WHERE g.id IN (SELECT value FROM json_each(?)) AND NOT ${othersSql('?')})`,
-    ).bind(JSON.stringify(expected), userId));
+         SELECT g.id FROM guilds g WHERE g.id IN (SELECT value FROM json_each(?)) AND NOT ${othersSql('?')}) AND ${guard.sql}`,
+    ).bind(JSON.stringify(expected), userId, ...guard.params));
     // Servers whose guild is gone keep no membership rows (blocked people included).
     statements.push(db.prepare(
       `DELETE FROM user_servers WHERE server_id IN (SELECT value FROM json_each(?))
-         AND NOT EXISTS (SELECT 1 FROM guilds WHERE discord_server_id = user_servers.server_id)`,
-    ).bind(JSON.stringify(impact.deletedServerIds)));
+         AND NOT EXISTS (SELECT 1 FROM guilds WHERE discord_server_id = user_servers.server_id) AND ${guard.sql}`,
+    ).bind(JSON.stringify(impact.deletedServerIds), ...guard.params));
   }
   for (const guild of impact.autoPromote) {
     const toId = guild.to ? guild.to.id : null;
     statements.push(
-      db.prepare("DELETE FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master' AND user_id = ?").bind(guild.id, userId),
+      db.prepare(`DELETE FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master' AND user_id = ? AND ${guard.sql}`).bind(guild.id, userId, ...guard.params),
       db.prepare(
         `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
          SELECT ?, g.id, (${successorSql('?')}), 'guild_master', NULL, NULL, ? FROM guilds g
           WHERE g.id = ? AND (${successorSql('?')}) IS NOT NULL
-            AND NOT EXISTS (SELECT 1 FROM role_assignments x WHERE x.guild_id = g.id AND x.role_id = 'guild_master')`,
-      ).bind(newId('ra', ctx.randomBytes), userId, now, guild.id, userId),
+            AND NOT EXISTS (SELECT 1 FROM role_assignments x WHERE x.guild_id = g.id AND x.role_id = 'guild_master') AND ${guard.sql}`,
+      ).bind(newId('ra', ctx.randomBytes), userId, now, guild.id, userId, ...guard.params),
       // The new Guild Master does not also keep the Officer row.
       db.prepare(
         `DELETE FROM role_assignments WHERE guild_id = ? AND role_id = 'officer'
-           AND user_id IN (SELECT user_id FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master')`,
-      ).bind(guild.id, guild.id),
+           AND user_id IN (SELECT user_id FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master') AND ${guard.sql}`,
+      ).bind(guild.id, guild.id, ...guard.params),
       auditStatement(ctx, {
         guildId: guild.id, actorUserId: userId, action: 'guild_master.auto_promote', entityType: 'guild', entityId: guild.id,
         before: { guildMasterUserId: userId }, after: { guildMasterUserId: toId },
-      }, toId
+      }, allOf(guard, toId
         ? { sql: "EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master' AND user_id = ?)", params: [guild.id, toId] }
-        : { sql: "NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master')", params: [guild.id] }),
+        : { sql: "NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master')", params: [guild.id] })),
     );
   }
   // The free-text notes this account wrote on Raidsmith sign-ups go with it, whichever sign-in made them (the sign-up itself stays with the guild;
   // updated_by is cleared when the account row goes, so this runs first).
-  statements.push(db.prepare("UPDATE raid_signups SET note = NULL WHERE source = 'raidsmith' AND updated_by = ?").bind(userId));
+  statements.push(db.prepare(`UPDATE raid_signups SET note = NULL WHERE source = 'raidsmith' AND updated_by = ? AND ${guard.sql}`).bind(userId, ...guard.params));
   // The reasons the account wrote on away notices go the same way; the notices stay with the person (they still excuse the raids they covered).
-  statements.push(db.prepare('UPDATE away_notices SET reason = NULL WHERE created_by = ?').bind(userId));
+  statements.push(db.prepare(`UPDATE away_notices SET reason = NULL WHERE created_by = ? AND ${guard.sql}`).bind(userId, ...guard.params));
   // The applications this account sent go with it (the inbox row is the applicant's own data; a person an officer made from one stays on the roster),
   // and so do the notes it wrote on intent picks (the picks stay with the person).
-  statements.push(db.prepare('DELETE FROM applications WHERE user_id = ?').bind(userId));
-  statements.push(db.prepare('UPDATE intent_picks SET note = NULL WHERE updated_by = ?').bind(userId));
+  statements.push(db.prepare(`DELETE FROM applications WHERE user_id = ? AND ${guard.sql}`).bind(userId, ...guard.params));
+  statements.push(db.prepare(`UPDATE intent_picks SET note = NULL WHERE updated_by = ? AND ${guard.sql}`).bind(userId, ...guard.params));
   // The guest sign-ups the account made on open raids go with it (the row names the character the account typed; guest_user_id would only be unlinked).
-  statements.push(db.prepare('DELETE FROM raid_signups WHERE guest = 1 AND guest_user_id = ?').bind(userId));
+  statements.push(db.prepare(`DELETE FROM raid_signups WHERE guest = 1 AND guest_user_id = ? AND ${guard.sql}`).bind(userId, ...guard.params));
   // Team requests still waiting go with the account (the decided rows stay, unlinked: requested_by and decided_by are ON DELETE SET NULL).
-  statements.push(db.prepare("DELETE FROM team_requests WHERE requested_by = ? AND status = 'pending'").bind(userId));
+  statements.push(db.prepare(`DELETE FROM team_requests WHERE requested_by = ? AND status = 'pending' AND ${guard.sql}`).bind(userId, ...guard.params));
   // A BLOCK SURVIVES the account (sec A9-05 / A9-11). The tombstones keep what the account PROVED; the keys an officer attested on the person's characters (typed in,
   // matched to the roster by an officer) are the person's, so in every guild where the account is blocked and has a person (linked, or carrying its Discord ID) that
   // person gets a person_blocks marker with the block's blocked_by and reason, and a person.block audit row that keeps the original blocker's rank snapshot. The
@@ -551,8 +570,8 @@ export async function deleteMe(ctx) {
   statements.push(
     db.prepare(
       `INSERT OR IGNORE INTO person_blocks (guild_id, player_id, blocked_by, reason, tombstone_missing, created_at)
-       SELECT b.guild_id, p.id, b.blocked_by, b.reason, b.tombstone_missing, b.created_at FROM guild_blocks b JOIN players p ON p.guild_id = b.guild_id AND (p.user_id = ?1 OR (p.discord_user_id IS NOT NULL AND p.discord_user_id = (SELECT du.discord_id FROM users du WHERE du.id = ?1))) WHERE b.user_id = ?1`,
-    ).bind(userId),
+       SELECT b.guild_id, p.id, b.blocked_by, b.reason, b.tombstone_missing, b.created_at FROM guild_blocks b JOIN players p ON p.guild_id = b.guild_id AND (p.user_id = ?1 OR (p.discord_user_id IS NOT NULL AND p.discord_user_id = (SELECT du.discord_id FROM users du WHERE du.id = ?1))) WHERE b.user_id = ?1 AND ${numbered(guard, 2)}`,
+    ).bind(userId, ...guard.params),
     db.prepare(
       `INSERT INTO audit_log (id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at, actor_short_id, actor_role)
        SELECT 'al_' || lower(hex(randomblob(16))), b.guild_id, b.blocked_by, 'person.block', 'person', p.id, NULL, '{"blocked":true,"viaAccountDelete":true}', ?2,
@@ -560,27 +579,33 @@ export async function deleteMe(ctx) {
          FROM guild_blocks b JOIN players p ON p.guild_id = b.guild_id AND (p.user_id = ?1 OR (p.discord_user_id IS NOT NULL AND p.discord_user_id = (SELECT du.discord_id FROM users du WHERE du.id = ?1)))
          LEFT JOIN audit_log a ON a.id = (SELECT x.id FROM audit_log x WHERE x.guild_id = b.guild_id AND x.action = 'access.remove' AND x.entity_id = b.user_id
                                            ORDER BY x.created_at DESC LIMIT 1)
-        WHERE b.user_id = ?1 AND EXISTS (SELECT 1 FROM person_blocks pb WHERE pb.guild_id = b.guild_id AND pb.player_id = p.id)`,
-    ).bind(userId, now),
+        WHERE b.user_id = ?1 AND EXISTS (SELECT 1 FROM person_blocks pb WHERE pb.guild_id = b.guild_id AND pb.player_id = p.id) AND ${numbered(guard, 3)}`,
+    ).bind(userId, now, ...guard.params),
   );
   // The roster people linked to this account stay (officers own the roster); the link goes. The version moves so an officer's open page sees it.
   statements.push(db.prepare(
-    'UPDATE players SET user_id = NULL, version = version + 1, updated_at = ? WHERE user_id = ?',
-  ).bind(now, userId));
-  // The Battle.net callback window of the account's Blizzard id (key bnetcb:<id>) goes with it; this reads bnet_links, so it runs before the user row (and its link) is deleted.
-  statements.push(db.prepare("DELETE FROM rate_limits WHERE key IN (SELECT 'bnetcb:' || bnet_account_id FROM bnet_links WHERE user_id = ?)").bind(userId));
+    `UPDATE players SET user_id = NULL, version = version + 1, updated_at = ? WHERE user_id = ? AND ${guard.sql}`,
+  ).bind(now, userId, ...guard.params));
+  // The rate-limit windows keyed by what the account's rows hold go with it: the Battle.net callback window of its Blizzard id (bnetcb:<id>) and the fresh-start window of each of
+  // its sessions (fresh:s:<token hash>). This reads bnet_links and sessions, so it runs before the user row (and with it both) is deleted.
+  statements.push(db.prepare(
+    `DELETE FROM rate_limits WHERE key IN (SELECT 'bnetcb:' || bnet_account_id FROM bnet_links WHERE user_id = ?1
+                                           UNION ALL SELECT 'fresh:s:' || token_hash FROM sessions WHERE user_id = ?1) AND ${numbered(guard, 2)}`,
+  ).bind(userId, ...guard.params));
   // Sessions, servers, roles, blocks, the Battle.net link and the claims cascade; actor columns become NULL (roadmap_ideas.submitted_by too: the ideas stay, unlinked).
-  statements.push(db.prepare('DELETE FROM users WHERE id = ?').bind(userId));
+  statements.push(db.prepare(`DELETE FROM users WHERE id = ? AND ${guard.sql}`).bind(userId, ...guard.params));
   // A person linked through the Discord ID stays too, unlinked; an account that never had Discord has nothing to clear here.
   if (session.user.discordId) {
     statements.push(db.prepare(
       `UPDATE players SET discord_user_id = NULL, discord_nickname = NULL, version = version + 1, updated_at = ?
-        WHERE discord_user_id = ?`,
-    ).bind(now, session.user.discordId));
+        WHERE discord_user_id = ? AND ${guard.sql}`,
+    ).bind(now, session.user.discordId, ...guard.params));
     // Raid sign-ups keep the person link (outcomes recompute the same) but lose the Discord ID and nickname.
-    statements.push(db.prepare('UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ?').bind(session.user.discordId));
+    statements.push(db.prepare(`UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ? AND ${guard.sql}`).bind(session.user.discordId, ...guard.params));
   }
-  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`, `rsync:${userId}`, `char:${userId}`, `open:${userId}`, `fresh:${userId}`));
-  await db.batch(statements);
+  statements.push(db.prepare(`DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND ${guard.sql}`)
+    .bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`, `rsync:${userId}`, `char:${userId}`, `open:${userId}`, `fresh:${userId}`, ...guard.params));
+  const results = await db.batch(statements);
+  if (!act.consumed(results)) throw freshRequiredError('account_delete', {});
   return jsonResponse({ ok: true }, 200, {}, [clearSessionCookie()]);
 }

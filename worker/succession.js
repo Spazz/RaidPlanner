@@ -67,7 +67,8 @@ const SUCCESSION_AUDIT_SQL = `INSERT INTO audit_log (id, guild_id, actor_user_id
 
 // The two statements of one guild's succession for the deleting account's batch: the seat moves (only while it is still the departing account's AND somebody else is a member) to
 // whoever qualifies when the batch runs, and the audit row `guild.succession` (never pruned) is written exactly when the seat moved: from, to (or vacant) and the rule that chose.
-export function successionStatements(ctx, { guildId, departingUserId }) {
+// `guard` ({ sql, params }): the delete's own marker (worker/fresh.js beginAccountDelete), on both statements.
+export function successionStatements(ctx, { guildId, departingUserId, guard = null }) {
   const { db } = ctx;
   const guildExpr = 'guilds.id';
   const serverExpr = 'guilds.discord_server_id';
@@ -77,7 +78,8 @@ export function successionStatements(ctx, { guildId, departingUserId }) {
   };
   const hasOthers = { sql: othersExistSql(guildExpr, serverExpr, '?'), params: [departingUserId] };
   return [
-    moveSeatStatement(db, { guildId, from: departingUserId, to: successor, guards: [hasOthers] }),
-    db.prepare(SUCCESSION_AUDIT_SQL).bind(newId('al', ctx.randomBytes), departingUserId, departingUserId, ctx.now(), departingUserId, guildId),
+    moveSeatStatement(db, { guildId, from: departingUserId, to: successor, guards: [hasOthers, ...(guard ? [guard] : [])] }),
+    db.prepare(guard ? `${SUCCESSION_AUDIT_SQL} AND ${guard.sql}` : SUCCESSION_AUDIT_SQL)
+      .bind(newId('al', ctx.randomBytes), departingUserId, departingUserId, ctx.now(), departingUserId, guildId, ...(guard ? guard.params : [])),
   ];
 }

@@ -59,7 +59,7 @@ async function loadModel(db, guildContext) {
   const byId = new Map();
   for (const row of userResult.results) {
     byId.set(row.id, {
-      id: row.id, row, person: toPerson(row), isMember: row.is_member === 1, assignments: [], block: null,
+      id: row.id, row, person: toPerson(row), isMember: row.is_member === 1, assignments: [], block: null, ignoredBlock: null,
       roster: rosterByUser.get(row.id) || (row.discord_id ? rosterByDiscord.get(row.discord_id) : null) || null,
     });
   }
@@ -69,8 +69,11 @@ async function loadModel(db, guildContext) {
   }
   for (const block of blockResult.results) {
     const entry = byId.get(block.user_id);
+    if (!entry) continue;
     // A block row on the unsuspended Owner (the Owner row of the effective roles) is ignored, as worker/membership.js blockedSql ignores it: an Owner who is live cannot be removed.
-    if (entry && !entry.assignments.some((assignment) => assignment.source === 'owner')) entry.block = block;
+    // The row is kept (it counts again when the Owner is suspended, and when the seat moves) and listed apart (ignoredBlock), so somebody can see it and restore it.
+    if (entry.assignments.some((assignment) => assignment.source === 'owner')) entry.ignoredBlock = block;
+    else entry.block = block;
   }
   for (const entry of byId.values()) {
     entry.roles = shapeRoles(entry.assignments);
@@ -89,14 +92,16 @@ function hierarchyAllows(guildContext, entry) {
   return guildContext.rank < entry.rank;
 }
 
+// The actions on a row of the removed list. A row on the live Owner (ignoredBlock) blocks nobody, so there is no rank to outrank: whoever holds guild.access may restore it (also the
+// Owner). A real block needs strict seniority. keepBlock (only present when true): the block waits for review (a tombstone match wrote it) and this viewer may decide it.
+function removedActionsFor(guildContext, entry) {
+  const allowed = guildContext.can['guild.access'] === 'guild' && (entry.ignoredBlock !== null && entry.block === null ? true : hierarchyAllows(guildContext, entry));
+  return { restoreAccess: allowed, ...(allowed && entry.block && entry.block.pending_review === 1 ? { keepBlock: true } : {}) };
+}
+
 function actionsFor(guildContext, entry, sync = false) {
   const canAccess = guildContext.can['guild.access'] === 'guild';
   const canRoles = guildContext.can['guild.roles'] === 'guild';
-  // keepBlock (only present when true): the block waits for review (a tombstone match wrote it) and this viewer may decide it.
-  if (entry.block) {
-    const allowed = canAccess && hierarchyAllows(guildContext, entry);
-    return { restoreAccess: allowed, ...(allowed && entry.block.pending_review === 1 ? { keepBlock: true } : {}) };
-  }
   const editable = canRoles && entry.isMember && entry.id !== guildContext.userId && entry.rank !== ROLE_RANK.guild_master;
   return {
     editRoles: editable,
@@ -129,19 +134,22 @@ function peopleResponse(model, guildContext, env) {
       actions: actionsFor(guildContext, entry, sync),
     }));
   const removed = entries
-    .filter((entry) => entry.block)
-    .sort((a, b) => b.block.created_at - a.block.created_at || a.id.localeCompare(b.id))
+    .filter((entry) => entry.block || entry.ignoredBlock)
+    .sort((a, b) => (b.block || b.ignoredBlock).created_at - (a.block || a.ignoredBlock).created_at || a.id.localeCompare(b.id))
     .map((entry) => {
-      const remover = entry.block.blocked_by ? model.byId.get(entry.block.blocked_by) : null;
+      const block = entry.block || entry.ignoredBlock;
+      const remover = block.blocked_by ? model.byId.get(block.blocked_by) : null;
       return {
         person: entry.person,
         roles: entry.roles,
         removedBy: remover ? remover.person : null,
-        removedAt: entry.block.created_at,
-        reason: entry.block.reason ?? null,
+        removedAt: block.created_at,
+        reason: block.reason ?? null,
         // Only present when true: a tombstone match wrote this block and an officer has not reviewed it yet (POST .../block/keep, or restore access).
-        ...(entry.block.pending_review === 1 ? { pendingReview: true } : {}),
-        actions: actionsFor(guildContext, entry),
+        ...(entry.block && entry.block.pending_review === 1 ? { pendingReview: true } : {}),
+        // Only present when true: the person is the live Owner, so the row blocks nobody and is kept apart; restore access removes it (the Owner is also listed in `people`).
+        ...(entry.ignoredBlock && !entry.block ? { ignoredWhileOwner: true } : {}),
+        actions: removedActionsFor(guildContext, entry),
       };
     });
   return { signedInCount: people.length, people, removed, discord: { configured: botConfigured(env), mapped: model.hasMaps } };
@@ -262,7 +270,9 @@ function parseRolesBody(body) {
     if (bad) throw new HttpError(400, 'bad_request', 'roles must be a list of { roleId, teamId } for this guild\'s own roles.', { field: 'roles' });
     extra = [...new Map(list.map((entry) => [pairKey({ roleId: entry.roleId, teamId: entry.teamId }), { roleId: entry.roleId, teamId: entry.teamId || null }])).values()].sort(byPairKey);
   }
-  return { officer: body.officer, teamLeadTeamIds: unique, extra };
+  // pin (optional): true writes a HAND row even for a role the person already holds through a derived row (the in-game rank, Discord); see setRoles.
+  if (body.pin !== undefined && typeof body.pin !== 'boolean') throw new HttpError(400, 'bad_request', 'pin must be true or false.', { field: 'pin' });
+  return { officer: body.officer, teamLeadTeamIds: unique, extra, pin: body.pin === true };
 }
 
 export async function setRoles(ctx) {
@@ -292,9 +302,14 @@ export async function setRoles(ctx) {
   }
 
   const before = summarize(target);
+  // A role the person already holds through a DERIVED row (the in-game rank, a Discord role, the Owner row) is not copied into a hand row: the Edit roles dialog sends every role it
+  // shows as ticked, so saving it unchanged would otherwise make a permanent Officer / Team Lead that outlives the in-game demotion. Only `pin: true` writes that hand row on purpose.
+  const derivedHeld = (role, teamId) => target.assignments.some((row) => row.source !== 'manual' && row.role_id === role && (row.team_id || null) === teamId);
   const removedTeams = before.teamLeadTeamIds.filter((id) => !wanted.teamLeadTeamIds.includes(id));
-  const addedTeams = wanted.teamLeadTeamIds.filter((id) => !before.teamLeadTeamIds.includes(id));
-  const officerChange = before.officer !== wanted.officer;
+  const addedTeams = wanted.teamLeadTeamIds.filter((id) => !before.teamLeadTeamIds.includes(id) && (wanted.pin || !derivedHeld('team_lead', id)));
+  const officerChange = before.officer !== wanted.officer && !(wanted.officer && !wanted.pin && derivedHeld('officer', null));
+  // What the hand roles are afterwards (the audit row records that, not the request's wish for a role a derived row already gives).
+  const after = { ...wanted, officer: officerChange ? wanted.officer : before.officer, teamLeadTeamIds: wanted.teamLeadTeamIds.filter((id) => before.teamLeadTeamIds.includes(id) || addedTeams.includes(id)) };
   const heldExtra = new Set(before.extra.map(pairKey));
   const wantedExtra = new Set((wanted.extra || []).map(pairKey));
   const removedExtra = wanted.extra ? before.extra.filter((pair) => !wantedExtra.has(pairKey(pair))) : [];
@@ -321,7 +336,7 @@ export async function setRoles(ctx) {
   // The audit row goes first: it is evaluated against the state the guard was built for, before the
   // deletes below remove the very roles the guard looks at.
   const statements = [auditStatement(ctx, {
-    guildId, actorUserId: actorId, action: 'roles.set', entityType: 'user', entityId: userId, before: shown(before), after: shown(wanted),
+    guildId, actorUserId: actorId, action: 'roles.set', entityType: 'user', entityId: userId, before: shown(before), after: shown(after),
   }, guard)];
   // Only what an officer set by hand is touched (source 'manual'): a role Discord gives is the sync's.
   const insert = (teamId, role) => {
@@ -550,8 +565,10 @@ export async function restorePerson(ctx) {
   requireAction(guildContext, 'guild.access');
   const model = await loadModel(ctx.db, guildContext);
   const target = findTarget(model, ctx.params.uid);
-  if (!hierarchyAllows(guildContext, target)) throw new HttpError(403, 'forbidden', 'You cannot restore that person\'s access.');
-  if (!target.block) return peopleReply(ctx, guildContext);
+  // A row on the live Owner blocks nobody: there is no rank to outrank, so the seniority test is the Owner test instead (also inside the batch below).
+  const ignored = target.block === null && target.ignoredBlock !== null;
+  if (!ignored && !hierarchyAllows(guildContext, target)) throw new HttpError(403, 'forbidden', 'You cannot restore that person\'s access.');
+  if (!target.block && !ignored) return peopleReply(ctx, guildContext);
 
   const guildId = guildContext.guild.id;
   const stillBlocked = {
@@ -562,7 +579,7 @@ export async function restorePerson(ctx) {
   const guard = and(
     stillBlocked,
     actorHolds('guild.access', guildId, guildContext.userId),
-    actorOutranks(guildId, guildContext.userId, target.id),
+    ignored ? { sql: ownerSql('?', '?'), params: [guildId, target.id, target.id] } : actorOutranks(guildId, guildContext.userId, target.id),
   );
   // Unblock deletes the block's tombstones by block_ref: the account's own, and the refs its keys hit (a pending-review block matched an earlier block's tombstones;
   // lifting it must lift those too, or the next sign-in would block it again) - but only the refs of blocks of the actor's rank or below, or made by the actor

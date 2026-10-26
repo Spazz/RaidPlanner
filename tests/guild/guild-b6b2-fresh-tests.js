@@ -104,7 +104,7 @@ check('start: purposes, parameters and providers are validated before anything e
   await bad(startPath(s), { purpose: 'identity_change', params: { change: 'link_bnet' } }, 'purpose');
   await bad('/api/fresh/start', { purpose: 'guild_delete' }, 'purpose');
   await bad('/api/fresh/start', { purpose: 'identity_change', params: { change: 'swap' } }, 'params');
-  assert.equal(await s.w.count('rate_limits', "key LIKE 'fresh:%'"), 1, 'only the counter');
+  assert.equal(await s.w.count('rate_limits', "key LIKE 'fresh:%'"), 2, 'only the counters: the session\'s and the account\'s');
 });
 
 check('start: an Owner act is asked for by the Owner only (an Officer, a member and a derived Guild Master are refused); gm_claim by anyone for a guild that exists; signed out is 401', async () => {

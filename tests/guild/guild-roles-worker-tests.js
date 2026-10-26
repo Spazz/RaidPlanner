@@ -900,8 +900,10 @@ check('discord mapping: manual wins - a role set by hand stays when Discord stop
   assert.deepEqual((await s.me('carol')).roles, [{ role: 'officer', fromDiscord: true }, { role: 'team_lead', teamId: s.A }]);
   assert.equal((await s.setRoles('carol', { officer: false, teamLeadTeamIds: [] })).status, 200, 'take the manual Team Lead away');
   assert.deepEqual((await s.person('carol')).roles, [{ role: 'officer', fromDiscord: true }], 'the Discord Officer stays: it is Discord\'s to take away');
-  // An officer ticking Officer for Carol makes it hers: both rows, shown as hers.
+  // Saving the dialog with Officer ticked does NOT copy the role Discord gives into a hand row (guild-b6b-fix-tests.js); an officer who means it sends pin: true, which makes it hers: both rows, shown as hers.
   assert.equal((await s.setRoles('carol', { officer: true, teamLeadTeamIds: [] })).status, 200);
+  assert.deepEqual((await s.person('carol')).roles, [{ role: 'officer', fromDiscord: true }]);
+  assert.equal((await s.setRoles('carol', { officer: true, teamLeadTeamIds: [], pin: true })).status, 200);
   assert.deepEqual((await s.person('carol')).roles, [{ role: 'officer' }]);
   assert.equal(await s.w.count('role_assignments', "user_id = ? AND role_id = 'officer'", s.ids.carol), 2);
   // Un-ticking removes the manual one only; Discord's stays while she holds the Discord role.
@@ -917,7 +919,7 @@ check('discord mapping: manual wins - a role set by hand stays when Discord stop
   // Both rows for one team lead do not list the person twice on the team.
   s.discordRoles('erin', [D_RAIDLEADS]);
   await s.signInAgain('erin');
-  assert.equal((await s.setRoles('erin', { officer: false, teamLeadTeamIds: [s.A] })).status, 200);
+  assert.equal((await s.setRoles('erin', { officer: false, teamLeadTeamIds: [s.A], pin: true })).status, 200);
   const leads = (await s.call('alice', 'GET', '')).json.teams.find((t) => t.id === s.A).leads.map((p) => p.id);
   assert.equal(leads.filter((id) => id === s.ids.erin).length, 1);
 });

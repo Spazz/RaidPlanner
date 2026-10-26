@@ -4,7 +4,8 @@
 //   autoFresh(world)                                wraps world.req; world needs .db (the D1 stand-in), .clock ({ now }) and .req(method, path, { jar, ... })
 //   grantIdentityChange(world, jar, change)         change: link_discord | unlink_discord | link_bnet | unlink_bnet
 //   grantFor(world, jar, purpose, guildId, params)  any purpose: writes the grant on the session of the jar
-//   Also wrapped: a hand-over (POST .../people/:uid/guild-master) and a guild delete (DELETE /api/guild/:gid) get their grant, so the older suites keep acting as the Owner.
+//   Also wrapped: a hand-over (POST .../people/:uid/guild-master), a guild delete (DELETE /api/guild/:gid) and Delete my data (DELETE /auth/me) get their grant, so the older suites keep
+//   acting as the Owner. (An account that needs none for Delete my data never consumes it: the session goes with the account.)
 const crypto = require('node:crypto');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -37,10 +38,12 @@ async function grantIdentityChange(world, jar, change) {
   if (await isProtectedAccount(world.db, row.user_id)) await grantFor(world, jar, 'identity_change', null, { change });
 }
 
-// The Owner acts that need a fresh sign-in in every guild but a manual one: a hand-over and a guild delete. The grant is for exactly the act the request makes.
+// The acts that need a fresh sign-in: a hand-over and a guild delete (every guild but a manual one) and Delete my data (a protected account, or one that takes a guild with it). The
+// grant is for exactly the act the request makes.
 const OWNER_ACT_ROUTES = [
   ['POST', /^\/api\/guild\/(g_[A-Za-z0-9_-]{22})\/people\/(u_[A-Za-z0-9_-]{22})\/guild-master$/, (m) => ['handover', m[1], { targetUserId: m[2] }]],
   ['DELETE', /^\/api\/guild\/(g_[A-Za-z0-9_-]{22})$/, (m) => ['guild_delete', m[1], {}]],
+  ['DELETE', /^\/auth\/me$/, () => ['account_delete', null, {}]],
 ];
 
 function autoFresh(world) {

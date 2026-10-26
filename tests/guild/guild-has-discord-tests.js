@@ -252,7 +252,7 @@ const SERVER_ID_FILES = {
   'worker/discord-sync.js': { how: 'guard', count: 7 },
   'worker/event-refresh.js': { how: 'guard', count: 2 },
   'worker/flip-preview.js': { how: 'guard', count: 1 },
-  'worker/membership.js': { how: 'data', count: 5 },
+  'worker/membership.js': { how: 'data', count: 6 }, // +1: hasGuildTie hands tg.discord_server_id to guildTieSql (the fresh-auth failure rows)
   'worker/permissions.js': { how: 'fragment', count: 2 },
   'worker/roster-view.js': { how: 'fragment', count: 2 },
   'worker/routes/accounts.js': { how: 'fragment', count: 1 },
