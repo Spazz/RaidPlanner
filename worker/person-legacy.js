@@ -12,6 +12,7 @@
 //   status raider / trial / reserve -> that core_rank on EVERY character of the person, inactive -> social;
 //   left_on + left_reason only when the person is inactive and the reason is left or kicked (else NULL; a break or an "other" is not kept);
 //   trial_start / trial_end only on the person's main character and only while the status is trial (else NULL).
+// In a guild whose rank source is the in-game roster the same columns are written by worker/rank-map.js applyRankMap instead (the officer edit is refused there).
 // A character that joins a person later takes the person's rank and left date from the person's MAIN in the same statement (RANK_COLUMNS_SQL), so there is
 // no read-then-write race between a new character and a status change.
 
@@ -56,12 +57,13 @@ export const IMPORTED_RANK_COLUMNS_SQL = `COALESCE(json_extract(j.value, '$.core
 
 // One statement for a db.batch: every character of the person takes the rank, left date and reason of `columns` (characterRankColumns), the trial dates
 // only on the main. guard: { sql, params } makes it conditional (the person writer repeats its own optimistic checks here, so a lost race changes nothing).
-export function setCharacterRanksStatement(db, guildId, personId, columns, guard = null) {
+// updated_at = now (required) is the Trial clock's floor (worker/trial-clock.js): the day a rank was last written. guard: null for none.
+export function setCharacterRanksStatement(db, guildId, personId, columns, guard, now) {
   return db.prepare(
     `UPDATE characters SET core_rank = ?, left_on = ?, left_reason = ?,
-            trial_start = CASE WHEN is_main = 1 THEN ? END, trial_end = CASE WHEN is_main = 1 THEN ? END
+            trial_start = CASE WHEN is_main = 1 THEN ? END, trial_end = CASE WHEN is_main = 1 THEN ? END, updated_at = ?
       WHERE guild_id = ? AND player_id = ?${guard ? ` AND ${guard.sql}` : ''}`,
-  ).bind(columns.coreRank, columns.leftOn, columns.leftReason, columns.trialStart, columns.trialEnd, guildId, personId, ...(guard ? guard.params : []));
+  ).bind(columns.coreRank, columns.leftOn, columns.leftReason, columns.trialStart, columns.trialEnd, now, guildId, personId, ...(guard ? guard.params : []));
 }
 
 // Two statements for a db.batch, AFTER the statements that moved the main from oldMainId to newMainId: the trial dates sit on the main, so they move with

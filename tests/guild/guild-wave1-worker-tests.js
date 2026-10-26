@@ -319,6 +319,8 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('team_request.withdraw', 'team_request', 'tq_1', null, { teamId: 't_b', characterId: 'c_alt' }), 'Withdrew the request to put Thorenmage on Bravo'],
     [row('team_request.approve', 'team_request', 'tq_1', null, { teamId: 't_b', characterId: 'c_alt', personId: 'p_thoren' }), 'Approved the request to put Thorenmage on Bravo'],
     [row('team_request.reject', 'team_request', 'tq_1', null, { teamId: 't_b', characterId: 'c_alt', personId: 'p_thoren' }), 'Rejected the request to put Thorenmage on Bravo'],
+    [row('rank_map.update', 'guild', 'g_1', { ranks: 3 }, { ranks: 4, mapChanges: 2, charactersChanged: 7, becomesTrial: 1, approverUserId: 'u_o' }), 'Changed the in-game rank map (2 ranks edited, 7 characters moved)'],
+    [row('rank_map.update', 'guild', 'g_1', { ranks: 3 }, { ranks: 3, mapChanges: 1, charactersChanged: 1, becomesTrial: 0, approverUserId: 'u_o' }), 'Changed the in-game rank map (1 rank edited, 1 character moved)'],
     [row('roster.import', 'team', 't_a', null, { source: 'wcl', people: 1, characters: 12 }), 'Imported 1 person and 12 characters from Warcraft Logs into Alpha'],
     [row('raid.create', 'raid', 'r_1'), 'Created the raid on Tue Oct 21 (Alpha)'],
     [row('raid.delete', 'raid', 'r_gone', { teamId: 't_a', raidOn: '2026-10-21' }), 'Deleted the raid on Wed Oct 21 (Alpha)'],

@@ -149,7 +149,7 @@ check('the Worker\'s mapping (characterRankColumns + setCharacterRanksStatement)
   const viaSql = freshDb();
   await rederive(viaSql);
   const viaWorker = freshDb();
-  await viaWorker.batch(PEOPLE.map((person) => setCharacterRanksStatement(viaWorker, 'g1', person[0], columnsOf(person))));
+  await viaWorker.batch(PEOPLE.map((person) => setCharacterRanksStatement(viaWorker, 'g1', person[0], columnsOf(person), null, 1)));
   assert.deepEqual(fiveFields(viaWorker), fiveFields(viaSql));
   assert.deepEqual(await mismatch(viaWorker), ZERO);
   // The pure mapping on its own, against the independent statement of it above.
@@ -162,10 +162,10 @@ check('the Worker\'s mapping (characterRankColumns + setCharacterRanksStatement)
   const one = freshDb();
   const trialPerson = PEOPLE.find((person) => person[0] === 'p_trial');
   await one.batch([
-    setCharacterRanksStatement(one, 'g1', 'p_trial', columnsOf(trialPerson)),
-    setCharacterRanksStatement(one, 'g1', 'p_nobody', columnsOf(trialPerson)),
-    setCharacterRanksStatement(one, 'other-guild', 'p_left', columnsOf(trialPerson)),
-    setCharacterRanksStatement(one, 'g1', 'p_reserve', columnsOf(PEOPLE.find((person) => person[0] === 'p_reserve')), { sql: '0 = 1', params: [] }),
+    setCharacterRanksStatement(one, 'g1', 'p_trial', columnsOf(trialPerson), null, 1),
+    setCharacterRanksStatement(one, 'g1', 'p_nobody', columnsOf(trialPerson), null, 1),
+    setCharacterRanksStatement(one, 'other-guild', 'p_left', columnsOf(trialPerson), null, 1),
+    setCharacterRanksStatement(one, 'g1', 'p_reserve', columnsOf(PEOPLE.find((person) => person[0] === 'p_reserve')), { sql: '0 = 1', params: [] }, 1),
   ]);
   const touched = fiveFields(one).filter((row) => row.core_rank !== 'raider' || row.trial_start);
   assert.deepEqual(touched.map((row) => row.id), ['p_trial_alt1', 'p_trial_alt2', 'p_trial_main']);

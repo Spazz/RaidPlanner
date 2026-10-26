@@ -130,6 +130,12 @@ async function scenario({ teams = 1, pin = true, rankSource = null, officer = fa
       };
     },
     syncRows: () => s.rows('SELECT id, good, http_status, reason, counts, started_at FROM roster_syncs WHERE guild_id = ? ORDER BY started_at, id', gid),
+    // A complete rank map: every in-game rank 0-9 carries the core rank (Raider by default), so applyRankMap (lane B4b) leaves a bound Raider where it is.
+    mapAll(coreRank = 'raider') {
+      for (let rank = 0; rank <= 9; rank++) {
+        s.sql("INSERT INTO source_rank_maps (guild_id, source, source_key, label, core_rank, role_id, team_id) VALUES (?, 'ingame', ?, ?, ?, NULL, NULL)", gid, String(rank), `Rank ${rank}`, coreRank);
+      }
+    },
   };
   if (pin) s.pinTo();
   return s;
@@ -387,7 +393,7 @@ check('an injected failure in ANY statement of the batch leaves the roster, the 
   const spy = spyDb(s.w.db, { refuse: true });
   await s.sync({ db: spy.db });
   const total = spy.sizes[0];
-  assert.equal(total, 5 + 1 + 1 + 1 + 1, 'stale, alias, rename, Former, returning + delete + one insert chunk + sync row + guild update');
+  assert.equal(total, 5 + 1 + 1 + 3 + 1 + 1, 'stale, alias, rename, Former, returning + delete + one insert chunk + applyRankMap (stale, rank, Trial clock) + sync row + guild update');
   const before = await s.snap();
   const logged = (await s.syncRows()).length;
   for (let i = 0; i < total; i++) {
@@ -468,9 +474,9 @@ check('a 1,200-member roster fits the D1 limits: a fixed number of statements, n
   const mark = s.w.db.statementLog.length;
   const result = await s.sync({ db: spy.db });
   assert.deepEqual([result.status, result.members], ['applied', 1200]);
-  assert.deepEqual(spy.sizes, [12], 'ONE batch of 12 statements: 5 character-side, 1 delete, 4 insert chunks of 300, the sync row, the guild update');
+  assert.deepEqual(spy.sizes, [15], 'ONE batch of 15 statements: 5 character-side, 1 delete, 4 insert chunks of 300, 3 of applyRankMap, the sync row, the guild update');
   const log = s.w.db.statementLog.slice(mark);
-  assert.equal(log.length, 1 + 12, 'one pin read + the batch');
+  assert.equal(log.length, 1 + 15, 'one pin read + the batch');
   assert(log.every((entry) => entry.values.length <= 100 && Buffer.byteLength(entry.sql) < 100_000));
   assert.equal(rs.ROSTER_INSERT_CHUNK * 4, 1200);
   assert.equal((await s.snap()).roster.length, 1200);
@@ -573,6 +579,77 @@ check('in-game guild: a rename keeps its old name as a dated alias, a character 
   assert.equal(row(await s.snap(), left).left_on, null);
 });
 
+check('applyRankMap in the sync batch (lane B4b): the roster\'s ranks decide core_rank through the map, every change applies at that one good sync (up and down); Former vs Social as the plan states it', async () => {
+  const { rd } = await M();
+  const s = await scenario({ teams: 2, rankSource: 'ingame' });
+  // The map: rank 2 Trial, 3 Reserve, 4 Social, everything else Raider - except rank 9, which has no row.
+  const core = { 2: 'trial', 3: 'reserve', 4: 'social' };
+  for (let rank = 0; rank <= 8; rank++) {
+    s.sql("INSERT INTO source_rank_maps (guild_id, source, source_key, label, core_rank, role_id, team_id) VALUES (?, 'ingame', ?, ?, ?, NULL, NULL)", s.gid, String(rank), `Rank ${rank}`, core[rank] || 'raider');
+  }
+  const make = async (i, name = nameOf(i), status = 'raider') => {
+    const res = await s.call('gm', 'POST', '/roster', { teamId: s.tids[0], name, class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status });
+    assert.equal(res.status, 201, res.text);
+    return res.json.characters[0].id;
+  };
+  // rosterBody: member i holds rank 1 + (i % 9): 1 -> 2, 2 -> 3, 3 -> 4, 4 -> 5, 5 -> 6, 8 -> 9 (no row).
+  const trialNow = await make(1);
+  const reserveNow = await make(2);
+  const socialNow = await make(3);
+  const promoted = await make(4, nameOf(4), 'trial');
+  const leaver = await make(5);
+  const unmapped = await make(8);
+  const never = await make(6, 'Phantom'); // an identity key no stored roster has ever held
+  const hand = await make(7, 'Handadded'); // no identity key at all
+  for (const [id, i] of [[trialNow, 1], [reserveNow, 2], [socialNow, 3], [promoted, 4], [leaver, 5], [unmapped, 8]]) s.sql('UPDATE characters SET namespace = ?, blizzard_realm_id = 4001, blizzard_char_id = ? WHERE id = ?', NS, idOf(i), id);
+  s.sql('UPDATE characters SET namespace = ?, blizzard_realm_id = 4001, blizzard_char_id = 9777 WHERE id = ?', NS, never);
+  const rank = async (id) => (await s.rows('SELECT core_rank, left_on, trial_start, trial_end FROM characters WHERE id = ?', id))[0];
+  const ranks = async () => Object.fromEntries(await Promise.all([['trialNow', trialNow], ['reserveNow', reserveNow], ['socialNow', socialNow], ['promoted', promoted], ['leaver', leaver], ['unmapped', unmapped], ['never', never], ['hand', hand]]
+    .map(async ([key, id]) => [key, (await rank(id)).core_rank])));
+
+  assert.equal((await s.sync()).status, 'applied');
+  assert.deepEqual(await ranks(), { trialNow: 'trial', reserveNow: 'reserve', socialNow: 'social', promoted: 'raider', leaver: 'raider', unmapped: 'social', never: 'social', hand: 'social' },
+    'the first good sync applies the whole map: a rank with no row, an identity key never listed and a hand-added character are Social');
+  assert.equal((await s.rows('SELECT id FROM characters WHERE left_on IS NOT NULL')).length, 0, 'none of them is Former: Former needs a key that WAS on the stored roster');
+  assert.equal((await rank(promoted)).trial_start, null, 'moving into or out of Trial clears the dates');
+
+  // Up and down at ONE sync: trialNow is promoted to rank 5 (Raider), promoted is demoted to rank 2 (Trial), the leaver leaves; a rename keeps the sync changing.
+  s.advance(6 * HOUR);
+  s.net.roster = rosterBody(12, { edit: (b) => { b.members[1].rank = 5; b.members[4].rank = 2; b.members.splice(5, 1); } });
+  assert.equal((await s.sync()).status, 'applied');
+  assert.deepEqual(await ranks(), { trialNow: 'raider', reserveNow: 'reserve', socialNow: 'social', promoted: 'trial', leaver: 'social', unmapped: 'social', never: 'social', hand: 'social' }, 'no 2-sync rule, no hold');
+  const left = await rank(leaver);
+  assert.deepEqual([left.core_rank, left.left_on], ['social', rd.todayIn(TZ, T0 + 6 * HOUR)], 'Former = Social + the day it left');
+  assert.equal((await rank(never)).left_on, null, 'a key never listed stays Social, not Former');
+
+  // The GM adds rank 9 to the map later: the next change of the roster brings the characters up. The leaver returns: Former clears and the rank comes back.
+  s.sql("INSERT INTO source_rank_maps (guild_id, source, source_key, label, core_rank, role_id, team_id) VALUES (?, 'ingame', '9', 'Rank 9', 'raider', NULL, NULL)", s.gid);
+  s.advance(6 * HOUR);
+  s.net.roster = rosterBody(12, { edit: (b) => { b.members[1].rank = 5; b.members[4].rank = 2; } });
+  assert.equal((await s.sync()).status, 'applied');
+  assert.deepEqual(await ranks(), { trialNow: 'raider', reserveNow: 'reserve', socialNow: 'social', promoted: 'trial', leaver: 'raider', unmapped: 'raider', never: 'social', hand: 'social' });
+  assert.equal((await rank(leaver)).left_on, null, 'its key is back: Former cleared');
+
+  // Nothing changed in the next answer: an unchanged roster touches no character.
+  const before = await s.snap();
+  s.advance(6 * HOUR);
+  assert.equal((await s.sync()).status, 'unchanged');
+  assert.deepEqual((await s.snap()).characters, before.characters);
+});
+
+check('applyRankMap: before the flip (the rank source is not in-game) a sync changes no rank at all, with a map stored or not', async () => {
+  for (const rankSource of [null, 'manual']) {
+    const s = await scenario({ rankSource });
+    s.mapAll('social');
+    const res = await s.call('gm', 'POST', '/roster', { teamId: s.tids[0], name: nameOf(1), class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'trial', trialEnd: '2027-02-10' });
+    s.sql('UPDATE characters SET namespace = ?, blizzard_realm_id = 4001, blizzard_char_id = ? WHERE id = ?', NS, idOf(1), res.json.characters[0].id);
+    const before = await s.rows('SELECT * FROM characters WHERE guild_id = ?', s.gid);
+    assert.equal((await s.sync()).status, 'applied');
+    assert.deepEqual(await s.rows('SELECT * FROM characters WHERE guild_id = ?', s.gid), before, `rank source ${rankSource}: the characters are exactly as they were`);
+    assert.equal((await s.snap()).roster.length, 12, 'the roster itself is stored');
+  }
+});
+
 check('a rename onto a name another character already holds is skipped (no alias, no error); the sync still applies', async () => {
   const s = await scenario({ rankSource: 'ingame' });
   const a = await s.call('gm', 'POST', '/roster', { teamId: s.tids[0], name: nameOf(1), class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' });
@@ -592,6 +669,7 @@ check('a rename onto a name another character already holds is skipped (no alias
 check('stale marking: a sync-applied rename / Former / return marks the same raids stale as the manual rename path (markRaidsStale) does', async () => {
   const seed = async () => {
     const s = await scenario({ teams: 2, rankSource: 'ingame' });
+    s.mapAll(); // every rank maps to Raider: the first sync changes no rank, so it marks no raid
     const res = await s.call('gm', 'POST', '/roster', { teamId: s.tids[0], name: nameOf(1), class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' });
     const cid = res.json.characters[0].id;
     s.sql('UPDATE characters SET namespace = ?, blizzard_realm_id = 4001, blizzard_char_id = ? WHERE id = ?', NS, idOf(1), cid);
@@ -628,12 +706,17 @@ check('stale marking: a sync-applied rename / Former / return marks the same rai
   assert.deepEqual(versionsBySync, await versions(t), 'and the same version bumps');
 });
 
-check('the hook for B4b\'s applyRankMap exists and adds no statement yet; replaceGuards hands it the two guards', async () => {
+check('the applyRankMap hook returns the three statements of worker/rank-map.js, each carrying the monotonic and the in-game guard; replaceGuards hands it the two guards', async () => {
   const { rs } = await M();
   const s = await scenario();
-  assert.deepEqual(rs.applyRankMapStatements(s.w.db, {}, rs.replaceGuards({ guildId: 'g', blizzardGuildId: 1, blizzardRealmId: 2, namespace: NS, fetchedAt: 3 })), []);
   const guards = rs.replaceGuards({ guildId: 'g', blizzardGuildId: 1, blizzardRealmId: 2, namespace: NS, fetchedAt: 3 });
   assert.deepEqual([guards.monotonic.params, guards.ingame.params], [['g', 1, 2, NS, 3], ['g']]);
+  const statements = rs.applyRankMapStatements(s.w.db, { guildId: 'g', now: T0, timeZone: TZ }, guards);
+  assert.equal(statements.length, 3, 'stale marking, the rank UPDATE, the Trial clock');
+  for (const statement of statements) {
+    assert(statement.sql.includes(guards.ingame.sql) && statement.sql.includes(guards.monotonic.sql), 'both guards are part of the statement');
+    assert.deepEqual(statement.values.slice(-6), ['g', 'g', 1, 2, NS, 3], 'and bound last, in order');
+  }
 });
 
 // ---------------------------------------------------------------------------

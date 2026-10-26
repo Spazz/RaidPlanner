@@ -28,6 +28,7 @@ import { displayCharacter, groupBy } from '../attendance-view.js';
 import { ATTENTION_VIEW_ACTIONS, LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, WEEK_OFFSET_MAX, DISMISS_RULES, buildAttention, dismissalUntil, findAttentionItem } from '../attention.js';
 import { winnerNameKeySql } from '../name-alias.js';
 import { onboardingStatement, shapeOnboarding } from '../onboarding.js';
+import { ownerSql } from '../owner.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { characterOfRow } from '../person-rank.js';
 import { personRankSql } from '../person-rank-sql.js';
@@ -42,6 +43,12 @@ const DAY_MS = 86400000;
 const VIEW_ACTIONS = ATTENTION_VIEW_ACTIONS;
 const READ_CAP = 200;
 const WEEK_ROW_CAP = 4000;
+// The in-game ranks on the stored roster that have no rank-map row (lane B4b), for the OWNER of an 'ingame' guild only: the rows are the ranks (?1 = the guild, ?2 = the
+// viewer). Anyone else gets none, so the item reaches nobody else.
+const UNMAPPED_RANKS_SQL = `SELECT g.rank AS rank, COUNT(*) AS members FROM guild_roster g
+  WHERE g.guild_id = ?1 AND EXISTS (SELECT 1 FROM guilds x WHERE x.id = ?1 AND x.rank_source = 'ingame') AND ${ownerSql('?1', '?2')}
+    AND NOT EXISTS (SELECT 1 FROM source_rank_maps m WHERE m.guild_id = g.guild_id AND m.source = 'ingame' AND m.source_key = CAST(g.rank AS TEXT))
+  GROUP BY g.rank ORDER BY g.rank`;
 
 // Everyone who gets the page: the viewer holds at least one of the editing rights somewhere.
 export const canSeeAttention = (can) => VIEW_ACTIONS.some((action) => isGranted(can[action]));
@@ -101,7 +108,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, raids, rows, borrowed, people, characters, rosterDeclined, applications, teamRequests, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, weekSignups, weekRoster, weekCharacters, weekLate, guestIdentities, onboarding] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, raids, rows, borrowed, people, characters, rosterDeclined, applications, teamRequests, unmappedRanks, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, weekSignups, weekRoster, weekCharacters, weekLate, guestIdentities, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -122,11 +129,11 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
       lootSince,
     ),
     bind("SELECT COUNT(*) AS n FROM character_claims WHERE guild_id = ? AND status = 'pending'"),
-    // A main with no team (c.team_id NULL) has no team to review the trial: buildAttention leaves it out, as it leaves out an archived team's.
+    // Trial is per character on its team (the Trial clock, worker/trial-clock.js, writes the dates): a Trial alt counts, a character on no team has no team to review it.
     bind(
-      `SELECT c.player_id AS id, c.trial_end, c.name, c.class, c.team_id FROM characters c
-        WHERE c.guild_id = ? AND c.is_main = 1 AND c.core_rank = 'trial' AND c.trial_end IS NOT NULL AND c.trial_end <= ?
-        ORDER BY c.trial_end, c.player_id LIMIT ${READ_CAP}`,
+      `SELECT c.player_id AS id, c.id AS character_id, c.is_main, c.trial_end, c.name, c.class, c.team_id FROM characters c
+        WHERE c.guild_id = ? AND c.core_rank = 'trial' AND c.left_on IS NULL AND c.team_id IS NOT NULL AND c.trial_end IS NOT NULL AND c.trial_end <= ?
+        ORDER BY c.trial_end, c.player_id, c.id LIMIT ${READ_CAP}`,
       trialUntil,
     ),
     // Raids of the last two weeks that happened (a log or hand-entered attendance) with no loot imported, in a team that has imported loot before.
@@ -183,6 +190,8 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     bind("SELECT team_id, COUNT(*) AS n FROM applications WHERE guild_id = ? AND status = 'new' GROUP BY team_id"),
     // Pending team requests (D6): a person asked for one of their characters to be placed on the team.
     bind("SELECT team_id, COUNT(*) AS n FROM team_requests WHERE guild_id = ? AND status = 'pending' GROUP BY team_id"),
+    // In-game ranks on the stored roster with no rank-map row (lane B4b): their characters are Social until mapped. Rows come back ONLY for the Owner of an 'ingame' guild.
+    bind(UNMAPPED_RANKS_SQL, guildContext.userId),
     // Upcoming raids with a published roster that start within CONFIRM_HOURS and still have seats nobody has answered.
     bind(
       `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, COUNT(*) AS n
@@ -321,6 +330,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     rosterDeclined: rosterDeclined.results,
     applications: applications.results,
     teamRequests: teamRequests.results,
+    unmappedRanks: unmappedRanks.results,
     rosterPending: rosterPending.results,
     eventMoved: eventMoved.results,
     webhooksOff: webhooksOff.results,

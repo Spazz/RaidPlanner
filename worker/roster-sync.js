@@ -19,7 +19,7 @@
 //   5  returning       a Former whose key is back on the roster gets left_on cleared
 //   6  DELETE the guild's guild_roster rows
 //   7  INSERT ... SELECT FROM json_each(?) chunks of ROSTER_INSERT_CHUNK members (a bound JSON string is one parameter: D1 allows 100 per statement)
-//   8  applyRankMapStatements(...)   B4b's hook (core_rank + permission role from the rank map); returns no statement until B4b ships
+//   8  applyRankMapStatements(...)   applyRankMap (worker/rank-map.js): stale marking, core_rank from the rank map (Social when unmapped or off the roster), the Trial clock
 //   9  the good roster_syncs row
 //  10  guilds: roster_hash + last_good_sync_id + last_good_fetched_at   (the id the dry-run token binds to, and the guard value)
 // Steps 1-5 read the OLD guild_roster and so must run before step 6; they are the "character-side apply" and each one also requires
@@ -30,6 +30,7 @@
 import { HAS_EVIDENCE } from './attendance-store.js';
 import { BnetError, assessRoster, bnetSupport, fetchGuildRosterBySlug } from './battlenet.js';
 import { newId } from './ids.js';
+import { INGAME_SQL, rankMapApplyStatements } from './rank-map.js';
 import { COMPLETE_PIN_SQL, PIN_SQL, pinOf } from './roster-pin.js';
 import { todayIn } from './roster-data.js';
 
@@ -84,7 +85,7 @@ export async function rosterHash(roster) {
 // The monotonic guard: this fetch is newer than the stored roster, for the same Blizzard guild and realm the pin names.
 const MONOTONIC_GUARD = `EXISTS (SELECT 1 FROM guilds WHERE id = ? AND blizzard_guild_id = ? AND blizzard_realm_id = ? AND pinned_namespace = ?
     AND (last_good_fetched_at IS NULL OR last_good_fetched_at < ?))`;
-const INGAME_GUARD = `EXISTS (SELECT 1 FROM guilds WHERE id = ? AND rank_source = 'ingame')`;
+const INGAME_GUARD = INGAME_SQL;
 
 // The guards as { sql, params } for any statement of the batch (B4b's hook appends the same two to every statement it adds).
 export function replaceGuards(run) {
@@ -162,14 +163,13 @@ const INSERT_ROSTER_SQL = `INSERT INTO guild_roster (guild_id, namespace, blizza
 const SYNC_ROW_SQL = `INSERT INTO roster_syncs (id, guild_id, started_at, finished_at, good, http_status, reason, counts)
      SELECT ?, ?, ?, ?, 1, 200, NULL, ? WHERE ${MONOTONIC_GUARD}`;
 
-// Placement of B4b's rank-map apply: after the roster rows are replaced (it reads guild_roster.rank), before the sync row and the guild update.
-// MUST return statements that each carry guards.monotonic AND guards.ingame. Returns none until lane B4b ships applyRankMap.
-// eslint-disable-next-line no-unused-vars
+// Placement of applyRankMap (lane B4b): after the roster rows are replaced (it reads guild_roster.rank), before the sync row and the guild update. Every statement
+// carries guards.monotonic AND guards.ingame, so before the flip (rank_source not 'ingame') it changes nothing.
 export function applyRankMapStatements(db, run, guards) {
-  return [];
+  return rankMapApplyStatements(db, { guildId: run.guildId, now: run.now, timeZone: run.timeZone }, [guards.ingame, guards.monotonic]);
 }
 
-// -> { statements, syncIndex }. run: { guildId, blizzardGuildId, blizzardRealmId, namespace, fetchedAt, startedAt, finishedAt, now, today, syncId, hash,
+// -> { statements, syncIndex }. run: { guildId, blizzardGuildId, blizzardRealmId, namespace, fetchedAt, startedAt, finishedAt, now, today, timeZone, syncId, hash,
 //   roster }. syncIndex = the position of the roster_syncs statement: its meta.changes is 1 when the batch applied, 0 when the guard refused it.
 export function rosterReplaceStatements(db, run) {
   const guards = replaceGuards(run);
@@ -282,7 +282,7 @@ export async function syncGuild(deps, guildId) {
 
     const { statements, syncIndex } = rosterReplaceStatements(db, {
       guildId, blizzardGuildId: pin.blizzardGuildId, blizzardRealmId: pin.blizzardRealmId, namespace: pin.namespace,
-      fetchedAt: startedAt, startedAt, finishedAt: deps.now(), now: deps.now(), today: todayIn(guild.time_zone, deps.now()), syncId, hash, roster,
+      fetchedAt: startedAt, startedAt, finishedAt: deps.now(), now: deps.now(), today: todayIn(guild.time_zone, deps.now()), timeZone: guild.time_zone, syncId, hash, roster,
     });
     let results;
     try {

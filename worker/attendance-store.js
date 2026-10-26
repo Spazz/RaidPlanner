@@ -7,6 +7,7 @@ import { REGION_RESET_DAY, consolidationFingerprint, resolvePolicy } from './att
 import { resolvedNameKeySql } from './name-alias.js';
 import { allows } from './permissions.js';
 import { characterOfRow } from './person-rank.js';
+import { trialClockStatement, zoneOffsetMinutes } from './trial-clock.js';
 
 export const SIGNUP_KINDS = ['signed', 'late', 'standby', 'bench', 'tentative', 'absence'];
 
@@ -439,6 +440,9 @@ export async function recomputeRaid(ctx, guild, raidId) {
               computed_at = ?
         WHERE guild_id = ? AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?))`,
     ).bind(JSON.stringify(raidState), JSON.stringify(raidState), now, guild.id, JSON.stringify(raidState)));
+    // The Trial clock (worker/trial-clock.js): a Trial character's dates start with the first raid of its team that logged it. The version guard above aborts this
+    // batch whole when the raids changed under it, so the clock never runs on a read that was thrown away.
+    statements.push(trialClockStatement(db, guild.id, { offsetMinutes: zoneOffsetMinutes(guild.time_zone, now) }));
     try {
       await db.batch(statements);
     } catch (error) {

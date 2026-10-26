@@ -28,6 +28,7 @@ const ALLOWED_CORE_RANK_WRITERS = {
   'worker/routes/roster.js': 'insertCharacter (person create, add character, application accept, attendance link)',
   'worker/claim-apply.js': 'applyClaimPlan: a claimed character (new person, alt), whoever decides - the claimant, or an officer approving a claim',
   'worker/routes/roster-import.js': 'writeImport (Raid-Helper, Warcraft Logs, CSV and Battle.net roster imports)',
+  'worker/rank-map.js': 'applyRankMap: the in-game roster and the rank map decide the rank of every character (roster sync batch, rank-map edit)',
 };
 
 const FIELDS = ['status', 'trial_start', 'trial_end', 'left_on', 'left_reason'];
@@ -168,7 +169,7 @@ function writesLegacyField(sql) {
     const cut = sql.search(/\bVALUES\b|\bSELECT\b/i);
     return new RegExp(`\\b(${field})\\b`).test(cut < 0 ? sql : sql.slice(0, cut));
   }
-  const update = /^\s*UPDATE\s+players\s+SET\b([\s\S]*?)(?:\bWHERE\b|$)/i.exec(sql);
+  const update = /^\s*(?:WITH\b[\s\S]*?\s)?UPDATE\s+players\s+SET\b([\s\S]*?)(?:\bWHERE\b|$)/i.exec(sql);
   return !!update && new RegExp(`\\b(${field})\\s*=`).test(update[1]);
 }
 
@@ -176,7 +177,7 @@ function writesLegacyField(sql) {
 // reason field; an INSERT naming status with anything but the inert literal 'raider' at that position. Lane B4b deleted the mirror: this is the zero-writers check.
 function legacyWriteProblems(sql) {
   const out = [];
-  if (/^\s*UPDATE\s+players\s+SET\b/i.test(sql)) {
+  if (/^\s*(?:WITH\b[\s\S]*?\s)?UPDATE\s+players\s+SET\b/i.test(sql)) {
     if (writesLegacyField(sql)) out.push('UPDATE players SET names a legacy field');
     return out;
   }
@@ -245,7 +246,8 @@ function splitTopLevel(text) {
 // A write of characters.core_rank: INSERT INTO characters naming it in its column list, or UPDATE characters SET ... core_rank =.
 function writesCoreRank(sql) {
   if (/^\s*INSERT\s+(OR\s+\w+\s+)?INTO\s+characters\b/i.test(sql)) return /\bcore_rank\b/.test(columnList(sql));
-  const update = /^\s*UPDATE\s+characters\s+SET\b([\s\S]*?)(?:\bWHERE\b|$)/i.exec(sql);
+  // A leading WITH (a CTE in front of the UPDATE, as applyRankMap's) must not hide the statement from this check.
+  const update = /^\s*(?:WITH\b[\s\S]*?\s)?UPDATE\s+characters\s+SET\b([\s\S]*?)(?:\bWHERE\b|$)/i.exec(sql);
   return !!update && /\bcore_rank\s*=/.test(update[1]);
 }
 
@@ -298,6 +300,8 @@ check('the detectors flag what they must and nothing else (seeded SQL)', () => {
   assert(!writesCoreRank('INSERT INTO characters (id, name) VALUES (?, ?)'));
   assert(!writesCoreRank('UPDATE characters SET name = ? WHERE id = ?'));
   assert(!writesCoreRank('SELECT core_rank FROM characters'));
+  assert(writesCoreRank('WITH rank_map AS (SELECT 1 AS rank)\nUPDATE characters SET core_rank = (SELECT 1), updated_at = ? WHERE guild_id = ?'));
+  assert(!writesCoreRank('WITH changed AS (SELECT id FROM characters)\nUPDATE raids SET policy_fp = \'\' WHERE id IN (SELECT id FROM changed)'));
 
   // The zero-writers check: the placeholder form passes, every other way to write a legacy field is a problem.
   assert.deepEqual(legacyWriteProblems('INSERT INTO players (id, guild_id, status, joined_on) VALUES (?, ?, \'raider\', ?)'), []);

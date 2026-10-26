@@ -59,6 +59,7 @@ export const AUDIT_ACTIONS = [
   'person.account_link',
   'person.account_unlink',
   'bnet.settings',
+  'rank_map.update',
   'claim.create',
   'claim.withdraw',
   'claim.approve',

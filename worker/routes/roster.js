@@ -382,6 +382,15 @@ function readDateField(body, key, field = key) {
   return body[key];
 }
 
+// The officer rank edit (status, left date, left reason) belongs to manual / legacy guilds. An 'ingame' guild's ranks come from the in-game roster and the rank map
+// (worker/rank-map.js applyRankMap, the only other writer of characters.core_rank): a hand edit would be undone at the next change of the roster.
+async function requireHandRanks(db, guildId) {
+  const row = await db.prepare('SELECT rank_source FROM guilds WHERE id = ?').bind(guildId).first();
+  if (row && row.rank_source === 'ingame') {
+    throw new HttpError(409, 'rank_from_source', 'This guild takes its ranks from the in-game guild roster, so they are not set by hand. Change the rank in the game, or the rank map in Guild settings.');
+  }
+}
+
 export async function patchPerson(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
@@ -446,6 +455,7 @@ export async function patchPerson(ctx) {
   if (next.leftOn !== player.left_on) changed.push('leftOn');
   if (next.leftReason !== player.left_reason) changed.push('leftReason');
   if (next.discordUserId !== player.discord_user_id) changed.push('link');
+  if (changed.some((key) => ['status', 'leftOn', 'leftReason'].includes(key))) await requireHandRanks(db, guildContext.guild.id);
   if (changed.length) {
     const now = ctx.now();
     // Changing the Discord link relinks the person: the Seniority guard (worker/seniority.js) applies, in the pre-check and in both writes below.
@@ -470,7 +480,7 @@ export async function patchPerson(ctx) {
               AND EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND is_main = 1 AND team_id IS ?) AND ${senior.sql}`,
         params: [player.id, guildContext.guild.id, player.version, player.id, home.id, ...senior.params],
       };
-      statements.push(setCharacterRanksStatement(db, guildContext.guild.id, player.id, characterRankColumns(next), unchanged));
+      statements.push(setCharacterRanksStatement(db, guildContext.guild.id, player.id, characterRankColumns(next), unchanged, now));
     }
     const playersAt = statements.length;
     statements.push(
