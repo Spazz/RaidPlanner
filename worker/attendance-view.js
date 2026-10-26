@@ -1,9 +1,10 @@
 import { guestIdentityStatement, guestKeysFor } from './guest-identity.js';
 // Read side of the raids: the raid detail every raid route answers with, the shared character-display rule and
 // the redaction (nicknames, reasons, other teams' attendance) by permission.
+import { hasDiscord } from './discord-guard.js';
 import { HttpError } from './http.js';
 import { allows } from './permissions.js';
-import { findUnmatched, makePolicyResolver, presenceKey } from './attendance-store.js';
+import { EVIDENCE_NAME_KEY, PLAN_NAME_KEY, findUnmatched, makePolicyResolver, presenceKey } from './attendance-store.js';
 import { DUTIES_SQL, dutiesView } from './duties.js';
 import { raidSizeFields } from './raid-zones.js';
 import { roleGroup, signUpRole } from './roster-data.js';
@@ -62,17 +63,22 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
             FROM raid_reports WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY started_at, code`),
     bind('SELECT encounter_name, kill, started_at FROM raid_pulls WHERE raid_id = ?2 ORDER BY started_at, id'),
     bind("SELECT source, signup_id, CASE WHEN kind = 'signed' AND standby = 1 THEN 'standby' ELSE kind END AS kind, class_name, spec_name, position, player_id, nickname FROM raid_signups WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY position, source, signup_id"),
-    bind('SELECT name, name_key, group_number FROM raid_plan WHERE raid_id = ?2 ORDER BY rowid'),
+    // Every stored name also carries match_name_key: the name as the characters carry it today (worker/name-alias.js), dated at the raid, so a renamed
+    // character keeps its old raids.
+    bind(`SELECT pl.name, pl.name_key, pl.group_number, ${PLAN_NAME_KEY} AS match_name_key
+            FROM raid_plan pl JOIN raids pr ON pr.id = pl.raid_id WHERE pl.raid_id = ?2 ORDER BY pl.rowid`),
     bind('SELECT * FROM attendance WHERE raid_id = ?2 AND guild_id = ?1'),
     bind(`SELECT c.player_id, c.name, c.name_key, c.realm_key, c.class, c.main_spec, c.team_id, c.is_main FROM characters c
            WHERE c.guild_id = ?1 AND (c.player_id IN (SELECT player_id FROM attendance WHERE raid_id = ?2)
-              OR c.name_key IN (SELECT name_key FROM raid_presence WHERE raid_id = ?2)
-              OR c.name_key IN (SELECT name_key FROM raid_manual_names WHERE raid_id = ?2)
-              OR c.name_key IN (SELECT name_key FROM raid_plan WHERE raid_id = ?2))`),
+              OR c.name_key IN (SELECT ${EVIDENCE_NAME_KEY} FROM raid_presence rp JOIN raids pr ON pr.id = rp.raid_id WHERE rp.raid_id = ?2)
+              OR c.name_key IN (SELECT ${EVIDENCE_NAME_KEY} FROM raid_manual_names rp JOIN raids pr ON pr.id = rp.raid_id WHERE rp.raid_id = ?2)
+              OR c.name_key IN (SELECT ${PLAN_NAME_KEY} FROM raid_plan pl JOIN raids pr ON pr.id = pl.raid_id WHERE pl.raid_id = ?2))`),
     // The log's names, then the names of a pasted roster that matched nobody (wave 8; pulls 0 tells them apart).
-    bind(`SELECT name, name_key, realm, realm_key, class, COUNT(*) AS pulls FROM raid_presence
-           WHERE raid_id = ?2 AND guild_id = ?1 GROUP BY name_key, realm_key
-          UNION ALL SELECT name, name_key, realm, realm_key, NULL, 0 FROM raid_manual_names WHERE raid_id = ?2 AND guild_id = ?1`),
+    bind(`SELECT rp.name, rp.name_key, rp.realm, rp.realm_key, rp.class, COUNT(*) AS pulls, ${EVIDENCE_NAME_KEY} AS match_name_key
+            FROM raid_presence rp JOIN raids pr ON pr.id = rp.raid_id
+           WHERE rp.raid_id = ?2 AND rp.guild_id = ?1 GROUP BY rp.name_key, rp.realm_key
+          UNION ALL SELECT rp.name, rp.name_key, rp.realm, rp.realm_key, NULL, 0, ${EVIDENCE_NAME_KEY}
+            FROM raid_manual_names rp JOIN raids pr ON pr.id = rp.raid_id WHERE rp.raid_id = ?2 AND rp.guild_id = ?1`),
     guestIdentityStatement(db, guild.id),
     db.prepare('SELECT id, team_id, policy, version FROM attendance_policies WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, username, global_name, display_name FROM users WHERE id IN (SELECT decided_by FROM attendance_decisions WHERE raid_id = ?2 AND decided_by IS NOT NULL)
@@ -106,7 +112,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const planByPlayer = new Map();
   const charactersByName = groupBy(characterResult.results, 'name_key');
   for (const entry of planResult.results) {
-    for (const character of charactersByName.get(entry.name_key) || []) {
+    for (const character of charactersByName.get(entry.match_name_key || entry.name_key) || []) {
       if (!planByPlayer.has(character.player_id)) planByPlayer.set(character.player_id, entry.group_number === 0 ? 'bench' : `G${entry.group_number}`);
     }
   }
@@ -216,11 +222,11 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     sources: {
       event: raid.event_id ? {
         id: raid.event_id, title: raid.event_title, syncedAt: raid.event_synced, signups: raidHelperSignups,
-        otherServer: raid.event_server !== null && raid.event_server !== guild.discord_server_id,
+        otherServer: hasDiscord(guild) && raid.event_server !== null && raid.event_server !== guild.discord_server_id,
       } : null,
       reports: reportResult.results.map((row) => ({ code: row.code, flavour: row.flavour, startedAt: row.started_at, pulls: row.pulls })),
       plan: raid.plan_synced !== null && raid.plan_synced !== undefined
-        ? { label: raid.plan_label, players: planNames.length, full: raid.plan_doc > 0, unmatched: seeAttendance ? planNames.filter((entry) => !matchedPlanKeys.has(entry.name_key)).map((entry) => entry.name) : [] }
+        ? { label: raid.plan_label, players: planNames.length, full: raid.plan_doc > 0, unmatched: seeAttendance ? planNames.filter((entry) => !matchedPlanKeys.has(entry.match_name_key || entry.name_key)).map((entry) => entry.name) : [] }
         : null,
       planDoc: raid.plan_doc > 0, // a full Planner plan exists, even when nobody is seated in it (then `plan` is null: the line-up projection is empty)
     },

@@ -11,10 +11,10 @@ import { teamAttendanceData } from './routes/attendance.js';
 import { displayCharacter, groupBy } from './attendance-view.js';
 import { lootPolicyRowsStatement, makeLootPolicyResolver } from './loot-store.js';
 import { SECTION_ACTIONS, allows } from './permissions.js';
-import { notInactiveSql } from './person-legacy.js';
 import { buildProgress, publicProgress } from './progress.js';
 import { progressPullsStatement } from './progress-store.js';
 import { roleOf } from './roster-data.js';
+import { notWonOffRosterSql, onTeamRosterSql } from './team-roster.js';
 
 // Every section the read-only view can build, in the page's order, and the read action each needs. A guest link shows the four of SECTION_ACTIONS (a role
 // grants those); the public page can also tick Progress (PM wave 7: the team's boss kills), which rides on the raids read action.
@@ -25,10 +25,11 @@ const UPCOMING_LIMIT = 20;
 const RECENT_LIMIT = 10;
 const LOOT_LIMIT = 50;
 
-// The same guild columns loadGuildContext reads: the attendance rules need the region, the time zone and the Warcraft Logs link.
+// The guild columns the read-only view needs: the attendance rules need the region, the time zone and the Warcraft Logs link. No Discord server id: the
+// public page, guest links and API keys never carry one (and so never reach a Discord or Raid-Helper path, which all start from hasDiscord on the full row).
 export async function loadGuildRow(db, guildId) {
   return db.prepare(
-    `SELECT id, name, realm, realm_kind, realm_slug, region, discord_server_id, time_zone, game_version, wcl_guild_id, created_at, public_enabled, public_sections
+    `SELECT id, name, realm, realm_kind, realm_slug, region, time_zone, game_version, wcl_guild_id, created_at, public_enabled, public_sections
        FROM guilds WHERE id = ?`,
   ).bind(guildId).first();
 }
@@ -36,12 +37,13 @@ export async function loadGuildRow(db, guildId) {
 // Per team: the statements that read it, and how to shape their results (shape(team, results, guild)). `results` are the results of this section's own
 // statements, in order.
 const SECTION_READS = {
+  // The team roster (worker/team-roster.js): the characters placed on the team that are still here and a raiding rank. Never a Social or Former character,
+  // never a person's alts on other teams.
   roster: {
     statements: (db, guild, team) => [db.prepare(
       `SELECT c.player_id, c.name, c.class, c.main_spec, c.team_id, c.is_main
-         FROM characters c JOIN players p ON p.id = c.player_id
-        WHERE c.guild_id = ?1 AND ${notInactiveSql('p')}
-          AND c.player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`,
+         FROM characters c
+        WHERE c.guild_id = ?1 AND ${onTeamRosterSql('c', '?2')}`,
     ).bind(guild.id, team.id)],
     shape: (team, [result]) => ({
       team,
@@ -69,9 +71,10 @@ const SECTION_READS = {
     shape: (team, [result], guild) => ({ team, ...publicProgress(buildProgress(result.results, guild.game_version)) }),
   },
   loot: {
+    // Awards won by a Social, Former or teamless character are left out (notWonOffRosterSql): they are not on a team roster, so they do not appear here.
     statements: (db, guild, team) => [db.prepare(
-      `SELECT item_id, item_name, item_quality, awarded_at, winner_name, winner_name_key, winner_class
-         FROM loot_awards WHERE guild_id = ? AND team_id = ? ORDER BY awarded_at DESC, id LIMIT ?`,
+      `SELECT a.item_id, a.item_name, a.item_quality, a.awarded_at, a.winner_name, a.winner_name_key, a.winner_class
+         FROM loot_awards a WHERE a.guild_id = ? AND a.team_id = ? AND ${notWonOffRosterSql('a')} ORDER BY a.awarded_at DESC, a.id LIMIT ?`,
     ).bind(guild.id, team.id, LOOT_LIMIT)],
     shape: (team, [result]) => ({
       team,
@@ -90,13 +93,14 @@ const SECTION_READS = {
 
 // Percentages only (the team page's window and rules): a name, a class and how often they came. Not the cells, outcomes, reasons or sign-up kinds.
 async function attendanceSection(db, guild, team, nowMs) {
-  const data = await teamAttendanceData(db, guild, team, new URLSearchParams(), nowMs, null);
+  // rosterOnly: only the people on the team's roster (worker/team-roster.js), never a Social or Former character.
+  const data = await teamAttendanceData(db, guild, team, new URLSearchParams(), nowMs, null, { rosterOnly: true });
   return {
     team,
     window: data.window,
     raids: data.weeks.reduce((sum, week) => sum + week.raids.length, 0),
     people: data.people
-      .filter((person) => person.status !== 'inactive' && person.name !== 'Unknown')
+      .filter((person) => person.name !== 'Unknown')
       .map((person) => ({ name: person.name, class: person.class, pct: typeof person.pct === 'number' ? person.pct : null, counted: person.counted || 0 })),
   };
 }

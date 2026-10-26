@@ -11,6 +11,7 @@ import { AWARD_SELECT, lootAccess, lootPolicyRowsStatement, makeLootPolicyResolv
 import { allows, loadGuildContext } from '../permissions.js';
 import { notInactiveSql } from '../person-legacy.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
+import { winnerNameKeySql } from '../name-alias.js';
 import { allowsSurname, cleanCharacterName, nameKey, realmKey } from '../roster-data.js';
 import { signUpClassId } from '../signups-data.js';
 import { loadRaid } from './raids.js';
@@ -39,7 +40,11 @@ async function boardFor(ctx, guildContext, raid, access) {
       `SELECT p.id AS player_id FROM players p WHERE p.guild_id = ?1 AND ${notInactiveSql('p')}
           AND EXISTS (SELECT 1 FROM characters c WHERE c.player_id = p.id AND c.guild_id = ?1 AND c.team_id = ?2)`,
     ).bind(guild.id, raid.team_id),
-    db.prepare('SELECT item_id, tag, winner_name, winner_name_key FROM loot_awards WHERE raid_id = ? AND guild_id = ? ORDER BY awarded_at, id').bind(raid.id, guild.id),
+    // match_name_key: the winner's name as the characters carry it today (worker/name-alias.js), so an award to a renamed character still finds it.
+    db.prepare(
+      `SELECT a.item_id, a.tag, a.winner_name, a.winner_name_key, ${winnerNameKeySql('a')} AS match_name_key
+         FROM loot_awards a WHERE a.raid_id = ? AND a.guild_id = ? ORDER BY a.awarded_at, a.id`,
+    ).bind(raid.id, guild.id),
     db.prepare(
       `SELECT a.item_id, a.winner_name_key FROM loot_awards a JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id
         WHERE a.guild_id = ?1 AND a.team_id = ?2 AND r.raid_on < ?3 AND a.winner_name_key IS NOT NULL AND a.tag IN ('MS', 'OS')
@@ -52,7 +57,7 @@ async function boardFor(ctx, guildContext, raid, access) {
     db.prepare(
       `SELECT player_id, name, name_key, class, team_id, is_main FROM characters
         WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_loot_lists WHERE raid_id = ?2
-                                             UNION SELECT winner_name_key FROM loot_awards WHERE raid_id = ?2 AND guild_id = ?1 AND winner_name_key IS NOT NULL)`,
+                                             UNION SELECT ${winnerNameKeySql('la')} FROM loot_awards la WHERE la.raid_id = ?2 AND la.guild_id = ?1 AND la.winner_name_key IS NOT NULL)`,
     ).bind(guild.id, raid.id),
   ]);
 
@@ -72,7 +77,10 @@ async function boardFor(ctx, guildContext, raid, access) {
     expected: expected.ids,
     receivedKeys: new Set(earlierResult.results.map((row) => `${row.item_id}|${row.winner_name_key}`)),
     itemNames: new Map(namesResult.results.map((row) => [row.item_id, row.item_name])),
-    awards: hereResult.results.map((row) => ({ ...row, personId: row.winner_name_key && characters.has(row.winner_name_key) ? characters.get(row.winner_name_key).player_id : null })),
+    awards: hereResult.results.map((row) => {
+      const found = row.winner_name_key ? characters.get(row.match_name_key || row.winner_name_key) : null;
+      return { ...row, personId: found ? found.player_id : null };
+    }),
   });
   const lists = Object.fromEntries(LIST_SOURCES.map((source) => {
     const meta = importResult.results.find((row) => row.source === source);

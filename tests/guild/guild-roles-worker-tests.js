@@ -1166,6 +1166,8 @@ async function seedData(s) {
   assert.equal(notes.status, 200, notes.text);
   s.w.db.sqlite.exec(`UPDATE players SET discord_user_id = '${PEOPLE.dave.id}', discord_nickname = 'SecretNick' WHERE id = '${people.thoren}'`);
   s.w.db.sqlite.exec(`UPDATE players SET status = 'inactive', left_on = '2027-01-02', left_reason = 'left' WHERE id = '${people.oldtimer}'`);
+  // The character columns follow (the dual write of worker/person-legacy.js; the read-only views read them): Social with a left-on date = Former.
+  s.w.db.sqlite.exec(`UPDATE characters SET core_rank = 'social', left_on = '2027-01-02', left_reason = 'left' WHERE player_id = '${people.oldtimer}'`);
   s.w.db.sqlite.exec(`UPDATE players SET joined_on = '2026-12-01' WHERE guild_id = '${s.guildId}'`); // joined before the raid, so it counts
   const raid = await s.call('alice', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-10', zone: 'Karazhan' });
   assert.equal(raid.status, 201, raid.text);

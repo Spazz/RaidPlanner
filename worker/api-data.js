@@ -7,9 +7,9 @@
 import { teamAttendanceData } from './routes/attendance.js';
 import { lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver } from './loot-store.js';
 import { allows } from './permissions.js';
-import { legacyColumnsSql } from './person-legacy.js';
 import { roleOf } from './roster-data.js';
 import { API_DATASETS } from './api-keys.js';
+import { notWonOffRosterSql, teamRosterSql } from './team-roster.js';
 
 export const LOOT_ROW_CAP = 5000;
 export const RAID_ROW_CAP = 500;
@@ -25,20 +25,21 @@ const ROSTER_COLUMNS = ['team', 'character', 'realm', 'class', 'role', 'main_spe
 async function readRoster(db, scope) {
   const teams = teamsFor(scope, 'roster');
   if (!teams.length) return empty(ROSTER_COLUMNS);
-  // A team roster lists placed characters: the INNER JOIN on teams leaves a teamless character (team_id NULL) out on purpose.
+  // A team roster lists the characters on it (worker/team-roster.js: placed, still here, a raiding rank): a teamless, Social or Former character is left out.
+  // `status` is the character's core rank (raider, trial or reserve).
   const result = await db.prepare(
-    `SELECT t.name AS team_name, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, ${legacyColumnsSql('p', 'status')}, p.joined_on
+    `SELECT t.name AS team_name, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, c.core_rank, p.joined_on
        FROM characters c
        JOIN players p ON p.id = c.player_id AND p.guild_id = c.guild_id
        JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
-      WHERE c.guild_id = ? AND c.team_id IN (SELECT value FROM json_each(?))
+      WHERE c.guild_id = ? AND c.team_id IN (SELECT value FROM json_each(?)) AND ${teamRosterSql('c')}
       ORDER BY t.name, c.is_main DESC, c.name, c.id`,
   ).bind(scope.guild.id, idsJson(teams)).all();
   return {
     columns: ROSTER_COLUMNS,
     rows: result.results.map((row) => ({
       team: row.team_name, character: row.name, realm: row.realm, class: row.class, role: row.main_spec ? roleOf(row.class, row.main_spec) : null,
-      main_spec: row.main_spec, off_spec: row.off_spec, main: row.is_main === 1, status: row.status, joined_on: row.joined_on,
+      main_spec: row.main_spec, off_spec: row.off_spec, main: row.is_main === 1, status: row.core_rank, joined_on: row.joined_on,
     })),
   };
 }
@@ -50,11 +51,12 @@ async function readAttendance(db, scope) {
   const teams = teamsFor(scope, 'attendance');
   const rows = [];
   for (const team of teams) {
-    const data = await teamAttendanceData(db, scope.guild, team, scope.params, scope.now, null);
+    // rosterOnly: the people on the team's roster; `status` is the core rank of their roster character.
+    const data = await teamAttendanceData(db, scope.guild, team, scope.params, scope.now, null, { rosterOnly: true });
     for (const person of data.people) {
-      if (person.status === 'inactive' || person.name === 'Unknown') continue;
+      if (person.name === 'Unknown') continue;
       rows.push({
-        team: team.name, name: person.name, class: person.class, status: person.status, rank: person.rank ? person.rank.name : null, window_weeks: data.window,
+        team: team.name, name: person.name, class: person.class, status: person.rosterRank, rank: person.rank ? person.rank.name : null, window_weeks: data.window,
         attendance_pct: typeof person.pct === 'number' ? person.pct : null, raids_counted: person.counted || 0,
         signup_rate_pct: typeof person.signupRate === 'number' ? person.signupRate : null, absence_streak: person.streak || 0, last_attended: person.lastAttended || null,
       });
@@ -78,7 +80,7 @@ async function readLoot(db, scope) {
        FROM loot_awards a
        JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id
        JOIN teams t ON t.id = a.team_id AND t.guild_id = a.guild_id
-      WHERE a.guild_id = ? AND a.team_id IN (SELECT value FROM json_each(?))
+      WHERE a.guild_id = ? AND a.team_id IN (SELECT value FROM json_each(?)) AND ${notWonOffRosterSql('a')}
       ORDER BY r.raid_on DESC, a.awarded_at DESC, a.id LIMIT ?`,
   ).bind(scope.guild.id, idsJson(teams), LOOT_ROW_CAP + 1).all();
   const truncated = result.results.length > LOOT_ROW_CAP;

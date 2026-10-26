@@ -8,6 +8,7 @@ import { guestIdentityStatement, guestKeysFor } from '../guest-identity.js';
 // were pasted), a Forever one-word name by the one character with that first word (worker/name-resolve.js). Both routes read the text again: the commit
 // never trusts a preview. The parsing is worker/roster-paste.js.
 import { HttpError, cleanText, jsonResponse } from '../http.js';
+import { resolvedNameKeySql } from '../name-alias.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { loadGuildContext } from '../permissions.js';
 import { MAX_PASTE_CHARS, matchPasted, parsePastedRoster } from '../roster-paste.js';
@@ -17,6 +18,8 @@ import { bad, resolveRealm } from './roster.js';
 
 const MAX_PEOPLE = 80;
 const DEFAULT_REASON = 'Pasted raid roster';
+// A pasted name (w.value of the json list ?2, in guild ?1) as the characters carry it on the raid's day (?3 = raid.starts_at): worker/name-alias.js.
+const WANTED_KEY = resolvedNameKeySql({ guild: '?1', nameKey: 'w.value', at: '?3' });
 
 function readText(body) {
   if (typeof body.text !== 'string' || !body.text.trim()) throw bad('Paste the names first.', 'text');
@@ -24,8 +27,9 @@ function readText(body) {
   return body.text;
 }
 
-// The pasted names against the guild: -> { parsed, matched, guests, unmatched }.
-async function analyse(ctx, guild, text) {
+// The pasted names against the guild: -> { parsed, matched, guests, unmatched }. The names are evidence of the raid's day: a name a character carried then
+// (worker/name-alias.js, dated at raid.starts_at) finds that character, a name a new character took since does not.
+async function analyse(ctx, guild, text, raid) {
   const { db } = ctx;
   const parsed = parsePastedRoster(text, { gameVersion: guild.game_version });
   if (!parsed.entries.length) return { parsed, matched: [], guests: [], unmatched: [] };
@@ -34,15 +38,18 @@ async function analyse(ctx, guild, text) {
   const ownRealmKey = resolveRealm(guild, undefined).key;
   const wanted = JSON.stringify([...new Set(parsed.entries.flatMap((entry) => entry.names.flatMap((name) => [nameKey(name), nameKey(resolveName(surnames, name, ownRealmKey))])))]);
   const [characterResult, guestResult] = await db.batch([
+    // wanted_key is the name as pasted; the character it finds carries it as name_key today (the same unless a rename sits between).
     db.prepare(
-      `SELECT c.name, c.name_key, c.realm_key, c.class, c.player_id FROM characters c
-        WHERE c.guild_id = ? AND c.name_key IN (SELECT value FROM json_each(?)) ORDER BY c.is_main DESC, c.id`,
-    ).bind(guild.id, wanted),
+      `SELECT k.wanted_key, c.name, c.name_key, c.realm_key, c.class, c.player_id
+         FROM (SELECT w.value AS wanted_key, ${WANTED_KEY} AS live_key FROM json_each(?2) w) k
+         JOIN characters c ON c.guild_id = ?1 AND c.name_key = k.live_key
+        ORDER BY c.is_main DESC, c.id`,
+    ).bind(guild.id, wanted, raid.starts_at),
     guestIdentityStatement(db, guild.id),
   ]);
   const characters = new Map();
   for (const row of characterResult.results) {
-    const key = `${row.name_key}|${row.realm_key}`;
+    const key = `${row.wanted_key}|${row.realm_key}`;
     if (!characters.has(key)) characters.set(key, { personId: row.player_id, name: row.name, class: row.class });
   }
   const guests = guestKeysFor(guestResult.results, ctx.params.rid);
@@ -71,7 +78,7 @@ async function load(ctx) {
 export async function previewPaste(ctx) {
   const text = readText(ctx.body);
   const { guildContext, raid } = await load(ctx);
-  const result = await analyse(ctx, guildContext.guild, text);
+  const result = await analyse(ctx, guildContext.guild, text, raid);
   return jsonResponse({
     ...view(result),
     // The raid already has hand-entered attendance: saving replaces who is ticked present.
@@ -83,7 +90,7 @@ export async function commitPaste(ctx) {
   const text = readText(ctx.body);
   const reason = ctx.body.reason === undefined || ctx.body.reason === null || ctx.body.reason === '' ? DEFAULT_REASON : cleanText(ctx.body.reason, 'reason', { min: 3, max: 200 });
   const { guildContext, raid } = await load(ctx);
-  const result = await analyse(ctx, guildContext.guild, text);
+  const result = await analyse(ctx, guildContext.guild, text, raid);
   const ids = [...new Set(result.matched.map((entry) => entry.personId))];
   if (!ids.length && !result.unmatched.length) throw bad('None of the pasted lines is a name this guild can use.', 'text');
   if (ids.length > MAX_PEOPLE) throw bad(`Send at most ${MAX_PEOPLE} different people.`, 'text');

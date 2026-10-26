@@ -3,6 +3,10 @@
 // policy; then the second pass that settles Other-team ("fill-in") cells across the raids of one guild-local date.
 // No D1, no fetch, no clock, and the input is never mutated. The rule table is in tasks/reference/guild-phase3-spec.md,
 // "Consolidation".
+//
+// A person has no single rank: rank lives on their characters, and the person-level answers (expected on a team, gone, home team) come from
+// worker/person-rank.js, which looks at all the characters, so nothing here depends on the order the rows arrived in.
+import { expectedOnTeam, hasCharacterHereOn, homeTeamId as homeTeamOf, isGoneOn } from './person-rank.js';
 
 // The strongest sign-up kind wins across sources (a plan placement beats a Raid-Helper Absence). A volunteer standby ranks below a plan's bench (a
 // benched volunteer is benched) and above tentative; it is an expected kind like signed.
@@ -39,7 +43,7 @@ function autoResult(ctx, person, kind) {
   const inLog = ctx.inLog.has(person.playerId);
   const hasTeamChar = ctx.teamChars.has(person.playerId);
   const expected = isExpected(kind, policy)
-    || (policy.expected.mode === 'statuses' && hasTeamChar && policy.expected.statuses.includes(person.status));
+    || (policy.expected.mode === 'statuses' && expectedOnTeam(person, raid.teamId, policy.expected.statuses));
   const stats = ctx.stats.get(person.playerId);
 
   if (inLog) {
@@ -59,14 +63,15 @@ function autoResult(ctx, person, kind) {
   if (kind === 'absence') return { outcome: 'missed_notice', credit: policy.absence === 'excused' ? null : 0, flags: [] }; // row 7
   if (expected) return { outcome: 'missed', credit: 0, flags: ['no_show'] }; // row 8
   if (kind === 'tentative') return { outcome: 'tentative', credit: null, flags: [] }; // row 9
-  if (!kind && hasTeamChar && policy.noSignup === 'shown') return { outcome: 'no_signup', credit: null, flags: [] }; // row 10
+  if (!kind && hasCharacterHereOn(person, raid.teamId, raid.raidOn) && policy.noSignup === 'shown') return { outcome: 'no_signup', credit: null, flags: [] }; // row 10
   return null; // row 11
 }
 
 // -> { rows, unmatched, openFlags }. evidence is described in the spec; two optional extras:
 //   evidence.logPlayers: { [key]: { name, realm, class } } for the unmatched entries (else the name comes from the key)
 //   evidence.manualKeys: the keys of the names a pasted roster listed (a manual raid only): see below
-//   people[].homeTeamId: the team of the person's Main, used for the Other-team credit of a manual tick
+//   people[]: { playerId, characters: [{ key, teamId, isMain, coreRank, leftOn }] } (worker/person-rank.js). The Other-team credit goes to the team of the
+//   person's Main for every raid, never to the team of whichever character was present.
 export function consolidateRaid(evidence, policy) {
   const raid = evidence.raid || {};
   const empty = { rows: [], unmatched: [], openFlags: 0 };
@@ -92,7 +97,7 @@ export function consolidateRaid(evidence, policy) {
   }
 
   // Presence per person across the sorted pulls, and the unmatched log keys.
-  const stats = new Map(people.map((person) => [person.playerId, { pullsPresent: 0, missedFirst: false, missedLast: false, perKey: new Map() }]));
+  const stats = new Map(people.map((person) => [person.playerId, { pullsPresent: 0, missedFirst: false, missedLast: false }]));
   const unmatchedCounts = new Map();
   pulls.forEach((pull) => {
     const seen = new Set();
@@ -102,8 +107,6 @@ export function consolidateRaid(evidence, policy) {
         if (!guests.has(key)) unmatchedCounts.set(key, (unmatchedCounts.get(key) || 0) + 1);
         continue;
       }
-      const entry = stats.get(owner);
-      entry.perKey.set(key, (entry.perKey.get(key) || 0) + 1);
       seen.add(owner);
     }
     for (const owner of seen) stats.get(owner).pullsPresent++;
@@ -140,9 +143,8 @@ export function consolidateRaid(evidence, policy) {
   for (const person of people) {
     const kind = kinds.get(person.playerId) || null;
     const entry = stats.get(person.playerId);
-    // Inactive people have no row unless they signed up or raided; one with a left-on date is still expected up to and including that day.
-    const leftYet = person.status === 'inactive' && !(person.leftOn && raid.raidOn <= person.leftOn);
-    if (leftYet && !kind && !inLog.has(person.playerId)) continue;
+    // People who are gone have no row unless they signed up or raided; a character with a left-on date is still here up to and including that day.
+    if (isGoneOn(person, raid.raidOn) && !kind && !inLog.has(person.playerId)) continue;
     const auto = autoResult(ctx, person, kind);
     if (!auto) continue;
 
@@ -152,16 +154,8 @@ export function consolidateRaid(evidence, policy) {
     const outcome = decisionValid ? decision.outcome : auto.outcome;
     const credit = decisionValid ? (typeof decision.credit === 'number' ? decision.credit : null) : auto.credit;
 
-    let creditTeamId = null;
-    if (outcome === 'fill_in') {
-      let best = null;
-      for (const character of person.characters || []) {
-        const count = entry.perKey.get(character.key) || 0;
-        if (!best || count > best.count || (count === best.count && byText(character.teamId, best.teamId) < 0)) best = { count, teamId: character.teamId };
-      }
-      if (raid.manual && person.homeTeamId) creditTeamId = person.homeTeamId;
-      else creditTeamId = best ? best.teamId : null;
-    }
+    // An Other-team cell counts for the person's home team (their Main's), whichever character was in the raid.
+    const creditTeamId = outcome === 'fill_in' ? homeTeamOf(person) : null;
 
     rows.push({
       playerId: person.playerId,

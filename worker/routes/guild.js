@@ -1,6 +1,7 @@
 import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { mayCreateGuilds } from '../discord.js';
+import { hasDiscord } from '../discord-guard.js';
 import { newId } from '../ids.js';
 import { GUILD_LIMIT_MESSAGE, LIMITS } from '../limits.js';
 import { ownPersonStatement } from '../membership.js';
@@ -11,6 +12,7 @@ import { FOREVER_RULESETS, REGIONS, findRealm, isVersion } from '../realms.js';
 import { rosterOptions } from '../roster-data.js';
 import { guildToday, loadApplicationFlags, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
 import { loadAttendanceFlags } from '../attendance-store.js';
+import { isTeamRosterRow } from '../team-roster.js';
 import { loadTeams } from './teams.js';
 import { devPayload } from './dev-view-as.js';
 
@@ -38,11 +40,17 @@ export async function guildPayload(db, guildContext, nowMs = Date.now()) {
   // The roster person who is the viewer's (null when the account is on no roster yet): the member Home and "My profile" open their pages.
   const own = await ownPersonStatement(db, guildContext.guild.id, guildContext.userId).first();
   // The teams the viewer's characters are on, and the team of their Main: the member Home reads its team from these, not from the shell's team picker.
-  const ownCharacters = own ? (await db.prepare('SELECT team_id, is_main FROM characters WHERE guild_id = ? AND player_id = ?').bind(guildContext.guild.id, own.id).all()).results || [] : [];
+  // Only characters on a team roster count (worker/team-roster.js), the same rule that gives team access (ownTeamIds in permissions.js).
+  const ownCharacters = own
+    ? ((await db.prepare('SELECT team_id, is_main, core_rank, left_on FROM characters WHERE guild_id = ? AND player_id = ?').bind(guildContext.guild.id, own.id).all()).results || []).filter(isTeamRosterRow)
+    : [];
   const mainRow = ownCharacters.find((row) => row.is_main === 1);
   return {
-    // The Discord server's id is shown on Guild settings > General (read-only, to the Guild Master only).
-    guild: guildContext.isGuildMaster ? { ...guildView(guildContext.guild), discordServerId: guildContext.guild.discord_server_id } : guildView(guildContext.guild),
+    // The Discord server's id is shown on Guild settings > General (read-only, to the Guild Master only). A guild without Discord has none: null, never the
+    // placeholder.
+    guild: guildContext.isGuildMaster
+      ? { ...guildView(guildContext.guild), discordServerId: hasDiscord(guildContext.guild) ? guildContext.guild.discord_server_id : null }
+      : guildView(guildContext.guild),
     teams: await loadTeams(db, guildContext.guild.id),
     me: {
       roles: guildContext.roles, can: guildContext.can, personId: own ? own.id : null,
@@ -253,7 +261,8 @@ export async function claimGuild(ctx) {
   if (manageable.stale) throw new HttpError(403, 'reauth_required', 'Sign in with Discord again to claim a guild.');
 
   const guild = await db.prepare('SELECT id, discord_server_id FROM guilds WHERE id = ?').bind(ctx.params.gid).first();
-  if (!guild || !manageable.servers.some((server) => server.id === guild.discord_server_id)) {
+  // A claim runs through the Discord server the claimer manages: a guild without one cannot be claimed this way.
+  if (!guild || !hasDiscord(guild) || !manageable.servers.some((server) => server.id === guild.discord_server_id)) {
     throw new HttpError(404, 'not_found', 'That guild does not exist.');
   }
   const userId = session.user.id;

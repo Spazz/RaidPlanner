@@ -7,6 +7,7 @@ import { toPerson } from './person.js';
 import { legacyColumnSql, legacyColumnsSql, legacyPersonColumnsSql, onTrialSql } from './person-legacy.js';
 import { raidRoleOf } from './recruit-data.js';
 import { roleOf, todayIn, trialFlag } from './roster-data.js';
+import { isTeamRosterRow, onTeamRosterSql } from './team-roster.js';
 
 // Avatar URLs carry the user's Discord ID, so only the people who can open People and roles (where avatars are
 // already shown) get them in roster responses; everyone else gets initials.
@@ -212,17 +213,18 @@ export async function personReply(ctx, guildContext, personId) {
   return { ...record, rosterFlags };
 }
 
-// GET /roster?team=: every person with a character on the team.
+// GET /roster?team=: every person with a character on the team's roster (worker/team-roster.js: placed, still here, a raiding rank). A Social or Former
+// character is never listed; the person's other characters still come with them (the Main, the alt count).
 export async function loadRosterRows(db, guildContext, team, today, viewer) {
   const guildId = guildContext.guild.id;
   const [rowResult, userResult] = await db.batch([
     db.prepare(
       `SELECT p.id AS player_id, ${legacyPersonColumnsSql('p')}, p.joined_on, p.discord_user_id, p.user_id, p.version,
-              c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main,
+              c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, c.core_rank, c.left_on,
               t.name AS team_name, t.archived AS team_archived
          FROM players p JOIN characters c ON c.player_id = p.id LEFT JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
-        WHERE p.guild_id = ? AND p.id IN (SELECT player_id FROM characters WHERE team_id = ? AND guild_id = ?)`,
-    ).bind(guildId, team.id, guildId),
+        WHERE p.guild_id = ? AND p.id IN (SELECT rc.player_id FROM characters rc WHERE rc.guild_id = ? AND ${onTeamRosterSql('rc', '?')})`,
+    ).bind(guildId, guildId, team.id),
     // Signed in = the person's account (linked by an officer, or matching the Discord ID they carry) is a member of this guild.
     db.prepare(
       `SELECT p.id AS player_id FROM players p JOIN users u ON (u.id = p.user_id OR (p.discord_user_id IS NOT NULL AND u.discord_id = p.discord_user_id))
@@ -239,7 +241,8 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
   for (const { player, characters } of byPlayer.values()) {
     const main = characters.find((entry) => entry.row.is_main === 1);
     if (!main) continue;
-    const onTeam = characters.filter((entry) => entry.row.team_id === team.id);
+    const onTeam = characters.filter((entry) => entry.row.team_id === team.id && isTeamRosterRow(entry.row));
+    if (!onTeam.length) continue;
     const shownEntry = onTeam.find((entry) => entry.row.is_main === 1) || onTeam.sort((a, b) => byName(a.view, b.view))[0];
     const shown = shownEntry.view;
     people.push({

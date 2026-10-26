@@ -41,8 +41,10 @@ async function modules() {
 
 // Synthetic evidence: persons are named by id, a character key is "<id>|".
 const key = (id) => `${id}|`;
+// A person is their characters (worker/person-rank.js). The dual write maps inactive to Social and keeps a left-on date only for those.
 const person = (id, { status = 'raider', joinedOn = '2026-08-01', leftOn = null, team = 'T1', extra = [] } = {}) => ({
-  playerId: id, status, joinedOn, leftOn, characters: [{ key: key(id), teamId: team }, ...extra],
+  playerId: id, joinedOn,
+  characters: [{ key: key(id), teamId: team, isMain: true, coreRank: status === 'inactive' ? 'social' : status, leftOn: status === 'inactive' ? leftOn : null }, ...extra],
 });
 const pull = (startedAt, ...ids) => ({ startedAt, kill: false, keys: ids.map(key) });
 const evidence = (over = {}) => ({
@@ -530,12 +532,12 @@ check('consolidation: a person in the log with no character on the raid team is 
     pulls: [pull(100, 'a', 'v'), pull(200, 'a', 'v'), { startedAt: 300, kill: false, keys: [key('a'), 'v2|'] }, { startedAt: 400, kill: false, keys: [key('a'), 'v2|'] }],
   }), p);
   const row = rowOf(result, 'v');
-  assert.deepEqual([row.outcome, row.credit, row.flags, row.needsReview, row.attended, row.creditTeamId], ['fill_in', null, [], 0, 1, 'T2'], 'two pulls on a T2 character, two on a T3 one: the tie goes to the lower team id');
+  assert.deepEqual([row.outcome, row.credit, row.flags, row.needsReview, row.attended, row.creditTeamId], ['fill_in', null, [], 0, 1, 'T2'], 'credited to the home team: the team of the Main (the T2 character)');
   const third = consolidate.consolidateRaid(evidence({
     people: [person('a'), visitor],
     pulls: [pull(100, 'a', 'v'), { startedAt: 200, kill: false, keys: [key('a'), 'v2|'] }, { startedAt: 300, kill: false, keys: [key('a'), 'v2|'] }],
   }), p);
-  assert.equal(rowOf(third, 'v').creditTeamId, 'T3', 'the character that played most decides the credited team');
+  assert.equal(rowOf(third, 'v').creditTeamId, 'T2', 'the character that played most (the T3 one) never decides the credited team: it stays the home team');
   assert.equal(third.openFlags, 0);
 });
 
@@ -603,10 +605,10 @@ check('consolidation: a manual raid uses the ticks as the log (no late / left), 
   // Nobody ticked: everyone follows the policy as if absent from a log.
   const none = consolidate.consolidateRaid(evidence({ raid: { id: 'r1', teamId: 'T1', raidOn: '2026-10-10', hasLog: false, manual: true }, people: [person('x')], signups: [signup('x', 'signed')] }), p);
   assert.equal(rowOf(none, 'x').outcome, 'missed');
-  // A visitor with a home team on the person overrides the character guess.
+  // A manual tick credits the home team too: the team of the person's Main, whichever character the tick names.
   const home = consolidate.consolidateRaid(evidence({
     raid: { id: 'r1', teamId: 'T1', raidOn: '2026-10-10', hasLog: false, manual: true },
-    people: [{ ...person('v', { team: 'T3', extra: [{ key: 'v2|', teamId: 'T2' }] }), homeTeamId: 'T2' }], manualPresent: ['v'],
+    people: [person('v', { team: 'T2', extra: [{ key: 'v2|', teamId: 'T3' }] })], manualPresent: ['v'],
   }), p);
   assert.equal(rowOf(home, 'v').creditTeamId, 'T2');
 });
@@ -1118,7 +1120,10 @@ function fixtureEvidence(fixture, roster, { wholeRoster = false, teamId = 'team1
   const signed = new Set(fixture.signups.map((s) => s.personId));
   const people = roster.persons
     .filter((p) => wholeRoster || signed.has(p.id) || p.characters.some((c) => inLog.has(c.key)))
-    .map((p) => ({ playerId: p.id, status: p.status, joinedOn: p.joinedOn, characters: p.characters.map((c) => ({ key: c.key, teamId: c.teamId })) }));
+    .map((p) => ({
+      playerId: p.id, joinedOn: p.joinedOn,
+      characters: p.characters.map((c, i) => ({ key: c.key, teamId: c.teamId, isMain: i === 0, coreRank: p.status === 'inactive' ? 'social' : p.status, leftOn: null })),
+    }));
   return {
     raid: { id: raidId || fixture.raidOn, teamId, raidOn: fixture.raidOn, hasLog: true, manual: false },
     people,

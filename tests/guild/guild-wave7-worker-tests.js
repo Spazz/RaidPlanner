@@ -449,7 +449,9 @@ check('api v1 (roster, raids): CSV and JSON for the whole guild or one team; fla
 
 check('api v1 (attendance): one row per person per team with the window\'s percentages, never the cells, outcomes or reasons; ?window= picks one of the offered windows; inactive people are left out', async () => {
   const s = await dataWorld();
-  s.exec("UPDATE players SET status = 'inactive', left_on = '2026-12-30' WHERE id = ?", (await s.person('Gone')).pid);
+  const gone = (await s.person('Gone')).pid;
+  s.exec("UPDATE players SET status = 'inactive', left_on = '2026-12-30' WHERE id = ?", gone);
+  s.exec("UPDATE characters SET core_rank = 'social' WHERE player_id = ?", gone); // the character columns follow (the dual write of worker/person-legacy.js)
   const key = await s.makeKey({ name: 'Att', teamId: s.tids[0] });
   const res = await s.api('/api/v1/attendance.csv', { token: key.token });
   assert.equal(res.status, 200, res.text);
