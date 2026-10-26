@@ -366,6 +366,90 @@ check('M1: POST /raids/:rid/signups/link puts a Discord ID on a person who holds
   assert.equal(sOne(s, 'SELECT discord_user_id FROM players WHERE id = ?', proven.pid).discord_user_id, m2Discord);
 });
 
+// ---- F9: the tombstones an unblock lifts
+
+// An account that was blocked deletes its data and comes back as a NEW account with the same Discord ID: the tombstones match it (pending review).
+async function blockedComesBack(s, key, name) {
+  const again = async (as) => {
+    s.jars[as] = (await signIn(s.w, scenarioDiscord(key, name), [memberOf(s.serverId)])).jar;
+    s.uids[as] = (await s.w.call(s.jars[as], 'GET', '/auth/me')).json.user.id;
+    return s.uids[as];
+  };
+  return again;
+}
+
+check('F9: an unblock lifts the tombstones of a matched earlier block when the actor ranks EQUAL to its blocker - another Officer lifts an Officer\'s memory, so the next sign-in is clean', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'], env: { TOMBSTONE_KEY } });
+  await s.officer('o1', 'Officerone');
+  await s.officer('o2', 'Officertwo');
+  await s.member('m1', 'Memberone');
+  await s.ok('o1', 'POST', `/people/${s.uids.m1}/block`, {}, 200);
+  const oldRef = `u:${s.uids.m1}`;
+  const refCount = () => sOne(s, 'SELECT COUNT(*) AS n FROM block_tombstones WHERE guild_id = ? AND block_ref = ?', s.gid, oldRef).n;
+  assert(refCount() > 0, 'the Officer\'s block left tombstones');
+  assert.equal((await s.w.call(s.jars.m1, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
+  const comeBack = await blockedComesBack(s, 'm1', 'Memberone');
+  const m1b = await comeBack('m1b');
+  assert(sOne(s, 'SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND pending_review = 1', s.gid, m1b), 'the new account is blocked for review');
+
+  const lifted = await s.call('o2', 'DELETE', `/people/${m1b}/block`);
+  assert.equal(lifted.status, 200, lifted.text);
+  assert.equal(refCount(), 0, 'an Officer is equal to the Officer who blocked: the tombstones go');
+  assert.equal(lifted.json.tombstonesKept, undefined);
+  await comeBack('m1c');
+  assert.equal(sOne(s, 'SELECT COUNT(*) AS n FROM guild_blocks WHERE guild_id = ?', s.gid).n, 0, 'the next sign-in is not blocked again');
+});
+
+check('F9: an unblock also lifts the tombstones of a block the actor MADE, whatever rank its snapshot says now; another Officer facing a senior snapshot keeps them (tombstonesKept)', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'], env: { TOMBSTONE_KEY } });
+  await s.officer('o1', 'Officerone');
+  await s.officer('o2', 'Officertwo');
+  await s.member('m1', 'Memberone');
+  // o1 holds the Owner seat when it blocks (the audit row snapshots 'owner', rank 0) and is only an Officer afterwards.
+  s.setOwner('o1');
+  await s.ok('o1', 'POST', `/people/${s.uids.m1}/block`, {}, 200);
+  assert.equal(sOne(s, "SELECT actor_role FROM audit_log WHERE action = 'access.remove' AND entity_id = ?", s.uids.m1).actor_role, 'owner');
+  s.setOwner('gm');
+  const oldRef = `u:${s.uids.m1}`;
+  const refCount = () => sOne(s, 'SELECT COUNT(*) AS n FROM block_tombstones WHERE guild_id = ? AND block_ref = ?', s.gid, oldRef).n;
+  assert.equal((await s.w.call(s.jars.m1, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
+  const comeBack = await blockedComesBack(s, 'm1', 'Memberone');
+  const m1b = await comeBack('m1b');
+  assert(sOne(s, 'SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?', s.gid, m1b), 'matched');
+
+  const byOther = await s.call('o2', 'DELETE', `/people/${m1b}/block`);
+  assert.equal(byOther.status, 200, byOther.text);
+  assert(refCount() > 0, 'another Officer is junior to the snapshot and did not make the block: the tombstones stay');
+  assert.equal(byOther.json.tombstonesKept, 1);
+  await comeBack('m1c');
+  assert(sOne(s, 'SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?', s.gid, m1b), 'matched again');
+  const byBlocker = await s.call('o1', 'DELETE', `/people/${m1b}/block`);
+  assert.equal(byBlocker.status, 200, byBlocker.text);
+  assert.equal(refCount(), 0, 'the Officer who made the block lifts its tombstones');
+  assert.equal(byBlocker.json.tombstonesKept, undefined);
+});
+
+check('F9: the same for an account-less person - an Officer lifting a person block deletes the tombstones of an Officer\'s earlier block its keys matched', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'], env: { TOMBSTONE_KEY } });
+  await s.officer('o1', 'Officerone');
+  await s.officer('o2', 'Officertwo');
+  const DISCORD_ID = '130000000000000078';
+  const first = await s.person({ name: 'Firstguy' });
+  sRun(s, 'UPDATE players SET discord_user_id = ? WHERE id = ?', DISCORD_ID, first.pid);
+  await s.ok('o1', 'POST', `/roster/${first.pid}/block`, {}, 200);
+  const firstRef = `p:${first.pid}`;
+  const refCount = () => sOne(s, 'SELECT COUNT(*) AS n FROM block_tombstones WHERE guild_id = ? AND block_ref = ?', s.gid, firstRef).n;
+  assert(refCount() > 0);
+  sRun(s, 'DELETE FROM players WHERE id = ?', first.pid); // the person is deleted; the block row goes with it, the tombstones stay
+  const second = await s.person({ name: 'Secondguy' });
+  sRun(s, 'UPDATE players SET discord_user_id = ? WHERE id = ?', DISCORD_ID, second.pid);
+  await s.ok('o2', 'POST', `/roster/${second.pid}/block`, {}, 200);
+  const lifted = await s.call('o2', 'DELETE', `/roster/${second.pid}/block`);
+  assert.equal(lifted.status, 200, lifted.text);
+  assert.equal(refCount(), 0, 'the Officer\'s tombstones go with the unblock');
+  assert.equal(lifted.json.tombstonesKept, undefined);
+});
+
 // ==== more checks above this line
 
 // ---------------------------------------------------------------------------

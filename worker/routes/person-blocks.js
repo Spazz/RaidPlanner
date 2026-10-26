@@ -12,7 +12,7 @@ import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.j
 import { auditStatement } from '../audit.js';
 import { blockEffectStatements } from '../block-effects.js';
 import {
-  MISSING_KEY_LINE, liftGuard, matchedRefsOf, personBlockRef, personKeys, planTombstones, splitLiftableRefs, tombstoneDeleteStatement, tombstoneInsertStatements,
+  MISSING_KEY_LINE, liftTombstoneStatements, matchedRefsOf, personBlockRef, personKeys, planTombstones, splitLiftableRefs, tombstoneDeleteStatement, tombstoneInsertStatements,
 } from '../block-tombstones.js';
 import { isId } from '../ids.js';
 import { isOwner, ownerSql } from '../owner.js';
@@ -67,7 +67,7 @@ async function assertOutranks(ctx, guildContext, target) {
   if (!(guildContext.rank < target.prospectiveRank)) throw forbidden();
 }
 
-// tombstonesKept: how many refs of earlier blocks the actor does not outrank kept their tombstones when this unblock lifted the person's own (only present when > 0).
+// tombstonesKept: how many refs of earlier blocks the actor may not lift (a senior's) kept their tombstones when this unblock lifted the person's own (only present when > 0).
 const answer = (pid, blocked, tombstoneMissing, tombstonesKept = 0) => jsonResponse({ blocked, personId: pid, tombstoneMissing, ...(tombstonesKept > 0 ? { tombstonesKept } : {}) });
 
 export async function blockRosterPerson(ctx) {
@@ -128,10 +128,10 @@ export async function unblockRosterPerson(ctx) {
 
   const guildId = guildContext.guild.id;
   const actorId = guildContext.userId;
-  // The person's own ref always goes; the refs its keys matched (earlier blocks of the same person) only when the actor outranks the block that wrote them.
+  // The person's own ref always goes; the refs its keys matched (earlier blocks of the same person) only when the block that wrote them is of the actor's rank or below, or the actor's own.
   const own = personBlockRef(target.pid);
   const matched = (await matchedRefsOf(ctx.db, ctx.env, guildId, await personKeys(ctx.db, guildId, target.pid))).filter((ref) => ref !== own);
-  const split = await splitLiftableRefs(ctx.db, guildId, matched, { owner: await isOwner(ctx.db, guildId, actorId), rank: guildContext.rank });
+  const split = await splitLiftableRefs(ctx.db, guildId, matched, { owner: await isOwner(ctx.db, guildId, actorId), rank: guildContext.rank, actorId });
   const guard = and(
     { sql: 'EXISTS (SELECT 1 FROM person_blocks WHERE guild_id = ? AND player_id = ?)', params: [guildId, target.pid] },
     actorHolds('guild.access', guildId, actorId),
@@ -142,7 +142,7 @@ export async function unblockRosterPerson(ctx) {
       guildId, actorUserId: actorId, action: 'person.unblock', entityType: 'person', entityId: target.pid, before: { blocked: true }, after: { blocked: false },
     }, guard),
     tombstoneDeleteStatement(ctx.db, { guildId, blockRefs: [own], guard }),
-    ...(split.lift.length ? [tombstoneDeleteStatement(ctx.db, { guildId, blockRefs: split.lift, guard: and(guard, liftGuard(guildId, actorId, split.minBlockerRank)) })] : []),
+    ...liftTombstoneStatements(ctx.db, { guildId, actorId, split, guard }),
     ctx.db.prepare(`DELETE FROM person_blocks WHERE guild_id = ? AND player_id = ? AND ${guard.sql}`).bind(guildId, target.pid, ...guard.params),
   ]);
   if (results[results.length - 1].meta.changes !== 1) {

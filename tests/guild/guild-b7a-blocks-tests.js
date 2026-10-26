@@ -625,16 +625,12 @@ check('match: Delete my data does not undo a block - the same Discord account si
   await signInAgain(s, 'm1', 'Memberone');
   assert.equal(await s.w.count('guild_blocks', 'user_id = ?', s.uids.m1), 1);
   assert.equal(await s.w.count('audit_log', "action = 'block.match'"), 1);
-  // An Officer lifts it: the account is restored, but the earlier block was an Officer's too, so the Officer does not outrank it and its tombstones stay (review fix F6;
-  // tests/guild/guild-hier-review-fixes-tests.js). The Guild Master lifts it again and the earlier tombstones go with it, so the next sign-in is clean.
+  // An Officer lifts it: the account is restored, and the earlier block was an Officer's too - an equal rank may lift an equal rank's memory (review fix F9;
+  // tests/guild/guild-b6a-rehome-fixes-tests.js, which also pins what a senior's block keeps) - so its tombstones go with it and the next sign-in is clean.
   const byOfficer = await s.call('o1', 'DELETE', `/people/${s.uids.m1}/block`);
   assert.equal(byOfficer.status, 200, byOfficer.text);
-  assert.equal(byOfficer.json.tombstonesKept, 1);
-  assert.equal(await s.w.count('block_tombstones'), 3, 'the tombstones of the equal-rank block stay');
-  await signInAgain(s, 'm1', 'Memberone');
-  assert.equal(await s.w.count('guild_blocks'), 1, 'matched again');
-  await s.ok('gm', 'DELETE', `/people/${s.uids.m1}/block`, undefined, 200);
-  assert.equal(await s.w.count('block_tombstones'), 0);
+  assert.equal(byOfficer.json.tombstonesKept, undefined);
+  assert.equal(await s.w.count('block_tombstones'), 0, 'the tombstones of the equal-rank block went');
   assert.equal(await s.w.count('guild_blocks'), 0);
   assert.equal((await s.ok('o1', 'GET', '/attention')).items.filter((item) => item.kind === 'block_review').length, 0);
   await signInAgain(s, 'm1', 'Memberone');

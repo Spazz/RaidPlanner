@@ -185,24 +185,53 @@ export async function matchedRefsOf(db, env, guildId, keys) {
   return hits ? [...new Set(hits.rows.map((row) => row.block_ref))] : [];
 }
 
-// Which of the matched refs an unblock may lift: the Owner any; everyone else only the refs of a block made by someone STRICTLY junior to them (the actor_role snapshot
-// of the audit row that wrote it, blockerRanksOf). A ref the actor does not outrank keeps its tombstones - the block it belongs to is the senior one's to lift - so an
-// Officer lifting a pending match cannot wipe the memory of a Guild Master's block. -> { lift, kept, minBlockerRank } (minBlockerRank: the guard value of liftGuard).
-export async function splitLiftableRefs(db, guildId, refs, { owner, rank }) {
-  if (!refs.length) return { lift: [], kept: [], minBlockerRank: null };
-  if (owner) return { lift: [...refs], kept: [], minBlockerRank: null };
-  const { ranks } = await blockerRanksOf(db, guildId, refs);
-  const lift = refs.filter((ref) => rank < ranks.get(ref));
-  return { lift, kept: refs.filter((ref) => !lift.includes(ref)), minBlockerRank: lift.length ? Math.min(...lift.map((ref) => ranks.get(ref))) : null };
+// Which of the matched refs an unblock may lift: the Owner any; everyone else the refs of a block made by someone of EQUAL or lower rank than theirs (the actor_role
+// snapshot of the audit row that wrote it, blockerRanksOf: an Officer lifts an Officer's memory, a Team Lead or a Member never a senior's), and the refs of a block the
+// actor made THEMSELVES, whatever rank the snapshot says (a Guild Master who was demoted lifts their own). A ref the actor may not lift keeps its tombstones - the block
+// it belongs to is the senior one's to lift - so an Officer lifting a pending match cannot wipe the memory of a Guild Master's block.
+// -> { lift (by rank), byBlocker (made by the actor, not liftable by rank), kept, minBlockerRank } (minBlockerRank: the guard value of liftGuard, over `lift`).
+export async function splitLiftableRefs(db, guildId, refs, { owner, rank, actorId = null }) {
+  if (!refs.length) return { lift: [], byBlocker: [], kept: [], minBlockerRank: null };
+  if (owner) return { lift: [...refs], byBlocker: [], kept: [], minBlockerRank: null };
+  const { ranks, blockers } = await blockerRanksOf(db, guildId, refs);
+  const lift = refs.filter((ref) => rank <= ranks.get(ref));
+  const byBlocker = refs.filter((ref) => !lift.includes(ref) && actorId && blockers.get(ref) === actorId);
+  return {
+    lift,
+    byBlocker,
+    kept: refs.filter((ref) => !lift.includes(ref) && !byBlocker.includes(ref)),
+    minBlockerRank: lift.length ? Math.min(...lift.map((ref) => ranks.get(ref))) : null,
+  };
 }
 
-// The same test inside the batch: the actor is (still) the Owner or strictly senior to the most senior block among the refs being lifted.
+// The same test inside the batch: the actor is (still) the Owner or ranks equal to or above the most senior block among the refs being lifted. (A null
+// minBlockerRank is -1, a rank nobody has: the Owner path of the read stays the Owner's.)
 export function liftGuard(guildId, actorId, minBlockerRank) {
   const owner = ownerGuard(guildId, actorId);
   return {
-    sql: `(${owner.sql} OR COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), 3) < ?)`,
-    params: [...owner.params, guildId, actorId, minBlockerRank === null || minBlockerRank === undefined ? 0 : minBlockerRank],
+    sql: `(${owner.sql} OR COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), 3) <= ?)`,
+    params: [...owner.params, guildId, actorId, minBlockerRank === null || minBlockerRank === undefined ? -1 : minBlockerRank],
   };
+}
+
+// The same test for the refs of blocks the actor made: every one of them has an audit row (access.remove for 'u:', person.block for 'p:') written by the actor.
+export function madeByGuard(guildId, actorId, refs) {
+  return {
+    sql: `(SELECT COUNT(*) FROM json_each(?) mr WHERE EXISTS (SELECT 1 FROM audit_log al WHERE al.guild_id = ? AND al.actor_user_id = ?
+            AND al.action = CASE substr(mr.value, 1, 2) WHEN 'u:' THEN 'access.remove' ELSE 'person.block' END AND al.entity_id = substr(mr.value, 3))) = ?`,
+    params: [JSON.stringify(refs), guildId, actorId, refs.length],
+  };
+}
+
+const andGuards = (...guards) => ({ sql: guards.map((entry) => `(${entry.sql})`).join(' AND '), params: guards.flatMap((entry) => entry.params) });
+
+// The DELETEs of the matched refs an unblock lifts (0 to 2 statements for the unblock's batch): the ones its rank allows and the ones the actor made. `guard`
+// ({ sql, params }) is the unblock's own guard.
+export function liftTombstoneStatements(db, { guildId, actorId, split, guard }) {
+  const out = [];
+  if (split.lift.length) out.push(tombstoneDeleteStatement(db, { guildId, blockRefs: split.lift, guard: andGuards(guard, liftGuard(guildId, actorId, split.minBlockerRank)) }));
+  if (split.byBlocker.length) out.push(tombstoneDeleteStatement(db, { guildId, blockRefs: split.byBlocker, guard: andGuards(guard, madeByGuard(guildId, actorId, split.byBlocker)) }));
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,14 +271,16 @@ export const MATCH_REASON = 'Matched an earlier block of the same person';
 // The audit action that wrote the block a ref belongs to ('u:' = an account block, 'p:' = an account-less person's).
 const BLOCK_ACTION = { 'u:': 'access.remove', 'p:': 'person.block' };
 
-// The rank of the officer who made each block, from the audit row that wrote it (the snapshot survives the blocker's own account deletion). ONE statement for all
-// the refs, however many: -> { ranks: Map<ref, rank>, reads } (reads 0 when no ref names a block kind).
+// The rank of the officer who made each block, from the audit row that wrote it (the snapshot survives the blocker's own account deletion), and who that was
+// (actor_user_id, null once the account is gone). ONE statement for all the refs, however many:
+// -> { ranks: Map<ref, rank>, blockers: Map<ref, user id | null>, reads } (reads 0 when no ref names a block kind).
 export async function blockerRanksOf(db, guildId, refs) {
   const ranks = new Map(refs.map((ref) => [ref, DEFAULT_BLOCKER_RANK]));
+  const blockers = new Map(refs.map((ref) => [ref, null]));
   const wanted = refs.filter((ref) => BLOCK_ACTION[ref.slice(0, 2)]);
-  if (!wanted.length) return { ranks, reads: 0 };
+  if (!wanted.length) return { ranks, blockers, reads: 0 };
   const found = await db.prepare(
-    `SELECT action, entity_id, actor_role FROM audit_log
+    `SELECT action, entity_id, actor_role, actor_user_id FROM audit_log
       WHERE guild_id = ? AND action IN ('access.remove', 'person.block') AND entity_id IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT 500`,
   ).bind(guildId, JSON.stringify(wanted.map((ref) => ref.slice(2)))).all();
   const settled = new Set();
@@ -257,9 +288,10 @@ export async function blockerRanksOf(db, guildId, refs) {
     const ref = `${row.action === 'access.remove' ? 'u:' : 'p:'}${row.entity_id}`;
     if (!ranks.has(ref) || settled.has(ref)) continue; // the newest row of a ref decides
     settled.add(ref);
+    blockers.set(ref, row.actor_user_id || null);
     if (Object.prototype.hasOwnProperty.call(SNAPSHOT_RANK, row.actor_role)) ranks.set(ref, SNAPSHOT_RANK[row.actor_role]);
   }
-  return { ranks, reads: 1 };
+  return { ranks, blockers, reads: 1 };
 }
 
 const RANK_OF_ROLE_SQL = `CASE m.role_id WHEN 'guild_master' THEN 0 WHEN 'officer' THEN 1 WHEN 'team_lead' THEN 2 ELSE 3 END`;
