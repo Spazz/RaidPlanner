@@ -7,8 +7,8 @@
  *   2. the trial review of a Trial alt shows the officer notes of the person's HOME team only: the lead of the alt's team reads attendance and loot, not the notes;
  *   3. a lost Make-Main race (the same move already done by another request) does not copy the old Main's empty trial dates over the new Main's;
  *   4. a custom role that holds signups.self at guild or team scope still needs a character on the raid's team roster to sign up (U R4-Q1);
- *   5. a Team Lead cannot make a character on no team the Main (Make Main, or a new Main with no team): the person would be left without a home team and
- *      the lead locked out of it; the whole-guild editor can;
+ *   5. Make Main on a character on no team carries the home team to the new Main (the old Main steps off, an alt on no team), so deleting the old Main does
+ *      not take the person off the team (a Team Lead of the home team may do it); a NEW Main added with no team still needs the whole-guild editor;
  *   6. the What's new page carries the R2 entry.
  * The guild is built through the API; a character is placed on a team (the team routes of lane B3 will do that) with the column itself.
  */
@@ -178,21 +178,24 @@ check('Make Main: the loser of a race (the same move already done) does not wipe
   assert.ok(dates.trial_start && dates.trial_end, 'the Main carries the trial dates');
   // The request that wins.
   await s.ok('gm', 'POST', `/roster/${p.pid}/characters/${alt}/main`, {}, 200);
-  const after = (await s.rows('SELECT name, is_main, trial_start, trial_end FROM characters WHERE player_id = ? ORDER BY name', p.pid));
+  const after = (await s.rows('SELECT name, is_main, team_id, trial_start, trial_end FROM characters WHERE player_id = ? ORDER BY name', p.pid));
   assert.deepEqual(after, [
-    { name: 'Trialalt', is_main: 1, trial_start: dates.trial_start, trial_end: dates.trial_end },
-    { name: 'Trialmain', is_main: 0, trial_start: null, trial_end: null },
+    { name: 'Trialalt', is_main: 1, team_id: alpha, trial_start: dates.trial_start, trial_end: dates.trial_end },
+    { name: 'Trialmain', is_main: 0, team_id: null, trial_start: null, trial_end: null },
   ]);
   await s.inSync('the winning Make Main');
-  // The loser read the person before that: the old Main on Alpha, the same target. Its batch, statement for statement, as the route builds it.
+  // The loser read the person before that: the old Main on Alpha, the same target. Its batch, statement for statement, as the route builds it
+  // (the home team follows the Main after the audit row and the trial dates).
   const db = s.w.db;
   const results = await db.batch([
     ...roster.makeMainStatements(db, p.pid, alt, 1, { homeTeamId: alpha, targetTeamId: null }),
     db.prepare('SELECT 1').bind(),
     ...legacy.trialDatesFollowMainStatements(db, p.cid, alt),
+    ...roster.homeTeamFollowsMainStatements(db, { playerId: p.pid, oldMainId: p.cid, newMainId: alt, homeTeamId: alpha, now: 1 }),
   ]);
   assert.deepEqual([results[0].meta.changes, results[1].meta.changes], [0, 0], 'the swap changed nothing (the route answers 409)');
-  assert.deepEqual(await s.rows('SELECT name, is_main, trial_start, trial_end FROM characters WHERE player_id = ? ORDER BY name', p.pid), after, 'and neither did the trial dates');
+  assert.deepEqual(results.slice(5).map((result) => result.meta.changes), [0, 0], 'and neither did the two team statements');
+  assert.deepEqual(await s.rows('SELECT name, is_main, team_id, trial_start, trial_end FROM characters WHERE player_id = ? ORDER BY name', p.pid), after, 'and neither did the trial dates');
   await s.inSync('the losing Make Main');
 });
 
@@ -238,29 +241,158 @@ check('sign-up: a custom role with signups.self (guild or team scope) does not l
 });
 
 // ---------------------------------------------------------------------------
-// 5. A Main on no team needs the whole-guild editor
+// 5. Make Main on a character on no team: the home team follows the Main (the old Main steps off). A NEW Main on no team needs the whole-guild editor.
 
-check('Make Main: a Team Lead cannot make a character on no team the Main (the person would lose its home team), an officer can', async () => {
+const characterRows = async (s, pid) => (await s.rows('SELECT name, is_main, team_id FROM characters WHERE player_id = ? ORDER BY name', pid)).map((r) => [r.name, r.is_main, r.team_id]);
+const rosterNames = async (s, who, teamId, pid) => ((await s.ok(who, 'GET', `/roster?team=${teamId}`)).people.find((row) => row.id === pid) || { names: null }).names;
+const makeMainOf = (s, who, pid, cid) => s.call(who, 'POST', `/roster/${pid}/characters/${cid}/main`, {});
+
+// Runs `interleave()` right before the first db.batch that holds a statement matching `re` (a concurrent request landing between the handler's reads and its write).
+function hookBatch(db, re, interleave) {
+  const real = db.batch.bind(db);
+  let done = false;
+  db.batch = async (statements) => {
+    if (!done && statements.some((statement) => re.test(statement.sql))) {
+      done = true;
+      interleave();
+    }
+    return real(statements);
+  };
+}
+
+check('Make Main on a teamless alt (officer): the new Main takes the home team, the old Main is a teamless alt; deleting the old Main leaves the person on the team roster', async () => {
   const s = await scenario();
   const [alpha] = s.tids;
-  await s.lead('lead', [alpha]);
   const p = await s.newPerson({ name: 'Alphahome' });
   const altId = await s.alt(p.pid, 'Alphaalt');
-  const refused = await s.call('lead', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {});
+  assert.deepEqual(await characterRows(s, p.pid), [['Alphaalt', 0, null], ['Alphahome', 1, alpha]]);
+  const done = await s.ok('gm', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {}, 200);
+  assert.deepEqual(done.characters.map((c) => [c.name, c.isMain, c.team.id]), [['Alphaalt', true, alpha], ['Alphahome', false, null]]);
+  assert.equal(done.person.homeTeam.id, alpha, 'the person keeps its home team');
+  assert.deepEqual(await characterRows(s, p.pid), [['Alphaalt', 1, alpha], ['Alphahome', 0, null]]);
+  assert.deepEqual(await rosterNames(s, 'gm', alpha, p.pid), ['Alphaalt'], 'the team roster shows the new Main');
+  await s.inSync('the officer\'s Make Main');
+  // The bug: deleting the old Main afterwards took the person off the team.
+  const removed = await s.ok('gm', 'DELETE', `/roster/${p.pid}/characters/${p.cid}`, undefined, 200);
+  assert.deepEqual(removed.characters.map((c) => [c.name, c.isMain, c.team.id]), [['Alphaalt', true, alpha]]);
+  assert.deepEqual(await rosterNames(s, 'gm', alpha, p.pid), ['Alphaalt'], 'still on the team roster after the old Main is deleted');
+  await s.inSync('deleting the old Main');
+});
+
+check('Make Main on a teamless alt: a Team Lead of the home team may do it, a Team Lead of another team gets 403 and nothing moves', async () => {
+  const s = await scenario();
+  const [alpha, bravo] = s.tids;
+  await s.lead('lead', [alpha]);
+  await s.lead('lead2', [bravo]);
+  const p = await s.newPerson({ name: 'Alphahome' });
+  const altId = await s.alt(p.pid, 'Alphaalt');
+  const before = await characterRows(s, p.pid);
+  const refused = await makeMainOf(s, 'lead2', p.pid, altId);
   assert.equal(refused.status, 403, refused.text);
-  assert.equal(refused.json.error, 'forbidden');
-  assert.match(refused.json.message, /no team/);
-  assert.deepEqual((await s.rows('SELECT name, is_main, team_id FROM characters WHERE player_id = ? ORDER BY name', p.pid)).map((r) => [r.name, r.is_main, r.team_id]),
-    [['Alphaalt', 0, null], ['Alphahome', 1, alpha]], 'nothing moved');
+  assert.deepEqual(await characterRows(s, p.pid), before, 'nothing moved');
+  const done = await s.ok('lead', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {}, 200);
+  assert.deepEqual(done.characters.map((c) => [c.name, c.isMain, c.team.id]), [['Alphaalt', true, alpha], ['Alphahome', false, null]]);
+  assert.equal(done.person.homeTeam.id, alpha);
   const record = await s.ok('lead', 'GET', `/roster/${p.pid}`);
   assert.equal(record.can.edit, true, 'the lead still reaches the person');
-  assert.equal(record.person.homeTeam.id, alpha);
   await s.ok('lead', 'PATCH', `/roster/${p.pid}`, { expectedVersion: record.person.version, joinedOn: '2026-12-01' }, 200);
-  // An alt the lead may place: a character on Alpha itself is made the Main as before; here the officer makes the teamless one the Main.
+  assert.equal((await s.call('lead2', 'DELETE', `/roster/${p.pid}/characters/${p.cid}`)).status, 403, 'the other lead still does not reach them');
+  await s.ok('lead', 'DELETE', `/roster/${p.pid}/characters/${p.cid}`, undefined, 200);
+  assert.deepEqual(await rosterNames(s, 'lead', alpha, p.pid), ['Alphaalt']);
+  await s.inSync('the lead\'s Make Main');
+});
+
+check('Make Main on an alt that sits on another team: no team changes (the old Main keeps the home team); a person whose Main is on no team has none to carry', async () => {
+  const s = await scenario();
+  const [alpha, bravo] = s.tids;
+  const p = await s.newPerson({ name: 'Alphahome' });
+  const altId = await s.alt(p.pid, 'Bravoalt');
+  s.exec(`UPDATE characters SET team_id = '${bravo}' WHERE id = '${altId}'`);
   const done = await s.ok('gm', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {}, 200);
-  assert.deepEqual(done.characters.map((c) => [c.name, c.isMain, c.team.id]), [['Alphaalt', true, null], ['Alphahome', false, alpha]]);
-  assert.equal(done.person.homeTeam, null);
-  await s.inSync('the officer\'s Make Main');
+  assert.deepEqual(done.characters.map((c) => [c.name, c.isMain, c.team.id]), [['Bravoalt', true, bravo], ['Alphahome', false, alpha]]);
+  assert.deepEqual(await characterRows(s, p.pid), [['Alphahome', 0, alpha], ['Bravoalt', 1, bravo]]);
+  await s.inSync('Make Main onto another team');
+  // The Main on no team: Make Main of a teamless alt moves no team (there is none to carry).
+  const homeless = await s.newPerson({ name: 'Nowherehome', teamId: undefined });
+  const nowhereAlt = await s.alt(homeless.pid, 'Nowherealt');
+  await s.ok('gm', 'POST', `/roster/${homeless.pid}/characters/${nowhereAlt}/main`, {}, 200);
+  assert.deepEqual(await characterRows(s, homeless.pid), [['Nowherealt', 1, null], ['Nowherehome', 0, null]]);
+  await s.inSync('Make Main with no home team');
+});
+
+check('Make Main on a teamless alt: the trial dates follow the Main, the home team\'s raids are marked stale, the audit row keeps its shape', async () => {
+  const s = await scenario();
+  const [alpha, bravo] = s.tids;
+  const p = await s.newPerson({ name: 'Trialhome', status: 'trial', trialEnd: '2027-02-10' });
+  const altId = await s.alt(p.pid, 'Trialalt');
+  const dates = (await s.rows('SELECT trial_start, trial_end FROM characters WHERE id = ?', p.cid))[0];
+  assert.ok(dates.trial_start && dates.trial_end);
+  // Two raids with evidence, one per team, both fresh; the Alpha one must be marked stale, the Bravo one not.
+  const alphaRaid = (await s.ok('gm', 'POST', '/raids', { teamId: alpha, raidOn: '2027-02-02', startTime: '20:00' }, 201)).raid.id;
+  const bravoRaid = (await s.ok('gm', 'POST', '/raids', { teamId: bravo, raidOn: '2027-02-03', startTime: '20:00' }, 201)).raid.id;
+  for (const [raid, team] of [[alphaRaid, alpha], [bravoRaid, bravo]]) {
+    s.exec(`INSERT INTO attendance (raid_id, guild_id, team_id, player_id, outcome, credit, attended) VALUES ('${raid}', '${s.gid}', '${team}', '${p.pid}', 'present', 1, 1)`);
+    s.exec(`UPDATE raids SET policy_fp = 'fp-fresh' WHERE id = '${raid}'`);
+  }
+  await s.ok('gm', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {}, 200);
+  assert.deepEqual(await s.rows('SELECT name, is_main, team_id, trial_start, trial_end FROM characters WHERE player_id = ? ORDER BY name', p.pid), [
+    { name: 'Trialalt', is_main: 1, team_id: alpha, trial_start: dates.trial_start, trial_end: dates.trial_end },
+    { name: 'Trialhome', is_main: 0, team_id: null, trial_start: null, trial_end: null },
+  ], 'the dates moved with the Main, together with the team');
+  const fps = Object.fromEntries((await s.rows('SELECT id, policy_fp FROM raids')).map((row) => [row.id, row.policy_fp]));
+  assert.equal(fps[alphaRaid], '', 'the home team\'s raid is stale');
+  assert.equal(fps[bravoRaid], 'fp-fresh', 'another team\'s raid is not');
+  const audit = await s.rows("SELECT guild_id, actor_user_id, action, entity_type, entity_id, before, after FROM audit_log WHERE action = 'character.main'");
+  assert.deepEqual(audit.map((row) => [row.guild_id, row.action, row.entity_type, row.entity_id, JSON.parse(row.before), JSON.parse(row.after)]),
+    [[s.gid, 'character.main', 'character', altId, { mainCharacterId: p.cid }, { mainCharacterId: altId }]], 'one row, the same shape as before');
+  assert.ok(audit[0].actor_user_id);
+  await s.inSync('Make Main with trial dates');
+});
+
+check('Make Main on a teamless alt: when the old Main changed between the read and the write nothing moves and the answer is 409 with the current record', async () => {
+  // (a) the same move was already done by another request.
+  let s = await scenario();
+  let [alpha] = s.tids;
+  let p = await s.newPerson({ name: 'Racehome' });
+  let altId = await s.alt(p.pid, 'Racealt');
+  hookBatch(s.w.db, /UPDATE characters SET is_main = 0/, () => {
+    s.exec(`UPDATE characters SET is_main = 0, team_id = NULL WHERE id = '${p.cid}'`);
+    s.exec(`UPDATE characters SET is_main = 1, team_id = '${alpha}' WHERE id = '${altId}'`);
+  });
+  let lost = await makeMainOf(s, 'gm', p.pid, altId);
+  assert.equal(lost.status, 409, lost.text);
+  assert.equal(lost.json.error, 'conflict');
+  assert.ok(lost.json.current, 'the current record');
+  assert.deepEqual(lost.json.current.characters.map((c) => [c.name, c.isMain, c.team.id]), [['Racealt', true, alpha], ['Racehome', false, null]]);
+  assert.deepEqual(await characterRows(s, p.pid), [['Racealt', 1, alpha], ['Racehome', 0, null]], 'the winner\'s state, not touched');
+  assert.equal(await s.w.count('audit_log', "action = 'character.main'"), 0, 'the loser wrote no audit row');
+  await s.inSync('the lost race (move already done)');
+  // (b) the old Main left the home team before the write: the swap does not match, and neither does a team write.
+  s = await scenario();
+  [alpha] = s.tids;
+  const bravo = s.tids[1];
+  p = await s.newPerson({ name: 'Movedhome' });
+  altId = await s.alt(p.pid, 'Movedalt');
+  hookBatch(s.w.db, /UPDATE characters SET is_main = 0/, () => s.exec(`UPDATE characters SET team_id = '${bravo}' WHERE id = '${p.cid}'`));
+  lost = await makeMainOf(s, 'gm', p.pid, altId);
+  assert.equal(lost.status, 409, lost.text);
+  assert.deepEqual(await characterRows(s, p.pid), [['Movedalt', 0, null], ['Movedhome', 1, bravo]], 'only what the other request did');
+  // (c) another character became the Main on another team: the old Main (an alt on the home team now) must not step off.
+  s = await scenario();
+  [alpha] = s.tids;
+  const elsewhere = s.tids[1];
+  p = await s.newPerson({ name: 'Swaphome' });
+  altId = await s.alt(p.pid, 'Swapalt');
+  const other = await s.alt(p.pid, 'Swapother');
+  hookBatch(s.w.db, /UPDATE characters SET is_main = 0/, () => {
+    s.exec(`UPDATE characters SET is_main = 0 WHERE id = '${p.cid}'`);
+    s.exec(`UPDATE characters SET is_main = 1, team_id = '${elsewhere}' WHERE id = '${other}'`);
+  });
+  lost = await makeMainOf(s, 'gm', p.pid, altId);
+  assert.equal(lost.status, 409, lost.text);
+  assert.deepEqual(await characterRows(s, p.pid), [['Swapalt', 0, null], ['Swaphome', 0, alpha], ['Swapother', 1, elsewhere]],
+    'the old Main keeps the home team, nothing else moved');
+  await s.inSync('the lost races');
 });
 
 check('add character as the Main: a Team Lead cannot add a new Main on no team, can on a team they edit; an officer can add one on no team', async () => {
