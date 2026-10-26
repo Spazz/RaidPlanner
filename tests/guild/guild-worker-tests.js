@@ -119,7 +119,8 @@ async function makeWorld({ allowlist = [], env = {} } = {}) {
       return (await db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).bind(...values).first()).n;
     },
   };
-  return world;
+  // Fresh-auth (lane B6b part 2a): this suite hands the guild over and deletes it as its Guild Master without being about fresh-auth, so those requests get their grant first.
+  return require('../guild-auto-fresh').autoFresh(world);
 }
 
 async function signIn(world, person, servers = [], jar = newJar()) {
@@ -1001,7 +1002,7 @@ check('guild master: the target must be a current, unblocked member; a lost race
 
   const realBatch = s.w.db.batch.bind(s.w.db);
   s.w.db.batch = async (statements) => {
-    if (statements[0].sql.includes('UPDATE role_assignments SET user_id')) {
+    if (statements.some((statement) => statement.sql.includes('UPDATE role_assignments SET user_id'))) {
       s.w.db.sqlite.exec(`DELETE FROM user_servers WHERE user_id = '${s.ids.bob}'`);
     }
     return realBatch(statements);

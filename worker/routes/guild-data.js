@@ -7,7 +7,8 @@ import { auditStatement } from '../audit.js';
 import { hasDiscord } from '../discord-guard.js';
 import { buildGuildExport } from '../guild-export.js';
 import { sees } from '../onboarding.js';
-import { requireOwner } from '../owner.js';
+import { allOf, beginFreshAct, freshRequiredError } from '../fresh.js';
+import { ownerGuard, readSeat, requireOwner } from '../owner.js';
 import { loadGuildContext } from '../permissions.js';
 import { EXPORT_LIMIT, EXPORT_WINDOW_MS, enforceRateLimit } from '../ratelimit.js';
 import { todayIn } from '../roster-data.js';
@@ -35,6 +36,9 @@ export async function exportGuild(ctx) {
 }
 
 // The Discord server of a deleted guild keeps no membership rows (blocked people included), exactly like when an account deletes its last guild.
+// DELETE /api/guild/:gid { confirmName }: an Owner act that needs a FRESH sign-in (purpose guild_delete, no params) in every guild except one whose rank source is 'manual'
+// (session only; documented in tasks/open/b6b-api-contract.md). Without the grant: 403 fresh_required { purpose }. The grant is consumed inside the batch below, and the Owner
+// test repeats there, so a hand-over that raced this request deletes nothing.
 export async function deleteGuild(ctx) {
   const { db, session, body } = ctx;
   const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid, session.viewAs);
@@ -45,14 +49,21 @@ export async function deleteGuild(ctx) {
   if (typed !== guild.name) {
     throw new HttpError(400, 'confirm_mismatch', 'Type the guild name exactly as shown to delete the guild.', { field: 'confirmName' });
   }
-  await db.batch([
+  const asOwner = ownerGuard(guild.id, session.user.id);
+  const seat = await readSeat(db, guild.id);
+  const act = await beginFreshAct(ctx, { required: seat.rankSource !== 'manual', purpose: 'guild_delete', guildId: guild.id, params: {}, extra: asOwner });
+  const guard = allOf(act.guard, asOwner);
+  const results = await db.batch([
+    ...act.statements,
     // guild_id stays NULL: the row would go with the guild otherwise (the same record deleting an account leaves).
-    auditStatement(ctx, { guildId: null, actorUserId: session.user.id, action: 'guild.delete', entityType: 'guild', entityId: guild.id }),
-    db.prepare('DELETE FROM guilds WHERE id = ?').bind(guild.id),
+    auditStatement(ctx, { guildId: null, actorUserId: session.user.id, action: 'guild.delete', entityType: 'guild', entityId: guild.id }, guard),
+    db.prepare(`DELETE FROM guilds WHERE id = ? AND ${guard.sql}`).bind(guild.id, ...guard.params),
     // A guild without Discord has no server membership rows to clear.
-    ...(hasDiscord(guild) ? [db.prepare('DELETE FROM user_servers WHERE server_id = ? AND NOT EXISTS (SELECT 1 FROM guilds WHERE discord_server_id = user_servers.server_id)')
-      .bind(guild.discord_server_id)] : []),
+    ...(hasDiscord(guild) ? [db.prepare(`DELETE FROM user_servers WHERE server_id = ? AND NOT EXISTS (SELECT 1 FROM guilds WHERE discord_server_id = user_servers.server_id) AND ${act.guard.sql}`)
+      .bind(guild.discord_server_id, ...act.guard.params)] : []),
   ]);
+  if (!act.consumed(results)) throw freshRequiredError('guild_delete');
+  if (results[act.offset + 1].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The guild changed while you were deleting it. Reload and try again.');
   return jsonResponse({ ok: true });
 }
 

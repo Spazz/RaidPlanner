@@ -5,7 +5,8 @@ import {
   MISSING_KEY_LINE, accountBlockRef, accountKeys, liftTombstoneStatements, matchedRefsOf, planTombstones, splitLiftableRefs, tombstoneDeleteStatement, tombstoneInsertStatements,
 } from '../block-tombstones.js';
 import { newId } from '../ids.js';
-import { isOwner, requireOwner } from '../owner.js';
+import { allOf, beginFreshAct, freshRequiredError } from '../fresh.js';
+import { isOwner, liveRecipientGuard, moveSeatStatement, ownerGuard, ownerSql, readSeat, requireOwner, seatHeldBySql } from '../owner.js';
 import { boundMember, memberCandidatesSql, reachesGuildSql } from '../membership.js';
 import { botConfigured } from '../discord-bot.js';
 import { requireDiscord } from '../discord-guard.js';
@@ -68,7 +69,8 @@ async function loadModel(db, guildContext) {
   }
   for (const block of blockResult.results) {
     const entry = byId.get(block.user_id);
-    if (entry) entry.block = block;
+    // A block row on the unsuspended Owner (the Owner row of the effective roles) is ignored, as worker/membership.js blockedSql ignores it: an Owner who is live cannot be removed.
+    if (entry && !entry.assignments.some((assignment) => assignment.source === 'owner')) entry.block = block;
   }
   for (const entry of byId.values()) {
     entry.roles = shapeRoles(entry.assignments);
@@ -373,56 +375,111 @@ export async function syncPerson(ctx) {
   return jsonResponse({ ...fresh, sync: { status: result.status, reason: result.reason || null, added: result.added || 0, removed: result.removed || 0 } });
 }
 
+// The target of a hand-over of the SEAT: a current, unblocked member other than the Owner. Unlike findRoleTarget there is no rank test: the in-game Guild Master (a derived Guild
+// Master) is the natural recipient and ranks as a Guild Master already.
+function findSeatTarget(model, userId, guildContext) {
+  const entry = model.byId.get(userId);
+  if (!entry || !isCurrentMember(entry)) throw notFound();
+  if (entry.id === guildContext.userId) throw new HttpError(403, 'forbidden', 'You already hold the guild.');
+  return entry;
+}
+
+// POST /api/guild/:gid/people/:uid/guild-master: hand the guild to a member. An Owner act that needs a FRESH sign-in (purpose handover, params { targetUserId }) in every guild
+// except one whose rank source is 'manual' (session only: such a guild has no Battle.net proof to ask for; documented in tasks/open/b6b-api-contract.md). Without the grant:
+// 403 fresh_required { purpose, params }.
+//   seat set (owner_user_id)  ONLY the seat moves: `UPDATE guilds SET owner_user_id = <target> WHERE id = ? AND owner_user_id IS <the Owner>`. The recipient must be a member and, in
+//                             an 'ingame' guild, live (a Battle.net-proven character on the roster: the guard sits in the batch). The previous Owner keeps what their own rank and
+//                             stored roles give; NO Officer row is written for them (U R8-Q1).
+//   no seat (legacy)          today's swap of the stored Guild Master row; the previous one becomes an Officer.
 export async function makeGuildMaster(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
-  requireAction(guildContext, 'guild.roles');
-  // An Owner act (plan "Owner-only acts"): a Guild Master by role who does not hold the Owner seat cannot hand the guild over.
+  // An Owner act (plan "Owner-only acts"). The Owner passes the gate with or without a stored Guild Master role (review finding B4b/B5 F2: a seat-only Owner holds none), and a
+  // Guild Master by role who does not hold the seat, or a suspended Owner, cannot hand the guild over.
   await requireOwner(ctx.db, guildContext, 'Only the Owner of the guild can hand it over.');
+  const guildId = guildContext.guild.id;
+  const seat = await readSeat(ctx.db, guildId);
   const model = await loadModel(ctx.db, guildContext);
-  const target = findRoleTarget(model, ctx.params.uid, guildContext);
+  const target = seat.seatHolder ? findSeatTarget(model, ctx.params.uid, guildContext) : findRoleTarget(model, ctx.params.uid, guildContext);
   if (!isCurrentMember(target)) throw notFound();
 
-  const guildId = guildContext.guild.id;
   const oldMasterId = guildContext.userId;
   const targetId = target.id;
   const now = ctx.now();
-  const guard = memberGuard(guildContext, targetId);
-  const targetIsMaster = {
-    sql: `EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = 'guild_master')`,
-    params: [guildId, targetId],
-  };
+  const asOwner = ownerGuard(guildId, oldMasterId);
+  const recipient = boundMember(targetId, guildId, guildContext.guild.discord_server_id);
+  if (seat.seatHolder && seat.rankSource === 'ingame') {
+    const live = liveRecipientGuard(guildId, targetId);
+    const row = await ctx.db.prepare(`SELECT ${live.sql} AS live`).bind(...live.params).first();
+    if (!row || row.live !== 1) {
+      throw new HttpError(409, 'recipient_not_live',
+        'That person has no character proved by Battle.net on the in-game roster, so they could not hold the guild. Ask them to connect Battle.net first.', { field: 'uid' });
+    }
+  }
+  const act = await beginFreshAct(ctx, {
+    required: seat.rankSource !== 'manual', purpose: 'handover', guildId, params: { targetUserId: targetId }, extra: asOwner,
+  });
 
   let results;
+  let moved;
   try {
-    results = await ctx.db.batch([
-    // The swap: one guarded UPDATE. Zero changes means the target or the viewer changed under us.
-    ctx.db.prepare(
-      `UPDATE role_assignments SET user_id = ?, assigned_by = ?, assigned_at = ?
-        WHERE guild_id = ? AND role_id = 'guild_master' AND user_id = ? AND ${guard.sql}`,
-    ).bind(targetId, oldMasterId, now, guildId, oldMasterId, ...guard.params),
-    // The new Guild Master's other rows are dropped; the old one becomes an Officer.
-    ctx.db.prepare(
-      `DELETE FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id != 'guild_master' AND ${targetIsMaster.sql}`,
-    ).bind(guildId, targetId, ...targetIsMaster.params),
-    ctx.db.prepare(
-      `INSERT OR IGNORE INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
-       SELECT ?, ?, ?, 'officer', NULL, ?, ? WHERE ${targetIsMaster.sql}`,
-    ).bind(newId('ra', ctx.randomBytes), guildId, oldMasterId, targetId, now, ...targetIsMaster.params),
-    auditStatement(ctx, {
-      guildId, actorUserId: oldMasterId, action: 'guild_master.transfer', entityType: 'user', entityId: targetId,
-      before: { guildMasterUserId: oldMasterId }, after: { guildMasterUserId: targetId },
-    }, targetIsMaster),
-    ]);
+    if (seat.seatHolder) {
+      // The audit row goes first, with the guards of the move, so it records the Owner as the Owner (the move changes who that is).
+      const guards = allOf(act.guard, asOwner, recipient, liveRecipientGuard(guildId, targetId), { sql: seatHeldBySql('?', '?'), params: [guildId, oldMasterId] });
+      results = await ctx.db.batch([
+        ...act.statements,
+        auditStatement(ctx, {
+          guildId, actorUserId: oldMasterId, action: 'guild_master.transfer', entityType: 'user', entityId: targetId,
+          before: { guildMasterUserId: oldMasterId }, after: { guildMasterUserId: targetId },
+        }, guards),
+        moveSeatStatement(ctx.db, { guildId, from: oldMasterId, to: targetId, guards: [guards] }),
+      ]);
+      moved = results[act.offset + 1].meta.changes;
+    } else {
+      const guard = allOf(memberGuard(guildContext, targetId), act.guard);
+      const targetIsMaster = allOf({
+        sql: `EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = 'guild_master')`,
+        params: [guildId, targetId],
+      }, act.guard);
+      results = await ctx.db.batch([
+        ...act.statements,
+        // The swap: one guarded UPDATE. Zero changes means the target or the viewer changed under us.
+        ctx.db.prepare(
+          `UPDATE role_assignments SET user_id = ?, assigned_by = ?, assigned_at = ?
+            WHERE guild_id = ? AND role_id = 'guild_master' AND user_id = ? AND ${guard.sql}`,
+        ).bind(targetId, oldMasterId, now, guildId, oldMasterId, ...guard.params),
+        // The new Guild Master's other rows are dropped; the old one becomes an Officer.
+        ctx.db.prepare(
+          `DELETE FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id != 'guild_master' AND ${targetIsMaster.sql}`,
+        ).bind(guildId, targetId, ...targetIsMaster.params),
+        ctx.db.prepare(
+          `INSERT OR IGNORE INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
+           SELECT ?, ?, ?, 'officer', NULL, ?, ? WHERE ${targetIsMaster.sql}`,
+        ).bind(newId('ra', ctx.randomBytes), guildId, oldMasterId, targetId, now, ...targetIsMaster.params),
+        auditStatement(ctx, {
+          guildId, actorUserId: oldMasterId, action: 'guild_master.transfer', entityType: 'user', entityId: targetId,
+          before: { guildMasterUserId: oldMasterId }, after: { guildMasterUserId: targetId },
+        }, targetIsMaster),
+      ]);
+      moved = results[act.offset].meta.changes;
+    }
   } catch (error) {
     // A concurrent identical hand-over won the unique index: answer from the fresh state.
     if (!isUniqueViolation(error)) throw error;
     return peopleReply(ctx, await loadGuildContext(ctx.db, oldMasterId, guildId));
   }
-  if (results[0].meta.changes !== 1) {
+  if (!act.consumed(results)) throw freshRequiredError('handover', { targetUserId: targetId });
+  if (moved !== 1) {
     throw new HttpError(409, 'conflict', 'The guild changed while you were handing it over. Reload and try again.');
   }
-  // The viewer is an Officer now; answer from fresh state.
-  const fresh = await loadGuildContext(ctx.db, oldMasterId, guildId);
+  // The previous Owner is an Officer (legacy) or whatever their own rank makes them (seat); answer from fresh state. A previous Owner whom the guild's rank source no longer
+  // counts as a member (a seat holder with no roster character of their own) gets the bare answer.
+  let fresh;
+  try {
+    fresh = await loadGuildContext(ctx.db, oldMasterId, guildId);
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 403) return jsonResponse({ handedOver: true });
+    throw error;
+  }
   return peopleReply(ctx, fresh);
 }
 
@@ -437,6 +494,9 @@ export async function blockPerson(ctx) {
   const reason = parseReason(ctx.body);
   const model = await loadModel(ctx.db, guildContext);
   const target = findTarget(model, ctx.params.uid);
+  // The Owner who is not suspended cannot be blocked, whoever asks (plan "Owner"); a SUSPENDED Owner is blockable like anyone (U R4-Q3) and any Guild Master tier principal
+  // restores them. The Owner row of the effective roles is how the model tells the two apart.
+  if (target.assignments.some((assignment) => assignment.source === 'owner')) throw new HttpError(403, 'forbidden', 'The Owner of the guild cannot be removed.');
   if (!hierarchyAllows(guildContext, target)) throw new HttpError(403, 'forbidden', 'You cannot remove that person\'s access.');
   if (target.block) return peopleReply(ctx, guildContext);
 
@@ -448,7 +508,9 @@ export async function blockPerson(ctx) {
   if (plan.missing) ctx.log(MISSING_KEY_LINE);
   // One guarded INSERT: the actor still holds the right and still outranks the target (an Officer cannot
   // remove an Officer or the Guild Master). Everything else in the batch follows only if THIS call's block row was written.
-  const guard = and(actorHolds('guild.access', guildId, guildContext.userId), actorOutranks(guildId, guildContext.userId, target.id));
+  // ... and the same refusal inside the write: a hand-over that made the target the Owner between the read and the INSERT blocks nobody.
+  const notOwner = { sql: `NOT ${ownerSql('?', '?')}`, params: [guildId, target.id, target.id] };
+  const guard = and(actorHolds('guild.access', guildId, guildContext.userId), actorOutranks(guildId, guildContext.userId, target.id), notOwner);
   const written = {
     sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND blocked_by = ? AND created_at = ?)',
     params: [guildId, target.id, guildContext.userId, now],

@@ -127,9 +127,11 @@ check('reachesOf / membershipOf mirror memberSql / reachesGuildSql on every sour
          FROM users u, guilds g WHERE u.id = ? AND g.id = ?`, c.uid, c.gid);
     const facts = { source: c.source, inServer: c.inServer, linked: c.linked, owner: c.owner, rosterCharacter: c.linked && (c.state === 'onRoster' || c.state === 'provenOnRoster') };
     const where = JSON.stringify(c);
-    assert.equal(row.blocked === 1, c.blocked, where);
+    // A block row on the unsuspended Owner is ignored (lane B6b part 2a: an Owner who is not suspended cannot be blocked).
+    const effectivelyBlocked = c.blocked && !c.owner;
+    assert.equal(row.blocked === 1, effectivelyBlocked, where);
     assert.equal(row.reaches === 1, m.reachesOf(facts), `reaches: ${where}`);
-    assert.equal(m.membershipOf({ blocked: c.blocked, ...facts }), c.blocked ? 'blocked' : (m.reachesOf(facts) ? 'member' : 'none'));
+    assert.equal(m.membershipOf({ blocked: c.blocked, ...facts }), effectivelyBlocked ? 'blocked' : (m.reachesOf(facts) ? 'member' : 'none'));
     assert.equal(row.member === 1, m.membershipOf({ blocked: c.blocked, ...facts }) === 'member', `member: ${where}`);
     // The bound forms carry their own values and say the same.
     const guard = m.boundMember(c.uid, c.gid, (await one(s.w.db, 'SELECT discord_server_id AS sid FROM guilds WHERE id = ?', c.gid)).sid);
@@ -140,7 +142,8 @@ check('reachesOf / membershipOf mirror memberSql / reachesGuildSql on every sour
   assert.equal(m.reachesOf({ source: 'manual', inServer: true }), false);
   assert.equal(m.reachesOf({ source: 'ingame', inServer: true, linked: true }), false, 'linked with no roster character');
   assert.equal(m.reachesOf({ source: 'ingame', owner: true }), true);
-  assert.equal(m.membershipOf({ blocked: true, source: 'ingame', owner: true }), 'blocked');
+  assert.equal(m.membershipOf({ blocked: true, source: 'ingame', owner: true }), 'member', 'a block row on the unsuspended Owner is ignored');
+  assert.equal(m.membershipOf({ blocked: true, source: 'ingame', owner: false, linked: true, rosterCharacter: true }), 'blocked', 'and blocks everyone else');
 });
 
 check('"my guilds" driven from the account\'s candidates equals a pass over every guild with memberSql, for every account of the matrix; memberCandidatesSql covers every member', async () => {
@@ -315,7 +318,7 @@ check("'ingame': roles stored for a person grant nothing while membership fails,
   assert.deepEqual(await memberGuildIds(s, 'officer'), [s.gid]);
 });
 
-check("'ingame': the Owner passes while LIVE (a valid Battle.net-proven character on the stored roster) even without a usable roster character, and not while suspended; a stored Guild Master row counts for nothing; a block beats the Owner exemption", async () => {
+check("'ingame': the Owner passes while LIVE (a valid Battle.net-proven character on the stored roster) even without a usable roster character, and not while suspended; a stored Guild Master row counts for nothing; a block row on the live Owner is ignored, and counts once the Owner is suspended", async () => {
   const s = await world();
   setSource(s, 'ingame');
   const stored = await guildGet(s, 'gm');
@@ -337,7 +340,12 @@ check("'ingame': the Owner passes while LIVE (a valid Battle.net-proven characte
   assert.deepEqual(await memberGuildIds(s, 'discordonly'), [s.gid], 'and the guild is in their list (the owner candidate set)');
   const derived = await guildGet(s, 'gm');
   assert.deepEqual([derived.status, derived.json.error], [403, 'not_member'], 'the former Guild Master has no roster character');
+  // A block row on the LIVE Owner is ignored (lane B6b part 2a): an Owner who is not suspended cannot be blocked.
   block(s, 'discordonly');
+  assert.equal((await guildGet(s, 'discordonly')).status, 200, 'a block row on the unsuspended Owner changes nothing');
+  assert.deepEqual(await memberGuildIds(s, 'discordonly'), [s.gid]);
+  // Suspended again (the proof is gone), the same row blocks: a suspended Owner is blockable (U R4-Q3).
+  s.w.db.sqlite.prepare("UPDATE characters SET owner_proof = 'officer' WHERE id = 'c_seatowner'").run();
   const blocked = await guildGet(s, 'discordonly');
   assert.deepEqual([blocked.status, blocked.json.error], [403, 'access_removed']);
   assert.deepEqual(await memberGuildIds(s, 'discordonly'), []);

@@ -113,9 +113,9 @@ check('Owner-only gate: handing over the Guild Master refuses a derived Guild Ma
   s.restore();
   assert.equal(await seat(), s.uids.own);
   assert.equal((await s.rows("SELECT id FROM audit_log WHERE action = 'guild_master.transfer'")).length, 0);
-  // The Owner passes the gate; the swap itself is the legacy one on the stored row (lane B6b part 2 replaces it), so what the Owner meets is its conflict answer.
+  // The Owner passes the gate and meets the hand-over's own rules (lane B6b part 2a): 'mem' has no Battle.net-proven character, so in an in-game guild they are not a live recipient.
   const res = await s.call('own', 'POST', `/people/${s.uids.mem}/guild-master`, {});
-  assert.notEqual(res.status, 403, res.text);
+  assert.deepEqual([res.status, res.json.error], [409, 'recipient_not_live'], res.text);
 });
 
 check('Owner-only gate: the flip dry run refuses a derived Guild Master, an Officer and a suspended Owner before anything else; the live Owner reaches the already-in-game answer', async () => {

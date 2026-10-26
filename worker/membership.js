@@ -15,7 +15,7 @@
 //   linked to a person      players.user_id = the account, set by an officer ("Link account" on the person page), by an approved Battle.net character claim, or
 //                           (in-game guilds) by the sign-in match. A Discord ID match alone (players.discord_user_id) does NOT make someone a member: leaving the
 //                           Discord server still ends a Discord member's access, exactly as before accounts existed.
-//   blocked                 a guild_blocks row; it wins over every source
+//   blocked                 a guild_blocks row; it wins over every source, except on the unsuspended Owner (they cannot be blocked: a row on them is ignored)
 //
 //   my person = players.user_id is the account  OR  players.discord_user_id is the account's Discord ID  (ownPlayerSql / isOwnPlayer)
 //
@@ -44,9 +44,9 @@ export function reachesOf({ source = null, inServer = false, linked = false, own
   return !!(inServer || linked);
 }
 
-// -> 'blocked' | 'member' | 'none'
+// -> 'blocked' | 'member' | 'none'. A block does not apply to the unsuspended Owner (facts.owner): see blockedSql.
 export function membershipOf({ blocked, ...facts }) {
-  if (blocked) return 'blocked';
+  if (blocked && !facts.owner) return 'blocked';
   return reachesOf(facts) ? 'member' : 'none';
 }
 
@@ -62,8 +62,11 @@ export function notMemberMessage(source) {
   return "You are not in this guild's Discord server, and no roster entry is linked to your account. Sign in again if you just joined the server, or ask an officer to link your account to your roster entry.";
 }
 
+// A guild_blocks row blocks, EXCEPT on the Owner who is not suspended (plan "Owner": an unsuspended Owner cannot be blocked; a block row written while they were suspended,
+// or by a tombstone match, is ignored the moment they are live again and counts again if they are suspended again). The Owner test is the one fragment of worker/owner.js,
+// asked about the block row's own guild and user, so it adds no placeholder.
 export const blockedSql = (userExpr, guildExpr) =>
-  `EXISTS (SELECT 1 FROM guild_blocks mb WHERE mb.guild_id = ${guildExpr} AND mb.user_id = ${userExpr})`;
+  `EXISTS (SELECT 1 FROM guild_blocks mb WHERE mb.guild_id = ${guildExpr} AND mb.user_id = ${userExpr} AND NOT ${ownerSql('mb.guild_id', 'mb.user_id')})`;
 
 // A guild without Discord (hasDiscord, worker/discord-guard.js: server id NULL or 'none:<guild>') has no server to be in. The guard is on the matched
 // user_servers column, so the server expression is still used once (a bare `?` stays safe).

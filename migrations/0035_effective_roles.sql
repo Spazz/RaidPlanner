@@ -9,7 +9,7 @@
 --                                 (every guild before the flip): once the seat is set or the rank source is chosen, the Owner is the seat and a Guild Master row left behind
 --                                 grants nothing (review finding B4b/B5 F1, first half).
 --   source 'ingame'               the roles DERIVED from the in-game rank, only in a guild whose rank_source is 'ingame': the account's Battle.net-proven characters that are
---                                 VALID (below) each carry the in-game rank of their guild_roster row; the highest-ranked valid character wins (every character tied at that
+--                                 VALID (below) and not Former (left_on IS NULL) each carry the in-game rank of their guild_roster row; the highest-ranked valid character wins (every character tied at that
 --                                 rank counts), and the account gets the role the guild's rank map (source_rank_maps, role_id) gives that rank. guild_master only for the map
 --                                 row with source_key '0' (the table's CHECK says the same). A team-scoped role (team_lead) is held for the team the character is placed on
 --                                 (characters.team_id) and not at all when it has no team. A rank with no map row, or a map row with no role, gives nothing.
@@ -23,6 +23,9 @@
 --   (b)  its identity key is a guild_roster row of the guild  (namespace, blizzard_realm_id, blizzard_char_id): it is on the last good roster
 --   (d)  an INNER JOIN to bnet_links: the account's CURRENT Battle.net link has bnet_account_id = proof_bnet_account_id (a removed or replaced link proves nothing)
 -- (c), the write-time monotonic guard, is a rule of the writers and has no read-time form.
+-- DERIVED ROLES also need the character to be NOT FORMER (characters.left_on IS NULL), exactly as membership does (worker/membership.js personOnRosterSql): a character that left the
+-- guild gives no role, and a Former character of a better in-game rank does not hide the person's other characters (lane B6b part 2a; this file was edited in place, before it was
+-- applied anywhere). Owner LIVENESS keeps the plan's wording ("a-d valid"): a proven character that is still on the roster keeps the seat holder live even when it is marked Former.
 --
 -- SHAPE. effective_roles_stored, effective_roles_ingame and effective_roles_owner (one view per source) and effective_roles on top: a UNION ALL of the three, so a Discord
 -- source later adds ONE view and ONE term (D1 allows 5 terms in a compound SELECT; each of these has at most 3). Every view has plain joins and no aggregate, DISTINCT only in the
@@ -55,7 +58,7 @@ DROP VIEW IF EXISTS ingame_proven_characters;
 -- lookup that ends a guild that is not in-game at once), then only that person's characters, then the roster row, then the link. Left to itself the planner may start from
 -- guilds or guild_roster, which is a pass over a whole table.
 CREATE VIEW ingame_proven_characters AS
-SELECT pp.guild_id AS guild_id, pp.user_id AS user_id, pc.id AS character_id, pc.team_id AS team_id, pr.rank AS roster_rank
+SELECT pp.guild_id AS guild_id, pp.user_id AS user_id, pc.id AS character_id, pc.team_id AS team_id, pr.rank AS roster_rank, pc.left_on AS left_on
   FROM players pp
   CROSS JOIN guilds pg ON pg.id = pp.guild_id AND pg.rank_source = 'ingame'
   CROSS JOIN characters pc ON pc.player_id = pp.id AND pc.guild_id = pp.guild_id
@@ -81,7 +84,8 @@ SELECT DISTINCT iv.guild_id AS guild_id, iv.user_id AS user_id, im.role_id AS ro
  WHERE im.role_id IS NOT NULL
    AND (im.role_id <> 'guild_master' OR im.source_key = '0')
    AND (im.role_id <> 'team_lead' OR iv.team_id IS NOT NULL)
-   AND NOT EXISTS (SELECT 1 FROM ingame_proven_characters ib WHERE ib.guild_id = iv.guild_id AND ib.user_id = iv.user_id AND ib.roster_rank < iv.roster_rank);
+   AND iv.left_on IS NULL
+   AND NOT EXISTS (SELECT 1 FROM ingame_proven_characters ib WHERE ib.guild_id = iv.guild_id AND ib.user_id = iv.user_id AND ib.left_on IS NULL AND ib.roster_rank < iv.roster_rank);
 
 -- The Owner: ONE guild_master row. The seat holder while not suspended (suspension = rank_source 'ingame' and no valid proven character); else, in a guild before the flip, the
 -- holder of the stored guild_master row. worker/owner.js reads this view for isOwner, ownerSql, ownerGuard and the candidate sets.

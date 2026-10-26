@@ -15,7 +15,7 @@ import {
 import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
 import { memberCandidatesSql, memberGuildsStatement, memberSql } from '../membership.js';
-import { hasOwnerSql, ownedGuildsSql } from '../owner.js';
+import { hasOwnerSql, ownedGuildsSql, ownerSql, seatHeldBySql } from '../owner.js';
 import { LIMITS } from '../limits.js';
 import { shapeRoles } from '../permissions.js';
 import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
@@ -273,8 +273,9 @@ const othersSql = (userExpr) => `EXISTS (SELECT 1 FROM (${memberCandidatesSql('g
          WHERE oc.user_id != ${userExpr} AND ${memberSql('oc.user_id', 'g.id', 'g.discord_server_id')})`;
 
 // Guilds the person leads (the Owner of worker/owner.js: the seat holder, suspended or not, or the stored Guild Master of a guild before the flip), split three ways:
-//  - handOverFirst: others have joined and the person is still a current member (they must hand over)
-//  - autoPromote:   others have joined but the person has left the server or is blocked; the earliest
+//  - handOverFirst: others have joined and the person is still a current member, or HOLDS THE SEAT (a suspended Owner is not a member but still holds the guild): they must
+//                   hand over first (lane B6b part 2a; succession for a seat holder who cannot hand over is part 2b)
+//  - autoPromote:   others have joined but the person has left the server or is blocked and holds no seat (a guild before the flip); the earliest
 //                   Officer who is a current member takes over (to = null: no one can, the guild has no GM)
 //  - guildsDeleted: nobody else has joined
 async function deleteImpact(db, userId) {
@@ -282,6 +283,7 @@ async function deleteImpact(db, userId) {
     `SELECT g.id, g.name, g.discord_server_id,
             ${othersSql('m.uid')} AS has_others,
             ${memberSql('m.uid', 'g.id', 'g.discord_server_id')} AS self_member,
+            ${seatHeldBySql('g.id', 'm.uid')} AS seat_holder,
             (${successorSql('m.uid')}) AS successor_id
        FROM (SELECT ?1 AS uid) m
        JOIN (${ownedGuildsSql('?1')}) owned_by_me
@@ -299,9 +301,9 @@ async function deleteImpact(db, userId) {
   }
   const brief = (row) => ({ id: row.id, name: row.name });
   return {
-    handOverFirst: rows.filter((row) => row.has_others === 1 && row.self_member === 1).map(brief),
+    handOverFirst: rows.filter((row) => row.has_others === 1 && (row.self_member === 1 || row.seat_holder === 1)).map(brief),
     guildsDeleted: rows.filter((row) => row.has_others !== 1).map(brief),
-    autoPromote: rows.filter((row) => row.has_others === 1 && row.self_member !== 1).map((row) => ({
+    autoPromote: rows.filter((row) => row.has_others === 1 && row.self_member !== 1 && row.seat_holder !== 1).map((row) => ({
       ...brief(row),
       to: row.successor_id && people.has(row.successor_id) ? toPerson(people.get(row.successor_id)) : null,
     })),
@@ -364,8 +366,9 @@ export async function me(ctx) {
          FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.user_id = ?`,
     ).bind(userId),
     db.prepare(
+      // A block row on the unsuspended Owner is ignored (worker/membership.js blockedSql), so the account is not told it was removed.
       `SELECT g.id, g.name FROM guild_blocks b JOIN guilds g ON g.id = b.guild_id
-        WHERE b.user_id = ? ORDER BY g.name, g.id`,
+        WHERE b.user_id = ? AND NOT ${ownerSql('b.guild_id', 'b.user_id')} ORDER BY g.name, g.id`,
     ).bind(userId),
     db.prepare('SELECT 1 AS found FROM reminder_optouts WHERE user_id = ?').bind(userId),
   ]);

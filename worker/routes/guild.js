@@ -5,7 +5,7 @@ import { hasDiscord } from '../discord-guard.js';
 import { newId } from '../ids.js';
 import { GUILD_LIMIT_MESSAGE, LIMITS } from '../limits.js';
 import { ownPersonStatement } from '../membership.js';
-import { hasOwnerSql } from '../owner.js';
+import { hasOwnerSql, legacyClaimClosedSql } from '../owner.js';
 import { loadGuildContext } from '../permissions.js';
 import { defaultTeamSize } from '../raid-zones.js';
 import { readManageable } from '../session.js';
@@ -268,6 +268,12 @@ export async function claimGuild(ctx) {
     throw new HttpError(404, 'not_found', 'That guild does not exist.');
   }
   const userId = session.user.id;
+  // CLOSED once the guild has a rank source or an Owner seat (review finding B4b/B5 F1): the seat of such a guild is taken only by its in-game Guild Master (lane B6b part 2b), never
+  // by a Discord-server administrator. A guild whose Owner deleted their account (the foreign key empties the seat) stays closed through its rank source.
+  const closed = await db.prepare(`SELECT ${legacyClaimClosedSql('?')} AS closed`).bind(guild.id).first();
+  if (closed && closed.closed === 1) {
+    throw new HttpError(403, 'claim_closed', 'This guild takes its Guild Master from the in-game guild roster, so a Discord server administrator cannot claim it. The in-game Guild Master claims it with Battle.net.');
+  }
   const blocked = await db.prepare('SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?').bind(guild.id, userId).first();
   if (blocked) throw new HttpError(403, 'access_removed', 'An officer has removed your access to this guild.');
 
@@ -284,8 +290,9 @@ export async function claimGuild(ctx) {
         `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
          SELECT ?, ?, ?, 'guild_master', NULL, ?, ?
           WHERE NOT ${hasOwnerSql('?')}
+            AND NOT ${legacyClaimClosedSql('?')}
             AND NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)`,
-      ).bind(rowId, guild.id, userId, userId, now, guild.id, guild.id, guild.id, userId),
+      ).bind(rowId, guild.id, userId, userId, now, guild.id, guild.id, guild.id, guild.id, userId),
       db.prepare(
         `INSERT INTO user_servers (user_id, server_id, seen_at) SELECT ?, ?, ? WHERE ${inserted.sql}
          ON CONFLICT(user_id, server_id) DO UPDATE SET seen_at = excluded.seen_at`,

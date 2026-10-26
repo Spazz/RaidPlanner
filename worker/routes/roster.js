@@ -3,6 +3,7 @@ import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { isId, newId } from '../ids.js';
 import { memberCandidatesSql, memberSql } from '../membership.js';
+import { PROVEN_LINK_MESSAGE, ownerGuard, requireOwner } from '../owner.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
 import { RANK_COLUMNS_SQL, characterRankColumns, rankBinds, setCharacterRanksStatement, trialDatesFollowMainStatements } from '../person-legacy.js';
@@ -461,7 +462,18 @@ export async function patchPerson(ctx) {
     // Changing the Discord link relinks the person: the Seniority guard (worker/seniority.js) applies, in the pre-check and in both writes below.
     const relink = changed.includes('link');
     if (relink) await assertSenior(db, guildContext, player.id);
-    const senior = relink ? seniorityOk(guildContext.guild.id, ctx.session.user.id, player.id) : { sql: '1 = 1', params: [] };
+    let senior = relink ? seniorityOk(guildContext.guild.id, ctx.session.user.id, player.id) : { sql: '1 = 1', params: [] };
+    if (relink) {
+      // A person that holds a Battle.net-proven character changes its Discord link (linkUserId, null clears it) by the Owner only, the same rule as PUT /roster/:pid/account and
+      // POST /raids/:rid/signups/link: the Discord ID on the person makes that account its owner too. Read for a clean 403, repeated inside both writes through `senior`.
+      const proven = await db.prepare("SELECT 1 AS found FROM characters WHERE guild_id = ? AND player_id = ? AND owner_proof = 'bnet' LIMIT 1").bind(guildContext.guild.id, player.id).first();
+      if (proven) await requireOwner(db, guildContext, PROVEN_LINK_MESSAGE);
+      const owner = ownerGuard(guildContext.guild.id, ctx.session.user.id);
+      senior = {
+        sql: `${senior.sql} AND (NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND owner_proof = 'bnet') OR ${owner.sql})`,
+        params: [...senior.params, player.id, ...owner.params],
+      };
+    }
     const snapshot = (state) => ({
       status: state.status, joinedOn: state.joinedOn, trialStart: state.trialStart, trialEnd: state.trialEnd,
       leftOn: state.leftOn, leftReason: state.leftReason, linked: !!state.discordUserId,
