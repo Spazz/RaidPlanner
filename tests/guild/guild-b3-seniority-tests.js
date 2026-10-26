@@ -14,6 +14,7 @@
  */
 const assert = require('node:assert/strict');
 const { load, runChecks, scenario } = require('../guild-b3-world');
+const { ingameize } = require('../guild-ingame');
 
 const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
@@ -39,7 +40,8 @@ async function world({ owner = true } = {}) {
   s.people.gm = await s.person({ name: 'Gmperson' });
   await s.link(s.people.gm.pid, 'gm');
   s.people.free = await s.person({ name: 'Freeperson' }); // no account at all
-  if (owner) await s.setOwner('own');
+  // An in-game guild: the Owner seat on 'own' (live: a Battle.net-proven character), the creator a DERIVED Guild Master (in-game rank 0), everyone else bound to the roster.
+  if (owner) ingameize(s, { owner: 'own', derivedGm: 'gm', people: s.people });
   return s;
 }
 
@@ -78,7 +80,9 @@ check('legacy guild (owner_user_id NULL): the stored Guild Master is the Owner, 
 });
 
 check('a person owned only by a Discord id counts as that account\'s: a Team Lead cannot delete the Discord-only Officer\'s person, nor an Officer the Discord-only Owner\'s', async () => {
-  const s = await world();
+  // The accounts are Discord-only (no players.user_id): a legacy guild, where the Discord server is what makes them members (an in-game guild has no use for a Discord ID),
+  // with the seat set on 'dow' (a seat holder is not suspended there).
+  const s = await world({ owner: false });
   await s.officer('do1', 'Discordoff');
   await s.member('dow', 'Discordown');
   await s.member('dm', 'Discordmem');
@@ -122,7 +126,6 @@ check('the plan\'s named tests: an Officer deletes the Owner\'s person (refused)
 
 check('the Owner seat passes everyone, the Guild Master\'s person included', async () => {
   const s = await world();
-  await s.ok('gm', 'PUT', `/people/${s.uids.own}/roles`, { officer: true, teamLeadTeamIds: [] }, 200); // the Owner needs roster.edit to act at all
   await s.ok('own', 'DELETE', `/roster/${s.people.gm.pid}`, {}, 200);
   await s.ok('own', 'DELETE', `/roster/${s.people.o2.pid}`, {}, 200);
 });
@@ -146,9 +149,10 @@ check('remove a character, rename it, move it, relink the Discord account, link 
   await s.ok('gm', 'PATCH', `/roster/${s.people.o1.pid}/characters/${alt}`, { name: 'Renamedalt' }, 200);
   await s.ok('gm', 'DELETE', `/roster/${s.people.o1.pid}/characters/${alt}`, {}, 200);
   await s.ok('gm', 'PUT', `/roster/${s.people.o1.pid}/account`, { userId: null }, 200);
-  // A Team Lead may relink a Member's person (the account is junior) and a person with no account.
+  // A Team Lead may unlink a Member's person (the account is junior). In an in-game guild the link IS the membership, so the account is no longer "in this guild" and only an
+  // officer links it back (the Team Lead's own relink rule, not the Seniority guard).
   await s.ok('tl', 'PUT', `/roster/${s.people.m1.pid}/account`, { userId: null }, 200);
-  await s.ok('tl', 'PUT', `/roster/${s.people.m1.pid}/account`, { userId: s.uids.m1 }, 200);
+  await s.ok('gm', 'PUT', `/roster/${s.people.m1.pid}/account`, { userId: s.uids.m1 }, 200);
 });
 
 check('a Battle.net-proven character, or a person holding one, is deleted only by a GM-tier actor, whatever the rank of the person', async () => {

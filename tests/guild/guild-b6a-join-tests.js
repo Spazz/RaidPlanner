@@ -13,6 +13,7 @@
 const assert = require('node:assert/strict');
 const { load, runChecks, scenario } = require('../guild-b3-world');
 const { createD1Fake } = require('../d1-fake');
+const { makeProven } = require('../guild-ingame');
 
 const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
@@ -822,8 +823,12 @@ check('Match to roster in an in-game guild: the character is on the roster now a
   // not in-game (a legacy guild): the character is bound, its rank untouched
   assert.equal((await match(s, 'gm', other.pid, other.cid, 9602)).status, 200);
   assert.equal(characterRow(s, other.cid).core_rank, 'social');
-  // in-game: rank 3 is a Raider
-  run(s, "UPDATE guilds SET rank_source = 'ingame' WHERE id = ?", s.gid);
+  // in-game: rank 3 is a Raider. The Guild Master is the Owner of the flipped guild and must be LIVE (a Battle.net-proven character on the roster) to go on acting.
+  const owned = await mk(s, 'Gmowner');
+  await s.link(owned.pid, 'gm');
+  makeProven(s, 'gm', owned, { rank: 4 });
+  run(s, "UPDATE guilds SET rank_source = 'ingame', owner_user_id = ? WHERE id = ?", s.uids.gm, s.gid);
+  run(s, "DELETE FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master'", s.gid);
   run(s, "INSERT INTO source_rank_maps (guild_id, source, source_key, label, core_rank, role_id) VALUES (?, 'ingame', '3', 'Core', 'raider', NULL)", s.gid);
   const res = await match(s, 'gm', hand.pid, hand.cid, 9601);
   assert.equal(res.status, 200, res.text);

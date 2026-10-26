@@ -14,6 +14,7 @@
 const assert = require('node:assert/strict');
 const { load, runChecks, scenario } = require('../guild-b3-world');
 const { NAMESPACE, REALM_ID, seatOnRoster } = require('../guild-seat');
+const { flip, makeProven } = require('../guild-ingame');
 
 const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
@@ -146,6 +147,8 @@ check('the lists are what the in-game rule really does: after the flip is made b
   s.exec(`UPDATE guilds SET rank_source = 'ingame', owner_user_id = '${s.uids.gm}' WHERE id = '${s.gid}'`);
   s.exec(`UPDATE OR IGNORE players SET user_id = (SELECT u.id FROM users u WHERE u.discord_id = players.discord_user_id)
            WHERE guild_id = '${s.gid}' AND user_id IS NULL AND discord_user_id IS NOT NULL`);
+  // The Owner stays in only while LIVE (suspension): their linked person's character is proven by Battle.net, as the Owner's sign-in match would do.
+  makeProven(s, 'gm', s.persons.gmPerson, { rank: 4, id: 51010 });
   const after = await memberNow();
   const lost = accounts.filter((key) => before[key] && !after[key]).sort();
   const gained = accounts.filter((key) => !before[key] && after[key]).sort();
@@ -230,7 +233,11 @@ check('rate limited like the rank-map dry run: ten in ten minutes, then 429; the
 
 check('a guild that is already in-game answers 409 already_ingame, before the rate limit and without a token; a manual guild previews against its own rule', async () => {
   const s = await scenario();
-  s.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.gid}'`);
+  // An in-game guild: the Owner is live (a Battle.net-proven character on the roster) and the stored Guild Master row is gone, as after the flip.
+  const owned = await s.person({ name: 'Gmowner' });
+  await s.link(owned.pid, 'gm');
+  makeProven(s, 'gm', owned, { rank: 4 });
+  flip(s, { owner: 'gm' });
   for (let i = 0; i < 12; i++) {
     const res = await dry(s);
     assert.deepEqual([res.status, res.json.error], [409, 'already_ingame'], `call ${i + 1}`);
@@ -245,6 +252,7 @@ check('a guild that is already in-game answers 409 already_ingame, before the ra
   await m.link((await m.person({ name: 'Gmmain' })).pid, 'gm');
   await m.member('plain', 'Plainone');
   m.exec(`UPDATE guilds SET rank_source = 'manual' WHERE id = '${m.gid}'`);
+  await m.setOwner('gm'); // the seat: a stored Guild Master row alone no longer counts once the rank source is chosen
   const res = await dry(m);
   assert.equal(res.status, 200, res.text);
   assert.equal(res.json.rankSource, 'manual');

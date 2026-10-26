@@ -41,7 +41,7 @@ export async function rolesPayload(db, guildContext, nowMs) {
     db.prepare('SELECT id, name FROM roles WHERE guild_id = ? ORDER BY name COLLATE NOCASE, id').bind(guildId),
     db.prepare('SELECT role_id, action, scope FROM effective_role_permissions WHERE guild_id = ?').bind(guildId),
     db.prepare('SELECT role_id FROM role_overrides WHERE guild_id = ?').bind(guildId),
-    db.prepare('SELECT role_id, COUNT(DISTINCT user_id) AS n FROM role_assignments WHERE guild_id = ? GROUP BY role_id').bind(guildId),
+    db.prepare('SELECT role_id, COUNT(DISTINCT user_id) AS n FROM effective_roles WHERE guild_id = ? GROUP BY role_id').bind(guildId),
     db.prepare('SELECT role_id, COUNT(*) AS n FROM discord_role_maps WHERE guild_id = ? GROUP BY role_id').bind(guildId),
     db.prepare(
       `SELECT role_id, COUNT(*) AS n FROM guest_links
@@ -219,7 +219,7 @@ export async function updateRole(ctx) {
     const needs = (list) => list.some(([, scope]) => scope === 'team');
     if (needs(before) !== needs(pairs)) {
       const inUse = await ctx.db.prepare(
-        `SELECT (SELECT COUNT(*) FROM role_assignments WHERE guild_id = ?1 AND role_id = ?2) + (SELECT COUNT(*) FROM discord_role_maps WHERE guild_id = ?1 AND role_id = ?2) AS n`,
+        `SELECT (SELECT COUNT(*) FROM effective_roles WHERE guild_id = ?1 AND role_id = ?2) + (SELECT COUNT(*) FROM discord_role_maps WHERE guild_id = ?1 AND role_id = ?2) AS n`,
       ).bind(guildId, roleId).first('n');
       if (inUse > 0) {
         throw new HttpError(409, 'role_in_use', 'People hold this role, or Discord roles map to it. Remove it from them first, then change whether it is given for one team.');
@@ -294,7 +294,7 @@ export async function deleteRole(ctx) {
   const permissions = await currentPermissions(ctx.db, guildId, roleId);
   if (!guildContext.isGuildMaster) assertMayHandOut(guildContext, permissions);
   const counts = await ctx.db.prepare(
-    `SELECT (SELECT COUNT(DISTINCT user_id) FROM role_assignments WHERE guild_id = ?1 AND role_id = ?2) AS holders,
+    `SELECT (SELECT COUNT(DISTINCT user_id) FROM effective_roles WHERE guild_id = ?1 AND role_id = ?2) AS holders,
             (SELECT COUNT(*) FROM discord_role_maps WHERE guild_id = ?1 AND role_id = ?2) AS mapped,
             (SELECT COUNT(*) FROM guest_links WHERE guild_id = ?1 AND role_id = ?2) AS links`,
   ).bind(guildId, roleId).first();

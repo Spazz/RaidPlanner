@@ -5,7 +5,7 @@ import { auditStatement } from '../audit.js';
 import { bnetNameOf, hasBnetSql } from '../identities.js';
 import { isId } from '../ids.js';
 import { blockedSql, memberSql, ownPlayerSql } from '../membership.js';
-import { ownerGuard, requireOwner } from '../owner.js';
+import { ownedGuildsSql, ownerGuard, requireOwner } from '../owner.js';
 import { loadGuildContext, isGranted } from '../permissions.js';
 import { personFromSession, toPerson } from '../person.js';
 import { enforceRateLimit } from '../ratelimit.js';
@@ -74,13 +74,15 @@ export async function unlinkDiscord(ctx) {
   if (blockedAt) {
     throw new HttpError(409, 'blocked_somewhere', 'An officer removed your access to a guild, so Discord cannot be disconnected right now.');
   }
-  // A Guild Master who would lose the guild must hand over or get linked first: a guild nobody can open helps no one. "Would lose" = not a member of the guild once
+  // An Owner (worker/owner.js: the seat holder, or the stored Guild Master of a guild before the flip) who would lose the guild must hand over or get linked first: a guild
+  // nobody can open helps no one. "Would lose" = not a member of the guild once
   // the Discord server no longer counts (the membership rule of worker/membership.js with no server to be in: only a link, or the in-game rule's own terms, keeps
   // someone in a guild they are not in the server of).
   const leads = await db.prepare(
-    `SELECT g.id, g.name FROM role_assignments ra JOIN guilds g ON g.id = ra.guild_id
-      WHERE ra.user_id = ? AND ra.role_id = 'guild_master'
-        AND NOT ${memberSql('ra.user_id', 'g.id', 'NULL')}
+    `SELECT g.id, g.name FROM (SELECT ?1 AS uid) m
+       JOIN (${ownedGuildsSql('?1')}) owned_by_me
+       JOIN guilds g ON g.id = owned_by_me.guild_id
+      WHERE NOT ${memberSql('m.uid', 'g.id', 'NULL')}
       ORDER BY g.name, g.id`,
   ).bind(userId).all();
   if (leads.results.length) {

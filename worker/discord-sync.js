@@ -45,12 +45,12 @@ export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) 
         WHERE m.guild_id = ? AND (m.team_id IS NULL OR t.archived = 0)`,
     ).bind(guild.id),
     db.prepare(
-      "SELECT role_id, team_id FROM role_assignments WHERE guild_id = ? AND user_id = ? AND source = 'discord'",
+      "SELECT role_id, team_id FROM effective_roles_stored WHERE guild_id = ? AND user_id = ? AND source = 'discord'",
     ).bind(guild.id, userId),
     db.prepare(
       `SELECT u.discord_id,
               EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ?1 AND b.user_id = ?2) AS blocked,
-              EXISTS (SELECT 1 FROM role_assignments x WHERE x.guild_id = ?1 AND x.user_id = ?2 AND x.role_id = 'guild_master') AS master,
+              EXISTS (SELECT 1 FROM effective_roles x WHERE x.guild_id = ?1 AND x.user_id = ?2 AND x.role_id = 'guild_master') AS master,
               EXISTS (SELECT 1 FROM user_servers s WHERE s.user_id = ?2 AND s.server_id = ?3) AS in_server
          FROM users u WHERE u.id = ?2`,
     ).bind(guild.id, userId, guild.discord_server_id),
@@ -85,7 +85,7 @@ export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) 
   // Each INSERT re-checks, in the same statement, what it was built from: the person is not blocked and not the Guild Master, the mapping still exists
   // for a Discord role the person holds, and the team is still active.
   const guard = {
-    sql: "NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?) AND NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = 'guild_master')",
+    sql: "NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?) AND NOT EXISTS (SELECT 1 FROM effective_roles WHERE guild_id = ? AND user_id = ? AND role_id = 'guild_master')",
     params: [guild.id, userId, guild.id, userId],
   };
   const addStatement = (pair) => {
@@ -126,7 +126,7 @@ export async function syncSignIn(ctx, userId) {
       `SELECT g.id, g.discord_server_id FROM guilds g
         WHERE ${serverIdIsDiscordSql('g.discord_server_id')} AND EXISTS (SELECT 1 FROM discord_role_maps m WHERE m.guild_id = g.id)
           AND (EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = ?1 AND us.server_id = g.discord_server_id)
-               OR EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.guild_id = g.id AND ra.user_id = ?1 AND ra.source = 'discord'))
+               OR EXISTS (SELECT 1 FROM effective_roles_stored ra WHERE ra.guild_id = g.id AND ra.user_id = ?1 AND ra.source = 'discord'))
         ORDER BY g.id LIMIT ?2`,
     ).bind(userId, MAX_GUILDS_AT_SIGN_IN).all();
     await Promise.all(guilds.results.map(async (guild) => {
@@ -150,7 +150,7 @@ export async function syncGuildMembers(ctx, guild, { actorId, after = '' }) {
     `SELECT u.id FROM users u
       WHERE u.id > ? AND u.discord_id IS NOT NULL
         AND (EXISTS (SELECT 1 FROM user_servers s WHERE s.user_id = u.id AND s.server_id = ?)
-             OR EXISTS (SELECT 1 FROM role_assignments x WHERE x.guild_id = ? AND x.user_id = u.id AND x.source = 'discord'))
+             OR EXISTS (SELECT 1 FROM effective_roles_stored x WHERE x.guild_id = ? AND x.user_id = u.id AND x.source = 'discord'))
       ORDER BY u.id LIMIT ?`,
   ).bind(after, guild.discord_server_id, guild.id, SYNC_BATCH + 1).all()).results;
   const slice = rows.slice(0, SYNC_BATCH);

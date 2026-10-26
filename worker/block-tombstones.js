@@ -200,7 +200,7 @@ export async function splitLiftableRefs(db, guildId, refs, { owner, rank }) {
 export function liftGuard(guildId, actorId, minBlockerRank) {
   const owner = ownerGuard(guildId, actorId);
   return {
-    sql: `(${owner.sql} OR COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), 3) < ?)`,
+    sql: `(${owner.sql} OR COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), 3) < ?)`,
     params: [...owner.params, guildId, actorId, minBlockerRank === null || minBlockerRank === undefined ? 0 : minBlockerRank],
   };
 }
@@ -264,12 +264,12 @@ export async function blockerRanksOf(db, guildId, refs) {
 
 const RANK_OF_ROLE_SQL = `CASE m.role_id WHEN 'guild_master' THEN 0 WHEN 'officer' THEN 1 WHEN 'team_lead' THEN 2 ELSE 3 END`;
 
-// The rank an account would have in the guild (A9-05): the hand roles of the account + the rank-map rank of its identity keys on the stored roster ('ingame'
-// guilds). -> { owner, rank, reads } with rank 0..3, 3 = Member.
+// The rank an account would have in the guild (A9-05): the roles the account effectively holds (effective_roles: stored, derived from the in-game rank, the Owner's row) + the
+// rank-map rank of its identity keys on the stored roster ('ingame' guilds). -> { owner, rank, reads } with rank 0..3, 3 = Member.
 export async function prospectiveRankOf(db, guildId, userId, identityKeys) {
   const account = await db.prepare(
     `SELECT ${ownerSql('?1', '?2')} AS owner,
-            COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id
+            COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id
                        WHERE ra.guild_id = ?1 AND ra.user_id = ?2 AND ra.role_id IN ('guild_master', 'officer', 'team_lead')), 3) AS handRank,
             (SELECT rank_source FROM guilds WHERE id = ?1) AS source`,
   ).bind(guildId, userId).first();
@@ -386,7 +386,7 @@ const CANDIDATE_GUILDS_SQL = `SELECT DISTINCT c.guild_id AS guild_id FROM (
     SELECT guild_id FROM players WHERE user_id = ?1
     UNION SELECT guild_id FROM players WHERE ?2 IS NOT NULL AND discord_user_id = ?2
     UNION SELECT g.id FROM user_servers us JOIN guilds g ON g.discord_server_id = us.server_id WHERE us.user_id = ?1
-    UNION SELECT guild_id FROM role_assignments WHERE user_id = ?1
+    UNION SELECT guild_id FROM effective_roles WHERE user_id = ?1
   ) c WHERE EXISTS (SELECT 1 FROM block_tombstones t WHERE t.guild_id = c.guild_id) LIMIT 25`;
 
 // The guilds that have tombstones and that the account reaches or could reach: through a Discord server with a Raidsmith guild, a person linked to the account

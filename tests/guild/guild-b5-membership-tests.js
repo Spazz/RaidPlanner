@@ -20,6 +20,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { load, runChecks, scenario } = require('../guild-b3-world');
 const { NAMESPACE, REALM_ID, seatOnRoster } = require('../guild-seat');
+const { flip, makeProven } = require('../guild-ingame');
 
 const ROOT = path.join(__dirname, '..', '..');
 const checks = [];
@@ -52,6 +53,11 @@ function rawDb(db) {
     person(id, guildId, { userId = null, discordUserId = null } = {}) {
       run("INSERT INTO players (id, guild_id, status, user_id, discord_user_id, created_at, updated_at) VALUES (?, ?, 'raider', ?, ?, 1, 1)", id, guildId, userId, discordUserId);
     },
+    // Proves a character by Battle.net for the account (worker/owner.js: a VALID proof keeps an in-game Owner live): the Battle.net link and the proof columns.
+    prove(characterId, userId, bnetId) {
+      run("INSERT OR REPLACE INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, ?, ?, 1, '{}', 1)", userId, String(bnetId), `Tag${bnetId}#1`);
+      run("UPDATE characters SET owner_proof = 'bnet', proof_user_id = ?, proof_bnet_account_id = ?, proof_at = 1 WHERE id = ?", userId, String(bnetId), characterId);
+    },
     // A character of the person. key = the blizzard_char_id it carries (null = unkeyed); leftOn = a date for a Former one.
     character(id, guildId, personId, { key = null, leftOn = null, coreRank = 'raider', isMain = 1 } = {}) {
       run(`INSERT INTO characters (id, guild_id, player_id, name, name_key, realm, realm_key, class, is_main, created_at, updated_at, core_rank, left_on, namespace, blizzard_realm_id, blizzard_char_id)
@@ -71,10 +77,11 @@ const one = async (db, sql, ...values) => db.prepare(sql).bind(...values).first(
 // ---------------------------------------------------------------------------
 // 1. The pure forms and the SQL agree
 
-const CHAR_STATES = ['none', 'unkeyed', 'offRoster', 'onRoster', 'formerOnRoster'];
+const CHAR_STATES = ['none', 'unkeyed', 'offRoster', 'onRoster', 'formerOnRoster', 'provenOnRoster'];
 
 check('reachesOf / membershipOf mirror memberSql / reachesGuildSql on every source and every combination of facts (an unknown source reads as legacy)', async () => {
   const m = await load('worker/membership.js');
+  const { ownerOf } = await load('worker/owner.js');
   const s = await scenario();
   const raw = rawDb(s.w.db);
   const cases = [];
@@ -96,12 +103,17 @@ check('reachesOf / membershipOf mirror memberSql / reachesGuildSql on every sour
                 raw.person(`p_m${n}`, gid, { userId: uid });
                 if (state !== 'none') {
                   raw.character(`c_m${n}`, gid, `p_m${n}`, { key: state === 'unkeyed' ? null : 1000 + n, leftOn: state === 'formerOnRoster' ? '2026-10-01' : null });
-                  if (state === 'onRoster' || state === 'formerOnRoster') raw.rosterRow(gid, 1000 + n);
+                  if (state === 'onRoster' || state === 'formerOnRoster' || state === 'provenOnRoster') raw.rosterRow(gid, 1000 + n);
+                  if (state === 'provenOnRoster') raw.prove(`c_m${n}`, uid, 800000 + n);
                   if (state === 'offRoster') raw.rosterRow(gid, 500000 + n);
                 }
               }
               if (blocked) raw.block(gid, uid);
-              cases.push({ gid, uid, source, owner: ownerMode !== 'none', inServer, linked, state, blocked });
+              // The Owner of the in-game rule is the UNSUSPENDED one (worker/owner.js): the seat holder with a valid proven character on the roster; a stored Guild Master row is
+              // the Owner only while the guild has neither a seat nor a rank source.
+              const owner = ownerOf({ userId: uid, ownerUserId: ownerMode === 'seat' ? uid : null, rankSource: source, storedMasterUserId: ownerMode === 'gmrow' ? uid : null,
+                hasValidProvenCharacter: linked && state === 'provenOnRoster' });
+              cases.push({ gid, uid, source, owner, inServer, linked, state, blocked });
             }
           }
         }
@@ -113,7 +125,7 @@ check('reachesOf / membershipOf mirror memberSql / reachesGuildSql on every sour
     const row = await one(s.w.db,
       `SELECT ${m.memberSql('u.id', 'g.id', 'g.discord_server_id')} AS member, ${m.reachesGuildSql('u.id', 'g.id', 'g.discord_server_id')} AS reaches, ${m.blockedSql('u.id', 'g.id')} AS blocked
          FROM users u, guilds g WHERE u.id = ? AND g.id = ?`, c.uid, c.gid);
-    const facts = { source: c.source, inServer: c.inServer, linked: c.linked, owner: c.owner, rosterCharacter: c.linked && c.state === 'onRoster' };
+    const facts = { source: c.source, inServer: c.inServer, linked: c.linked, owner: c.owner, rosterCharacter: c.linked && (c.state === 'onRoster' || c.state === 'provenOnRoster') };
     const where = JSON.stringify(c);
     assert.equal(row.blocked === 1, c.blocked, where);
     assert.equal(row.reaches === 1, m.reachesOf(facts), `reaches: ${where}`);
@@ -187,6 +199,14 @@ async function world() {
   for (const [key, name] of [['seated', 'Seated'], ['social', 'Socialrank'], ['offroster', 'Offroster'], ['discordonly', 'Discordonly'], ['officer', 'Officerlinked']]) await s.member(key, name);
   return s;
 }
+// The in-game switch for a test that goes on acting as the Guild Master afterwards: the Owner seat on 'gm', LIVE (a person linked to the account whose character is proven by
+// Battle.net and on the roster), the stored Guild Master row gone - what the flip leaves behind. Do it BEFORE the switch (the routes need the stored Guild Master).
+async function goIngame(s, id = 69000) {
+  const owned = await s.person({ name: 'Gmownerx' });
+  await s.link(owned.pid, 'gm');
+  makeProven(s, 'gm', owned, { rank: 4, id });
+  flip(s, { owner: 'gm' });
+}
 const seat = (s, key, name, id, extra = {}) => seatOnRoster({ call: s.call, sqlite: s.w.db.sqlite, guildId: s.gid, teamId: s.tids[0], userId: s.uids[key] }, { name, id, ...extra });
 
 check('legacy guilds are unchanged: the Discord server alone lets an account in, a link alone does too, the message still names the Discord server; a block wins', async () => {
@@ -233,7 +253,7 @@ check("'manual': the Discord server grants nothing, a link to a person does; the
 check("'ingame': a Discord-server-only account is not a member (the message names the roster, not the Discord server); a Discord ID on a person does not link anyone", async () => {
   const s = await world();
   await seat(s, 'seated', 'Seatedmain', 61001);
-  setSource(s, 'ingame');
+  await goIngame(s);
   assert.equal((await guildGet(s, 'seated')).status, 200);
   const refused = await guildGet(s, 'discordonly');
   assert.deepEqual([refused.status, refused.json.error], [403, 'not_member']);
@@ -258,7 +278,7 @@ check("'ingame': an off-roster officer-linked person is not a member; a Social-r
   await s.link(off.pid, 'offroster');
   await seat(s, 'social', 'Socialmain', 62002);
   s.exec("UPDATE characters SET core_rank = 'social' WHERE name = 'Socialmain'");
-  setSource(s, 'ingame');
+  await goIngame(s);
   const offRoster = await guildGet(s, 'offroster');
   assert.deepEqual([offRoster.status, offRoster.json.error], [403, 'not_member'], 'linked by an officer, character not on the roster');
   assert.equal((await guildGet(s, 'social')).status, 200, 'Social on the roster: a member');
@@ -295,16 +315,28 @@ check("'ingame': roles stored for a person grant nothing while membership fails,
   assert.deepEqual(await memberGuildIds(s, 'officer'), [s.gid]);
 });
 
-check("'ingame': the Owner passes without a roster character; a Guild Master by role who does not hold the seat does not; a block beats the Owner exemption", async () => {
+check("'ingame': the Owner passes while LIVE (a valid Battle.net-proven character on the stored roster) even without a usable roster character, and not while suspended; a stored Guild Master row counts for nothing; a block beats the Owner exemption", async () => {
   const s = await world();
   setSource(s, 'ingame');
-  assert.equal((await guildGet(s, 'gm')).status, 200, 'the stored Guild Master is the Owner while the seat is NULL');
-  // The seat on another account that has no person: the Owner exemption; the Guild Master by role loses it.
+  const stored = await guildGet(s, 'gm');
+  assert.deepEqual([stored.status, stored.json.error], [403, 'not_member'], 'the stored Guild Master row stops counting once the guild has a rank source (finding B4b/B5 F1)');
+  // The seat on an account with no person: SUSPENDED (nothing proves a character on the roster), so it keeps the seat and no exemption.
   await s.setOwner('discordonly');
-  assert.equal((await guildGet(s, 'discordonly')).status, 200, 'the seat holder is a member with no roster character');
+  const suspended = await guildGet(s, 'discordonly');
+  assert.deepEqual([suspended.status, suspended.json.error], [403, 'not_member'], 'a suspended Owner is not let in by the seat');
+  assert.deepEqual(await memberGuildIds(s, 'discordonly'), [], 'and the guild is not in their list');
+  // Back on the roster: a person linked to the account whose character is on the roster and proven by Battle.net, but marked Former (left_on), so the roster rule alone would
+  // not let it in - the Owner exemption does, because the proof (a, b, d) still holds.
+  const raw = rawDb(s.w.db);
+  raw.person('p_seatowner', s.gid, { userId: s.uids.discordonly });
+  raw.character('c_seatowner', s.gid, 'p_seatowner', { key: 64100, leftOn: '2026-10-01' });
+  raw.rosterRow(s.gid, 64100);
+  assert.equal((await guildGet(s, 'discordonly')).status, 403, 'on the roster but not proven: neither the roster rule (Former) nor the exemption (suspended)');
+  raw.prove('c_seatowner', s.uids.discordonly, 640001);
+  assert.equal((await guildGet(s, 'discordonly')).status, 200, 'proven: the Owner is live, the seat is a member');
   assert.deepEqual(await memberGuildIds(s, 'discordonly'), [s.gid], 'and the guild is in their list (the owner candidate set)');
   const derived = await guildGet(s, 'gm');
-  assert.deepEqual([derived.status, derived.json.error], [403, 'not_member'], 'a derived Guild Master with no roster character');
+  assert.deepEqual([derived.status, derived.json.error], [403, 'not_member'], 'the former Guild Master has no roster character');
   block(s, 'discordonly');
   const blocked = await guildGet(s, 'discordonly');
   assert.deepEqual([blocked.status, blocked.json.error], [403, 'access_removed']);
@@ -411,11 +443,13 @@ const GUARDED_TABLES = ['guilds', 'players', 'characters', 'guild_roster', 'role
 // The statements a request ran (from the log position `from`) whose plan walks a whole guarded table: [{ table, detail, sql }].
 function scansSince(db, from) {
   const found = [];
+  // The views (effective_roles and friends, migration 0035) call their tables by their own aliases, which a plan row then carries: read those names too.
+  const viewSql = db.sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'view'").all().map((row) => row.sql).join('\n');
   for (const { sql, values } of db.statementLog.slice(from)) {
-    if (!/\b(guilds|players|characters|guild_roster|role_assignments)\b/.test(sql)) continue;
+    if (!/\b(guilds|players|characters|guild_roster|role_assignments|effective_roles\w*|ingame_proven_characters)\b/.test(sql)) continue;
     const plan = db.sqlite.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...values);
     for (const table of GUARDED_TABLES) {
-      const names = namesOf(sql, table);
+      const names = namesOf(`${sql}\n${viewSql}`, table);
       for (const row of plan) {
         const target = /^SCAN (?:TABLE )?(\S+)/.exec(row.detail);
         if (target && names.has(target[1])) found.push({ table, detail: row.detail, sql: sql.replace(/\s+/g, ' ').slice(0, 120) });
@@ -461,6 +495,11 @@ check('"my guilds" on a 2,000-guild database: GET /auth/me, the guild payload, P
   raw.rosterRow(gb(2), 3002);
   raw.person('p_big5', gb(5), { userId: probe });
   raw.character('c_big5', gb(5), 'p_big5', { key: 3005 });
+  // The Owner seat of an in-game guild, LIVE: a proven character on the roster that is marked Former, so only the Owner exemption lets the account in.
+  raw.person('p_big8', gb(8), { userId: probe });
+  raw.character('c_big8', gb(8), 'p_big8', { key: 3008, leftOn: '2026-10-01' });
+  raw.rosterRow(gb(8), 3008);
+  raw.prove('c_big8', probe, 880008);
   s.w.db.sqlite.prepare('UPDATE guilds SET owner_user_id = ? WHERE id = ?').run(probe, gb(8));
   // Other accounts crowd the same tables.
   for (let i = 0; i < 200; i++) {

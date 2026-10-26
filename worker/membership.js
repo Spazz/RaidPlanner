@@ -88,8 +88,9 @@ export const personOnRosterSql = (personExpr, guildExpr) =>
 export const rosterCharacterSql = (userExpr, guildExpr) =>
   `EXISTS (SELECT 1 FROM players mx_pl WHERE mx_pl.guild_id = ${guildExpr} AND mx_pl.user_id = ${userExpr} AND ${personOnRosterSql('mx_pl.id', guildExpr)})`;
 
-// SEAM for lane B6b: the Owner term of the 'ingame' rule. B6b rewrites it to "holds the Owner seat AND is not suspended" (an Owner with no Battle.net-proven
-// character on the last good roster is suspended, U R4-Q3) from the owner view. Suspension is not built yet, so today it is the seat test of worker/owner.js.
+// The Owner term of the 'ingame' rule: the Owner row of the effective-roles view (worker/owner.js), i.e. the seat holder who is NOT suspended (an Owner with no valid
+// Battle.net-proven character on the last good roster is suspended, U R4-Q3), the same fragment that decides isOwner. A suspended Owner keeps the seat and is a member
+// only through a roster character of their own.
 export const unsuspendedOwnerSql = (userExpr, guildExpr) => ownerSql(guildExpr, userExpr);
 
 // "The source lets the account in" without the block test: for the screens that show blocked people apart from members (People and roles).

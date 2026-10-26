@@ -34,13 +34,13 @@ async function loadModel(db, guildContext) {
          FROM users u, (SELECT ? AS gid, ? AS sid) gc
         WHERE u.id IN (
           SELECT user_id FROM (${memberCandidatesSql('gc.gid', 'gc.sid')})
-          UNION SELECT user_id FROM role_assignments WHERE guild_id = gc.gid
+          UNION SELECT user_id FROM effective_roles WHERE guild_id = gc.gid
           UNION SELECT user_id FROM guild_blocks WHERE guild_id = gc.gid
           UNION SELECT blocked_by FROM guild_blocks WHERE guild_id = gc.gid AND blocked_by IS NOT NULL)`,
     ).bind(guildId, serverId),
     db.prepare(
       `SELECT ra.user_id, ra.role_id, ra.team_id, ra.source, r.name AS role_name
-         FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ?`,
+         FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ?`,
     ).bind(guildId),
     db.prepare('SELECT user_id, blocked_by, reason, created_at FROM guild_blocks WHERE guild_id = ?').bind(guildId),
     // The roster entry (the Main) of each person linked to an account (by an officer's link, or by the Discord ID they carry).
@@ -72,8 +72,9 @@ async function loadModel(db, guildContext) {
   }
   for (const entry of byId.values()) {
     entry.roles = shapeRoles(entry.assignments);
-    // What an officer set by hand: the Edit roles dialog changes these and only these (a role Discord gives is changed in Discord).
-    entry.manualRoles = shapeRoles(entry.assignments.filter((assignment) => assignment.source !== 'discord'));
+    // What an officer set by hand: the Edit roles dialog changes these and only these. A role Discord gives is changed in Discord; a role the in-game rank gives (source
+    // 'ingame') and the Owner's own row (source 'owner') are derived at read time and read-only here: no statement of the roles routes touches a row that is not 'manual'.
+    entry.manualRoles = shapeRoles(entry.assignments.filter((assignment) => assignment.source === 'manual'));
     entry.rank = rankOf(entry.assignments);
   }
   return { byId, hasMaps: mapResult.results[0].n > 0 };
@@ -180,7 +181,7 @@ export const and = (...guards) => ({
 // True while the acting user still holds a role that grants the action guild-wide.
 export function actorHolds(action, guildId, actorId) {
   return {
-    sql: `EXISTS (SELECT 1 FROM role_assignments ra JOIN effective_role_permissions rp ON rp.guild_id = ra.guild_id AND rp.role_id = ra.role_id
+    sql: `EXISTS (SELECT 1 FROM effective_roles ra JOIN effective_role_permissions rp ON rp.guild_id = ra.guild_id AND rp.role_id = ra.role_id
             WHERE ra.guild_id = ? AND ra.user_id = ? AND rp.action = ? AND rp.scope = 'guild')`,
     params: [guildId, actorId, action],
   };
@@ -189,7 +190,7 @@ export function actorHolds(action, guildId, actorId) {
 // True while the actor's best role is strictly senior to the target's (this also rules out the actor
 // themself and the Guild Master). A person with no role counts as Member.
 function actorOutranks(guildId, actorId, targetId) {
-  const rank = `COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id
+  const rank = `COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id
                             WHERE ra.guild_id = ? AND ra.user_id = ?), ${ROLE_RANK.member})`;
   return { sql: `${rank} < ${rank}`, params: [guildId, actorId, guildId, targetId] };
 }
@@ -197,7 +198,7 @@ function actorOutranks(guildId, actorId, targetId) {
 // True while the target still holds a role here (used when a change only removes roles).
 function holderGuard(guildContext, userId) {
   return {
-    sql: 'EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND user_id = ?)',
+    sql: 'EXISTS (SELECT 1 FROM effective_roles WHERE guild_id = ? AND user_id = ?)',
     params: [guildContext.guild.id, userId],
   };
 }
@@ -207,7 +208,7 @@ function memberGuard(guildContext, userId) {
   const member = boundMember(userId, guildContext.guild.id, guildContext.guild.discord_server_id);
   return {
     sql: `${member.sql}
-          AND NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = 'guild_master')`,
+          AND NOT EXISTS (SELECT 1 FROM effective_roles WHERE guild_id = ? AND user_id = ? AND role_id = 'guild_master')`,
     params: [...member.params, guildContext.guild.id, userId],
   };
 }

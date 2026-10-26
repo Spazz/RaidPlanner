@@ -62,17 +62,21 @@ export function permissionProblem(roleId, custom, action, scope) {
   return null;
 }
 
-// [{ role, name?, teamId?, fromDiscord? }]: built-in roles first (Guild Master, Officer, Team Lead, by team id), then the guild's own roles by name.
-// One entry per role and team: a role a person holds both by hand and from Discord shows once, as theirs (manual wins); fromDiscord marks a role that
-// only Discord gives. assignments: [{ role_id, team_id, source?, role_name? }]. Guest and Public are never listed.
+// [{ role, name?, teamId?, fromDiscord?, fromRank? }]: built-in roles first (Guild Master, Officer, Team Lead, by team id), then the guild's own roles by name.
+// One entry per role and team: a role a person holds both by hand and from Discord (or from the in-game rank) shows once, as theirs (manual wins); fromDiscord marks a role that
+// only Discord gives, fromRank a role that only the in-game rank gives (source 'ingame', derived at read time). The Owner's own Guild Master row carries no mark.
+// assignments: [{ role_id, team_id, source?, role_name? }] from the effective_roles view (a missing source counts as 'manual'). Guest and Public are never listed.
 export function shapeRoles(assignments) {
   const merged = new Map();
   for (const assignment of assignments) {
     const builtin = Object.prototype.hasOwnProperty.call(ROLE_RANK, assignment.role_id);
     if (!builtin && !isCustomRole(assignment.role_id)) continue;
     const key = `${assignment.role_id}|${assignment.team_id || ''}`;
-    const entry = merged.get(key) || { role: assignment.role_id, builtin, name: assignment.role_name, teamId: assignment.team_id || null, manual: false };
-    if (assignment.source !== 'discord') entry.manual = true;
+    const entry = merged.get(key) || { role: assignment.role_id, builtin, name: assignment.role_name, teamId: assignment.team_id || null, discord: false, derived: false, plain: false };
+    const source = assignment.source || 'manual';
+    if (source === 'discord') entry.discord = true;
+    else if (source === 'ingame') entry.derived = true;
+    else entry.plain = true; // 'manual' (an officer's hand), 'owner' (the Owner's seat), anything else this file does not know
     merged.set(key, entry);
   }
   return [...merged.values()]
@@ -85,7 +89,7 @@ export function shapeRoles(assignments) {
       role: entry.role,
       ...(entry.builtin ? {} : { name: entry.name || 'Custom role' }),
       ...(entry.teamId ? { teamId: entry.teamId } : {}),
-      ...(entry.manual ? {} : { fromDiscord: true }),
+      ...(entry.plain ? {} : { ...(entry.discord ? { fromDiscord: true } : {}), ...(entry.derived ? { fromRank: true } : {}) }),
     }));
 }
 
@@ -223,7 +227,7 @@ export async function loadGuildContext(db, userId, guildId, viewAs = null) {
     ).bind(userId, guildId),
     db.prepare(
       `SELECT ra.role_id, ra.team_id, ra.source, r.name AS role_name
-         FROM role_assignments ra JOIN roles r ON r.id = ra.role_id
+         FROM effective_roles ra JOIN roles r ON r.id = ra.role_id
         WHERE ra.guild_id = ? AND ra.user_id = ?`,
     ).bind(guildId, userId),
     effectivePermissionsStatement(db, guildId),

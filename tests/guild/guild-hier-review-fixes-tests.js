@@ -266,6 +266,14 @@ async function makeAccount(world, account) {
 const blockOf = (world, guildId, userId) => world.one('SELECT * FROM guild_blocks WHERE guild_id = ? AND user_id = ?', guildId, userId);
 const personOf = (world, userId, guildId) => world.one('SELECT * FROM players WHERE user_id = ? AND guild_id = ?', userId, guildId);
 
+// A VALID Battle.net-proven character for the account on the guild's stored roster (lane B6b: the effective-roles view derives the Owner's liveness and the derived roles from
+// exactly this): a person linked to the account, its character 'Extra01' proven by the account's Battle.net link, on the roster at in-game rank `rank`.
+function proveOnRoster(world, guildId, userId, account, rank, n = 91) {
+  world.raw.person(PID(n), guildId, { userId });
+  world.raw.character(CID(n), guildId, PID(n), 'Extra01', { isMain: 1, proof: 'bnet', proofUser: userId, proofBnet: account.id, proofAt: 1 });
+  world.raw.roster(guildId, 'Extra01', rank);
+}
+
 // The blocked person of the reviews: an account-less person P whose character carries an officer-attested roster key, blocked by an Officer.
 // blockerRole: the actor_role snapshot of the audit row that wrote the person block.
 function blockedPerson(world, guildId, { pid = PID(1), cid = CID(1), name = 'Aldric', blockerRole = 'officer', reason = 'Stole loot' } = {}) {
@@ -306,9 +314,14 @@ check('F2: a Battle.net sign-in whose roster key sits on a BLOCKED account-less 
 
 check('F2/F1 held rules: the Owner, a Guild Master by role and an account equal or senior to the blocker are NOT blocked and join nothing - one block.match_held item, no guild_blocks row', async () => {
   const cases = [
-    { name: 'owner', prepare: (w, G, userId) => w.run('UPDATE guilds SET owner_user_id = ? WHERE id = ?', userId, G), reason: 'owner' },
-    // (While a guild has no owner_user_id the stored Guild Master row IS the Owner seat: another account holds it here, so this one is a Guild Master by role only.)
-    { name: 'gm', prepare: (w, G, userId) => { w.raw.user(UID(95)); w.run('UPDATE guilds SET owner_user_id = ? WHERE id = ?', UID(95), G); w.raw.role(userId, G, 'guild_master'); }, reason: 'gm' },
+    // The Owner is LIVE (a proven character on the stored roster): a suspended Owner is blockable (U R4-Q3), a live one is held back.
+    { name: 'owner', prepare: (w, G, userId) => { proveOnRoster(w, G, userId, BNET.ann, 6); w.run('UPDATE guilds SET owner_user_id = ? WHERE id = ?', userId, G); }, reason: 'owner' },
+    // A Guild Master by role who does not hold the seat: DERIVED (in-game rank 0 maps to Guild Master, the account's proven character is on rank 0); the seat is another account's.
+    { name: 'gm', prepare: (w, G, userId) => {
+      w.raw.user(UID(95)); w.run('UPDATE guilds SET owner_user_id = ? WHERE id = ?', UID(95), G);
+      w.run("UPDATE source_rank_maps SET role_id = 'guild_master' WHERE guild_id = ? AND source_key = '0'", G);
+      proveOnRoster(w, G, userId, BNET.ann, 0);
+    }, reason: 'gm' },
     { name: 'officer equal to the Officer who blocked', prepare: (w, G, userId) => w.raw.role(userId, G, 'officer'), reason: 'senior' },
   ];
   for (const { name, prepare, reason } of cases) {
@@ -344,7 +357,12 @@ check('F1: the auto join - a Battle.net sign-in whose own person and a BLOCKED p
     w.raw.person(PID(2), G, { userId });
     w.raw.character(CID(2), G, PID(2), 'Brindle', { isMain: 1 });
     const P = blockedPerson(w, G); // holds Aldric's key (the GM's roster key, as Match to roster gave it)
-    if (tier === 'gm') w.raw.role(userId, G, 'guild_master');
+    if (tier === 'gm') {
+      // A DERIVED Guild Master: its proven character 'Extra01' sits on in-game rank 0, which the map gives Guild Master.
+      w.run("UPDATE source_rank_maps SET role_id = 'guild_master' WHERE guild_id = ? AND source_key = '0'", G);
+      w.raw.character(CID(91), G, PID(2), 'Extra01', { isMain: 0, proof: 'bnet', proofUser: userId, proofBnet: BNET.ann.id, proofAt: 1 });
+      w.raw.roster(G, 'Extra01', 0);
+    }
     w.serve(['Aldric', 'Brindle']);
     w.logs.length = 0;
     await bnetSignIn(w, BNET.ann, jar);
@@ -535,6 +553,7 @@ check('F3/F7: the tombstone pass of a link callback takes what the match left of
 
 const { scenario, discord: scenarioDiscord } = require('../guild-b3-world');
 const { signIn, memberOf } = require('../guild-world');
+const { makeProven } = require('../guild-ingame');
 
 const sOne = (s, sql, ...values) => s.w.db.sqlite.prepare(sql).get(...values);
 const sAll = (s, sql, ...values) => s.w.db.sqlite.prepare(sql).all(...values);
@@ -859,7 +878,6 @@ check('F7 (join trim): every KEYED table of the person join cascades from player
 
 check('B4b F4: the rank-map PUT recomputes the approved transitions INSIDE the batch - a character that changes after the check and before the batch is not moved without approval (409 approval_stale, nothing applied); a fresh dry run then applies', async () => {
   const s = await scenario({ teams: ['Alpha', 'Bravo'] });
-  s.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.gid}'`);
   const bound = async (name, id) => {
     const made = await s.person({ name });
     s.exec(`UPDATE characters SET namespace = '${NS}', blizzard_realm_id = 4001, blizzard_char_id = ${id} WHERE id = '${made.cid}'`);
@@ -868,6 +886,12 @@ check('B4b F4: the rank-map PUT recomputes the approved transitions INSIDE the b
   await bound('Aone', 9000);
   await bound('Btwo', 9001);
   rosterRows(s, [['Aone', 9000, 0], ['Btwo', 9001, 5]]);
+  // The flip's end state: the seat on 'gm', LIVE (a Battle.net-proven character on rank 0, a rank the map below keeps a Raider), the stored Guild Master row gone.
+  const owned = await s.person({ name: 'Gmowner' });
+  await s.link(owned.pid, 'gm');
+  makeProven(s, 'gm', owned, { rank: 0, id: 9002 });
+  s.exec(`UPDATE guilds SET rank_source = 'ingame', owner_user_id = '${s.uids.gm}' WHERE id = '${s.gid}'`);
+  s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'guild_master'`);
   const RANKS = [
     { rank: 0, label: 'Guild Master', coreRank: 'raider', roleId: 'guild_master' },
     { rank: 5, label: 'Member', coreRank: 'social', roleId: null },
@@ -903,7 +927,7 @@ check('B4b F4: the rank-map PUT recomputes the approved transitions INSIDE the b
   assert.equal(dry2.changes.characters.changed, 2);
   const applied = await s.call('gm', 'PUT', '/rank-map', { ranks: RANKS, token: dry2.token });
   assert.equal(applied.status, 200, applied.text);
-  assert.deepEqual(sAll(s, 'SELECT name, core_rank FROM characters ORDER BY name').map((row) => ({ ...row })), [{ name: 'Aone', core_rank: 'raider' }, { name: 'Btwo', core_rank: 'social' }]);
+  assert.deepEqual(sAll(s, 'SELECT name, core_rank FROM characters ORDER BY name').map((row) => ({ ...row })), [{ name: 'Aone', core_rank: 'raider' }, { name: 'Btwo', core_rank: 'social' }, { name: 'Gmowner', core_rank: 'raider' }]);
 });
 
 // ---------------------------------------------------------------------------

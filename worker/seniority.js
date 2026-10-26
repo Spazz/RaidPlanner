@@ -3,13 +3,16 @@
 // are the fragments every guarded write repeats INSIDE its batch (so an actor demoted, or a target promoted, between the read and the write changes nothing).
 //
 //   target account   the account of the person (ONE definition: players.user_id, else the user whose discord_id equals players.discord_user_id)
-//   rank             lower is more senior: Guild Master 0, Officer 1, Team Lead 2, Member 3 (a custom role ranks as Member; an account holding nothing is a Member)
-//   Owner            guilds.owner_user_id = the account; while owner_user_id IS NULL (every guild before the flip) the holder of the stored guild_master row
+//   rank             lower is more senior: Guild Master 0, Officer 1, Team Lead 2, Member 3 (a custom role ranks as Member; an account holding nothing is a Member). Read from
+//                    the EFFECTIVE ROLES view (effective_roles, migration 0035): stored roles + the roles derived from the in-game rank + the Owner's own row, so a derived
+//                    Officer outranks a Member and a suspended Owner (who keeps only the seat) ranks by their own derived roles
+//   Owner            the Owner of worker/owner.js: the seat holder who is not suspended; while owner_user_id IS NULL and rank_source IS NULL (every guild before the flip)
+//                    the holder of the stored guild_master row
 //   the actor passes when the person has no account, is the actor's own, or the actor is the Owner, or the target is NOT the Owner and the actor is strictly
 //   senior or GM-tier (rank 0). Equal rank is refused: there is no Officer exemption. The Owner's person is changed only by the Owner (or by the sync).
 //   Deleting a Battle.net-proven character (owner_proof 'bnet'), or a person holding one, is GM-tier / Owner only: leaving the guild is the sync's job.
 //
-// B6b (the effective-roles view) changes only where RANK_SQL and OWNER_SQL read from; the interface (seniorityOk, seniorityDeleteOk, assertSenior) stays.
+// Lane B6b moved RANK_SQL and OWNER_SQL onto the effective-roles view (arch A9-18); the interface (seniorityOk, seniorityDeleteOk, assertSenior) is unchanged.
 import { HttpError } from './http.js';
 import { ownerSql } from './owner.js';
 import { ROLE_RANK } from './permissions.js';
@@ -18,8 +21,8 @@ import { ROLE_RANK } from './permissions.js';
 const ACCOUNT_OF_PERSON_SQL = `SELECT COALESCE(tp.user_id, (SELECT du.id FROM users du WHERE du.discord_id = tp.discord_user_id)) FROM players tp WHERE tp.id = ? AND tp.guild_id = ?`;
 
 // The three expressions below take a COLUMN of the derived row s (s.gid, s.aid, s.tid), never a bare `?`.
-const RANK_SQL = (user) => `COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = s.gid AND ra.user_id = ${user}), ${ROLE_RANK.member})`;
-const OWNER_SQL = (user) => ownerSql('s.gid', user); // the ONE Owner seat test (worker/owner.js)
+const RANK_SQL = (user) => `COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = s.gid AND ra.user_id = ${user}), ${ROLE_RANK.member})`;
+const OWNER_SQL = (user) => ownerSql('s.gid', user); // the ONE Owner test (worker/owner.js, the owner row of the effective-roles view)
 const GM_TIER_SQL = (user) => `(${OWNER_SQL(user)} OR ${RANK_SQL(user)} = ${ROLE_RANK.guild_master})`;
 
 const MAY_ACT_SQL = `s.tid IS NULL OR s.tid = s.aid OR ${OWNER_SQL('s.aid')}
@@ -46,7 +49,7 @@ export function seniorityDeleteOk(guildId, actorId, personId, characterId = null
 // person it is joined into). The actor must be the Owner or strictly senior to the account, and the account must be neither the Owner nor GM-tier: a block never lands
 // on an account that is not the actor's to block. Plain `?` placeholders only.
 export function blockCarryOk(guildId, actorId, accountId) {
-  const rank = (user) => `COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ${user}), ${ROLE_RANK.member})`;
+  const rank = (user) => `COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ${user}), ${ROLE_RANK.member})`;
   return {
     sql: `(NOT ${ownerSql('?', '?')} AND ${rank('?')} > ${ROLE_RANK.guild_master} AND (${ownerSql('?', '?')} OR ${rank('?')} < ${rank('?')}))`,
     params: [guildId, accountId, accountId, guildId, accountId, guildId, actorId, actorId, guildId, actorId, guildId, accountId],
@@ -64,7 +67,7 @@ const ROSTER_ROW_ROLE_RANK_SQL = `COALESCE((SELECT CASE m.role_id WHEN 'guild_ma
 // every other row stays open to whoever may edit the character.
 export function rosterRowOk(guildId, actorId, key) {
   const row = [guildId, key.namespace, key.realmId, key.charId];
-  const actorRank = `COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), ${ROLE_RANK.member})`;
+  const actorRank = `COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), ${ROLE_RANK.member})`;
   return {
     sql: `(${ROSTER_ROW_ROLE_RANK_SQL} >= ${ROLE_RANK.member} OR ${ownerSql('?', '?')} OR ${actorRank} < ${ROSTER_ROW_ROLE_RANK_SQL})`,
     params: [...row, guildId, actorId, actorId, guildId, actorId, ...row],

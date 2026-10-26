@@ -12,6 +12,7 @@ import { syncSignIn } from '../discord-sync.js';
 import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
 import { memberCandidatesSql, memberGuildsStatement, memberSql } from '../membership.js';
+import { hasOwnerSql, ownedGuildsSql } from '../owner.js';
 import { LIMITS } from '../limits.js';
 import { shapeRoles } from '../permissions.js';
 import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
@@ -202,8 +203,9 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
 
 // The member rule (worker/membership.js) for the guilds' lists below, with the departing or asking user as an expression.
 // The Officer who would become Guild Master: earliest assigned_at among current, unblocked members. `userExpr` is the departing user (excluded).
-// Only an Officer an officer made by hand counts: a role Discord gives (source 'discord') never decides who owns the guild.
-const successorSql = (userExpr) => `SELECT so.user_id FROM role_assignments so
+// Only an Officer an officer made by hand counts: a role Discord gives (source 'discord') and a role the in-game rank gives (source 'ingame') never decide who owns the guild.
+// Read from effective_roles_stored (the stored rows with their assignment time; the top view leaves the time out).
+const successorSql = (userExpr) => `SELECT so.user_id FROM effective_roles_stored so
       WHERE so.guild_id = g.id AND so.role_id = 'officer' AND so.source = 'manual' AND so.user_id != ${userExpr}
         AND ${memberSql('so.user_id', 'g.id', 'g.discord_server_id')}
       ORDER BY so.assigned_at, so.id LIMIT 1`;
@@ -212,7 +214,7 @@ const successorSql = (userExpr) => `SELECT so.user_id FROM role_assignments so
 const othersSql = (userExpr) => `EXISTS (SELECT 1 FROM (${memberCandidatesSql('g.id', 'g.discord_server_id')}) oc
          WHERE oc.user_id != ${userExpr} AND ${memberSql('oc.user_id', 'g.id', 'g.discord_server_id')})`;
 
-// Guilds the person leads, split three ways:
+// Guilds the person leads (the Owner of worker/owner.js: the seat holder, suspended or not, or the stored Guild Master of a guild before the flip), split three ways:
 //  - handOverFirst: others have joined and the person is still a current member (they must hand over)
 //  - autoPromote:   others have joined but the person has left the server or is blocked; the earliest
 //                   Officer who is a current member takes over (to = null: no one can, the guild has no GM)
@@ -223,9 +225,9 @@ async function deleteImpact(db, userId) {
             ${othersSql('m.uid')} AS has_others,
             ${memberSql('m.uid', 'g.id', 'g.discord_server_id')} AS self_member,
             (${successorSql('m.uid')}) AS successor_id
-       FROM (SELECT ? AS uid) m
-       JOIN role_assignments ra ON ra.user_id = m.uid AND ra.role_id = 'guild_master'
-       JOIN guilds g ON g.id = ra.guild_id
+       FROM (SELECT ?1 AS uid) m
+       JOIN (${ownedGuildsSql('?1')}) owned_by_me
+       JOIN guilds g ON g.id = owned_by_me.guild_id
       ORDER BY g.name, g.id`,
   ).bind(userId).all();
   const rows = result.results;
@@ -267,7 +269,7 @@ async function createPayload(ctx) {
     // A stale list was already dropped by loadSession; readManageable returns no servers for it.
     const taken = await db.prepare(
       `SELECT g.id, g.name, g.discord_server_id,
-              EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.guild_id = g.id AND ra.role_id = 'guild_master') AS has_master
+              ${hasOwnerSql('g.id')} AS has_master
          FROM guilds g WHERE g.discord_server_id IN (SELECT value FROM json_each(?)) AND ${serverIdIsDiscordSql('g.discord_server_id')}`,
     ).bind(JSON.stringify(manageable.servers.map((server) => server.id))).all();
     const takenIds = new Set(taken.results.map((row) => row.discord_server_id));
@@ -301,7 +303,7 @@ export async function me(ctx) {
     memberGuildsStatement(db, userId),
     db.prepare(
       `SELECT ra.guild_id, ra.role_id, ra.team_id, ra.source, r.name AS role_name
-         FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.user_id = ?`,
+         FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.user_id = ?`,
     ).bind(userId),
     db.prepare(
       `SELECT g.id, g.name FROM guild_blocks b JOIN guilds g ON g.id = b.guild_id

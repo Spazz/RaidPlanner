@@ -40,7 +40,7 @@ const ACCOUNT_LESS_SQL = `NOT EXISTS (SELECT 1 FROM players x WHERE x.id = ? AND
 
 // { sql, params }: true while the actor is the Owner or strictly senior to the person's prospective rank.
 function actorOutranksPerson(guildId, actorId, playerId) {
-  const actorRank = `COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), ${ROLE_RANK.member})`;
+  const actorRank = `COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), ${ROLE_RANK.member})`;
   return {
     sql: `(${ownerSql('?', '?')} OR ${actorRank} < ${PROSPECTIVE_RANK_SQL})`,
     params: [guildId, actorId, actorId, guildId, actorId, playerId, guildId],

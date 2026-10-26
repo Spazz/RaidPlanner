@@ -151,13 +151,14 @@ const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, be
 
 // The actor snapshot of a row (migration 0031 columns), computed by the INSERT itself so it holds what the database says when the row is written:
 //   actor_short_id  the first 8 characters of the id after its prefix (u_ab12CD34...): enough to tell two former members apart, nothing to look up
-//   actor_role      'owner' (the Owner seat, worker/owner.js), else the best built-in role the actor holds in the row's guild (guild_master, officer,
-//                   team_lead), else 'member'; NULL for a row with no actor or no guild (an account's own sign-in)
+//   actor_role      'owner' (the Owner, worker/owner.js: the seat holder who is not suspended), else the best built-in role the actor EFFECTIVELY holds in the row's guild
+//                   (effective_roles: stored + derived from the in-game rank; guild_master, officer, team_lead), else 'member'; NULL for a row with no actor or no guild
+//                   (an account's own sign-in)
 // Both survive the account's deletion (the foreign key sets actor_user_id NULL). Placeholders in order: actor | actor, guild | guild, actor, actor | guild, actor.
 const SNAPSHOT_SQL = `substr(?, 3, 8),
   CASE WHEN ? IS NULL OR ? IS NULL THEN NULL
        WHEN ${ownerSql('?', '?')} THEN 'owner'
-       ELSE COALESCE((SELECT ra.role_id FROM role_assignments ra JOIN roles r ON r.id = ra.role_id
+       ELSE COALESCE((SELECT ra.role_id FROM effective_roles ra JOIN roles r ON r.id = ra.role_id
                        WHERE ra.guild_id = ? AND ra.user_id = ? AND ra.role_id IN ('guild_master', 'officer', 'team_lead') ORDER BY r.rank LIMIT 1), 'member') END`;
 const snapshotParams = (actorUserId, guildId) => [actorUserId, actorUserId, guildId, guildId, actorUserId, actorUserId, guildId, actorUserId];
 

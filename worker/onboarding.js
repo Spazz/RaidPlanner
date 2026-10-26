@@ -25,7 +25,7 @@ export function onboardingStatement(db, guildContext) {
             EXISTS (SELECT 1 FROM players WHERE guild_id = g.id) AS has_people,
             EXISTS (SELECT 1 FROM attendance_policies WHERE guild_id = g.id) AS has_policy,
             EXISTS (SELECT 1 FROM raids WHERE guild_id = g.id) AS has_raid,
-            EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = g.id AND role_id != 'guild_master')
+            EXISTS (SELECT 1 FROM effective_roles WHERE guild_id = g.id AND role_id != 'guild_master')
               OR EXISTS (SELECT 1 FROM discord_role_maps WHERE guild_id = g.id) AS has_staff,
             EXISTS (SELECT 1 FROM loot_awards WHERE guild_id = g.id) AS has_loot
        FROM guilds g WHERE g.id = ?1`,

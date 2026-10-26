@@ -15,6 +15,7 @@
 const assert = require('node:assert/strict');
 const { load, runChecks, scenario } = require('../guild-b3-world');
 const { seatOnRoster } = require('../guild-seat');
+const { makeProven } = require('../guild-ingame');
 
 const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
@@ -32,16 +33,43 @@ const VINDICATED = [
 
 async function M() { return load('worker/rank-map.js'); }
 
+// The live Owner's own roster row (see world()): a rank the maps below leave alone is not possible (they use all ten), so the tests count it where they count the roster.
+const OWNER_RANK = 4;
+const OWNER_CHAR_ID = 9990;
+
 // A guild whose Owner is the Guild Master (legacy rule), with a second account 'own' for the seat moves.
 async function world({ ingame = true } = {}) {
   const s = await scenario();
   await s.member('own', 'Ownerseat');
   await s.officer('off', 'Officerone');
-  if (ingame) s.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.gid}'`);
   s.nextId = 9000;
+  // An in-game guild: the creator holds the Owner seat and must be LIVE (a Battle.net-proven character on the stored roster), or the seat is suspended and the powers drop to a
+  // plain member's. The Owner's own roster row (OWNER_ROW) is re-written by every setRoster.
+  s.ownerRows = [];
+  // liveOwner(key): the account gets a person bound to the roster by a Battle.net proof (a LIVE Owner or a derived Guild Master candidate); its roster row survives setRoster.
+  s.liveOwner = async (key, rank = OWNER_RANK) => {
+    const id = OWNER_CHAR_ID + s.ownerRows.length;
+    const name = `Owner${key}`;
+    const made = await s.person({ name });
+    await s.link(made.pid, key);
+    makeProven(s, key, made, { rank, id });
+    s.ownerRows.push({ name, rank, id, key, made });
+    return made;
+  };
+  s.setOwnerRank = (key, rank) => {
+    const row = s.ownerRows.find((entry) => entry.key === key);
+    row.rank = rank;
+    s.exec(`UPDATE guild_roster SET rank = ${rank} WHERE guild_id = '${s.gid}' AND blizzard_char_id = ${row.id}`);
+  };
+  if (ingame) {
+    await s.liveOwner('gm');
+    s.exec(`UPDATE guilds SET rank_source = 'ingame', owner_user_id = '${s.uids.gm}' WHERE id = '${s.gid}'`);
+    s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'guild_master'`);
+  }
   // The stored in-game roster: rows { name, rank, id? } -> guild_roster.
   s.setRoster = (rows) => {
     s.exec(`DELETE FROM guild_roster WHERE guild_id = '${s.gid}'`);
+    rows = [...rows, ...s.ownerRows];
     for (const row of rows) {
       s.exec(`INSERT INTO guild_roster (guild_id, namespace, blizzard_realm_id, blizzard_char_id, name, name_key, realm_slug, class, level, rank)
               VALUES ('${s.gid}', '${NS}', 4001, ${row.id}, '${row.name}', '${row.name.toLowerCase()}', 'nightslayer', 'MAGE', 70, ${row.rank})`);
@@ -77,8 +105,11 @@ const ONE_RANK = [{ rank: 0, label: 'Guild Master', coreRank: 'raider', roleId: 
 
 check('gate: the rank map (read, dry run, change) is the Owner\'s - a derived Guild Master and an Officer are refused on all three; the Owner is allowed on all three', async () => {
   const s = await world();
-  await s.seat('gm', 'Gmseat', 9100);
+  // 'own' is the Owner (live); 'gm' is a DERIVED Guild Master (in-game rank 0 maps to Guild Master); 'off' is a stored Officer on the roster.
   await s.seat('off', 'Offseat', 9101);
+  await s.liveOwner('own');
+  s.exec(`INSERT INTO source_rank_maps (guild_id, source, source_key, label, core_rank, role_id) VALUES ('${s.gid}', 'ingame', '0', 'Guild Master', 'raider', 'guild_master')`);
+  s.setOwnerRank('gm', 0);
   await s.setOwner('own');
   for (const who of ['gm', 'off']) {
     await s.fail(who, 'GET', '/rank-map', undefined, 403, 'forbidden');
@@ -86,8 +117,8 @@ check('gate: the rank map (read, dry run, change) is the Owner\'s - a derived Gu
     await s.fail(who, 'PUT', '/rank-map', { ranks: ONE_RANK, token: 'x'.repeat(43) }, 403, 'forbidden');
   }
   assert.equal((await s.rows('SELECT token_hash FROM dry_run_approvals')).length, 0, 'a refused dry run leaves no token');
-  assert.equal((await s.rows('SELECT source_key FROM source_rank_maps')).length, 0);
-  // The Owner: allowed (the account holding the seat is a plain member by role, so the seat alone decides).
+  assert.equal((await s.rows('SELECT source_key FROM source_rank_maps')).length, 1, 'only the fixture row');
+  // The Owner: allowed.
   const map = await s.ok('own', 'GET', '/rank-map', undefined, 200);
   assert.equal(map.ranks.length, 10);
   const dry = await s.ok('own', 'POST', '/rank-map/dry-run', { ranks: ONE_RANK }, 200);
@@ -150,7 +181,7 @@ check('GET /rank-map: ten rows (stored or suggested from the Battle.net labels),
   assert.deepEqual(map.ranks.slice(0, 4).map((r) => [r.rank, r.mapped, r.label, r.coreRank, r.roleId, r.members]), [
     [0, true, 'Guild Master', 'raider', 'guild_master', 1], [1, false, 'Right hand', null, null, 0], [2, false, 'Rank 2', null, null, 0], [3, true, 'Core', 'raider', 'officer', 2],
   ]);
-  assert.deepEqual(map.unmapped, [{ rank: 7, members: 1 }]);
+  assert.deepEqual(map.unmapped, [{ rank: 4, members: 1 }, { rank: 7, members: 1 }], 'rank 4 holds the character of the live Owner (world())');
   assert.equal(map.complete, false);
   assert.deepEqual([map.source, map.rankSource, map.applies], ['ingame', 'ingame', true]);
   assert.deepEqual(map.coreRanks.map((c) => c.id), ['raider', 'trial', 'reserve', 'social']);
@@ -215,9 +246,9 @@ check('apply: the token is consumed inside the batch, the map is replaced, the a
 
 check('the token is bound to the approver: another account\'s token is refused, and the refusal does not burn it', async () => {
   const s = await world();
-  await s.seat('gm', 'Gmseat', 9100);
   const dry = await s.dry(VINDICATED);
-  // The seat moves to 'own'; their request carries the Guild Master's token.
+  // The seat moves to 'own' (a live Owner too); their request carries the Owner's token.
+  await s.liveOwner('own');
   await s.setOwner('own');
   await s.fail('own', 'PUT', '/rank-map', { ranks: VINDICATED, token: dry.token }, 409, 'approval_invalid');
   assert.deepEqual(await s.mapRows(), []);
@@ -313,7 +344,7 @@ check('the apply is one atomic batch: a failure anywhere leaves the token unused
   s.w.db.batch = real;
   assert.deepEqual([raced.status, raced.json.error], [409, 'approval_invalid']);
   assert.deepEqual(await snapshot(), before, 'the token was not consumed and nothing was applied');
-  await s.setOwner(null);
+  await s.setOwner('gm');
   await s.put(VINDICATED, dry.token);
   assert.equal((await s.rows('SELECT source_key FROM source_rank_maps')).length, 6);
 });
@@ -343,7 +374,7 @@ check('applyRankMap: a character takes the core rank of its in-game rank; a rank
   const applied = await s.put(map, dry.token);
   assert.equal(applied.applied.characters, 5);
   const ranks = Object.fromEntries((await s.rows('SELECT name, core_rank FROM characters')).map((r) => [r.name, r.core_rank]));
-  assert.deepEqual(ranks, { Cmain: 'raider', Draider: 'raider', Etrial: 'trial', Freserve: 'reserve', Gnorow: 'social', Hgone: 'social', Ihand: 'social' });
+  assert.deepEqual(ranks, { Cmain: 'raider', Draider: 'raider', Etrial: 'trial', Freserve: 'reserve', Gnorow: 'social', Hgone: 'social', Ihand: 'social', Ownergm: 'raider' });
   // Nobody was made Former by this (that is the sync's step): no left date anywhere.
   assert.equal((await s.rows('SELECT name FROM characters WHERE left_on IS NOT NULL')).length, 0);
   // The dry run told the truth.
@@ -435,14 +466,16 @@ check('every-rank-mapped gate: assertRankMapComplete refuses while a rank on the
   const { assertRankMapComplete, rankMapGaps } = await M();
   const s = await world();
   s.setRoster([{ name: 'Aone', rank: 0, id: 9000 }, { name: 'Btwo', rank: 3, id: 9001 }, { name: 'Cthree', rank: 3, id: 9002 }, { name: 'Dfour', rank: 9, id: 9003 }]);
-  assert.deepEqual(await rankMapGaps(s.w.db, s.gid), [{ rank: 0, members: 1 }, { rank: 3, members: 2 }, { rank: 9, members: 1 }]);
-  await assert.rejects(assertRankMapComplete(s.w.db, s.gid), (error) => error.status === 409 && error.code === 'rank_map_incomplete' && /rank 0, rank 3, rank 9/.test(error.message)
-    && JSON.stringify(error.extra.ranks) === JSON.stringify([{ rank: 0, members: 1 }, { rank: 3, members: 2 }, { rank: 9, members: 1 }]));
-  await s.apply([{ rank: 0, label: 'GM', coreRank: 'raider' }, { rank: 3, label: 'Core', coreRank: 'raider' }]);
+  // Rank 4 holds the live Owner's own character (world()).
+  assert.deepEqual(await rankMapGaps(s.w.db, s.gid), [{ rank: 0, members: 1 }, { rank: 3, members: 2 }, { rank: 4, members: 1 }, { rank: 9, members: 1 }]);
+  await assert.rejects(assertRankMapComplete(s.w.db, s.gid), (error) => error.status === 409 && error.code === 'rank_map_incomplete' && /rank 0, rank 3, rank 4, rank 9/.test(error.message)
+    && JSON.stringify(error.extra.ranks) === JSON.stringify([{ rank: 0, members: 1 }, { rank: 3, members: 2 }, { rank: 4, members: 1 }, { rank: 9, members: 1 }]));
+  await s.apply([{ rank: 0, label: 'GM', coreRank: 'raider' }, { rank: 3, label: 'Core', coreRank: 'raider' }, { rank: 4, label: 'Raider', coreRank: 'raider' }]);
   assert.deepEqual(await rankMapGaps(s.w.db, s.gid), [{ rank: 9, members: 1 }]);
-  await s.apply([{ rank: 0, label: 'GM', coreRank: 'raider' }, { rank: 3, label: 'Core', coreRank: 'raider' }, { rank: 9, label: 'Alts', coreRank: 'social' }]);
+  await s.apply([{ rank: 0, label: 'GM', coreRank: 'raider' }, { rank: 3, label: 'Core', coreRank: 'raider' }, { rank: 4, label: 'Raider', coreRank: 'raider' }, { rank: 9, label: 'Alts', coreRank: 'social' }]);
   await assertRankMapComplete(s.w.db, s.gid);
   // A map row for a rank nobody holds is fine; the guild with no roster at all has nothing to map.
+  s.ownerRows.length = 0;
   s.setRoster([]);
   await assertRankMapComplete(s.w.db, s.gid);
 });
@@ -452,18 +485,24 @@ check('the unmapped-rank attention item: the Owner of an in-game guild sees it w
   s.setRoster([{ name: 'Aone', rank: 0, id: 9000 }, { name: 'Btwo', rank: 3, id: 9001 }, { name: 'Cthree', rank: 3, id: 9002 }, { name: 'Dfour', rank: 9, id: 9003 }]);
   // The Officer and the Guild Master who loses the seat are members through two of the roster's own characters.
   await s.seat('off', 'Aone', 9000, 0);
-  await s.seat('gm', 'Btwo', 9001, 3);
+  await s.liveOwner('own');
   const items = async (who) => (await s.ok(who, 'GET', '/attention', undefined, 200)).items.filter((i) => i.kind === 'unmapped_ranks');
   const ownerItems = await items('gm');
   assert.equal(ownerItems.length, 1);
   const item = ownerItems[0];
-  assert.deepEqual([item.id, item.count, item.ranks, item.characters, item.teamId, item.severity], ['unmapped_ranks', 3, [0, 3, 9], 4, null, 'action']);
+  assert.deepEqual([item.id, item.count, item.ranks, item.characters, item.teamId, item.severity], ['unmapped_ranks', 4, [0, 3, 4, 9], 6, null, 'action']);
   assert.deepEqual(item.link, { name: 'settings', tab: 'battlenet' });
   assert.equal((await items('off')).length, 0, 'an Officer');
   // The seat on another account: the Guild Master by role is a derived Guild Master and no longer sees it.
   await s.setOwner('own');
+  await s.fail('gm', 'GET', '/attention', undefined, 403, 'forbidden'); // displaced: a plain member now (the stored Guild Master row stops counting with the seat set)
+  // A DERIVED Guild Master (in-game rank 0 maps to Guild Master) passes the route and still does not see the Owner's item.
+  s.exec(`INSERT INTO source_rank_maps (guild_id, source, source_key, label, core_rank, role_id) VALUES ('${s.gid}', 'ingame', '0', 'Guild Master', 'raider', 'guild_master')`);
+  s.setOwnerRank('gm', 0);
   assert.equal((await items('gm')).length, 0);
-  await s.setOwner(null);
+  s.exec(`DELETE FROM source_rank_maps WHERE guild_id = '${s.gid}'`);
+  s.setOwnerRank('gm', OWNER_RANK);
+  await s.setOwner('gm');
   // Not an in-game guild yet: nothing is held back, so no item.
   s.exec(`UPDATE guilds SET rank_source = NULL WHERE id = '${s.gid}'`);
   assert.equal((await items('gm')).length, 0);
@@ -473,7 +512,7 @@ check('the unmapped-rank attention item: the Owner of an in-game guild sees it w
   const dismiss = await s.call('gm', 'POST', '/attention/dismissals', { itemId: 'unmapped_ranks' });
   assert.equal(dismiss.status, 400);
   assert.equal(dismiss.json.error, 'not_dismissable');
-  await s.apply([{ rank: 0, label: 'GM', coreRank: 'raider' }, { rank: 3, label: 'Core', coreRank: 'raider' }, { rank: 9, label: 'Alts', coreRank: 'social' }]);
+  await s.apply([{ rank: 0, label: 'GM', coreRank: 'raider' }, { rank: 3, label: 'Core', coreRank: 'raider' }, { rank: 4, label: 'Raider', coreRank: 'raider' }, { rank: 9, label: 'Alts', coreRank: 'social' }]);
   assert.equal((await items('gm')).length, 0);
   // A rank the GM adds in game later comes back as an item for that rank alone.
   s.setRoster([{ name: 'Aone', rank: 0, id: 9000 }, { name: 'Eone', rank: 6, id: 9004 }]);
@@ -485,15 +524,22 @@ check('the unmapped-rank attention item: the Owner of an in-game guild sees it w
 
 check('the officer rank edit (PATCH status, left date, reason) is refused in an in-game guild - its ranks are the roster\'s - and works in a manual or legacy one; Trial dates stay editable', async () => {
   const s = await world({ ingame: false });
-  // A 'manual' guild lets in only an account linked to a person (lane B5): the Guild Master is linked to one.
-  await s.link((await s.person({ name: 'Gmperson' })).pid, 'gm');
+  // A 'manual' guild lets in only an account linked to a person (lane B5): the Guild Master is linked to one. The in-game flips below also need the Owner LIVE (a Battle.net-proven
+  // character on the stored roster) and the seat set, which is what flipIngame writes.
+  const gmPerson = await s.person({ name: 'Gmperson' });
+  await s.link(gmPerson.pid, 'gm');
+  const flipIngame = () => {
+    makeProven(s, 'gm', gmPerson, { rank: OWNER_RANK, id: OWNER_CHAR_ID });
+    s.exec(`UPDATE guilds SET rank_source = 'ingame', owner_user_id = '${s.uids.gm}' WHERE id = '${s.gid}'`);
+    s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'guild_master'`);
+  };
   const p = await s.person({ name: 'Edited', status: 'trial', trialEnd: '2027-02-10' });
   let version = p.res.person.version;
   const patch = (body) => s.call('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: version, ...body });
   const ok = await patch({ status: 'reserve' });
   assert.equal(ok.status, 200, ok.text);
   version = ok.json.person.version;
-  s.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.gid}'`);
+  flipIngame();
   for (const body of [{ status: 'raider' }, { status: 'inactive' }, { status: 'inactive', leftReason: 'kicked', leftOn: '2027-01-02' }]) {
     const refused = await patch(body);
     assert.deepEqual([refused.status, refused.json.error], [409, 'rank_from_source'], JSON.stringify(body));

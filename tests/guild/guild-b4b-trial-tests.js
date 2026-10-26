@@ -9,6 +9,7 @@
  */
 const assert = require('node:assert/strict');
 const { load, runChecks, scenario } = require('../guild-b3-world');
+const { makeProven } = require('../guild-ingame');
 
 const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
@@ -20,7 +21,16 @@ const at = (date, hour = 12) => Date.parse(`${date}T${String(hour).padStart(2, '
 
 async function world({ teams = ['Alpha', 'Bravo'], ingame = false } = {}) {
   const s = await scenario({ teams });
-  if (ingame) s.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.gid}'`);
+  if (ingame) {
+    // An in-game guild: the creator holds the seat and is LIVE (a Battle.net-proven, teamless character on rank 5, a Trial like the rank map below makes it, so a map apply moves
+    // nobody it did not before); the stored Guild Master row goes, as in the flip.
+    const owned = await s.person({ name: 'Gmowner', teamId: null });
+    await s.link(owned.pid, 'gm');
+    makeProven(s, 'gm', owned, { rank: 5, id: 9990 });
+    s.exec(`UPDATE characters SET core_rank = 'trial' WHERE id = '${owned.cid}'`);
+    s.exec(`UPDATE guilds SET rank_source = 'ingame', owner_user_id = '${s.uids.gm}' WHERE id = '${s.gid}'`);
+    s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'guild_master'`);
+  }
   s.pulls = 0;
   // A raid is named by a short key in the tests; its id has the shape the routes accept (r_ and 22 letters).
   s.rid = (key) => `r_${key.replace(/[^A-Za-z0-9]/g, '').padEnd(22, 'Z')}`;

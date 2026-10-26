@@ -138,6 +138,21 @@ async function scenario({ teams = 1, pin = true, rankSource = null, officer = fa
       }
     },
   };
+  // An in-game guild: its Owner must be LIVE (a Battle.net-proven character on the stored roster) or the seat is suspended and the Guild Master loses the powers every route below
+  // is called with. The Guild Master is roster member 0 of the fixtures (rank 0, `nameOf(0)`), so it keeps its place through every sync.
+  if (rankSource === 'ingame') {
+    const made = await s.call('gm', 'POST', '/roster', { teamId: tids[0], name: nameOf(0), class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' });
+    assert.equal(made.status, 201, made.text);
+    const pid = made.json.person.id;
+    assert.equal((await s.call('gm', 'PUT', `/roster/${pid}/account`, { userId: uids.gm })).status, 200);
+    s.sql("INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, '730000001', 'Syncgm#1', 1, '{}', 1)", uids.gm);
+    s.sql("UPDATE characters SET owner_proof = 'bnet', proof_user_id = ?, proof_bnet_account_id = '730000001', proof_at = 1, namespace = ?, blizzard_realm_id = 4001, blizzard_char_id = ? WHERE id = ?",
+      uids.gm, NS, idOf(0), made.json.characters[0].id);
+    s.sql(`INSERT OR REPLACE INTO guild_roster (guild_id, namespace, blizzard_realm_id, blizzard_char_id, name, name_key, realm_slug, class, level, rank)
+          VALUES (?, ?, 4001, ?, ?, ?, 'dreamscythe', 'WARRIOR', 70, 0)`, gid, NS, idOf(0), nameOf(0), nameOf(0).toLowerCase());
+    s.sql('UPDATE guilds SET owner_user_id = ? WHERE id = ?', uids.gm, gid);
+    s.sql("DELETE FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master'", gid);
+  }
   if (pin) s.pinTo();
   return s;
 }

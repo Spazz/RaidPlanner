@@ -5,6 +5,7 @@ import { hasDiscord } from '../discord-guard.js';
 import { newId } from '../ids.js';
 import { GUILD_LIMIT_MESSAGE, LIMITS } from '../limits.js';
 import { ownPersonStatement } from '../membership.js';
+import { hasOwnerSql } from '../owner.js';
 import { loadGuildContext } from '../permissions.js';
 import { defaultTeamSize } from '../raid-zones.js';
 import { readManageable } from '../session.js';
@@ -282,9 +283,9 @@ export async function claimGuild(ctx) {
       db.prepare(
         `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
          SELECT ?, ?, ?, 'guild_master', NULL, ?, ?
-          WHERE NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master')
+          WHERE NOT ${hasOwnerSql('?')}
             AND NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)`,
-      ).bind(rowId, guild.id, userId, userId, now, guild.id, guild.id, userId),
+      ).bind(rowId, guild.id, userId, userId, now, guild.id, guild.id, guild.id, userId),
       db.prepare(
         `INSERT INTO user_servers (user_id, server_id, seen_at) SELECT ?, ?, ? WHERE ${inserted.sql}
          ON CONFLICT(user_id, server_id) DO UPDATE SET seen_at = excluded.seen_at`,

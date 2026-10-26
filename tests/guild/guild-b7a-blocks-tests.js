@@ -21,6 +21,7 @@ const { createD1Fake } = require('../d1-fake');
 const { adminOf, memberOf, signIn } = require('../guild-world');
 const { load, runChecks, scenario, SERVER, discord } = require('../guild-b3-world');
 const { NAMESPACE, REALM_ID, seatOnRoster } = require('../guild-seat');
+const { makeProven } = require('../guild-ingame');
 
 const ROOT = path.join(__dirname, '..', '..');
 const KEY = 'test-tombstone-key-0123456789abcdef';
@@ -190,9 +191,10 @@ check('audit rows carry the actor snapshot: a short id and the role (owner, guil
   assert.deepEqual(await write(s.uids.m1, s.gid, 'team.restore'), { actor_short_id: shortOf('m1'), actor_role: 'member' });
   assert.deepEqual(await write(null, s.gid, 'notify.disabled'), { actor_short_id: null, actor_role: null }, 'a Worker-made row has no actor');
   assert.deepEqual(await write(s.uids.m1, null, 'discord.link'), { actor_short_id: shortOf('m1'), actor_role: null }, 'an account\'s own row has no guild, so no role');
-  // A hand-over: the Owner seat moves, and a derived Guild Master who is not the Owner reads guild_master.
+  // A hand-over: the Owner seat moves. The stored Guild Master row stops counting with it (review finding B4b/B5 F1), so the former Guild Master reads what they hold now: a
+  // member. (A derived Guild Master reads guild_master, a suspended Owner reads what the in-game rank gives them: tests/guild/guild-b6b-readers-tests.js.)
   s.setOwner('o1');
-  assert.deepEqual(await write(s.uids.gm, s.gid, 'guild.export'), { actor_short_id: shortOf('gm'), actor_role: 'guild_master' });
+  assert.deepEqual(await write(s.uids.gm, s.gid, 'guild.export'), { actor_short_id: shortOf('gm'), actor_role: 'member' });
   assert.deepEqual(await write(s.uids.o1, s.gid, 'guild.claim'), { actor_short_id: shortOf('o1'), actor_role: 'owner' });
 });
 
@@ -492,7 +494,11 @@ async function ingameWorld() {
   people.Memberguy.altId = altId;
   const map = (rank, role) => s.exec(`INSERT INTO source_rank_maps (guild_id, source, source_key, label, core_rank, role_id) VALUES ('${s.gid}', 'ingame', '${rank}', 'R${rank}', 'raider', ${role ? `'${role}'` : 'NULL'})`);
   map(0, 'guild_master'); map(1, 'officer'); map(2, 'team_lead'); map(4, null);
-  s.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.gid}'`);
+  // The flip's end state: the seat on 'gm', LIVE (its character proven by Battle.net), and the stored Guild Master row gone. 'o2' is a second live Owner for the tests that move the seat.
+  makeProven(s, 'gm', people.Seatgm, { rank: 3, id: 8100 });
+  makeProven(s, 'o2', people.Seatotwo, { rank: 3, id: 8102 });
+  s.exec(`UPDATE guilds SET rank_source = 'ingame', owner_user_id = '${s.uids.gm}' WHERE id = '${s.gid}'`);
+  s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'guild_master'`);
   s.people = people;
   return s;
 }
@@ -538,8 +544,10 @@ check('person block: the outranks test - strictly senior to the rank the person 
   // The Owner (the stored Guild Master row in this legacy-owner guild) passes for every rank, the GM-mapped one included.
   assert.equal((await blockPerson(s, 'gm', 'Officerguy')).status, 200);
   assert.equal((await blockPerson(s, 'gm', 'Gmguy')).status, 200);
-  // A Guild Master who is not the Owner is judged by rank: rank 0 is not strictly senior to the GM-mapped person.
+  // A Guild Master who is not the Owner is judged by rank: rank 0 is not strictly senior to the GM-mapped person. 'gm' becomes a DERIVED Guild Master (its character on in-game
+  // rank 0) and the seat moves to 'o2'.
   s.exec(`DELETE FROM person_blocks WHERE player_id = '${s.people.Gmguy.pid}'`);
+  s.exec(`UPDATE guild_roster SET rank = 0 WHERE guild_id = '${s.gid}' AND blizzard_char_id = 8100`);
   s.setOwner('o2');
   const nonOwner = await blockPerson(s, 'gm', 'Gmguy');
   assert.deepEqual([nonOwner.status, nonOwner.json.error], [403, 'forbidden']);
@@ -712,12 +720,12 @@ check('match: the Owner and a GM-tier account are never blocked by a match - onl
   assert.equal(await s.w.count('audit_log', "action = 'block.match_held'"), 2, 'and again the next day');
   const item = (await s.ok('o1', 'GET', '/attention')).items.find((entry) => entry.kind === 'block_review');
   assert.deepEqual([item.count, item.pending, item.held], [1, 0, 1], 'one account held back, counted once');
-  // A GM-tier account that is not the Owner: the seat moves to o2, the Guild Master row stays with gm.
+  // The seat moves to o2: the stored Guild Master row stops counting with it, so gm is an ordinary account and the old tombstone blocks it, pending review. (A GM-tier account that
+  // is not the Owner is the next test: it needs an in-game guild, the only one with derived roles.)
   s.setOwner('o2');
   s.w.advance(25 * 60 * 60 * 1000);
-  await signIn(s.w, discord('gm', 'Gmb3'), []);
-  assert.equal(await s.w.count('guild_blocks'), 0);
-  assert.equal(JSON.parse((await s.one("SELECT after FROM audit_log WHERE action = 'block.match_held' ORDER BY created_at DESC LIMIT 1")).after).reason, 'gm');
+  await signIn(s.w, discord('gm', 'Gmb3'), [{ id: SERVER, name: 'Server', icon: null, owner: false, permissions: '0' }]);
+  assert.equal(await s.w.count('guild_blocks', 'user_id = ?', s.uids.gm), 1);
 });
 
 check('match: an account whose character holds the in-game Guild Master rank (rank map) is GM tier through its identity key - held back, never blocked', async () => {
