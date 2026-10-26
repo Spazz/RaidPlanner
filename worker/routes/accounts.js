@@ -5,6 +5,7 @@ import { auditStatement } from '../audit.js';
 import { bnetNameOf, hasBnetSql } from '../identities.js';
 import { isId } from '../ids.js';
 import { blockedSql, memberSql, ownPlayerSql } from '../membership.js';
+import { ownerGuard, requireOwner } from '../owner.js';
 import { loadGuildContext, isGranted } from '../permissions.js';
 import { personFromSession, toPerson } from '../person.js';
 import { enforceRateLimit } from '../ratelimit.js';
@@ -21,6 +22,7 @@ const LOOKUP_WINDOW_MS = 10 * 60 * 1000;
 const FOUND_MAX = 5;
 const CLAIMANTS_MAX = 20;
 const conflict = () => new HttpError(409, 'conflict', 'That changed while you were working on it. Reload and try again.');
+export const PROVEN_LINK_MESSAGE = 'Only the Owner of the guild can link or unlink an account on a person who has a character proved by Battle.net.';
 
 // ---------------------------------------------------------------------------
 // PATCH /api/me { displayName: string | null }: the name the account shows everywhere. null (or "") goes back to the Discord or Battle.net name.
@@ -190,10 +192,16 @@ export async function setPersonAccount(ctx) {
   // The Seniority guard (worker/seniority.js): a person whose account ranks the same or above the actor is not relinked or unlinked by them.
   await assertSenior(db, guildContext, player.id);
   const senior = seniorityOk(guildId, ctx.session.user.id, player.id);
+  // A person that holds a Battle.net-proven character is linked and unlinked by the Owner only: the account on the person is who the proof belongs to (a change of
+  // players.user_id clears the proofs, lane B6a), and Battle.net beats an officer's link on the same identity key. Read for a clean 403, repeated inside the writes.
+  const proven = await db.prepare("SELECT 1 AS found FROM characters WHERE guild_id = ? AND player_id = ? AND owner_proof = 'bnet' LIMIT 1").bind(guildId, player.id).first();
+  if (proven) await requireOwner(db, guildContext, PROVEN_LINK_MESSAGE);
+  const owner = ownerGuard(guildId, ctx.session.user.id);
   // `IS ?` matches a Main on no team (home.id null) too; `= ?` would match nothing and the write would silently do nothing.
   const onHomeTeam = {
-    sql: 'EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?) AND ' + senior.sql,
-    params: [home.id, ...senior.params],
+    sql: `EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?) AND ${senior.sql}
+          AND (NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND owner_proof = 'bnet') OR ${owner.sql})`,
+    params: [home.id, ...senior.params, ...owner.params],
   };
 
   if (body.userId === null) {

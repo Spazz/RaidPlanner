@@ -14,6 +14,7 @@ import { isId, newId } from '../ids.js';
 import { ownPersonStatement } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { personStatusSql } from '../person-rank-sql.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { pickTotals, raidRoleOf, targetsOf } from '../recruit-data.js';
 import { MULTI_LINE_STRIP, SPECS, isRealDate, isSpecOf } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
@@ -101,7 +102,7 @@ async function boardPayload(ctx, guildContext, team, roundRow, viewerPersonId) {
     // The people of the team who may still pick: on the team's roster (a character placed on it, still here, in a raiding rank).
     db.prepare(
       `SELECT p.id, ${rosterRankOnTeamSql('p.id', '?2')} AS status, m.name, m.class FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ?1 AND ${personOnTeamRosterSql('p.id', '?2')}
+        WHERE p.guild_id = ?1 AND ${personOnTeamRosterSql('p.id', '?2')} AND ${visibleCharacterSql('m')}
         ORDER BY m.name_key, p.id`,
     ).bind(guildId, team.id),
   ]);

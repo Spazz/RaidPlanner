@@ -11,8 +11,15 @@
 //                                            no matched character is free, the one holding the best-ranked key is linked and the others join on later sign-ins.)
 //       per matched key:  held by the account's person .. the proof is stamped
 //                         held by another UNOWNED person .. joined into the account's person (reason 'bnet'), AT MOST ONE join per callback
-//                         held by a person of ANOTHER account .. nothing (part 2b builds "Battle.net beats a link"); log `bnet match deferred: rehome`
-//                         held by nobody, but a character with the same name + realm exists .. nothing (part 2b); log `bnet match deferred: collision`
+//                         held by a person of ANOTHER account .. BATTLE.NET BEATS A LINK (part 2b): the character is re-homed to the account's person
+//                                            (worker/rehome.js), AT MOST ONE re-home per callback (`bnet match deferred: rehome` for the rest)
+//                         held by nobody, but a character R with the same name + realm exists (the NAME COLLISION, part 2b):
+//                           R has no key and has not left ... the key binds onto R. R on the account's person: stamped. R on an unowned person: that person is linked
+//                                            or joined (the paths above). R on a person of ANOTHER account: R is re-homed to the account's person, key and all
+//                           R holds another key that is gone from the stored roster, or R is Former ... R gives the name up (worker/rehome.js retireNameStatements:
+//                                            Former, its name_key moved to a dated alias) and the character is created as below
+//                           R holds another key that is still on the stored roster ... the roster holds two characters with one name: log `bnet match invalid:
+//                                            collision`, nothing is written in that guild
 //                         held by nobody, no such character .. a character is created under the account's person (name and class from the roster row, any level,
 //                                            core_rank by newCoreRankSql, team NULL, owner_proof 'bnet')
 //       Characters that are NOT on the roster get no rows (R4-Q5: they live only in the snapshot). A blocked account gets nothing in the guild.
@@ -26,19 +33,24 @@
 // that overwrites it and with the same conditions, so the row exists exactly when the proof changed hands.
 //
 // SET-BASED: every statement is one INSERT / UPDATE over json_each of the keyed snapshot characters, never one statement per character.
-// BATCHES: reads (2 statements, one batch) -> one write batch per 'ingame' guild -> one for the legacy / manual stamping -> at most one join batch. A batch that
-// fails (a unique violation from a concurrent sign-in, a cap trigger) rolls back alone; the sign-in stands and the match is redone at the next one.
+// BATCHES: reads (2 statements, one batch) -> one write batch per 'ingame' guild -> one for the legacy / manual stamping -> at most one re-home batch (its own read:
+// worker/rehome.js) -> at most one join batch. A batch that fails (a unique violation from a concurrent sign-in, a cap trigger) rolls back alone; the sign-in stands
+// and the match is redone at the next one. A re-home or a join whose guard refuses it leaves EVERY statement a no-op (the opening row says so).
+// RETIRED PLACEHOLDERS (worker/character-visibility.js): a person's size and Main are its visible characters'; the inserts stop at its ROWS because the
+// characters_cap trigger counts the placeholders too.
 // BUDGET: the whole callback stays within CALLBACK_STATEMENT_BUDGET D1 statements (batch members count one by one). The callback tells how many it has used;
 // work that does not fit is deferred to the next sign-in (`bnet match deferred: budget`).
 import { tombstoneMatchStatements } from './block-tombstones.js';
 import { auditStatement } from './audit.js';
 import { markPersonRaidsStale, markRaidsStale } from './attendance-store.js';
 import { bnetSupport } from './battlenet.js';
+import { placeholderCharacterSql, visibleCharacterSql } from './character-visibility.js';
 import { isUniqueViolation } from './http.js';
 import { newId } from './ids.js';
 import { LIMITS } from './limits.js';
 import { joinPersonsStatements } from './person-join.js';
 import { ingameGuard, newCoreRankSql } from './rank-map.js';
+import { rehomeStatements, retireNameStatements } from './rehome.js';
 import { CLASS_IDS, nameKey, realmKey } from './roster-data.js';
 import { guildToday } from './roster-view.js';
 import { resolveRealm } from './routes/roster.js';
@@ -49,6 +61,11 @@ export const CALLBACK_STATEMENT_BUDGET = 45;
 // The cheapest join: 3 reads (the pair, their characters, the counts) + the lean batch of an empty loser (journal, audit, team clear, move, stale marking, survivor,
 // delete) + the proof stamping that follows it.
 const JOIN_MIN_STATEMENTS = 14;
+// The most a re-home can take: its read, then up to 11 statements (the opening audit row, the sign-ups and stale marking, the move, the Main hand-over, the placeholder,
+// the alias and the older aliases' move, the versions), the bind of a name collision with its audit row (2) and the proof stamping (2).
+const REHOME_MAX_STATEMENTS = 16;
+// A guild batch gives up the names of at most this many Former characters at once (4 statements each); the rest wait for the next sign-in.
+const MAX_RETIRES = 2;
 const CLASS_LIST = `(${CLASS_IDS.map((id) => `'${id}'`).join(', ')})`;
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const and = (...guards) => ({ sql: guards.map((guard) => `(${guard.sql})`).join(' AND '), params: guards.flatMap((guard) => guard.params) });
@@ -139,101 +156,145 @@ export function clearBnetProofStatement(db, userId, guard) {
 // ---------------------------------------------------------------------------
 // The reads
 
-// Every snapshot character that is on the roster of a guild running on the in-game roster, with the character that holds the key (if any) and the person of that
-// character, and the character with the same name and realm when nobody holds the key. json_each (the snapshot) drives it: each key is one guild_roster_identity
-// lookup, then primary-key and unique-index lookups (no scan of guild_roster, characters or players).
+// Every snapshot character that is on the roster of a guild running on the in-game roster, with the character that holds the key (if any), the character with the
+// same name and realm when nobody holds the key (the collider R), and the person of whichever it is (hp: the holder's, else the collider's). json_each (the snapshot)
+// drives it: each key is one guild_roster_identity lookup, then primary-key and unique-index lookups (no scan of guild_roster, characters or players). A person's
+// size and Main are its VISIBLE characters' (worker/character-visibility.js); a hidden Main is told apart (holder_hidden_main) because a new Main must replace it.
 const MATCHES_SQL = `SELECT g.id AS guild_id, g.time_zone, g.game_version, g.region, g.realm, g.realm_kind,
        EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = ?) AS blocked,
        gr.namespace, gr.blizzard_realm_id AS realm_id, gr.blizzard_char_id AS char_id, gr.name, gr.name_key, gr.class, gr.rank,
-       ch.id AS character_id, ch.player_id AS holder_id, hp.user_id AS holder_user, hp.discord_user_id AS holder_discord, hp.version AS holder_version,
-       CASE WHEN ch.id IS NOT NULL AND hp.user_id IS NULL THEN (SELECT COUNT(*) FROM characters hc WHERE hc.player_id = hp.id) END AS holder_characters,
-       CASE WHEN ch.id IS NOT NULL AND hp.user_id IS NULL THEN EXISTS (SELECT 1 FROM characters hm WHERE hm.player_id = hp.id AND hm.is_main = 1) END AS holder_has_main,
-       CASE WHEN ch.id IS NOT NULL AND hp.user_id IS NULL
-            THEN (SELECT json_group_object(hq.id, hq.owner_proof) FROM characters hq WHERE hq.player_id = hp.id AND hq.owner_proof IN ('officer', 'hand')) END AS holder_proofs,
-       co.id AS collider_id
+       COALESCE((SELECT sm.core_rank FROM source_rank_maps sm WHERE sm.guild_id = g.id AND sm.source = 'ingame' AND sm.team_id IS NULL AND sm.source_key = CAST(gr.rank AS TEXT)), 'social') AS mapped_rank,
+       ch.id AS character_id, co.id AS collider_id, co.blizzard_char_id AS collider_key, co.left_on AS collider_left, co.team_id AS collider_team,
+       EXISTS (SELECT 1 FROM guild_roster cr WHERE co.blizzard_char_id IS NOT NULL AND cr.guild_id = co.guild_id AND cr.namespace = co.namespace
+                  AND cr.blizzard_realm_id = co.blizzard_realm_id AND cr.blizzard_char_id = co.blizzard_char_id) AS collider_on_roster,
+       hp.id AS holder_id, hp.user_id AS holder_user, hp.discord_user_id AS holder_discord, hp.version AS holder_version,
+       CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN (SELECT COUNT(*) FROM characters hc WHERE hc.player_id = hp.id AND ${visibleCharacterSql('hc')}) END AS holder_characters,
+       CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN (SELECT COUNT(*) FROM characters hr WHERE hr.player_id = hp.id) END AS holder_rows,
+       CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN EXISTS (SELECT 1 FROM characters hm WHERE hm.player_id = hp.id AND hm.is_main = 1 AND ${visibleCharacterSql('hm')}) END AS holder_has_main,
+       CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL THEN EXISTS (SELECT 1 FROM characters hh WHERE hh.player_id = hp.id AND hh.is_main = 1 AND ${placeholderCharacterSql('hh')}) END AS holder_hidden_main,
+       CASE WHEN hp.id IS NOT NULL AND hp.user_id IS NULL
+            THEN (SELECT json_group_object(hq.id, hq.owner_proof) FROM characters hq WHERE hq.player_id = hp.id AND hq.owner_proof IN ('officer', 'hand')) END AS holder_proofs
   FROM json_each(?) j
   CROSS JOIN guild_roster gr ON gr.namespace = json_extract(j.value, '$[0]') AND gr.blizzard_realm_id = json_extract(j.value, '$[1]') AND gr.blizzard_char_id = json_extract(j.value, '$[2]')
   JOIN guilds g ON g.id = gr.guild_id AND g.rank_source = 'ingame'
   LEFT JOIN characters ch ON ch.guild_id = gr.guild_id AND ch.namespace = gr.namespace AND ch.blizzard_realm_id = gr.blizzard_realm_id AND ch.blizzard_char_id = gr.blizzard_char_id
-  LEFT JOIN players hp ON hp.id = ch.player_id
   LEFT JOIN characters co ON ch.id IS NULL AND co.guild_id = gr.guild_id AND co.name_key = gr.name_key AND co.realm_key = json_extract(j.value, '$[3]')
+  LEFT JOIN players hp ON hp.id = COALESCE(ch.player_id, co.player_id)
  ORDER BY g.id, gr.rank, gr.name_key`;
 
-// The account (its Discord ID) and every person it is linked to, with the guild's source and the person's size.
+// The account (its Discord ID) and every person it is linked to, with the guild's source and the person's size (visible characters only).
 const ACCOUNT_SQL = `SELECT u.discord_id, p.id AS person_id, p.guild_id, p.version, g.rank_source, g.game_version, g.region, g.realm, g.realm_kind, g.time_zone,
        EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = p.guild_id AND b.user_id = u.id) AS blocked,
-       (SELECT COUNT(*) FROM characters c WHERE c.player_id = p.id) AS characters,
-       EXISTS (SELECT 1 FROM characters m WHERE m.player_id = p.id AND m.is_main = 1) AS has_main
+       (SELECT COUNT(*) FROM characters c WHERE c.player_id = p.id AND ${visibleCharacterSql('c')}) AS characters,
+       (SELECT COUNT(*) FROM characters r WHERE r.player_id = p.id) AS character_rows,
+       EXISTS (SELECT 1 FROM characters m WHERE m.player_id = p.id AND m.is_main = 1 AND ${visibleCharacterSql('m')}) AS has_main,
+       EXISTS (SELECT 1 FROM characters h WHERE h.player_id = p.id AND h.is_main = 1 AND ${placeholderCharacterSql('h')}) AS hidden_main
   FROM users u LEFT JOIN players p ON p.user_id = u.id LEFT JOIN guilds g ON g.id = p.guild_id
  WHERE u.id = ? ORDER BY p.guild_id`;
 
 // ---------------------------------------------------------------------------
 // Planning one 'ingame' guild (pure)
 
-// What the key's holder is to this account: mine | other (a person of another account: the Discord ID counts as an owner) | unowned, or for a key nobody holds:
-// collision (a character with that name and realm exists) | free.
-function kindOf(row, { userId, discordId, personId }) {
-  if (!row.character_id) return row.collider_id ? 'collision' : 'free';
-  if (row.holder_user === userId || (personId && row.holder_id === personId)) return 'mine';
-  if (row.holder_user) return 'other';
-  if (row.holder_discord && row.holder_discord !== discordId) return 'other';
-  return 'unowned';
+// What a matched key is to this account -> { kind, bind?, retire? }.
+//   the key is held:   kind = what the holder's person is: mine | other (a person of another account: the Discord ID counts as an owner) | unowned
+//   nobody holds it, a character R has the same name + realm (the NAME COLLISION):
+//     R has no key and has not left ...... kind = what R's person is (mine | other | unowned), bind: the key binds onto R
+//     R has no key but left, or holds another key that is gone from the stored roster ... free, retire: R gives the name up first
+//     R holds another key that is still on the stored roster ... invalid: the roster would hold two characters with one name
+//   a class Raidsmith does not know cannot be bound onto R: skip (deferred collision)
+//   nothing has the name ... free
+function classify(row, { userId, discordId, personId }) {
+  const holderKind = () => {
+    if (row.holder_user === userId || (personId && row.holder_id === personId)) return 'mine';
+    if (row.holder_user) return 'other';
+    if (row.holder_discord && row.holder_discord !== discordId) return 'other';
+    return 'unowned';
+  };
+  if (row.character_id) return { kind: holderKind() };
+  if (!row.collider_id) return { kind: 'free' };
+  const unkeyed = row.collider_key === null;
+  if (unkeyed && !row.collider_left) return CLASS_IDS.includes(row.class) ? { kind: holderKind(), bind: true } : { kind: 'skip' };
+  if (!unkeyed && row.collider_on_roster === 1) return { kind: 'invalid' };
+  return { kind: 'free', retire: true };
 }
 
 const byRank = (a, b) => a.rank - b.rank || (a.name_key < b.name_key ? -1 : a.name_key > b.name_key ? 1 : 0);
 
-// -> null (nothing to do in this guild) or the plan: { guild, person: { id, kind: 'existing' | 'link' | 'create', ... }, inserts, keys, stamp, joinCandidates, deferred }.
+// -> null (nothing to do in this guild) | { guild, invalid: true } | the plan: { guild, person: { id, kind: 'existing' | 'link' | 'create', ... }, inserts, retires, binds, rehomes,
+// keys, stamp, joinCandidates, deferred }. rehomes: the characters of other accounts' persons that move to the account's person (a batch of their own, at most one
+// per callback); binds: the unkeyed characters that take a matched key.
 function planGuild(rows, { account, mine, byKey, userId, ids }) {
   const guild = { id: rows[0].guild_id, time_zone: rows[0].time_zone, game_version: rows[0].game_version, region: rows[0].region, realm: rows[0].realm, realm_kind: rows[0].realm_kind };
   if (rows[0].blocked) return null;
   const deferred = new Set();
   const personId = mine ? mine.person_id : null;
-  const classified = rows.map((row) => ({ row, kind: kindOf(row, { userId, discordId: account.discord_id, personId }) }));
-  if (classified.some((entry) => entry.kind === 'other')) deferred.add('rehome');
-  if (classified.some((entry) => entry.kind === 'collision')) deferred.add('collision');
+  const classified = rows.map((row) => ({ row, ...classify(row, { userId, discordId: account.discord_id, personId }) }));
+  if (classified.some((entry) => entry.kind === 'invalid')) return { guild, invalid: true, deferred };
+  if (classified.some((entry) => entry.kind === 'skip')) deferred.add('collision');
 
   // The characters nobody holds that can be created: a class Raidsmith knows and a realm the guild accepts.
-  const free = [];
-  for (const { row, kind } of classified) {
+  const candidates = [];
+  for (const { row, kind, retire } of classified) {
     if (kind !== 'free' || !CLASS_IDS.includes(row.class)) continue;
     const item = byKey.get(keyOf(row.namespace, row.realm_id, row.char_id));
     const realm = item ? resolveRealm(guild, item.realm) : null;
-    if (realm) free.push({ row, item, realm });
+    if (realm) candidates.push({ row, item, realm, retire: !!retire });
   }
-  free.sort((a, b) => byRank(a.row, b.row));
+  candidates.sort((a, b) => byRank(a.row, b.row));
+  // A name given up costs four statements: at most MAX_RETIRES per batch, the characters that need the next one wait for the next sign-in.
+  let retiring = 0;
+  const free = candidates.filter((entry) => {
+    if (!entry.retire) return true;
+    if (retiring >= MAX_RETIRES) { deferred.add('collision'); return false; }
+    retiring++;
+    return true;
+  });
 
-  // The unowned persons that hold matched keys, best-ranked first.
+  // The unowned persons that hold matched keys (or whose unkeyed character has a matched name), best-ranked first.
   const unowned = new Map();
   for (const { row, kind } of classified) {
     if (kind !== 'unowned') continue;
     const entry = unowned.get(row.holder_id) || {
-      id: row.holder_id, rank: row.rank, nameKey: row.name_key, version: row.holder_version, characters: row.holder_characters, hasMain: row.holder_has_main === 1, proofs: row.holder_proofs,
+      id: row.holder_id, rank: row.rank, nameKey: row.name_key, version: row.holder_version, characters: row.holder_characters, rows: row.holder_rows,
+      hasMain: row.holder_has_main === 1, hiddenMain: row.holder_hidden_main === 1, proofs: row.holder_proofs,
     };
     if (byRank(row, { rank: entry.rank, name_key: entry.nameKey }) < 0) { entry.rank = row.rank; entry.nameKey = row.name_key; }
     unowned.set(row.holder_id, entry);
   }
   const unownedList = [...unowned.values()].sort((a, b) => a.rank - b.rank || (a.id < b.id ? -1 : 1));
 
+  // Battle.net beats a link: the matched characters that sit on a person of another account.
+  const rehomes = classified.filter((entry) => entry.kind === 'other')
+    .map((entry) => ({ row: entry.row, characterId: entry.row.character_id || entry.row.collider_id, bind: !entry.row.character_id }))
+    .sort((a, b) => byRank(a.row, b.row));
+
   let person = null;
   if (mine) {
-    person = { id: mine.person_id, kind: 'existing', version: mine.version, characters: mine.characters, hasMain: mine.has_main === 1 };
+    person = { id: mine.person_id, kind: 'existing', version: mine.version, characters: mine.characters, rows: mine.character_rows, hasMain: mine.has_main === 1, hiddenMain: mine.hidden_main === 1 };
   } else if (unownedList.length === 1 || (unownedList.length >= 2 && !free.length)) {
     const target = unownedList[0];
-    person = { id: target.id, kind: 'link', version: target.version, characters: target.characters, hasMain: target.hasMain, proofs: target.proofs };
-  } else if (free.length) {
-    person = { id: ids.person(), kind: 'create', version: 1, characters: 0, hasMain: false };
+    person = { id: target.id, kind: 'link', version: target.version, characters: target.characters, rows: target.rows, hasMain: target.hasMain, hiddenMain: target.hiddenMain, proofs: target.proofs };
+  } else if (free.length || rehomes.length) {
+    person = { id: ids.person(), kind: 'create', version: 1, characters: 0, rows: 0, hasMain: false, hiddenMain: false };
   }
   if (!person) return { guild, person: null, deferred };
 
-  const room = Math.max(0, LIMITS.charactersPerPerson - person.characters);
+  // The cap counts VISIBLE characters (a retired placeholder is not one), but the INSERT trigger of migration 0030 (characters_cap) still counts every row of the
+  // person: an insert past it would abort the whole batch. Until a migration makes the trigger skip placeholders, the inserts stop at the rows.
+  const room = Math.max(0, LIMITS.charactersPerPerson - Math.max(person.characters, person.rows));
   if (free.length > room) deferred.add('cap');
   const inserts = free.slice(0, room).map((entry, index) => ({ ...entry, id: ids.character(), isMain: !person.hasMain && index === 0 ? 1 : 0 }));
+  const retires = inserts.filter((entry) => entry.retire);
+  const binds = classified.filter((entry) => entry.bind && entry.kind !== 'other').map((entry) => ({ row: entry.row, characterId: entry.row.collider_id, holderId: entry.row.holder_id }));
   const keys = rows.map((row) => [row.namespace, row.realm_id, row.char_id, byKey.get(keyOf(row.namespace, row.realm_id, row.char_id)).fetchedAt]);
   const hasMine = classified.some((entry) => entry.kind === 'mine');
   return {
     guild,
     person,
     inserts,
+    retires,
+    binds,
+    rehomes,
     keys,
     stamp: hasMine || person.kind === 'link',
     joinCandidates: unownedList.filter((entry) => entry.id !== person.id),
@@ -267,6 +328,35 @@ SELECT x.id, x.guild_id, ?, NULL, x.name, x.name_key, x.realm, x.realm_key, x.cl
            AND NOT EXISTS (SELECT 1 FROM characters h WHERE h.guild_id = gr.guild_id AND h.namespace = gr.namespace
                                                          AND h.blizzard_realm_id = gr.blizzard_realm_id AND h.blizzard_char_id = gr.blizzard_char_id)) x
  WHERE `;
+
+// A name collision: the matched key binds onto the unkeyed character R that already carries the name and realm (an officer typed it in, or an old import). R takes
+// the roster row's key, name, class (a changed class clears the specs, as Match to roster does) and core rank (the guild's rank map); its person, team, Main and
+// owner_proof stay (the proof is stamped afterwards, with the others). Nothing happens once R left, took a key or the key was taken. -> [update, audit row].
+function bindStatements(ctx, { guildId, characterId, holderId, row, userId, now, guard }) {
+  const { db } = ctx;
+  const update = db.prepare(
+    `UPDATE characters SET namespace = ?, blizzard_realm_id = ?, blizzard_char_id = ?, name = ?, class = ?,
+            main_spec = CASE WHEN class = ? THEN main_spec END, off_spec = CASE WHEN class = ? THEN off_spec END,
+            trial_start = CASE WHEN core_rank = ? THEN trial_start END, trial_end = CASE WHEN core_rank = ? THEN trial_end END,
+            updated_at = CASE WHEN core_rank = ? THEN updated_at ELSE ? END, core_rank = ?
+      WHERE id = ? AND guild_id = ? AND player_id = ? AND blizzard_char_id IS NULL AND left_on IS NULL AND name_key = ?
+        AND NOT EXISTS (SELECT 1 FROM characters h WHERE h.guild_id = ? AND h.namespace = ? AND h.blizzard_realm_id = ? AND h.blizzard_char_id = ?)
+        AND ${guard.sql}`,
+  ).bind(
+    row.namespace, row.realm_id, row.char_id, row.name, row.class, row.class, row.class, row.mapped_rank, row.mapped_rank, row.mapped_rank, now, row.mapped_rank,
+    characterId, guildId, holderId, row.name_key, guildId, row.namespace, row.realm_id, row.char_id, ...guard.params,
+  );
+  const audit = auditStatement(ctx, {
+    guildId,
+    actorUserId: userId,
+    action: 'character.match_roster',
+    entityType: 'character',
+    entityId: characterId,
+    before: { personId: holderId },
+    after: { personId: holderId, namespace: row.namespace, blizzardRealmId: row.realm_id, blizzardCharId: row.char_id, renamed: false, via: 'bnet' },
+  }, CHANGED_ONE);
+  return [update, audit];
+}
 
 const personIsMine = (personId, guildId, userId) => ({
   sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND user_id = ?)', params: [personId, guildId, userId],
@@ -310,8 +400,25 @@ function guildStatements(ctx, plan, { userId, bnetAccountId, now, tombstone }) {
     }
   }
 
+  // A name collision: the characters that give the name up become Former first (the new character takes the name), the unkeyed ones take the key.
+  for (const entry of plan.retires) {
+    statements.push(...retireNameStatements(db, {
+      guildId, characterId: entry.row.collider_id, expected: { nameKey: entry.row.name_key, realmKey: entry.item.realmKey, blizzardCharId: entry.row.collider_key },
+      actorUserId: userId, now, timeZone: plan.guild.time_zone, guards: [mine], randomBytes: ctx.randomBytes, teamId: entry.row.collider_team,
+    }));
+  }
+  for (const entry of plan.binds) {
+    statements.push(...bindStatements(ctx, { guildId, characterId: entry.characterId, holderId: entry.holderId, row: entry.row, userId, now, guard: ingame }));
+  }
+
   if (plan.inserts.length) {
     const items = plan.inserts.map(({ id, realm, row, isMain, item }) => [id, realm.realm, realm.key, isMain, item.fetchedAt, row.namespace, row.realm_id, row.char_id]);
+    // The person's only Main is a retired placeholder (a re-home left it): the new Main takes its place.
+    if (plan.person.hiddenMain && plan.inserts.some((entry) => entry.isMain === 1)) {
+      statements.push(db.prepare(
+        `UPDATE characters INDEXED BY characters_player SET is_main = 0 WHERE guild_id = ? AND player_id = ? AND is_main = 1 AND ${placeholderCharacterSql('characters')} AND ` + mine.sql,
+      ).bind(guildId, P, ...mine.params));
+    }
     statements.push(db.prepare(INSERT_CHARACTERS_SQL + mine.sql).bind(guildId, P, now, now, userId, bnetAccountId, JSON.stringify(items), guildId, ...mine.params));
   }
   if (plan.person.kind !== 'existing') statements.push(markPersonRaidsStale(db, guildId, P, mine));
@@ -380,6 +487,59 @@ async function writeBatch(ctx, statements) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Battle.net beats a link
+
+// The character of a person of ANOTHER account moves to the account's person (worker/rehome.js), and the proofs of the account's person are stamped in the same
+// batch. candidate: { plan, personId, row, characterId, bind }. bind: the character is an unkeyed one with the matched name and realm (the name collision): the key binds
+// onto it inside the batch, after the re-home's opening row (so a refused re-home binds nothing). A bnet proof of another account on the character is superseded only
+// when this snapshot is newer (the monotonic rule), otherwise the whole re-home is refused. -> the D1 statements used (the read, and the batch when it ran).
+async function rehomeBatch(ctx, candidate, { userId, bnetAccountId, now, byKey, deferred, room }) {
+  const { db } = ctx;
+  const { plan, personId, row, characterId, bind } = candidate;
+  const guildId = plan.guild.id;
+  const fetchedAt = byKey.get(keyOf(row.namespace, row.realm_id, row.char_id)).fetchedAt;
+  const guards = [
+    ingameGuard(guildId),
+    personIsMine(personId, guildId, userId),
+    notBlocked(guildId, userId),
+    {
+      sql: 'EXISTS (SELECT 1 FROM characters pc WHERE pc.id = ? AND (pc.proof_bnet_account_id IS NULL OR pc.proof_bnet_account_id = ? OR pc.proof_at IS NULL OR pc.proof_at < ?))',
+      params: [characterId, bnetAccountId, fetchedAt],
+    },
+  ];
+  let rehome = null;
+  try {
+    rehome = await rehomeStatements(db, {
+      guildId, characterId, toPersonId: personId, actorUserId: userId, now, reason: bind ? 'collision' : 'bnet_beats_link', guards, randomBytes: ctx.randomBytes,
+    });
+  } catch (error) {
+    // The character is gone, the person has no room (20 characters), ...: leave it to the next sign-in or an officer.
+    deferred.add('rehome');
+    ctx.log(`bnet match: rehome refused: ${error && error.code ? error.code : error && error.message}`);
+    return 1;
+  }
+  const [opening, ...rest] = rehome.statements;
+  const bound = bind
+    ? bindStatements(ctx, {
+      guildId, characterId, holderId: rehome.fromPersonId, row, userId, now, guard: { sql: 'EXISTS (SELECT 1 FROM audit_log WHERE id = ?)', params: [rehome.auditId] },
+    })
+    : [];
+  const stamps = proofStatements(db, {
+    scope: { sql: 'characters.guild_id = ? AND characters.player_id = ?', params: [guildId, personId] },
+    guard: and(ingameGuard(guildId), personIsMine(personId, guildId, userId)), actorUserId: userId, bnetAccountId, keys: plan.keys, now,
+  });
+  const statements = [opening, ...bound, ...rest, ...stamps];
+  if (!room(1 + statements.length)) {
+    deferred.add('budget');
+    deferred.add('rehome');
+    return 1;
+  }
+  const results = await writeBatch(ctx, statements);
+  if (!results || results[rehome.appliedIndex].meta.changes !== 1) deferred.add('rehome');
+  return 1 + statements.length;
+}
+
 // ctx: { db, now, randomBytes, log }.   input: { userId, bnetAccountId, snapshot, now, spent }  spent = D1 statements the callback has used so far.
 // -> { statements: the total the callback has used, deferred: ['rehome', ...], joined: boolean }
 export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, spent }) {
@@ -411,10 +571,16 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
   for (const row of matches.results) guildRows.set(row.guild_id, [...(guildRows.get(row.guild_id) || []), row]);
   const ids = { person: () => newId('p', ctx.randomBytes), character: () => newId('c', ctx.randomBytes) };
   const ready = [];
+  const rehomeReady = [];
   for (const [guildId, rows] of guildRows) {
     const plan = planGuild(rows, { account, mine: persons.find((person) => person.guild_id === guildId), byKey, userId, ids });
     if (!plan) continue;
     for (const reason of plan.deferred) deferred.add(reason);
+    if (plan.invalid) {
+      // A snapshot character and a roster character that holds ANOTHER key on the stored roster carry one name and realm: the response cannot be right. Nothing is written.
+      ctx.log('bnet match invalid: collision');
+      continue;
+    }
     if (!plan.person) continue;
     const tombstone = await tombstoneMatchStatements(db, {
       guildId, userId, env: ctx.env, now: ctx.now, randomBytes: ctx.randomBytes, log: ctx.log,
@@ -424,10 +590,11 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
     const { statements, personAt } = guildStatements(ctx, plan, { userId, bnetAccountId, now, tombstone });
     if (!room(statements.length)) { deferred.add('budget'); continue; }
     used += statements.length;
-    const results = await writeBatch(ctx, statements);
+    const results = statements.length ? await writeBatch(ctx, statements) : [];
     if (!results) continue;
     if (personAt !== null && results[personAt].meta.changes !== 1) continue;
     if (plan.joinCandidates.length) ready.push({ plan, personId: plan.person.id });
+    for (const candidate of plan.rehomes) rehomeReady.push({ plan, personId: plan.person.id, ...candidate });
   }
 
   // ---- legacy and manual guilds: only the stamping
@@ -438,6 +605,18 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
       await writeBatch(ctx, legacy);
     } else {
       deferred.add('budget');
+    }
+  }
+
+  // ---- Battle.net beats a link: at most one re-home per callback (its own batch); the rest wait for the next sign-in
+  if (rehomeReady.length) {
+    rehomeReady.sort((a, b) => byRank(a.row, b.row) || (a.plan.guild.id < b.plan.guild.id ? -1 : a.plan.guild.id > b.plan.guild.id ? 1 : 0));
+    if (rehomeReady.length > 1) deferred.add('rehome');
+    if (!room(REHOME_MAX_STATEMENTS)) {
+      deferred.add('budget');
+      deferred.add('rehome');
+    } else {
+      used += await rehomeBatch(ctx, rehomeReady[0], { userId, bnetAccountId, now, byKey, deferred, room });
     }
   }
 

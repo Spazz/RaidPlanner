@@ -10,6 +10,7 @@ import { auditStatement } from '../audit.js';
 import { isId } from '../ids.js';
 import { LEVEL_BANDS, funnelRow, funnelTotals, launchEnabled } from '../launch-data.js';
 import { ownPersonStatement } from '../membership.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { targetsOf } from '../recruit-data.js';
 import { personOnTeamRosterSql, rosterRankOnTeamSql } from '../team-roster.js';
@@ -46,7 +47,7 @@ export async function funnelPayload(ctx, guildContext, team) {
   const [peopleResult, characterResult, roundResult, statusResult, claimResult] = await db.batch([
     db.prepare(
       `SELECT p.id, ${rosterRankOnTeamSql('p.id', '?2')} AS status, m.name, m.class FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ?1 AND ${personOnTeamRosterSql('p.id', '?2')}
+        WHERE p.guild_id = ?1 AND ${personOnTeamRosterSql('p.id', '?2')} AND ${visibleCharacterSql('m')}
         ORDER BY m.name_key, p.id`,
     ).bind(guild.id, team.id),
     db.prepare('SELECT player_id, class FROM characters WHERE guild_id = ? AND team_id = ?').bind(guild.id, team.id),

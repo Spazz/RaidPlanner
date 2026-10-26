@@ -32,6 +32,7 @@ import { ownerSql } from '../owner.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { characterOfRow } from '../person-rank.js';
 import { personRankSql } from '../person-rank-sql.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { LOG_GRACE_HOURS, LOG_NUDGE_LOOKBACK_DAYS, RAID_DURATION_HOURS } from '../duties.js';
 import { CONFIRM_HOURS } from '../notify.js';
 import { effectiveRaidSize } from '../raid-zones.js';
@@ -184,7 +185,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     bind(`SELECT id, joined_on, rank, rank_on FROM players WHERE guild_id = ? AND ${personRankSql('players.id')} IN ('raider', 'trial')`),
     bind(
       `SELECT id, player_id, name, class, team_id, is_main, core_rank, left_on, left_reason, trial_start, trial_end FROM characters
-        WHERE guild_id = ?1 AND ${personRankSql('characters.player_id')} IN ('raider', 'trial')`,
+        WHERE guild_id = ?1 AND ${personRankSql('characters.player_id')} IN ('raider', 'trial') AND ${visibleCharacterSql('characters')}`,
     ),
     // Upcoming raids with a published roster where someone said they cannot make it.
     bind(

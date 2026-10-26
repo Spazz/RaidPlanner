@@ -2,12 +2,13 @@
 // first word. An incoming ONE-word name resolves to the guild's character with that first word when exactly one has it - after the full
 // key was tried first (a character that is itself just "Thrall" wins). Two or more candidates: the name is left alone, so it stays
 // unmatched / in the review queue exactly as an unknown name does today. TBC and Classic guilds get no index and no change.
+import { visibleCharacterSql } from './character-visibility.js';
 import { allowsSurname, nameKey } from './roster-data.js';
 
 // -> null for a guild whose version has no surnames, else { exact: Set("nameKey|realmKey"), byFirst: Map("firstWordKey|realmKey" -> [{ name, nameKey }]) }.
 export async function loadSurnameIndex(db, guild) {
   if (!guild || !allowsSurname(guild.game_version)) return null;
-  const result = await db.prepare('SELECT name, name_key, realm_key FROM characters WHERE guild_id = ?').bind(guild.id).all();
+  const result = await db.prepare(`SELECT name, name_key, realm_key FROM characters WHERE guild_id = ? AND ${visibleCharacterSql('characters')}`).bind(guild.id).all();
   const exact = new Set();
   const byFirst = new Map();
   for (const row of result.results) {

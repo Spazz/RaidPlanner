@@ -10,6 +10,7 @@ import { isId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { raidSizeFields } from '../raid-zones.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { SINGLE_LINE_STRIP, isSpecOf, nameKey } from '../roster-data.js';
 import {
   NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closeHoursOf, closedReason, closesAtOf, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey,
@@ -88,7 +89,7 @@ export async function buildView(ctx, guildContext, raid) {
     db.prepare(
       `SELECT ${CHARACTER_COLUMNS} FROM characters
         WHERE guild_id = ? AND (player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND player_id IS NOT NULL)
-                                OR player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}))`,
+                                OR player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')})) AND ${visibleCharacterSql('characters')}`,
     ).bind(guild.id, raid.id, guild.id, userId, userId),
   ];
   // An upcoming raid also reads the Away / Late / Leaving notices that cover its date (worker/away.js): a virtual Absence for the people who are away and have
@@ -99,7 +100,7 @@ export async function buildView(ctx, guildContext, raid) {
     statements.push(db.prepare(
       `SELECT p.id AS person_id, ${rosterRankOnTeamSql('p.id', '?2')} AS status, c.id, c.player_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, c.team_id
          FROM players p JOIN characters c ON c.player_id = p.id
-        WHERE p.guild_id = ?1 AND ${personOnTeamRosterSql('p.id', '?2')}`,
+        WHERE p.guild_id = ?1 AND ${personOnTeamRosterSql('p.id', '?2')} AND ${visibleCharacterSql('c')}`,
     ).bind(guild.id, teamId));
   }
   if (upcoming) {
@@ -236,7 +237,7 @@ export async function writeSignup(ctx, guildContext, raid, personId, input, self
   const guild = guildContext.guild;
   const teamId = raid.team_id;
   const [characterResult, existingResult] = await db.batch([
-    db.prepare(`SELECT ${CHARACTER_COLUMNS} FROM characters WHERE guild_id = ? AND player_id = ?`).bind(guild.id, personId),
+    db.prepare(`SELECT ${CHARACTER_COLUMNS} FROM characters WHERE guild_id = ? AND player_id = ? AND ${visibleCharacterSql('characters')}`).bind(guild.id, personId),
     db.prepare("SELECT character_id, spec_name, class_name, note FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ?").bind(raid.id, personId),
   ]);
   const all = characterResult.results;

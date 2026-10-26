@@ -7,6 +7,7 @@ import {
   AUDIT_GROUPS, GROUP_IDS, SYSTEM_ACTIONS, auditCsv, collectRefs, dayLabel, describeRow, groupFilter, groupOf, rangeMs,
 } from '../audit-view.js';
 import { isId } from '../ids.js';
+import { placeholderCharacterSql } from '../character-visibility.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
 import { isRealDate, todayIn } from '../roster-data.js';
 import { bad } from './roster.js';
@@ -75,7 +76,7 @@ const JOINED_SQL = `WITH RECURSIVE chain(origin, id, depth) AS (
 export async function loadNames(db, guildId, refs, teams) {
   const [personResult, characterResult, raidResult, userResult, awardResult, claimResult, joinedResult] = await db.batch([
     db.prepare(
-      `SELECT player_id, name FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT value FROM json_each(?2)) ORDER BY is_main DESC, name`,
+      `SELECT player_id, name FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT value FROM json_each(?2)) ORDER BY ${placeholderCharacterSql('characters')}, is_main DESC, name`,
     ).bind(guildId, idsOf(refs.persons)),
     db.prepare('SELECT id, name FROM characters WHERE guild_id = ?1 AND id IN (SELECT value FROM json_each(?2))').bind(guildId, idsOf(refs.characters)),
     db.prepare('SELECT id, raid_on, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT value FROM json_each(?2))').bind(guildId, idsOf(refs.raids)),
@@ -92,7 +93,7 @@ export async function loadNames(db, guildId, refs, teams) {
   const wanted = [...new Set([...tookPlace.values()].filter((id) => !persons.has(id)))];
   if (wanted.length) {
     const more = await db.prepare(
-      `SELECT player_id, name FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT value FROM json_each(?2)) ORDER BY is_main DESC, name`,
+      `SELECT player_id, name FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT value FROM json_each(?2)) ORDER BY ${placeholderCharacterSql('characters')}, is_main DESC, name`,
     ).bind(guildId, idsOf(new Set(wanted))).all();
     for (const row of more.results) if (!persons.has(row.player_id)) persons.set(row.player_id, row.name);
   }

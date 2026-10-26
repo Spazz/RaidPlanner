@@ -25,6 +25,7 @@ import { memberSql, personOnRosterSql, unsuspendedOwnerSql, blockedSql } from '.
 import { serverIdIsDiscordSql } from './discord-guard.js';
 import { ownerCandidatesSql } from './owner.js';
 import { hashToken } from './session.js';
+import { visibleCharacterSql } from './character-visibility.js';
 
 export const FLIP_SAMPLES = 25;
 export const FLIP_PURPOSE = 'flip';
@@ -63,14 +64,14 @@ const ACCESS_ROWS_SQL = `${ACCOUNTS_CTE}
 SELECT CASE WHEN a.today = 1 THEN 'loses' ELSE 'gains' END AS kind,
        CASE WHEN a.today = 1 THEN
               CASE WHEN a.person_id IS NULL THEN 'discord_only'
-                   WHEN EXISTS (SELECT 1 FROM characters fc WHERE fc.player_id = a.person_id)
-                        AND NOT EXISTS (SELECT 1 FROM characters fc WHERE fc.player_id = a.person_id AND fc.left_on IS NULL) THEN 'all_former'
+                   WHEN EXISTS (SELECT 1 FROM characters fc WHERE fc.player_id = a.person_id AND ${visibleCharacterSql('fc')})
+                        AND NOT EXISTS (SELECT 1 FROM characters fc WHERE fc.player_id = a.person_id AND fc.left_on IS NULL AND ${visibleCharacterSql('fc')}) THEN 'all_former'
                    ELSE 'no_roster_character' END
             WHEN a.is_owner = 1 THEN 'owner'
             ELSE 'discord_owned_person' END AS reason,
        a.user_id, a.person_id,
        COALESCE(${MAIN_NAME('a.person_id')}, a.display_name, CASE WHEN a.discord_id IS NOT NULL THEN COALESCE(a.global_name, a.username) END) AS name,
-       (SELECT COUNT(*) FROM characters fu WHERE fu.player_id = a.person_id AND fu.left_on IS NULL AND fu.blizzard_char_id IS NULL) AS unkeyed
+       (SELECT COUNT(*) FROM characters fu WHERE fu.player_id = a.person_id AND fu.left_on IS NULL AND fu.blizzard_char_id IS NULL AND ${visibleCharacterSql('fu')}) AS unkeyed
   FROM acc a
  WHERE a.today != a.after_member
  ORDER BY kind, reason, name, a.user_id`;
