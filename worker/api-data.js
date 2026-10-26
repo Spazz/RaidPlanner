@@ -9,7 +9,7 @@ import { lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver } from './l
 import { allows } from './permissions.js';
 import { roleOf } from './roster-data.js';
 import { API_DATASETS } from './api-keys.js';
-import { notWonOffRosterSql, teamRosterSql } from './team-roster.js';
+import { teamRosterSql } from './team-roster.js';
 
 export const LOOT_ROW_CAP = 5000;
 export const RAID_ROW_CAP = 500;
@@ -75,12 +75,13 @@ async function readLoot(db, scope) {
   // A team whose loot is private to each player shows nothing to a key (a key is nobody in particular), as on the public page.
   const teams = viewable.filter((team) => lootAccess({ can: scope.can }, resolver, team.id).level === 'full');
   if (!teams.length) return empty(LOOT_COLUMNS);
+  // Loot history is not a roster view: every award of the teams, whoever won it (a Social or Former character, or an alt with no team, wins loot too).
   const result = await db.prepare(
     `SELECT r.raid_on, t.name AS team_name, a.item_id, a.item_name, a.item_quality, a.winner_name, a.winner_name_key, a.winner_class, a.roll_type
        FROM loot_awards a
        JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id
        JOIN teams t ON t.id = a.team_id AND t.guild_id = a.guild_id
-      WHERE a.guild_id = ? AND a.team_id IN (SELECT value FROM json_each(?)) AND ${notWonOffRosterSql('a')}
+      WHERE a.guild_id = ? AND a.team_id IN (SELECT value FROM json_each(?))
       ORDER BY r.raid_on DESC, a.awarded_at DESC, a.id LIMIT ?`,
   ).bind(scope.guild.id, idsJson(teams), LOOT_ROW_CAP + 1).all();
   const truncated = result.results.length > LOOT_ROW_CAP;

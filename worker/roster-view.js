@@ -213,18 +213,30 @@ export async function personReply(ctx, guildContext, personId) {
   return { ...record, rosterFlags };
 }
 
-// GET /roster?team=: every person with a character on the team's roster (worker/team-roster.js: placed, still here, a raiding rank). A Social or Former
-// character is never listed; the person's other characters still come with them (the Main, the alt count).
-export async function loadRosterRows(db, guildContext, team, today, viewer) {
+// The people of the team's Roster list, by the character that puts them there (?1 = guild, ?2 = team):
+//   default   a character on the team's roster (worker/team-roster.js: placed, still here, a raiding rank); a Social or Former character is never listed
+//   inactive  the team's PLACED Social / Former people: a character placed on the team and none of the person's on its roster
+// The inactive list is the Roster page's Inactive filter, kept working exactly as before (same rows, same audience: whoever may view the roster) so that an
+// officer can still reach and reactivate an inactive person. RETIRED when the Users page ships (R4, lane B8a): delete `inactive` here, the `status` query
+// of GET /roster and the page's request for it.
+const ROSTER_MEMBERS_SQL = `SELECT rc.player_id FROM characters rc WHERE rc.guild_id = ?1 AND ${onTeamRosterSql('rc', '?2')}`;
+const INACTIVE_MEMBERS_SQL = `SELECT rc.player_id FROM characters rc WHERE rc.guild_id = ?1 AND rc.team_id = ?2
+       AND NOT EXISTS (SELECT 1 FROM characters rr WHERE rr.guild_id = ?1 AND rr.player_id = rc.player_id AND ${onTeamRosterSql('rr', '?2')})`;
+
+// A row of the list below: is that character on a team roster? (Its rank columns are aliased character_*, so they never shadow the person's own left_on.)
+const isOnRoster = (row) => isTeamRosterRow({ team_id: row.team_id, left_on: row.character_left_on, core_rank: row.character_core_rank });
+
+// GET /roster?team=: every person with a character on the team's roster. A Social or Former character is never listed; the person's other characters still
+// come with them (the Main, the alt count). options.inactive (GET /roster?team=&status=inactive): the team's placed Social / Former people instead.
+export async function loadRosterRows(db, guildContext, team, today, viewer, { inactive = false } = {}) {
   const guildId = guildContext.guild.id;
-  const [rowResult, userResult] = await db.batch([
-    db.prepare(
-      `SELECT p.id AS player_id, ${legacyPersonColumnsSql('p')}, p.joined_on, p.discord_user_id, p.user_id, p.version,
-              c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, c.core_rank, c.left_on,
+  const rowsSql = `SELECT p.id AS player_id, ${legacyPersonColumnsSql('p')}, p.joined_on, p.discord_user_id, p.user_id, p.version,
+              c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main, c.core_rank AS character_core_rank, c.left_on AS character_left_on,
               t.name AS team_name, t.archived AS team_archived
          FROM players p JOIN characters c ON c.player_id = p.id LEFT JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
-        WHERE p.guild_id = ? AND p.id IN (SELECT rc.player_id FROM characters rc WHERE rc.guild_id = ? AND ${onTeamRosterSql('rc', '?')})`,
-    ).bind(guildId, guildId, team.id),
+        WHERE p.guild_id = ?1 AND p.id IN (${inactive ? INACTIVE_MEMBERS_SQL : ROSTER_MEMBERS_SQL})`;
+  const [rowResult, userResult] = await db.batch([
+    db.prepare(rowsSql).bind(guildId, team.id),
     // Signed in = the person's account (linked by an officer, or matching the Discord ID they carry) is a member of this guild.
     db.prepare(
       `SELECT p.id AS player_id FROM players p JOIN users u ON (u.id = p.user_id OR (p.discord_user_id IS NOT NULL AND u.discord_id = p.discord_user_id))
@@ -241,7 +253,7 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
   for (const { player, characters } of byPlayer.values()) {
     const main = characters.find((entry) => entry.row.is_main === 1);
     if (!main) continue;
-    const onTeam = characters.filter((entry) => entry.row.team_id === team.id && isTeamRosterRow(entry.row));
+    const onTeam = characters.filter((entry) => entry.row.team_id === team.id && (inactive || isOnRoster(entry.row)));
     if (!onTeam.length) continue;
     const shownEntry = onTeam.find((entry) => entry.row.is_main === 1) || onTeam.sort((a, b) => byName(a.view, b.view))[0];
     const shown = shownEntry.view;

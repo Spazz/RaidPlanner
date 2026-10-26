@@ -14,7 +14,7 @@ import { SECTION_ACTIONS, allows } from './permissions.js';
 import { buildProgress, publicProgress } from './progress.js';
 import { progressPullsStatement } from './progress-store.js';
 import { roleOf } from './roster-data.js';
-import { notWonOffRosterSql, onTeamRosterSql } from './team-roster.js';
+import { onTeamRosterSql } from './team-roster.js';
 
 // Every section the read-only view can build, in the page's order, and the read action each needs. A guest link shows the four of SECTION_ACTIONS (a role
 // grants those); the public page can also tick Progress (PM wave 7: the team's boss kills), which rides on the raids read action.
@@ -71,10 +71,11 @@ const SECTION_READS = {
     shape: (team, [result], guild) => ({ team, ...publicProgress(buildProgress(result.results, guild.game_version)) }),
   },
   loot: {
-    // Awards won by a Social, Former or teamless character are left out (notWonOffRosterSql): they are not on a team roster, so they do not appear here.
+    // Loot history is not a roster view: every award of the team shows, whoever won it (a Social or Former character, or an alt with no team, wins loot too).
+    // The team-roster predicate (worker/team-roster.js) applies to the roster and attendance sections only.
     statements: (db, guild, team) => [db.prepare(
-      `SELECT a.item_id, a.item_name, a.item_quality, a.awarded_at, a.winner_name, a.winner_name_key, a.winner_class
-         FROM loot_awards a WHERE a.guild_id = ? AND a.team_id = ? AND ${notWonOffRosterSql('a')} ORDER BY a.awarded_at DESC, a.id LIMIT ?`,
+      `SELECT item_id, item_name, item_quality, awarded_at, winner_name, winner_name_key, winner_class
+         FROM loot_awards WHERE guild_id = ? AND team_id = ? ORDER BY awarded_at DESC, id LIMIT ?`,
     ).bind(guild.id, team.id, LOOT_LIMIT)],
     shape: (team, [result]) => ({
       team,
