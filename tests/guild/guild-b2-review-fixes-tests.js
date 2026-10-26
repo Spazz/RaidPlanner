@@ -237,6 +237,53 @@ check('sign-up: a custom role with signups.self (guild or team scope) does not l
   assert.equal((await s.call('member', 'PUT', `/raids/${bravoRaid}/signup`, { kind: 'signed' })).status, 200);
 });
 
+// ---------------------------------------------------------------------------
+// 5. A Main on no team needs the whole-guild editor
+
+check('Make Main: a Team Lead cannot make a character on no team the Main (the person would lose its home team), an officer can', async () => {
+  const s = await scenario();
+  const [alpha] = s.tids;
+  await s.lead('lead', [alpha]);
+  const p = await s.newPerson({ name: 'Alphahome' });
+  const altId = await s.alt(p.pid, 'Alphaalt');
+  const refused = await s.call('lead', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {});
+  assert.equal(refused.status, 403, refused.text);
+  assert.equal(refused.json.error, 'forbidden');
+  assert.match(refused.json.message, /no team/);
+  assert.deepEqual((await s.rows('SELECT name, is_main, team_id FROM characters WHERE player_id = ? ORDER BY name', p.pid)).map((r) => [r.name, r.is_main, r.team_id]),
+    [['Alphaalt', 0, null], ['Alphahome', 1, alpha]], 'nothing moved');
+  const record = await s.ok('lead', 'GET', `/roster/${p.pid}`);
+  assert.equal(record.can.edit, true, 'the lead still reaches the person');
+  assert.equal(record.person.homeTeam.id, alpha);
+  await s.ok('lead', 'PATCH', `/roster/${p.pid}`, { expectedVersion: record.person.version, joinedOn: '2026-12-01' }, 200);
+  // An alt the lead may place: a character on Alpha itself is made the Main as before; here the officer makes the teamless one the Main.
+  const done = await s.ok('gm', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {}, 200);
+  assert.deepEqual(done.characters.map((c) => [c.name, c.isMain, c.team.id]), [['Alphaalt', true, null], ['Alphahome', false, alpha]]);
+  assert.equal(done.person.homeTeam, null);
+  await s.inSync('the officer\'s Make Main');
+});
+
+check('add character as the Main: a Team Lead cannot add a new Main on no team, can on a team they edit; an officer can add one on no team', async () => {
+  const s = await scenario();
+  const [alpha, bravo] = s.tids;
+  await s.lead('lead', [alpha]);
+  const p = await s.newPerson({ name: 'Alphahome' });
+  const body = { class: 'ROGUE', mainSpec: 'Combat', offSpec: null, makeMain: true };
+  const refused = await s.call('lead', 'POST', `/roster/${p.pid}/characters`, { ...body, name: 'Nowhere' });
+  assert.equal(refused.status, 403, refused.text);
+  assert.match(refused.json.message, /no team/);
+  assert.equal(await s.w.count('characters', 'player_id = ?', p.pid), 1, 'no character was added');
+  const nullTeam = await s.call('lead', 'POST', `/roster/${p.pid}/characters`, { ...body, name: 'Nowhere', teamId: null });
+  assert.equal(nullTeam.status, 403, 'teamId null is no team too');
+  assert.equal((await s.call('lead', 'POST', `/roster/${p.pid}/characters`, { ...body, name: 'Elsewhere', teamId: bravo })).status, 403, 'a team they do not edit');
+  const placed = await s.ok('lead', 'POST', `/roster/${p.pid}/characters`, { ...body, name: 'Onalpha', teamId: alpha }, 201);
+  assert.deepEqual(placed.characters.map((c) => [c.name, c.isMain, c.team.id]), [['Onalpha', true, alpha], ['Alphahome', false, null]]);
+  const homeless = await s.ok('gm', 'POST', `/roster/${p.pid}/characters`, { ...body, name: 'Nowhere' }, 201);
+  assert.equal(homeless.characters.find((c) => c.name === 'Nowhere').isMain, true);
+  assert.equal(homeless.person.homeTeam, null);
+  await s.inSync('the new Mains');
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of checks) {

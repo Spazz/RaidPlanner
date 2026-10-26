@@ -190,6 +190,14 @@ export function makeMainStatements(db, playerId, characterId, now, { homeTeamId,
 // The team a write on this character is authorized against: its own, else the home team of its person (an alt on no team is edited by whoever edits the person).
 const editTeamOf = (row, home) => (row.team_id !== null && row.team_id !== undefined ? row.team_id : home.id);
 
+// A Main on no team leaves the person without a home team, and a Team Lead who did it could no longer open the person (403): only someone who edits every
+// team (roster.edit at guild scope) may make a character on no team the Main.
+function requireGuildWideEditForTeamlessMain(guildContext) {
+  if (!allows(guildContext.can, 'roster.edit', null)) {
+    throw new HttpError(403, 'forbidden', 'Only someone who can edit every team can make a character with no team the Main.');
+  }
+}
+
 // Person writes below repeat the authorization inside the statement (SQL is written out, never interpolated):
 // "AND EXISTS (... is_main = 1 AND team_id IS ?)" = the Main is still on the home team the caller was authorized against (NULL for a Main on no team).
 
@@ -611,6 +619,7 @@ export async function addCharacter(ctx) {
   const asked = body.teamId === undefined || body.teamId === null ? null : await requireTarget(db, guild.id, body.teamId);
   const team = makeMain ? asked : null;
   if (team) requireEdit(guildContext, team.id);
+  else if (makeMain) requireGuildWideEditForTeamlessMain(guildContext);
   const name = readName(body.name, 'name', {}, guild.game_version);
   const classId = readClass(body.class);
   const { mainSpec, offSpec } = readSpecs(body.mainSpec, body.offSpec, classId);
@@ -730,6 +739,7 @@ export async function makeMain(ctx) {
   requireEdit(guildContext, home.id);
   requireEdit(guildContext, editTeamOf(target, home));
   if (target.is_main === 1) return jsonResponse(await personReply(ctx, guildContext, data.player.id));
+  if (target.team_id === null) requireGuildWideEditForTeamlessMain(guildContext);
   const previous = data.characters.find((candidate) => candidate.row.is_main === 1).row;
   const now = ctx.now();
   const results = await db.batch([

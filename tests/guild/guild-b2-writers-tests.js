@@ -225,7 +225,7 @@ check('D1: an officer creates a person with no team, a Team Lead cannot; notes, 
   assert.equal(await s.w.count('players', 'id = ?', p.pid), 0, 'the person is really gone');
 });
 
-check('an alt on no team is edited, made Main and removed by whoever edits the person\'s home team; a person with one is deleted by the home team\'s lead too', async () => {
+check('an alt on no team is edited and removed by whoever edits the person\'s home team (made Main only by a whole-guild editor); a person with one is deleted by the home team\'s lead too', async () => {
   const s = await scenario();
   await s.lead('lead', [s.tids[0]]);
   await s.lead('lead2', [s.tids[1]]);
@@ -235,7 +235,9 @@ check('an alt on no team is edited, made Main and removed by whoever edits the p
   // The lead of the home team reaches the teamless alt; the lead of another team does not.
   assert.equal((await s.call('lead2', 'PATCH', `/roster/${p.pid}/characters/${altId}`, { offSpec: 'Subtlety' })).status, 403);
   assert.equal((await s.call('lead', 'PATCH', `/roster/${p.pid}/characters/${altId}`, { offSpec: 'Subtlety' })).status, 200);
-  assert.equal((await s.call('lead', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {})).status, 200);
+  // Making it the Main would leave the person without a home team (and the lead without the person), so that is for the whole-guild editor (R2 review).
+  assert.equal((await s.call('lead', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {})).status, 403);
+  assert.equal((await s.call('gm', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {})).status, 200);
   // The alt is the Main now and sits on no team: the person has no home team, so only the whole-guild editor reaches them (the lead of Alpha no longer does).
   assert.equal((await s.call('lead', 'POST', `/roster/${p.pid}/characters/${p.cid}/main`, {})).status, 403);
   assert.equal((await s.call('gm', 'POST', `/roster/${p.pid}/characters/${p.cid}/main`, {})).status, 200, 'and back');
