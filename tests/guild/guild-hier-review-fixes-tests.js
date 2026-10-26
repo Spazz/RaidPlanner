@@ -490,6 +490,7 @@ check('F7: the sign-in match counts its tombstone reads BEFORE they run - 20 in-
   w.logs.length = 0;
   const first = await bnetSignIn(w, BNET.ann);
   assert(first.statements <= CALLBACK_STATEMENT_BUDGET, `${first.statements} statements`);
+  console.log(`      measured: sign-in over 20 in-game guilds with tombstones ${first.statements} statements`);
   const userId = userOf(w, BNET.ann);
   const made = w.count('players', 'user_id = ?', userId);
   assert(made >= 1 && made < 20, `${made} guilds were handled, the rest deferred`);
@@ -518,6 +519,7 @@ check('F3/F7: the tombstone pass of a link callback takes what the match left of
   w.logs.length = 0;
   const link = await bnetLink(w, jar, BNET.ann);
   assert(link.statements <= CALLBACK_STATEMENT_BUDGET, `${link.statements} statements`);
+  console.log(`      measured: link callback over 12 legacy guilds with tombstones ${link.statements} statements`);
   const blocked = w.count('guild_blocks', 'user_id = ?', eve);
   assert(blocked >= 2 && blocked < 12, `${blocked} guilds were matched, the rest deferred`);
   assert(w.logs.includes('bnet match deferred: budget'), w.logs.join('|'));
