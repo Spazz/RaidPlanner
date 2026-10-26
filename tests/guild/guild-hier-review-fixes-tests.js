@@ -710,7 +710,7 @@ check('F5 (part 2b pin): a Battle.net proof beats a squatted hand-added characte
 
 // ---- F6: unblocking and the tombstones of the blocks a hit matched
 
-check('F6: restoring an account deletes a matched earlier block\'s tombstones only when the actor outranks that block\'s actor_role snapshot - an Officer cannot lift the tombstones of a block the Owner made; the response says so', async () => {
+check('F6: restoring an account deletes a matched earlier block\'s tombstones only when the actor ranks equal to or above that block\'s actor_role snapshot (or made it: F9) - an Officer cannot lift the tombstones of a block the Owner made; the response says so', async () => {
   const s = await scenario({ teams: ['Alpha', 'Bravo'], env: { TOMBSTONE_KEY } });
   await s.officer('o1', 'Officerone');
   await s.member('m1', 'Memberone');
@@ -745,7 +745,7 @@ check('F6: restoring an account deletes a matched earlier block\'s tombstones on
   assert.equal(byOwner.json.tombstonesKept, undefined);
 });
 
-check('F6: the same for an account-less person - an Officer lifting a person block does not delete the tombstones of the Owner\'s earlier block the person\'s keys matched', async () => {
+check('F6: the same for an account-less person - an Officer lifting a person block does not delete the tombstones of the Owner\'s earlier block the person\'s keys matched (an Officer\'s own: F9)', async () => {
   const s = await scenario({ teams: ['Alpha', 'Bravo'], env: { TOMBSTONE_KEY } });
   await s.officer('o1', 'Officerone');
   const DISCORD_ID = '130000000000000077';

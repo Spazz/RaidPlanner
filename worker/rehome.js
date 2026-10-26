@@ -4,7 +4,7 @@
 //
 //   rehomeStatements(db, { guildId, characterId, toPersonId, actorUserId, now, reason: 'bnet_beats_link' | 'collision' | 'gm_claim', guards?, randomBytes? })
 //     -> { statements, appliedIndex, auditId, fromPersonId, toPersonId, placeholderId, wasMain }      or throws HttpError
-//   statements ... for the caller's db.batch, in order (10 to 11). results[appliedIndex].meta.changes is 1 when the re-home applied and 0 when a guard refused it,
+//   statements ... for the caller's db.batch, in order (13 to 14). results[appliedIndex].meta.changes is 1 when the re-home applied and 0 when a guard refused it,
 //                  in which case EVERY statement was a no-op. One read (a single statement) happens before; nothing is written by the function itself.
 //   guards ....... [{ sql, params }] (anonymous `?` only) ANDed into the OPENING statement. The later statements ask for that statement's audit row instead of
 //                  repeating the guards (a batch is one transaction), so a refused opening makes the whole batch a no-op.
@@ -12,10 +12,12 @@
 // WHAT HAPPENS (in this order, one batch):
 //   1. the audit row `character.rehome` (guarded: the character is still on the old person, both persons are at the versions just read, the new person has room
 //      for one more VISIBLE character, the caller's guards) - its id is the marker of every later statement;
-//   2. the old person's UPCOMING sign-ups naming the character go (raid_signups, standing_signups) and those raids are marked stale; the raids of the character's
-//      team and the raids logging its name are marked stale too;
-//   3. the character moves. It becomes the new person's Main only when the new person has none; a team the new person already has a character on is cleared
-//      (one character per team and person); characters.updated_at stays (the Trial clock reads it);
+//   2. the old person's UPCOMING sign-ups naming the character go (raid_signups, standing_signups), and so do its seats in the published rosters of upcoming raids
+//      (raid_roster); those raids are marked stale, and so are the raids of the character's team and the raids logging its name; its pending team request is
+//      withdrawn (it asked for a place on a team as the old person's character);
+//   3. the character moves. It becomes the new person's Main only when the new person has no VISIBLE Main (a retired placeholder Main steps down first, in the
+//      same batch: the person must keep a Main the lists can see); a team the new person already has a character on is cleared (one character per team and
+//      person); characters.updated_at stays (the Trial clock reads it);
 //   4. when the old person has no Main left another visible character takes over (not yet Former first, best core rank, a team-less one last);
 //   5. the old person ALWAYS gets a retired PLACEHOLDER (worker/character-visibility.js): Former (left_on = today in the guild's zone), Social, no identity key, no
 //      team, hidden from every list and count; Main only when the person has no other Main left;
@@ -26,7 +28,7 @@
 // The old person is NEVER deleted (its attendance, decisions, away notices, intent picks, duties, loot stay on it). The new person's cap counts visible characters.
 import { markRaidsStale } from './attendance-store.js';
 import { auditStatement } from './audit.js';
-import { isPlaceholderKey, placeholderKey, visibleCharacterSql } from './character-visibility.js';
+import { isPlaceholderKey, placeholderCharacterSql, placeholderKey, visibleCharacterSql } from './character-visibility.js';
 import { HttpError } from './http.js';
 import { defaultRandomBytes, newId } from './ids.js';
 import { LIMITS } from './limits.js';
@@ -96,28 +98,46 @@ export async function rehomeStatements(db, {
     entityType: 'character',
     entityId: characterId,
     before: { personId: from, teamId: row.team_id, wasMain },
-    after: { personId: to, placeholderId, reason },
+    // (No placeholder id: the Activity view and its CSV hand `before` and `after` to the page, and a retired placeholder is never shown. The id is in the return value.)
+    after: { personId: to, reason },
   }, opening));
 
-  // 2. Upcoming sign-ups that name the character leave; their raids, and the raids of its team and log lines, are stale.
+  // 2. Upcoming sign-ups and published-roster seats that name the character leave; their raids, and the raids of its team and log lines, are stale. Its pending
+  // team request is withdrawn. (The stale marking of the first statement reads the rows the next two delete.)
   const upcoming = 'SELECT id FROM raids WHERE guild_id = ? AND starts_at > ?';
   statements.push(guarded(
     `UPDATE raids SET policy_fp = '', version = version + 1
       WHERE guild_id = ? AND starts_at > ?
-        AND id IN (SELECT s.raid_id FROM raid_signups s WHERE s.player_id = ? AND s.character_id = ?)`,
-    [guildId, now, from, characterId],
+        AND (id IN (SELECT s.raid_id FROM raid_signups s WHERE s.player_id = ? AND s.character_id = ?)
+             OR id IN (SELECT rr.raid_id FROM raid_roster rr WHERE rr.player_id = ? AND rr.name_key = ?))`,
+    [guildId, now, from, characterId, from, row.name_key],
   ));
   statements.push(guarded(
     `DELETE FROM raid_signups WHERE player_id = ? AND character_id = ? AND guild_id = ? AND raid_id IN (${upcoming})`,
     [from, characterId, guildId, guildId, now],
   ));
   statements.push(guarded('DELETE FROM standing_signups WHERE guild_id = ? AND player_id = ? AND character_id = ?', [guildId, from, characterId]));
+  statements.push(guarded(
+    `DELETE FROM raid_roster WHERE guild_id = ? AND player_id = ? AND name_key = ? AND raid_id IN (${upcoming})`,
+    [guildId, from, row.name_key, guildId, now],
+  ));
+  statements.push(guarded(
+    "UPDATE team_requests SET status = 'withdrawn', decided_by = ?, decided_at = ? WHERE guild_id = ? AND character_id = ? AND status = 'pending'",
+    [actorUserId ?? null, now, guildId, characterId],
+  ));
   statements.push(markRaidsStale(db, guildId, [row.name_key], null, row.team_id ? [row.team_id] : [], marker));
 
-  // 3. The move.
+  // 3. The move. A retired placeholder that is the new person's Main steps down first (the unique Main index refuses two, and the person needs a Main the lists can
+  // see): the triggers of migration 0036 act on INSERT only, a move is an UPDATE. Then the moved character is the Main exactly when the person has no VISIBLE Main.
+  statements.push(guarded(
+    `UPDATE characters INDEXED BY characters_player SET is_main = 0
+      WHERE guild_id = ? AND player_id = ? AND is_main = 1 AND ${placeholderCharacterSql('characters')}
+        AND NOT EXISTS (SELECT 1 FROM characters m ${BY_PERSON} WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')})`,
+    [guildId, to, to],
+  ));
   statements.push(guarded(
     `UPDATE characters SET player_id = ?,
-            is_main = CASE WHEN EXISTS (SELECT 1 FROM characters m ${BY_PERSON} WHERE m.player_id = ? AND m.is_main = 1) THEN 0 ELSE 1 END,
+            is_main = CASE WHEN EXISTS (SELECT 1 FROM characters m ${BY_PERSON} WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')}) THEN 0 ELSE 1 END,
             team_id = CASE WHEN team_id IS NOT NULL AND EXISTS (SELECT 1 FROM characters t ${BY_PERSON} WHERE t.player_id = ? AND t.team_id = characters.team_id)
                            THEN NULL ELSE team_id END
       WHERE id = ? AND guild_id = ? AND player_id = ?`,

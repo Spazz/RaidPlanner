@@ -8,6 +8,7 @@ import { linkSignupsStatement, markPersonRaidsStale, recomputeRaid } from '../at
 import { displayCharacter } from '../attendance-view.js';
 import { isId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
+import { ownerGuard, requireOwner } from '../owner.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { raidSizeFields } from '../raid-zones.js';
 import { visibleCharacterSql } from '../character-visibility.js';
@@ -19,6 +20,7 @@ import {
 import { assertSenior, seniorityOk } from '../seniority.js';
 import { SLOT_TIME_SQL } from '../signup-window.js';
 import { personOnTeamRosterSql, rosterRankOnTeamSql } from '../team-roster.js';
+import { PROVEN_LINK_MESSAGE } from './accounts.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { bad, readName, readClass, readSpec } from './roster.js';
 
@@ -462,7 +464,17 @@ export async function guestSignup(ctx) {
 // POST .../signups/link { signupId, personId }: the person takes the row's Discord ID when they have none,
 // and every unlinked row of the guild with that ID follows. A row without a Discord ID links only itself.
 // Giving a person a Discord ID relinks them: that needs roster.edit on the PERSON's home team (as PATCH /roster/:pid does for discordUserId, not only on the
-// raid's team) and passes the Seniority guard (worker/seniority.js), in the pre-check and inside both writes.
+// raid's team) and passes the Seniority guard (worker/seniority.js), in the pre-check and inside both writes. A person that holds a Battle.net-proven character
+// (owner_proof 'bnet') is relinked by the Owner only, as the account link of PUT /roster/:pid/account is: a Discord ID on the person makes that account its owner too.
+function gateOf(guildId, actorId, personId) {
+  const senior = seniorityOk(guildId, actorId, personId);
+  const owner = ownerGuard(guildId, actorId);
+  return {
+    sql: `${senior.sql} AND (NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND owner_proof = 'bnet') OR ${owner.sql})`,
+    params: [...senior.params, personId, ...owner.params],
+  };
+}
+
 export async function linkSignup(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
@@ -475,7 +487,8 @@ export async function linkSignup(ctx) {
     db.prepare(`SELECT discord_user_id, nickname, player_id,
       EXISTS (SELECT 1 FROM raid_signups n WHERE n.raid_id = s.raid_id AND n.rh_signup_id = s.signup_id) AS resolved_guest
       FROM raid_signups s WHERE raid_id = ? AND source = 'raid_helper' AND signup_id = ?`).bind(raid.id, body.signupId),
-    db.prepare(`SELECT id, discord_user_id, (SELECT m.team_id FROM characters m WHERE m.player_id = players.id AND m.is_main = 1) AS home_team_id
+    db.prepare(`SELECT id, discord_user_id, (SELECT m.team_id FROM characters m WHERE m.player_id = players.id AND m.is_main = 1) AS home_team_id,
+                       EXISTS (SELECT 1 FROM characters pc WHERE pc.player_id = players.id AND pc.owner_proof = 'bnet') AS proven
                   FROM players WHERE id = ? AND guild_id = ?`).bind(body.personId, guild.id),
   ]);
   const row = rowResult.results[0];
@@ -489,8 +502,10 @@ export async function linkSignup(ctx) {
   if (relink) {
     if (!allows(guildContext.can, 'roster.edit', person.home_team_id)) throw forbidden();
     await assertSenior(db, guildContext, person.id);
+    if (person.proven === 1) await requireOwner(db, guildContext, PROVEN_LINK_MESSAGE);
   }
-  const senior = relink ? seniorityOk(guild.id, ctx.session.user.id, person.id) : null;
+  // What every write of the batch repeats: the Seniority guard and, for a person with a proved character, the Owner seat.
+  const senior = relink ? gateOf(guild.id, ctx.session.user.id, person.id) : null;
   if (discordId && person.discord_user_id && person.discord_user_id !== discordId) {
     throw new HttpError(409, 'discord_mismatch', 'That person is already linked to a different Discord account.', { field: 'personId' });
   }
