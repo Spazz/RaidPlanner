@@ -658,6 +658,14 @@ check('budget, 1,200 members, the GM is new since the last sync: the 1,200-membe
   console.log(`      measured: ${outcome.statements.length} D1 statements, ${outcome.blizzard.length} Blizzard requests (the roster applied first, 4 insert chunks)`);
 });
 
+check('budget, 1,200 members, a squatter holds the name (the stored roster has the GM): the re-home path is the heaviest one that still fits, and the claimant is live', async () => {
+  const s = await bigClaimWorld({ squatter: true });
+  const outcome = await measured(s);
+  assert.deepEqual(rolesOf(s, 'igm'), [['guild_master', null, 'ingame'], ['guild_master', null, 'owner']], 'live');
+  assert.equal(await s.w.count('audit_log', "action = 'character.rehome'"), 1);
+  console.log(`      measured: ${outcome.statements.length} D1 statements, ${outcome.blizzard.length} Blizzard requests (a squatter's character re-homed)`);
+});
+
 check('budget, 1,200 members, the GM is new AND a squatter holds the name: the worst case. Whatever does not fit is skipped on purpose (logged), never the claim; the callback stays inside 45', async () => {
   const s = await bigClaimWorld({ stored: false, squatter: true });
   const outcome = await measured(s);
