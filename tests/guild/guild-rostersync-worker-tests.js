@@ -677,19 +677,23 @@ check('scheduler: the 15-minute run syncs only pinned guilds, in next_sync_at or
   s.net.roster = (call) => rosterBody(12, { guildId: ids[call.guildSlug] });
   const { sched } = await M();
   const deps = s.deps();
+  // One guild per tick (SYNC_GUILDS_PER_RUN = 1, the Workers Free query limit): the longest-waiting first, the other next tick.
   await sched.runCron({ ...deps, cron: sched.FREQUENT_CRON });
-  assert.deepEqual(s.net.calls.map((c) => c.guildSlug), ['ember-two', 'ember'], 'the longest-waiting guild first');
+  assert.deepEqual(s.net.calls.map((c) => c.guildSlug), ['ember-two'], 'the longest-waiting guild first');
+  assert(s.logs.includes('roster sync: 1 guild attempted, 1 replaced, 0 unchanged, 0 not applied'), s.logs.join(' | '));
+  await sched.runCron({ ...deps, cron: sched.FREQUENT_CRON });
+  assert.deepEqual(s.net.calls.map((c) => c.guildSlug), ['ember-two', 'ember'], 'the other guild on the next tick');
   assert.deepEqual((await s.rows('SELECT guild_id, good FROM roster_syncs ORDER BY started_at, guild_id')).map((r) => r.good), [1, 1]);
   assert.equal((await s.rows('SELECT next_sync_at FROM guilds WHERE id = ?', unpinned))[0].next_sync_at, 0, 'unpinned: never leased');
   assert.equal((await s.rows('SELECT next_sync_at FROM guilds WHERE id = ?', half))[0].next_sync_at, 0, 'half-pinned: never leased');
   assert.equal(await s.w.count('roster_syncs', 'guild_id IN (?, ?)', unpinned, half), 0);
-  assert(s.logs.includes('roster sync: 2 guilds attempted, 2 replaced, 0 unchanged, 0 not applied'), s.logs.join(' | '));
-  // A second run (or a retried invocation) finds nothing due.
+  // A third run (or a retried invocation) finds nothing due.
   s.net.calls.length = 0;
   await sched.runCron({ ...deps, cron: sched.FREQUENT_CRON });
   assert.equal(s.net.calls.length, 0);
-  // Six hours later both are due again.
+  // Six hours later both are due again, one per tick.
   s.advance(6 * HOUR);
+  await sched.runCron({ ...s.deps(), cron: sched.FREQUENT_CRON });
   await sched.runCron({ ...s.deps(), cron: sched.FREQUENT_CRON });
   assert.equal(s.net.calls.length, 2);
 });
