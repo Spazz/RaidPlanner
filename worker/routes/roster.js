@@ -384,7 +384,9 @@ export async function patchPerson(ctx) {
   const trialStart = readDateField(body, 'trialStart');
   const trialEnd = readDateField(body, 'trialEnd');
   const leftOn = readDateField(body, 'leftOn');
-  if (body.leftReason !== undefined && body.leftReason !== null && !LEFT_REASONS.includes(body.leftReason)) throw bad('Pick a reason.', 'leftReason');
+  // No reason is null or an empty string (a cleared select); a sent reason is Left guild or Kicked.
+  const leftReason = body.leftReason === '' ? null : body.leftReason;
+  if (leftReason !== undefined && leftReason !== null && !LEFT_REASONS.includes(leftReason)) throw bad('Pick Left guild or Kicked.', 'leftReason');
   let link;
   if (body.linkUserId !== undefined && body.linkUserId !== null) link = await resolveLinkUser(db, guildContext, body.linkUserId, player.id, player.user_id);
   const keys = ['status', 'joinedOn', 'trialStart', 'trialEnd', 'linkUserId', 'leftOn', 'leftReason'];
@@ -403,13 +405,13 @@ export async function patchPerson(ctx) {
   // Left on / reason belong to Inactive only: set on the way in (left on defaults to today), kept while inactive, cleared on the way out.
   if (next.status !== 'inactive') {
     if (leftOn !== undefined && leftOn !== null) throw bad('Left on only applies to an inactive person.', 'leftOn');
-    if (body.leftReason !== undefined && body.leftReason !== null) throw bad('A reason only applies to an inactive person.', 'leftReason');
+    if (leftReason !== undefined && leftReason !== null) throw bad('A reason only applies to an inactive person.', 'leftReason');
   } else if (player.status !== 'inactive') {
     next.leftOn = leftOn === undefined ? guildToday(guildContext.guild, ctx.now()) : leftOn;
-    next.leftReason = body.leftReason === undefined ? null : body.leftReason;
+    next.leftReason = leftReason === undefined ? null : leftReason;
   } else {
     next.leftOn = leftOn === undefined ? player.left_on : leftOn;
-    next.leftReason = body.leftReason === undefined ? player.left_reason : body.leftReason;
+    next.leftReason = leftReason === undefined ? player.left_reason : leftReason;
     // A break keeps no left date on the characters: switching it to Left or Kicked without a date starts today, as entering Inactive does.
     if (leftOn === undefined && !next.leftOn && (next.leftReason === 'left' || next.leftReason === 'kicked')) next.leftOn = guildToday(guildContext.guild, ctx.now());
   }

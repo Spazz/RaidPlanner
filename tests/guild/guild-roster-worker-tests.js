@@ -768,10 +768,12 @@ check('update person: Inactive records an optional reason and a left-on date; re
     assert.equal(r.json.field, field, JSON.stringify(r.json));
   };
   await rejects({ leftReason: 'quit' }, 'leftReason');
+  await rejects({ leftReason: 'break' }, 'leftReason');
+  await rejects({ leftReason: 'other' }, 'leftReason');
   await rejects({ leftOn: '2027-02-30' }, 'leftOn');
   await rejects({ leftOn: 'yesterday' }, 'leftOn');
   await rejects({ status: 'raider', leftOn: '2027-01-02' }, 'leftOn');
-  await rejects({ status: 'trial', leftReason: 'break' }, 'leftReason');
+  await rejects({ status: 'trial', leftReason: 'kicked' }, 'leftReason');
 
   // Reactivation clears both; the fields are refused on a person who is not inactive.
   const back = await patch({ expectedVersion: 5, status: 'raider' });
@@ -781,17 +783,54 @@ check('update person: Inactive records an optional reason and a left-on date; re
   assert.equal(stale.json.field, 'leftOn', 'a raider has no left-on date');
 
   // Straight into Inactive with both values; then straight out again, with the values still in the audit trail.
-  const both = await patch({ expectedVersion: 6, status: 'inactive', leftOn: '2027-01-05', leftReason: 'break' });
-  assert.deepEqual([both.json.person.leftOn, both.json.person.leftReason], [null, null], 'a break is not a leaving: no character carries it (it stays on the players row for a rollback)');
-  assert.deepEqual((await s.w.rows('SELECT left_on, left_reason FROM players WHERE id = ?', pid))[0], { left_on: '2027-01-05', left_reason: 'break' });
+  const both = await patch({ expectedVersion: 6, status: 'inactive', leftOn: '2027-01-05', leftReason: 'left' });
+  assert.deepEqual([both.json.person.leftOn, both.json.person.leftReason], ['2027-01-05', 'left']);
+  assert.deepEqual((await s.w.rows('SELECT left_on, left_reason FROM players WHERE id = ?', pid))[0], { left_on: '2027-01-05', left_reason: 'left' });
   assert.equal((await patch({ expectedVersion: 7, status: 'reserve' })).status, 200);
   const trail = (await s.w.rows("SELECT before, after FROM audit_log WHERE action = 'person.update' ORDER BY rowid")).map((row) => [JSON.parse(row.before), JSON.parse(row.after)]);
   assert.deepEqual([trail[0][0].leftOn, trail[0][1].leftOn, trail[0][1].leftReason], [null, today, null]);
   assert.deepEqual([trail[1][1].leftReason, trail[1][1].changed], ['kicked', ['leftOn', 'leftReason']], 'a Kicked with no date starts today (the Inactive-with-no-reason person had none)');
   const into = trail[trail.length - 2];
-  assert.deepEqual([into[1].leftOn, into[1].leftReason], ['2027-01-05', 'break'], 'the values the officer sent stay in the audit trail');
+  assert.deepEqual([into[1].leftOn, into[1].leftReason], ['2027-01-05', 'left'], 'the values the officer sent stay in the audit trail');
   const outOf = trail[trail.length - 1];
   assert.deepEqual([outOf[1].leftOn, outOf[1].leftReason], [null, null]);
+  await assertOneMain(s.w);
+});
+
+check('update person: Inactive reasons are Left guild and Kicked only (U B2-Q1); no reason is null, an empty string or not sent; Break and Other are a 400 that names leftReason', async () => {
+  const s = await scenario();
+  const pid = (await addPerson(s, 'bob', s.teamId, 'Aldric')).person.id;
+  let version = 1;
+  const patch = (body) => s.call('bob', 'PATCH', `/roster/${pid}`, { expectedVersion: version, ...body });
+  const accepted = async (body) => {
+    const res = await patch(body);
+    assert.equal(res.status, 200, JSON.stringify([body, res.json]));
+    version = res.json.person.version;
+    return res.json.person;
+  };
+  const refused = async (body) => {
+    const res = await patch(body);
+    assert.equal(res.status, 400, JSON.stringify([body, res.json]));
+    assert.equal(res.json.field, 'leftReason', JSON.stringify(res.json));
+  };
+  // Refused on the way in, with a date or without, and while already Inactive; nothing is written.
+  for (const reason of ['break', 'other', 'Break', 'quit', 5]) {
+    await refused({ status: 'inactive', leftReason: reason });
+    await refused({ status: 'inactive', leftReason: reason, leftOn: '2027-01-05' });
+  }
+  assert.deepEqual((await s.w.rows('SELECT status, left_on, left_reason, version FROM players WHERE id = ?', pid))[0], { status: 'raider', left_on: null, left_reason: null, version: 1 });
+  assert.equal((await accepted({ status: 'inactive', leftReason: 'left', leftOn: '2027-01-05' })).leftReason, 'left');
+  for (const reason of ['break', 'other']) await refused({ leftReason: reason });
+  assert.deepEqual((await s.w.rows('SELECT left_reason FROM players WHERE id = ?', pid))[0], { left_reason: 'left' }, 'a refused reason leaves the stored one');
+  // Kicked, then no reason as null, then Left again, then no reason as an empty string.
+  assert.equal((await accepted({ leftReason: 'kicked' })).leftReason, 'kicked');
+  assert.equal((await accepted({ leftReason: null })).leftReason, null);
+  assert.equal((await accepted({ leftReason: 'left' })).leftReason, 'left');
+  assert.equal((await accepted({ leftReason: '' })).leftReason, null);
+  // Straight into Inactive with no reason at all (the trial End sends none).
+  assert.equal((await accepted({ status: 'raider' })).status, 'raider');
+  const ended = await accepted({ status: 'inactive' });
+  assert.deepEqual([ended.status, ended.leftReason], ['inactive', null]);
   await assertOneMain(s.w);
 });
 

@@ -778,6 +778,27 @@ class ApiErr extends Error {
     assertEscaped(G.pages.importCsv.csvHtml({ guildData: S.guilds.g1, csv, people }), 'csv page');
   }));
 
+  await check('CSV import: an Alt row shows no team (an Alt starts on no team); a new person, a taken row and a row left out keep theirs', withState(async (S) => {
+    S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
+    const csv = G.pages.importCsv.ensureState('g1', 't1');
+    csv.preview = CSV_PREVIEW(); csv.choices = G.pages.importCsv.csvInitChoices(csv.preview);
+    const people = [{ id: 'p_t', main: { name: 'Thornwick' } }, { id: 'p_u', main: { name: 'Umbra' } }];
+    const teamOf = (name) => {
+      const out = G.pages.importCsv.csvHtml({ guildData: S.guilds.g1, csv, people });
+      const row = out.split('<tr>').slice(1).find((r) => r.includes(name + '</label>') || r.includes('>' + name + '</span>'));
+      return stripTags(/<td data-label="Team">([\s\S]*?)<\/td>/.exec(row)[1]);
+    };
+    assert.equal(teamOf('Newwarr'), 'Team KJ', 'a new person is a Main: its team stays');
+    assert.equal(teamOf('Newmage'), '-', 'an Alt of the main in the file');
+    assert.equal(teamOf('Lonelyalt'), '-', 'an Alt of someone on the roster');
+    assert.equal(teamOf('Thornwick'), 'Team KJ', 'a character already on the roster is skipped, not added');
+    assert.equal(teamOf('Orphan'), 'Team KJ', 'a person of its own');
+    csv.choices[6].pick = 'alt'; csv.choices[6].personId = 'p_t';
+    assert.equal(teamOf('Orphan'), '-', 'the same row answered as an Alt');
+    csv.choices[3].ticked = false;
+    assert.equal(teamOf('Newmage'), 'Weekend team', 'a row that is not included does nothing, so its team is the one in the file');
+  }));
+
   await check('CSV import: Preview sends the text and starting status, ticks and answers redraw, Save sends the plan and goes back to the Roster with a notice; a row error is marked on its row', withState(async (S) => {
     S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
     const csv = G.pages.importCsv.ensureState('g1', 't1');

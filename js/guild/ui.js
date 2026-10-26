@@ -251,7 +251,8 @@
   // ── roster helpers: class colours, trial copy, status, sign-in, calendar days ──
   const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
   const STATUS_LABELS = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', inactive: 'Inactive' };
-  const LEFT_REASONS = { left: 'Left guild', kicked: 'Kicked', break: 'Break', other: 'Other' };
+  // Break and Other are gone (U B2-Q1); statusText shows no reason for one an old record still carries.
+  const LEFT_REASONS = { left: 'Left guild', kicked: 'Kicked' };
   // Two reasons a person has not signed in (no account linked yet / no Discord ID to link by) read the same in a list: "Not signed in", in grey (the person's own
   // page keeps the reason).
   const SIGN_IN_LABELS = { signed_in: 'Signed in', not_yet: 'Not signed in', no_discord: 'Not signed in' };

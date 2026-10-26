@@ -341,7 +341,7 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert(t.includes('Merge them by hand.') && out.includes('gs-cclaim-plan is-blocked'));
     assert(t.includes('Claimed by Erin E 3 days ago') && t.includes('Paladin, level 61, Dreamscythe'));
     const item = id => out.split('<li class="gs-review-item gs-cclaim-item">').slice(1).find(x => x.includes('data-claim="' + id + '"'));
-    assert(item('cl_a').includes('name="teamId"') && !item('cl_a').includes('name="status"') && item('cl_a').includes('data-kind="add_alt"'));
+    assert(!item('cl_a').includes('name="teamId"') && !item('cl_a').includes('claim-team-') && !item('cl_a').includes('name="status"') && item('cl_a').includes('data-kind="add_alt"'), 'an Alt starts on no team: no Team picker');
     assert(item('cl_b').includes('name="teamId"') && item('cl_b').includes('name="status"') && /<option value="trial" selected>/.test(item('cl_b')));
     assert(!item('cl_c').includes('name="teamId"') && item('cl_c').includes('data-kind="link_person"') && item('cl_c').includes('>Approve<'));
     assert(!item('cl_d').includes('name="teamId"') && item('cl_d').includes('data-kind="already"'));
@@ -351,14 +351,14 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
   });
 
   await check('Character claims: the team picker lists only active teams the viewer can edit, preselecting the person\'s own team', () => {
-    const lead = reviewOpts([claim('cl_a', 'Eliora', 'PALADIN', { defaultTeamId: 't1' }), claim('cl_b', 'Galdor', 'WARLOCK', { kind: 'new_person', person: null, defaultTeamId: null })], { 'roster.edit': ['t2'], 'attendance.review': ['t1'] });
+    const lead = reviewOpts([claim('cl_a', 'Eliora', 'PALADIN', { kind: 'new_person', person: null, defaultTeamId: 't1' }), claim('cl_b', 'Galdor', 'WARLOCK', { defaultTeamId: 't1' })], { 'roster.edit': ['t2'], 'attendance.review': ['t1'] });
     const out = G.pages.review.reviewHtml(lead);
     const opts = html => [...html.matchAll(/<option value="([^"]*)"( selected)?>/g)].map(m => m[1] + (m[2] ? '*' : ''));
     const [a, b] = out.split('<li class="gs-review-item gs-cclaim-item">').slice(1);
     assert.deepEqual(opts(a.slice(a.indexOf('name="teamId"'), a.indexOf('</select>'))), ['t2*'], 'the lead of Bravo sees Bravo only; Alpha is not theirs, Old is archived');
-    const officer = G.pages.review.reviewHtml(reviewOpts([claim('cl_a', 'Eliora', 'PALADIN', { defaultTeamId: 't2' })]));
+    const officer = G.pages.review.reviewHtml(reviewOpts([claim('cl_a', 'Eliora', 'PALADIN', { kind: 'new_person', person: null, defaultTeamId: 't2' })]));
     assert.deepEqual(opts(officer.slice(officer.indexOf('name="teamId"'), officer.indexOf('</select>'))), ['t1', 't2*']);
-    assert(b.includes('name="teamId"'));
+    assert(!b.includes('name="teamId"'), 'an Alt claim has no Team picker for anyone');
     const other = G.pages.review.reviewHtml(reviewOpts([claim('cl_a', 'Eliora', 'PALADIN', { canDecide: false })]));
     assert(text(other).includes("Another team's lead decides this one") && !other.includes('>Approve<') && other.includes('claim-reject'));
   });
@@ -412,6 +412,18 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert.equal(s.att.note, 'Approved: Galdor joined the roster as a new person.');
     assert.deepEqual(plain(s.att.review.claims), []);
     assert.equal(s.guilds.g1.rosterFlags.t1, 3, 'the Roster badge follows the reply');
+  });
+
+  await check('Character claims: approving an Alt sends no team (it starts on no team); a new person sends the picked one', async () => {
+    const s = reviewState([claim('cl_a', 'Eliora', 'PALADIN')]);
+    const calls = [];
+    await withApi({ post: (url, body) => { calls.push(plain(body)); return Promise.resolve({ outcome: 'add_alt' }); }, get: url => Promise.resolve(url.indexOf('/claims') >= 0 ? { claims: [] } : reviewData) }, async () => {
+      const form = G.pages.review.reviewHtml(reviewOpts(s.att.review.claims)).split('<li class="gs-review-item gs-cclaim-item">')[1];
+      assert(!/<select[^>]*name="teamId"/.test(form));
+      G.handlers.submit['claim-approve'](formEl({ 'data-claim': 'cl_a', 'data-kind': 'add_alt' }, {}));
+      await tick(); await tick(); await tick();
+    });
+    assert.deepEqual(calls, [{ expectedKind: 'add_alt' }]);
   });
 
   await check('Character claims: the message for each approval outcome, and Reject posts to /reject', async () => {

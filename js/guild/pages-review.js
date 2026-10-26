@@ -231,7 +231,7 @@
     if (plan.kind === 'blocked') return '<div class="gs-row-actions">' + reject + '</div>';
     if (!plan.canDecide) return '<div class="gs-row-actions"><span class="gs-fine">Another team\'s lead decides this one</span>' + reject + '</div>';
     const teams = claimTeams(gd);
-    const needsTeam = plan.kind === 'add_alt' || plan.kind === 'new_person';
+    const needsTeam = plan.kind === 'new_person'; // an Alt starts on no team (the Worker ignores one sent with it)
     const wanted = plan.defaultTeamId && teams.some(function (t) { return t.id === plan.defaultTeamId; }) ? plan.defaultTeamId : (teams[0] ? teams[0].id : '');
     const teamField = needsTeam
       ? '<label class="gs-sr" for="claim-team-' + id + '">Team for ' + esc(claim.character.name) + '</label><select class="gs-input gs-input-sm" id="claim-team-' + id + '" name="teamId" data-key="claim-team-' + id + '">' +

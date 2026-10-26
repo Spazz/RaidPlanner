@@ -287,7 +287,8 @@
   }
 
   // ── dialogs ──
-  function charTeamFieldHtml(gd, selectedId, character) {
+  // hidden: the add dialog starts on Alt, which has no team to pick (the Main radio shows the field).
+  function charTeamFieldHtml(gd, selectedId, character, hidden) {
     const active = G.shell.activeTeams(gd.teams);
     if (active.length < 2) return '';
     // A character on no team has no Team to edit here: saving the form must not place it (the Worker leaves its team alone; placing is a team route's job).
@@ -296,7 +297,7 @@
     if (character && character.team && character.team.id && !items.some(function (i) { return i.value === character.team.id; })) {
       items.push({ value: character.team.id, label: character.team.name + ' (archived)' });
     }
-    return '<div class="gs-field"><label class="gs-label" for="dlg-team">Team</label><select class="gs-input" id="dlg-team" name="teamId" data-field="teamId">' + G.ui.optionsHtml(items, selectedId) + '</select>' +
+    return '<div class="gs-field" id="dlg-team-field"' + (hidden ? ' hidden' : '') + '><label class="gs-label" for="dlg-team">Team</label><select class="gs-input" id="dlg-team" name="teamId" data-field="teamId">' + G.ui.optionsHtml(items, selectedId) + '</select>' +
       '<p class="gs-field-error" id="dlg-err-teamId" role="alert" hidden></p></div>';
   }
 
@@ -310,8 +311,8 @@
     const cls = c ? c.class : '';
     const modeFields = edit ? '' :
       '<fieldset class="gs-fieldset"><legend class="gs-legend">Main or Alt</legend><div class="gs-radios">' +
-      '<div class="gs-check"><input type="radio" id="dlg-kind-alt" name="mainOrAlt" value="alt" checked><label for="dlg-kind-alt">Alt</label></div>' +
-      '<div class="gs-check"><input type="radio" id="dlg-kind-main" name="mainOrAlt" value="main" aria-describedby="dlg-kind-help"><label for="dlg-kind-main">Main</label></div></div>' +
+      '<div class="gs-check"><input type="radio" id="dlg-kind-alt" name="mainOrAlt" value="alt" checked data-change="char-kind-change"><label for="dlg-kind-alt">Alt</label></div>' +
+      '<div class="gs-check"><input type="radio" id="dlg-kind-main" name="mainOrAlt" value="main" aria-describedby="dlg-kind-help" data-change="char-kind-change"><label for="dlg-kind-main">Main</label></div></div>' +
       '<p class="gs-fine" id="dlg-kind-help">Choosing Main makes ' + esc(person.name) + ' an Alt.</p></fieldset>';
     const fields =
       '<div class="gs-field"><label class="gs-label" for="dlg-name">Character name</label><input class="gs-input" type="text" id="dlg-name" name="name" data-field="name" maxlength="40" autocomplete="off" required value="' + esc(c ? c.name : '') + '">' +
@@ -322,7 +323,7 @@
       '<p class="gs-field-error" id="dlg-err-mainSpec" role="alert" hidden></p></div>' +
       '<div class="gs-field"><label class="gs-label" for="dlg-offspec">Off spec</label><select class="gs-input" id="dlg-offspec" name="offSpec" data-field="offSpec">' + G.ui.specOptionsHtml(ro, cls, c ? c.offSpec : '', 'None') + '</select>' +
       '<p class="gs-field-error" id="dlg-err-offSpec" role="alert" hidden></p></div></div>' +
-      charTeamFieldHtml(gd, edit ? (c.team && c.team.id) : opts.defaultTeamId, c) + modeFields;
+      charTeamFieldHtml(gd, edit ? (c.team && c.team.id) : opts.defaultTeamId, c, !edit) + modeFields;
     return G.ui.dialogHtml({
       kind: 'form', title: edit ? 'Edit ' + c.name : 'Add a character for ' + person.name, bodyHtml: fields,
       primary: { label: edit ? 'Save' : 'Add character' }, formAttrs: { 'data-submit': 'char-form', 'data-mode': edit ? 'edit' : 'add', 'data-cid': edit ? c.id : null },
@@ -587,6 +588,12 @@
     if (input) { input.focus(); input.select(); }
   };
 
+  // A new Alt starts on no team (the Worker ignores one sent with it): the Team field belongs to a new Main.
+  G.handlers.change['char-kind-change'] = function (el) {
+    const field = document.getElementById('dlg-team-field');
+    if (field) field.hidden = el.value !== 'main';
+  };
+
   G.handlers.submit['char-form'] = function (form) {
     const c = cur();
     if (!c) return;
@@ -603,7 +610,10 @@
     } else {
       const sole = G.app.teamFor(c.gd);
       const checked = form.querySelector('input[name="mainOrAlt"]:checked');
-      promise = G.api.post(base(c) + '/characters', Object.assign({}, ch, { teamId: teamId || sole, makeMain: !!checked && checked.value === 'main' }));
+      const makeMain = !!checked && checked.value === 'main';
+      const body = Object.assign({}, ch, { makeMain: makeMain });
+      if (makeMain) body.teamId = teamId || sole;
+      promise = G.api.post(base(c) + '/characters', body);
     }
     G.ui.runDialog(form, promise, function (res) { applyRecord(c, res); }, function (err) { conflict(c, err); });
   };

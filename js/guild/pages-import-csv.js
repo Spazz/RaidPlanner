@@ -131,7 +131,7 @@
       else what = 'New person (Main)';
     } else if (usable) what = '<span class="gs-muted">Not included</span>';
     return '<tr><th scope="row" class="gs-cell-strong">' + tick + (row.class ? '<span class="gs-char-sub ' + esc(G.ui.classClass(row.class)) + '">' + esc(G.ui.className(row.class) + (row.spec ? ' - ' + row.spec : '')) + '</span>' : '') + '</th>' +
-      '<td data-label="Team">' + esc(row.teamName || '-') + (row.realm ? '<span class="gs-char-sub">' + esc(row.realm) + '</span>' : '') + '</td>' +
+      '<td data-label="Team">' + esc(r.action === 'alt' ? '-' : row.teamName || '-') + (row.realm ? '<span class="gs-char-sub">' + esc(row.realm) + '</span>' : '') + '</td>' +
       '<td data-label="Status">' + esc(G.ui.statusLabel(row.status || 'raider')) + (row.joinedOn ? '<span class="gs-char-sub">Joined ' + esc(G.ui.formatDay(row.joinedOn)) + '</span>' : '') + '</td>' +
       '<td data-label="What happens">' + (resultCell(r) || what) + (row.notes && row.notes.length ? '<span class="gs-note-line">' + esc(row.notes.join(' ')) + '</span>' : '') +
       (rowErrors && rowErrors[row.line] ? '<span class="gs-note-line gs-note-error">' + esc(rowErrors[row.line]) + '</span>' : '') + '</td></tr>';

@@ -123,10 +123,14 @@ check('patch person: every status change reaches every character; left dates onl
   assert.deepEqual(cols((await s.chars(p.pid)).Alttwo), ['social', '2027-01-10', 'kicked', null, null]);
   await s.inSync('left reason changed');
 
-  await patch({ leftReason: 'break' });
-  assert.deepEqual(cols((await s.chars(p.pid)).Mainone), ['social', null, null, null, null], 'a break is not a leaving: the characters keep no left date');
-  assert.equal((await s.rows('SELECT left_on FROM players WHERE id = ?', p.pid))[0].left_on, '2027-01-10', 'players keeps it (legacy)');
-  await s.inSync('inactive, break');
+  // Break and Other are refused (U B2-Q1); a clear (null) is a person with no reason.
+  const refused = await s.call('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: version, leftReason: 'break' });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.json.field, 'leftReason');
+  await s.inSync('break refused');
+  await patch({ leftReason: null });
+  assert.deepEqual(cols((await s.chars(p.pid)).Mainone), ['social', null, null, null, null], 'no reason: the characters keep no left date');
+  await s.inSync('inactive, no reason');
 
   await patch({ status: 'reserve' });
   assert.deepEqual([cols((await s.chars(p.pid)).Mainone), cols((await s.chars(p.pid)).Alttwo)], [['reserve', null, null, null, null], ['reserve', null, null, null, null]]);

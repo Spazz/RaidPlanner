@@ -117,7 +117,7 @@
     const body = canNotes ? '<div class="gs-field"><label class="gs-label" for="dlg-note">Note (optional)</label><textarea class="gs-input gs-textarea" id="dlg-note" name="note" data-field="note" rows="3" maxlength="' + NOTE_MAX + '" aria-describedby="dlg-note-help"></textarea>' +
       '<p class="gs-fine" id="dlg-note-help">Added to the officer notes as "Trial ended" with today\'s date. ' + NOTE_MAX + ' characters at most.</p></div>' : '';
     return G.ui.dialogHtml({
-      kind: 'destructive', title: 'End ' + name + '\'s trial?', text: name + ' is set to Inactive with the reason Other. Their attendance and loot stay on record.', bodyHtml: body,
+      kind: 'destructive', title: 'End ' + name + '\'s trial?', text: name + ' is set to Inactive. Their attendance and loot stay on record.', bodyHtml: body,
       primary: { label: 'End trial' }, formAttrs: { 'data-submit': 'trial-end-form' },
     });
   }
@@ -227,7 +227,7 @@
     if (!c) return;
     const note = String(form.elements.note ? form.elements.note.value : '').trim().slice(0, NOTE_MAX);
     const today = todayOf(c);
-    return G.ui.runDialog(form, G.api.trial.update(c.gid, c.pid, { expectedVersion: c.rec.person.version, status: 'inactive', leftReason: 'other' }), function (res) {
+    return G.ui.runDialog(form, G.api.trial.update(c.gid, c.pid, { expectedVersion: c.rec.person.version, status: 'inactive' }), function (res) {
       ops().applyRecord(c, res);
       const rec = res && res.person ? res : c.rec;
       if (note && rec.can && rec.can.notesEdit) appendNote(c.gid, c.pid, rec, note, today);

@@ -437,9 +437,8 @@ check('trial review: the card draws the real numbers, the buttons PATCH the pers
   G.pages.person.ops.applyRecord({ gid: s.gid, pid: s.p.Veyla, rec: record, gd }, record);
   assert.equal(S.person.record.person.trialEnd, '2027-02-02', 'applyRecord keeps the answer');
 
-  // End: Inactive, reason Other; the note goes to the end of the officer notes as "Trial ended <today>: <note>".
-  const ended = await G.api.trial.update(s.gid, s.p.Veyla, { expectedVersion: record.person.version, status: 'inactive', leftReason: 'other' });
-  // A reason of Other (or Break) is not a leaving, so no character carries it (migration 0030's mapping): the record reads Inactive with no reason.
+  // End: Inactive with no reason (Other is gone, U B2-Q1); the note goes to the end of the officer notes as "Trial ended <today>: <note>".
+  const ended = await G.api.trial.update(s.gid, s.p.Veyla, { expectedVersion: record.person.version, status: 'inactive' });
   assert.deepEqual([ended.person.status, ended.person.leftReason], ['inactive', null]);
   assert(ended.can.notesEdit && ended.notes, 'the record carries the notes version the append needs');
   S.person = { gid: s.gid, pid: s.p.Veyla, record: ended };

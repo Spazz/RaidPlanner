@@ -30,8 +30,9 @@ export const SPEC_ROLE = {
 export const SPECS = Object.fromEntries(Object.entries(SPEC_ROLE).map(([id, specs]) => [id, Object.keys(specs)]));
 
 export const STATUSES = ['raider', 'trial', 'reserve', 'inactive'];
-// Why a person went Inactive (optional; only kept while the status is Inactive).
-export const LEFT_REASONS = ['left', 'kicked', 'break', 'other'];
+// Why a person went Inactive (optional; only kept while the status is Inactive). Break and Other are no longer written (U B2-Q1): the character columns
+// cannot hold them. Old values stay in players.left_reason.
+export const LEFT_REASONS = ['left', 'kicked'];
 // A person can be created (or imported) in these; Inactive is only ever set on an existing person.
 export const CREATE_STATUSES = ['raider', 'trial', 'reserve'];
 

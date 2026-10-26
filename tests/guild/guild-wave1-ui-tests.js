@@ -1051,7 +1051,7 @@ function withState(fn) {
     assert.equal(S.person.record.person.trialEnd, '2026-11-01');
   }));
 
-  await check('trial card: End trial sets Inactive with reason Other; a typed note is then appended to the officer notes when the viewer may edit them', withState(async (S) => {
+  await check('trial card: End trial sets Inactive with no reason; a typed note is then appended to the officer notes when the viewer may edit them', withState(async (S) => {
     openTrialPerson(S);
     const opened = captureDialogs();
     G.handlers.click['trial-end'](el({}));
@@ -1064,7 +1064,7 @@ function withState(fn) {
     await settle();
     s.restore();
     assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [
-      ['patch', '/api/guild/g1/roster/p_t', { expectedVersion: 4, status: 'inactive', leftReason: 'other' }],
+      ['patch', '/api/guild/g1/roster/p_t', { expectedVersion: 4, status: 'inactive' }],
       ['put', '/api/guild/g1/roster/p_t/notes', { text: 'Likes fire\nTrial ended 2026-10-17: Never showed up', expectedNotesVersion: 3 }],
     ]);
     assert.equal(S.person.record.person.status, 'inactive');

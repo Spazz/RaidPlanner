@@ -237,7 +237,7 @@ check('intent: a team lead edits only their team; people off the team, inactive 
   assert.equal((await pick('officer', round.id, onBravo.pid)).status, 409, 'a person of another team');
   assert.equal((await pick('m1', round.id, onAlpha.pid)).status, 200);
   // An inactive person cannot pick.
-  await s.ok('gm', 'PATCH', `/roster/${onAlpha.pid}`, { status: 'inactive', leftReason: 'break', expectedVersion: 1 }, 200);
+  await s.ok('gm', 'PATCH', `/roster/${onAlpha.pid}`, { status: 'inactive', expectedVersion: 1 }, 200);
   assert.equal((await pick('officer', round.id, onAlpha.pid)).status, 409);
   await s.ok('gm', 'PATCH', `/roster/${onAlpha.pid}`, { status: 'raider', expectedVersion: 2 }, 200);
   // Close: a second close and any pick after it are refused; the round is still there, with its picks.

@@ -269,7 +269,7 @@ check('a Battle.net claim links to a person whose Main is on no team (the link g
 // ---------------------------------------------------------------------------
 // The interim PATCH status contract and the mirror
 
-check('PATCH status: every character of the person takes the rank (Inactive = Social), a teamless alt too; the players row mirrors; Break and Other stay on players only', async () => {
+check('PATCH status: every character of the person takes the rank (Inactive = Social), a teamless alt too; the players row mirrors; Break and Other are refused', async () => {
   const s = await scenario();
   const p = await s.newPerson({ name: 'Statusmain', status: 'trial', trialEnd: '2027-02-10' });
   const placed = await s.alt(p.pid, 'Statusplaced');
@@ -284,12 +284,18 @@ check('PATCH status: every character of the person takes the rank (Inactive = So
   assert.deepEqual(Object.values(got).map((r) => [r.core_rank, r.left_on, r.left_reason, r.trial_start, r.trial_end]), [['social', '2027-01-10', 'left', null, null], ['social', '2027-01-10', 'left', null, null], ['social', '2027-01-10', 'left', null, null]]);
   assert.deepEqual(await s.rows('SELECT status, left_on, left_reason FROM players WHERE id = ?', p.pid), [{ status: 'inactive', left_on: '2027-01-10', left_reason: 'left' }], 'the mirror');
   await s.inSync('inactive, left');
-  // Break: no character carries it, players keeps what was sent.
-  const asBreak = await patch({ leftReason: 'break', leftOn: '2027-01-11' });
-  assert.deepEqual([asBreak.person.leftOn, asBreak.person.leftReason, asBreak.person.status], [null, null, 'inactive']);
-  assert.deepEqual(await s.rows('SELECT left_on, left_reason FROM players WHERE id = ?', p.pid), [{ left_on: '2027-01-11', left_reason: 'break' }]);
-  await s.inSync('inactive, break');
-  // Break -> Kicked with no date: a leaving needs one, it starts today.
+  // Break and Other are refused (U B2-Q1): nothing changes on either side.
+  for (const reason of ['break', 'other']) {
+    const refused = await s.call('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: version, leftReason: reason, leftOn: '2027-01-11' });
+    assert.equal(refused.status, 400, reason);
+    assert.equal(refused.json.field, 'leftReason', reason);
+  }
+  assert.deepEqual(await s.rows('SELECT left_on, left_reason FROM players WHERE id = ?', p.pid), [{ left_on: '2027-01-10', left_reason: 'left' }]);
+  await s.inSync('Break and Other refused');
+  // A Break stored before the decision (players only; no character carries it) -> Kicked with no date: a leaving needs one, it starts today.
+  await s.exec(`UPDATE players SET left_on = '2027-01-11', left_reason = 'break' WHERE id = '${p.pid}'`);
+  await s.exec(`UPDATE characters SET left_on = NULL, left_reason = NULL WHERE player_id = '${p.pid}'`);
+  await s.inSync('inactive, an old break');
   const kicked = await patch({ leftReason: 'kicked' });
   assert.deepEqual([kicked.person.leftOn, kicked.person.leftReason], [kicked.today, 'kicked']);
   await s.inSync('break to kicked');

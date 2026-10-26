@@ -753,6 +753,49 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(/class="gs-nav-link is-active" href="#\/g\/g1\/roster"/.test(nav));
   });
 
+  await check('add character: the Team field belongs to a new Main - hidden while Alt is picked (the default), shown for Main; an Alt is sent without a team, a Main with one', async () => {
+    const rec = record();
+    const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND] });
+    const add = G.pages.person.characterDialogHtml({ guildData: gd, record: rec, character: null, defaultTeamId: 't_main' });
+    assert(/<div class="gs-field" id="dlg-team-field" hidden><label[^>]*for="dlg-team">Team<\/label><select[^>]*name="teamId"/.test(add), 'the Team field is there but hidden on Alt');
+    assert(add.includes('name="mainOrAlt" value="alt" checked data-change="char-kind-change"') && add.includes('name="mainOrAlt" value="main" aria-describedby="dlg-kind-help" data-change="char-kind-change"'));
+    assert(/<option value="t_main" selected>/.test(add), 'the team it will take as a Main is preselected');
+    // Editing a character that sits on a team still shows its Team; a Main-or-Alt choice only exists when adding.
+    const placed = G.pages.person.characterDialogHtml({ guildData: gd, record: rec, character: rec.characters[1], defaultTeamId: 't_main' });
+    assert(/<div class="gs-field" id="dlg-team-field"><label/.test(placed) && !placed.includes('char-kind-change'));
+    // One team: no Team field at all.
+    assert(!G.pages.person.characterDialogHtml({ guildData: guildData(), record: rec, character: null, defaultTeamId: 't_main' }).includes('dlg-team-field'));
+    // The radios show and hide it.
+    const field = { hidden: true };
+    const saved = ctx.document;
+    ctx.document = { getElementById: id => (id === 'dlg-team-field' ? field : null) };
+    try {
+      G.handlers.change['char-kind-change']({ value: 'main' });
+      assert.equal(field.hidden, false);
+      G.handlers.change['char-kind-change']({ value: 'alt' });
+      assert.equal(field.hidden, true);
+    } finally { ctx.document = saved; }
+    // The submit: the Team field still holds a value when it is hidden, and an Alt must not send it.
+    const s = setupPerson(rec, gd);
+    const calls = [];
+    const reply = () => Promise.resolve(Object.assign(record({ person: { version: s.person.record.person.version + 1 } }), { rosterFlags: { t_main: 2 } }));
+    const value = v => ({ value: v, focus() {}, select() {}, setAttribute() {} });
+    const addForm = kind => {
+      const form = { elements: { name: value('Velshade'), class: value('WARLOCK'), mainSpec: value('Affliction'), offSpec: value(''), teamId: value('t_weekend') },
+        getAttribute: k => ({ 'data-mode': 'add' })[k], querySelectorAll: () => [] };
+      form.querySelector = sel => (sel.includes('mainOrAlt') ? { value: kind } : null);
+      return form;
+    };
+    await withApi({ post: (url, body) => { calls.push(plain(body)); return reply(); } }, async () => {
+      G.handlers.submit['char-form'](addForm('alt'));
+      await tick();
+      G.handlers.submit['char-form'](addForm('main'));
+      await tick();
+    });
+    assert.deepEqual(calls[0], { name: 'Velshade', class: 'WARLOCK', mainSpec: 'Affliction', offSpec: null, makeMain: false });
+    assert.deepEqual(calls[1], { name: 'Velshade', class: 'WARLOCK', mainSpec: 'Affliction', offSpec: null, makeMain: true, teamId: 't_weekend' });
+  });
+
   await check('person page actions send the contract bodies (details diff, add / edit character, make main, remove, delete)', async () => {
     const s = setupPerson(record());
     const calls = [];
@@ -1356,7 +1399,10 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(/<select class="gs-input" id="det-status" name="status"[^>]*data-change="person-status-change">/.test(trial));
     assert(/id="det-reason-field" hidden>/.test(trial) && /id="det-lefton-field" hidden>/.test(trial));
     assert(/name="leftOn"[^>]* value="2026-10-15"/.test(trial));
-    assert(trial.includes('<option value="" selected>No reason</option>') && ['Left guild', 'Kicked', 'Break', 'Other'].every(t => trial.includes('>' + t + '</option>')));
+    // The reasons are Left guild and Kicked only (U B2-Q1): exactly three options, in this order.
+    const reasonSelect = /<select[^>]*id="det-reason"[^>]*>([\s\S]*?)<\/select>/.exec(trial)[1];
+    assert.deepEqual([...reasonSelect.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map(m => [m[1], m[2]]), [['', 'No reason'], ['left', 'Left guild'], ['kicked', 'Kicked']]);
+    assert(trial.includes('<option value="" selected>No reason</option>'));
     // An inactive person: fields shown with the stored values.
     const goneRec = record({ person: { status: 'inactive', trialFlag: null, leftReason: 'kicked', leftOn: '2026-10-12' } });
     assert(personPage(goneRec).includes('Inactive - Kicked, left Oct 12, 2026'), 'read-only Details say the reason and the day');
@@ -1382,7 +1428,8 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   await check('inactive text drops the parts that are null', () => {
     const text = (reason, day) => G.ui.statusText({ status: 'inactive', leftReason: reason, leftOn: day });
     assert.equal(text(null, null), 'Inactive');
-    assert.equal(text('break', null), 'Inactive - Break');
+    assert.equal(text('break', null), 'Inactive', 'Break and Other are gone: an old record shows no reason');
+    assert.equal(text('other', '2026-10-12'), 'Inactive, left Oct 12, 2026');
     assert.equal(text(null, '2026-10-12'), 'Inactive, left Oct 12, 2026');
     assert.equal(text('left', '2026-10-12'), 'Inactive - Left guild, left Oct 12, 2026');
     assert.equal(G.ui.statusText({ status: 'raider', leftReason: 'kicked', leftOn: '2026-10-12' }), 'Raider', 'only Inactive carries the detail');
