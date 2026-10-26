@@ -33,7 +33,7 @@ export const ACTION_GROUP = Object.freeze({
   'loot.import': 'loot', 'loot.update': 'loot', 'loot.delete': 'loot', 'loot.policy': 'loot', 'loot.list': 'loot', 'loot.add': 'loot',
   'signup.set': 'signups', 'signup.remove': 'signups', 'signup.link': 'signups', 'signup.lock': 'signups',
   'bnet.link': 'bnet', 'bnet.unlink': 'bnet', 'bnet.settings': 'bnet',
-  'claim.create': 'bnet', 'claim.withdraw': 'bnet', 'claim.approve': 'bnet', 'claim.reject': 'bnet',
+  'claim.create': 'bnet', 'claim.withdraw': 'bnet', 'claim.approve': 'bnet', 'claim.reject': 'bnet', 'character.claim': 'bnet',
   'guild.create': 'settings', 'guild.update': 'settings', 'guild.claim': 'settings', 'guild.delete': 'settings', 'guild.export': 'settings', 'team.create': 'settings', 'team.rename': 'settings',
   'team.archive': 'settings', 'team.restore': 'settings', 'roles.set': 'settings', 'guild_master.transfer': 'settings',
   'guild_master.auto_promote': 'settings', 'access.remove': 'settings', 'access.restore': 'settings', 'account.delete': 'settings', 'team.size': 'settings', 'team.trial_days': 'settings',
@@ -428,6 +428,9 @@ export function describeRow(row, names = {}) {
     case 'discord.link': return 'Linked a Discord account';
     case 'discord.unlink': return 'Disconnected a Discord account';
     case 'bnet.settings': return 'Changed the Battle.net settings';
+    case 'character.claim': return after.outcome === 'link_person'
+      ? `Linked their account to ${person(after.personId)} through ${character(ent)}`
+      : `Added ${character(ent)} to their own record${after.source === 'hand' ? ' by hand' : ' from Battle.net'}`;
     case 'claim.create': return `Claimed ${get('claim', ent, 'a character')}`;
     case 'claim.withdraw': return 'Withdrew a character claim';
     case 'claim.approve': return `Approved the claim for ${get('claim', ent, 'a character')}`;

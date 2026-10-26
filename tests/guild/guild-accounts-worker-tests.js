@@ -222,6 +222,19 @@ const linkAccount = (s, who, personId, userId) => s.call(who, 'PUT', `/roster/${
 const claimBody = (...names) => ({ characters: names.map((name) => ({ name, realmSlug: name === 'Cassia' || name === 'Fenwick' ? 'nightslayer' : 'dreamscythe' })) });
 const approveBody = (kind, extra = {}) => ({ expectedKind: kind, ...extra });
 
+// A claim waiting for an officer, made the way the Worker made one before claims applied at once (characters/teams decision D2): the rows alone. The
+// officers' side is tested on these; the claims a member makes now are in guild-bnet-worker-tests.js and guild-b3-claims-tests.js.
+let pendSeq = 0;
+async function pendClaim(s, who, name) {
+  const view = (await s.w.call(s.jars[who], 'GET', '/auth/bnet')).json.guilds[0];
+  const found = view.characters.find((c) => c.name === name);
+  assert(found, `${name} is on the list of ${who}`);
+  const id = `cl_${String(++pendSeq).padStart(22, 'p')}`;
+  s.w.db.sqlite.exec(`INSERT INTO character_claims (id, guild_id, user_id, name, name_key, realm, realm_key, class, level, status, created_at)
+    VALUES ('${id}', '${s.guildId}', '${s.ids[who]}', '${found.name}', '${found.name.toLowerCase()}', '${found.realm}', '${found.realmSlug.replace(/-/g, '')}', '${found.class}', ${found.level}, 'pending', ${s.w.clock.now})`);
+  return { status: 201, json: { claims: [{ id, name: found.name, status: 'pending' }] } };
+}
+
 // ---------------------------------------------------------------------------
 // The membership rule
 
@@ -1098,7 +1111,7 @@ check('GET /accounts?q=: only the accounts that claimed here (no q) or whose Bat
   // No claim yet: nothing at all, though there are nine accounts.
   assert.deepEqual((await lookup('bob')).json, { accounts: [] });
   // Erin claims a character: she is the one account listed.
-  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).status, 201);
+  assert.equal((await pendClaim(s, 'erin', 'Eliora')).status, 201);
   const claimants = (await lookup('bob')).json.accounts;
   assert.deepEqual(claimants.map((a) => [a.id, a.displayName, a.battletag, a.matchedBy]), [[s.ids.erin, 'Erin E', null, 'claim']]);
   assert.deepEqual(Object.keys(claimants[0]).sort(), ['ambiguous', 'avatarUrl', 'battletag', 'displayName', 'id', 'initials', 'matchedBy', 'username']);
@@ -1175,25 +1188,25 @@ check('claims: an approved claim links the claimant\'s ACCOUNT to the person (pl
   await bnetLink(w, s.jars.gina, BNET.gina);
   const brindle = await addPerson(s, 'bob', s.A, 'Brindle');
   // Erin claims a new character: approving makes a new person that belongs to her account and Discord.
-  const e = (await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0];
+  const e = (await pendClaim(s, 'erin', 'Eliora')).json.claims[0];
   const approved = await s.call('bob', 'POST', `/claims/${e.id}/approve`, approveBody('new_person', { teamId: s.A, status: 'raider' }));
   assert.equal(approved.status, 200, JSON.stringify(approved.json));
   const created = (await w.rows('SELECT id, user_id, discord_user_id FROM players WHERE id = ?', approved.json.personId))[0];
   assert.deepEqual([created.user_id, created.discord_user_id], [s.ids.erin, PEOPLE.erin.id]);
   // Gina claims the unlinked person's character: approving links her account AND her Discord ID to Brindle's person.
-  const g = (await s.call('gina', 'POST', '/claims', claimBody('Brindle'))).json.claims[0];
+  const g = (await pendClaim(s, 'gina', 'Brindle')).json.claims[0];
   const linked = await s.call('bob', 'POST', `/claims/${g.id}/approve`, approveBody('link_person'));
   assert.equal(linked.status, 200, JSON.stringify(linked.json));
   const person = (await w.rows('SELECT user_id, discord_user_id FROM players WHERE id = ?', brindle.person.id))[0];
   assert.deepEqual([person.user_id, person.discord_user_id], [s.ids.gina, PEOPLE.gina.id]);
   // The claim list names the claimant by what she shows; a claim by someone with a person already is an Alt on THEIR person.
-  const second = (await s.call('erin', 'POST', '/claims', claimBody('Galdor'))).json.claims[0];
+  const second = (await pendClaim(s, 'erin', 'Galdor')).json.claims[0];
   const list = (await s.call('bob', 'GET', '/claims')).json.claims;
   assert.deepEqual(list.map((c) => [c.character.name, c.plan.kind]), [['Galdor', 'add_alt']]);
   assert.equal((await s.call('bob', 'POST', `/claims/${second.id}/approve`, approveBody('add_alt', { teamId: s.A }))).status, 200);
 });
 
-check('claims: a Battle.net-only member (linked to a person by an officer) loads her characters at her next Battle.net sign-in and claims an Alt on her own person', async () => {
+check('claims: a Battle.net-only member (linked to a person by an officer) loads her characters at her next Battle.net sign-in and adds an Alt to her own person at once', async () => {
   const s = await scenario();
   const { w } = s;
   const holly = await signUpHolly(s);
@@ -1212,11 +1225,10 @@ check('claims: a Battle.net-only member (linked to a person by an officer) loads
   assert.equal(view.guilds[0].characters.find((c) => c.name === 'Galdor').state, 'new');
   const claim = await s.call('holly', 'POST', '/claims', claimBody('Galdor'));
   assert.equal(claim.status, 201, JSON.stringify(claim.json));
+  assert.deepEqual([claim.json.claims[0].status, claim.json.claims[0].outcome, claim.json.claims[0].personId], ['applied', 'add_alt', aldric.person.id], 'applied at once, on her own person');
   assert.equal((await s.call('holly', 'POST', '/claims', claimBody('Aldric'))).json.error, 'already_yours');
-  const pending = (await s.call('bob', 'GET', '/claims')).json.claims[0];
-  assert.deepEqual([pending.claimant.displayName, pending.plan.kind, pending.plan.person.name], ['Holly', 'add_alt', 'Aldric']);
-  assert.equal((await s.call('bob', 'POST', `/claims/${pending.id}/approve`, approveBody('add_alt', { teamId: s.A }))).status, 200);
-  assert.deepEqual((await w.rows('SELECT name FROM characters WHERE player_id = ? ORDER BY name', aldric.person.id)).map((r) => r.name), ['Aldric', 'Galdor']);
+  assert.deepEqual((await s.call('bob', 'GET', '/claims')).json.claims, [], 'nothing waits for an officer');
+  assert.deepEqual((await w.rows('SELECT name, team_id FROM characters WHERE player_id = ? ORDER BY name', aldric.person.id)).map((r) => [r.name, r.team_id]), [['Aldric', s.A], ['Galdor', null]], 'the new alt is on no team');
   // An account that is not a member cannot claim at all.
   const ivan = await signUpHolly(s, 'ivan');
   assert.equal((await w.call(ivan, 'POST', `${s.guildPath}/claims`, claimBody('Brindle'))).status, 403);

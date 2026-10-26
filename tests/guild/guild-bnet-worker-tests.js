@@ -205,6 +205,23 @@ async function assertOneMain(w) {
 
 const claimBody = (...names) => ({ characters: names.map((name) => ({ name, realmSlug: name === 'Cassia' || name === 'Fenwick' ? 'nightslayer' : 'dreamscythe' })) });
 const approveBody = (kind, extra = {}) => ({ expectedKind: kind, ...extra });
+
+// A claim waiting for the officers, made the way the Worker made one before claims applied at once (characters/teams decision D2): the rows alone. The
+// officers' side (list, approve, reject, purge, Delete my data) is tested on these; the claims a member makes now are tests/guild/guild-b3-claims-tests.js.
+let pendSeq = 0;
+async function pend(s, who, ...names) {
+  const view = (await s.w.call(s.jars[who], 'GET', '/auth/bnet')).json.guilds[0];
+  const claims = names.map((name) => {
+    const found = view.characters.find((c) => c.name === name);
+    assert(found, `${name} is on the list of ${who}`);
+    const id = `cl_${String(++pendSeq).padStart(22, 'p')}`;
+    s.w.db.sqlite.exec(`INSERT INTO character_claims (id, guild_id, user_id, name, name_key, realm, realm_key, class, level, status, created_at)
+      VALUES ('${id}', '${s.guildId}', '${s.ids[who]}', '${found.name}', '${found.name.toLowerCase()}', '${found.realm}', '${found.realmSlug.replace(/-/g, '')}', '${found.class}', ${found.level}, 'pending', ${s.w.clock.now});
+      INSERT INTO audit_log (id, guild_id, actor_user_id, action, entity_type, entity_id, created_at) VALUES ('al_${id.slice(3)}', '${s.guildId}', '${s.ids[who]}', 'claim.create', 'claim', '${id}', ${s.w.clock.now});`);
+    return { id, name: found.name, realm: found.realm, class: found.class, level: found.level, status: 'pending' };
+  });
+  return { status: 201, json: { claims } };
+}
 const plainJson = (value) => JSON.parse(JSON.stringify(value));
 
 // ---------------------------------------------------------------------------
@@ -498,7 +515,7 @@ check('GET /auth/bnet: signed out is 401; not linked says so; the characters car
   assert.equal(before.headers.get('Cache-Control'), 'no-store');
   await seedRoster(s);
   await link(s, 'erin');
-  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Galdor'))).status, 201);
+  assert.equal((await pend(s, 'erin', 'Galdor')).status, 201);
   const res = await s.w.call(s.jars.erin, 'GET', '/auth/bnet');
   assert.equal(res.json.link.battletag, TAG('erin'));
   assert.equal(res.json.link.fetchedAt, s.w.clock.now);
@@ -541,7 +558,7 @@ check('GET /auth/bnet: a version Battle.net has no data for says so, a guild joi
 check('disconnect: deletes the link and snapshot at once and audits it; it is safe to repeat; claims stay for the officers', async () => {
   const s = await scenario();
   await link(s, 'erin');
-  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).status, 201);
+  assert.equal((await pend(s, 'erin', 'Eliora')).status, 201);
   const first = await s.w.call(s.jars.erin, 'DELETE', '/auth/bnet');
   assert.deepEqual(first.json, { ok: true, removed: true });
   assert.equal(await s.w.count('bnet_links'), 0);
@@ -557,22 +574,68 @@ check('disconnect: deletes the link and snapshot at once and audits it; it is sa
 // ---------------------------------------------------------------------------
 // Claims: creating
 
-check('claims: a member claims characters from their own list; the row keeps what the officers need and 201 returns them', async () => {
+check('claims: a member with no person claims characters from their own list; they are applied at once (D2): a new Trial person with the first as Main on no team, the rest its alts', async () => {
   const s = await scenario();
   await link(s, 'erin');
   const res = await s.call('erin', 'POST', '/claims', claimBody('Eliora', 'Cassia'));
   assert.equal(res.status, 201, JSON.stringify(res.json));
-  assert.deepEqual(res.json.claims.map((c) => [c.name, c.realm, c.class, c.level, c.status]), [
-    ['Eliora', 'Dreamscythe', 'PALADIN', 61, 'pending'], ['Cassia', 'Nightslayer', 'PRIEST', 68, 'pending'],
+  assert.deepEqual(res.json.claims.map((c) => [c.name, c.realm, c.class, c.level, c.status, c.outcome]), [
+    ['Eliora', 'Dreamscythe', 'PALADIN', 61, 'applied', 'new_person'], ['Cassia', 'Nightslayer', 'PRIEST', 68, 'applied', 'add_alt'],
   ]);
-  const rows = await s.w.rows('SELECT guild_id, user_id, name, name_key, realm, realm_key, class, level, status, team_id, decided_by, decided_at, created_at FROM character_claims ORDER BY name');
+  assert.equal(res.json.claims[0].personId, res.json.claims[1].personId, 'both on the one new person');
+  assert.equal(await s.w.count('character_claims'), 0, 'nothing waits for an officer');
+  assert.equal(await s.w.count('players'), 1);
+  const person = (await s.w.rows('SELECT id, status, user_id, discord_user_id, created_by FROM players'))[0];
+  assert.deepEqual([person.id, person.status, person.user_id, person.discord_user_id, person.created_by], [res.json.claims[0].personId, 'trial', s.ids.erin, PEOPLE.erin.id, s.ids.erin]);
+  const rows = await s.w.rows('SELECT name, is_main, team_id, core_rank, owner_proof, realm, class FROM characters ORDER BY name');
   assert.deepEqual(rows, [
-    { guild_id: s.guildId, user_id: s.ids.erin, name: 'Cassia', name_key: 'cassia', realm: 'Nightslayer', realm_key: 'nightslayer', class: 'PRIEST', level: 68, status: 'pending', team_id: null, decided_by: null, decided_at: null, created_at: s.w.clock.now },
-    { guild_id: s.guildId, user_id: s.ids.erin, name: 'Eliora', name_key: 'eliora', realm: 'Dreamscythe', realm_key: 'dreamscythe', class: 'PALADIN', level: 61, status: 'pending', team_id: null, decided_by: null, decided_at: null, created_at: s.w.clock.now },
+    { name: 'Cassia', is_main: 0, team_id: null, core_rank: 'trial', owner_proof: 'officer', realm: 'Nightslayer', class: 'PRIEST' },
+    { name: 'Eliora', is_main: 1, team_id: null, core_rank: 'trial', owner_proof: 'officer', realm: 'Dreamscythe', class: 'PALADIN' },
   ]);
-  assert.equal(await s.w.count('audit_log', "action = 'claim.create'"), 2);
-  assert.equal(await s.w.count('players'), 0, 'a claim writes nothing to the roster');
-  assert.equal(await s.w.count('characters'), 0);
+  assert.equal(await s.w.count('audit_log', "action = 'character.claim'"), 2);
+  assert.equal(await s.w.count('audit_log', "action = 'claim.create'"), 0);
+  await assertOneMain(s.w);
+  // The next claim is an alt of that person, and the list now says the characters are theirs.
+  const more = await s.call('erin', 'POST', '/claims', claimBody('Galdor'));
+  assert.deepEqual([more.json.claims[0].status, more.json.claims[0].outcome, more.json.claims[0].personId], ['applied', 'add_alt', person.id]);
+  const view = (await s.w.call(s.jars.erin, 'GET', '/auth/bnet')).json.guilds[0].characters;
+  assert.deepEqual(view.filter((c) => ['Eliora', 'Cassia', 'Galdor'].includes(c.name)).map((c) => c.state), ['yours', 'yours', 'yours']);
+});
+
+check('claims: a conflict - the character is on a person nobody linked while the claimant has their own - waits for an officer as a pending claim with what the officers need', async () => {
+  const s = await scenario();
+  await seedRoster(s);
+  await link(s, 'erin');
+  const res = await s.call('erin', 'POST', '/claims', claimBody('Brindle', 'Eliora'));
+  assert.equal(res.status, 201, JSON.stringify(res.json));
+  assert.deepEqual(res.json.claims.map((c) => [c.name, c.status, c.outcome, c.reason || null]), [['Brindle', 'pending', 'needs_officer', 'other_person'], ['Eliora', 'applied', 'add_alt', null]]);
+  const rows = await s.w.rows('SELECT guild_id, user_id, name, name_key, realm, realm_key, class, level, status, team_id, decided_by, decided_at, created_at FROM character_claims');
+  assert.deepEqual(rows, [
+    { guild_id: s.guildId, user_id: s.ids.erin, name: 'Brindle', name_key: 'brindle', realm: 'Dreamscythe', realm_key: 'dreamscythe', class: 'MAGE', level: 70, status: 'pending', team_id: null, decided_by: null, decided_at: null, created_at: s.w.clock.now },
+  ]);
+  assert.equal(res.json.claims[0].id, (await s.w.rows('SELECT id FROM character_claims'))[0].id);
+  assert.equal(await s.w.count('audit_log', "action = 'claim.create'"), 1);
+  assert.equal(await s.w.count('characters', "name = 'Brindle'"), 1, 'still where it was');
+  assert.equal(await s.w.count('characters', "name = 'Eliora'"), 1);
+});
+
+check('claims: a member with no person who claims a character on a person nobody linked is linked to that person at once (D2b), no character is added', async () => {
+  const s = await scenario();
+  const ids = await seedRoster(s);
+  await link(s, 'gina');
+  const res = await s.call('gina', 'POST', '/claims', claimBody('Brindle'));
+  assert.deepEqual(res.json.claims.map((c) => [c.name, c.status, c.outcome, c.personId]), [['Brindle', 'applied', 'link_person', ids.brindle]]);
+  const person = (await s.w.rows('SELECT user_id, discord_user_id FROM players WHERE id = ?', ids.brindle))[0];
+  assert.deepEqual([person.user_id, person.discord_user_id], [s.ids.gina, PEOPLE.gina.id]);
+  assert.equal(await s.w.count('characters'), 3, 'no character was added');
+  assert.equal(await s.w.count('character_claims'), 0);
+  assert.equal(await s.w.count('audit_log', "action = 'character.claim'"), 1);
+  // The same request that links also adds the next character to that person (it is theirs by then).
+  const s2 = await scenario();
+  await seedRoster(s2);
+  await link(s2, 'gina');
+  const both = await s2.call('gina', 'POST', '/claims', claimBody('Brindle', 'Galdor'));
+  assert.deepEqual(both.json.claims.map((c) => [c.name, c.status, c.outcome]), [['Brindle', 'applied', 'link_person'], ['Galdor', 'applied', 'add_alt']]);
 });
 
 check('claims: only characters on the member\'s own list for this guild\'s namespace, and only ones this guild\'s realms take', async () => {
@@ -632,7 +695,17 @@ check('claims: not linked, an unsupported version, a failed namespace, a non-mem
   assert.equal(await s.w.count('character_claims'), 0);
 });
 
-check('claims: a character already on your own record, or on someone else\'s linked person, cannot be claimed; a second open claim on one character is refused', async () => {
+check('claims: in a guild whose rank source is the in-game roster the Battle.net list is still the way in (typed characters are refused there)', async () => {
+  const s = await scenario();
+  await link(s, 'erin');
+  s.w.db.sqlite.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.guildId}'`);
+  const typed = await s.call('erin', 'POST', '/me/characters', { name: 'Typedone', class: 'MAGE' });
+  assert.deepEqual([typed.status, typed.json.error], [409, 'battlenet_only']);
+  const res = await s.call('erin', 'POST', '/claims', claimBody('Eliora'));
+  assert.deepEqual([res.status, res.json.claims[0].status, res.json.claims[0].outcome], [201, 'applied', 'new_person']);
+});
+
+check('claims: a character already on your own record, or on someone else\'s linked person, cannot be claimed; a conflict has one open claim at a time', async () => {
   const s = await scenario();
   await seedRoster(s);
   await link(s, 'erin');
@@ -644,45 +717,51 @@ check('claims: a character already on your own record, or on someone else\'s lin
   const taken = await s.call('erin', 'POST', '/claims', claimBody('Dunmar'));
   assert.equal(taken.json.error, 'name_taken');
   assert.equal(taken.json.message, 'Dunmar is already on someone else\'s record in this guild.');
-  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).status, 201);
+  // Eliora is on no roster: Erin's person takes it at once. Once it is on her record, Gina (no person) cannot have it.
+  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0].status, 'applied');
   const second = await s.call('gina', 'POST', '/claims', claimBody('Eliora'));
-  assert.equal(second.status, 409);
-  assert.equal(second.json.error, 'claim_pending');
-  const again = await s.call('erin', 'POST', '/claims', claimBody('Eliora'));
+  assert.deepEqual([second.status, second.json.error], [409, 'name_taken']);
+  // Brindle is on a person nobody linked and Erin has her own person: a conflict, one open claim at a time.
+  const conflict = await s.call('erin', 'POST', '/claims', claimBody('Brindle'));
+  assert.equal(conflict.json.claims[0].status, 'pending');
+  const gina = await s.call('gina', 'POST', '/claims', claimBody('Brindle'));
+  assert.deepEqual([gina.status, gina.json.error], [409, 'claim_pending']);
+  const again = await s.call('erin', 'POST', '/claims', claimBody('Brindle'));
   assert.equal(again.json.error, 'claim_pending', 'not twice by the same member either');
-  assert.equal((await s.call('gina', 'POST', '/claims', claimBody('Brindle'))).status, 201, 'a person nobody linked can be claimed');
-  assert.equal(await s.w.count('character_claims'), 2);
+  assert.equal(await s.w.count('character_claims'), 1);
 });
 
-check('claims: at most 20 waiting for officers per member per guild', async () => {
+check('claims: at most 20 CONFLICTS waiting for officers per member per guild; what applies at once is not counted', async () => {
   const s = await scenario();
+  await seedRoster(s);
   await link(s, 'erin');
-  s.w.db.sqlite.exec('DELETE FROM guild_blocks');
   for (let i = 0; i < 20; i++) {
     s.w.db.sqlite.exec(`INSERT INTO character_claims (id, guild_id, user_id, name, name_key, realm_key, class, status, created_at) VALUES ('cl_${String(i).padStart(22, 'x')}', '${s.guildId}', '${s.ids.erin}', 'Fill${i}', 'fill${i}', '', 'MAGE', 'pending', 1)`);
   }
-  const res = await s.call('erin', 'POST', '/claims', claimBody('Eliora'));
+  const res = await s.call('erin', 'POST', '/claims', claimBody('Brindle'));
   assert.equal(res.status, 409);
   assert.equal(res.json.error, 'claim_limit');
+  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0].status, 'applied', 'an alt for their own person is no conflict');
 });
 
-check('claims: a rejected claim can be made again; withdrawing is the claimant\'s own and only while pending', async () => {
+check('claims: a rejected conflict can be made again; withdrawing is the claimant\'s own and only while pending', async () => {
   const s = await scenario();
+  await seedRoster(s);
   await link(s, 'erin');
   await link(s, 'gina');
-  const first = (await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0].id;
+  const first = (await s.call('erin', 'POST', '/claims', claimBody('Brindle'))).json.claims[0].id;
   assert.equal((await s.call('gina', 'DELETE', `/claims/${first}`)).status, 404, 'someone else\'s claim');
   assert.equal((await s.call('bob', 'DELETE', `/claims/${first}`)).status, 404, 'officers reject, they do not withdraw');
   assert.equal((await s.call('erin', 'DELETE', '/claims/nope')).status, 404);
   assert.equal((await s.call('erin', 'DELETE', `/claims/${first}`)).status, 200);
   assert.equal(await s.w.count('character_claims'), 0);
   assert.equal((await s.call('erin', 'DELETE', `/claims/${first}`)).status, 404);
-  const second = (await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0].id;
+  const second = (await s.call('erin', 'POST', '/claims', claimBody('Brindle'))).json.claims[0].id;
   assert.equal((await s.call('bob', 'POST', `/claims/${second}/reject`, {})).status, 200);
   assert.equal((await s.call('erin', 'DELETE', `/claims/${second}`)).status, 404, 'decided claims are not withdrawn');
-  const view = (await s.w.call(s.jars.erin, 'GET', '/auth/bnet')).json.guilds[0].characters.find((c) => c.name === 'Eliora');
+  const view = (await s.w.call(s.jars.erin, 'GET', '/auth/bnet')).json.guilds[0].characters.find((c) => c.name === 'Brindle');
   assert.deepEqual([view.claim.status, view.claimable], ['rejected', true]);
-  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).status, 201, 'a rejected claim can be made again');
+  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Brindle'))).status, 201, 'a rejected claim can be made again');
   assert.equal(await s.w.count('audit_log', "action = 'claim.withdraw'"), 1);
 });
 
@@ -694,8 +773,8 @@ check('claims list: officers and team leads see pending claims with what approvi
   const ids = await seedRoster(s);
   await link(s, 'erin');
   await link(s, 'gina');
-  const erinClaims = (await s.call('erin', 'POST', '/claims', claimBody('Eliora', 'Brindle'))).json.claims;
-  const ginaClaims = (await s.call('gina', 'POST', '/claims', claimBody('Galdor'))).json.claims;
+  const erinClaims = (await pend(s, 'erin', 'Eliora', 'Brindle')).json.claims;
+  const ginaClaims = (await pend(s, 'gina', 'Galdor')).json.claims;
   assert.equal((await s.call('erin', 'GET', '/claims')).status, 403);
   assert.equal((await s.w.call({}, 'GET', `${s.guildPath}/claims`)).status, 401);
   const list = await s.call('bob', 'GET', '/claims');
@@ -733,15 +812,15 @@ check('claims list: the plan covers linking an unlinked person, a claim already 
   const ids = await seedRoster(s);
   await link(s, 'gina');
   await link(s, 'erin');
-  assert.equal((await s.call('gina', 'POST', '/claims', claimBody('Brindle'))).status, 201);
+  assert.equal((await pend(s, 'gina', 'Brindle')).status, 201);
   const plans = async () => Object.fromEntries((await s.call('bob', 'GET', '/claims')).json.claims.map((c) => [c.character.name, c.plan]));
   assert.deepEqual((await plans()).Brindle, { kind: 'link_person', reason: null, message: null, person: { id: ids.brindle, name: 'Brindle' }, defaultTeamId: null, canDecide: true });
   // A claim made, then the roster changes under it: the character lands on the claimant's own person by hand ("already").
-  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).status, 201);
+  assert.equal((await pend(s, 'erin', 'Eliora')).status, 201);
   assert.equal((await s.call('bob', 'POST', `/roster/${ids.aldric}/characters`, { name: 'Eliora', class: 'PALADIN', mainSpec: 'Holy', offSpec: null, teamId: s.A, makeMain: false })).status, 201);
   assert.equal((await plans()).Eliora.kind, 'already');
   // Or onto someone else's linked person ("taken").
-  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Galdor'))).status, 201);
+  assert.equal((await pend(s, 'erin', 'Galdor')).status, 201);
   assert.equal((await s.call('bob', 'POST', `/roster/${ids.dunmar}/characters`, { name: 'Galdor', class: 'WARLOCK', mainSpec: 'Destruction', offSpec: null, teamId: s.B, makeMain: false })).status, 201);
   assert.equal((await plans()).Galdor.reason, 'taken');
   // Gina leaves the Discord server.
@@ -756,7 +835,7 @@ check('approve: an Alt joins the claimant\'s person on NO team (new alts start t
   const s = await scenario();
   const ids = await seedRoster(s);
   await link(s, 'erin');
-  const claim = (await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0];
+  const claim = (await pend(s, 'erin', 'Eliora')).json.claims[0];
   const res = await s.call('bob', 'POST', `/claims/${claim.id}/approve`, approveBody('add_alt', { teamId: s.B }));
   assert.equal(res.status, 200, JSON.stringify(res.json));
   assert.deepEqual([res.json.claim, res.json.outcome, res.json.personId], [{ id: claim.id, status: 'approved' }, 'add_alt', ids.aldric]);
@@ -777,7 +856,7 @@ check('approve: a claimant with no person becomes a new person (status picked, t
   const s = await scenario();
   await seedRoster(s);
   await link(s, 'gina');
-  const claims = (await s.call('gina', 'POST', '/claims', claimBody('Galdor', 'Quillfeather'))).json.claims;
+  const claims = (await pend(s, 'gina', 'Galdor', 'Quillfeather')).json.claims;
   const first = await s.call('bob', 'POST', `/claims/${claims[0].id}/approve`, approveBody('new_person', { teamId: s.A }));
   assert.equal(first.status, 200, JSON.stringify(first.json));
   const [person] = await s.w.rows('SELECT id, status, discord_user_id, joined_on, trial_start, trial_end, created_by, version FROM players WHERE discord_user_id = ?', PEOPLE.gina.id);
@@ -795,7 +874,7 @@ check('approve: a claimant with no person becomes a new person (status picked, t
   await assertOneMain(s.w);
   // Another claimant, another status.
   await link(s, 'erin');
-  const erin = (await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0];
+  const erin = (await pend(s, 'erin', 'Eliora')).json.claims[0];
   const own = await s.call('bob', 'POST', `/claims/${erin.id}/approve`, approveBody('add_alt', { teamId: s.A }));
   assert.equal(own.status, 200);
 });
@@ -803,7 +882,7 @@ check('approve: a claimant with no person becomes a new person (status picked, t
 check('approve: new_person takes the status the officer picked and refuses a bad one', async () => {
   const s = await scenario();
   await link(s, 'gina');
-  const claim = (await s.call('gina', 'POST', '/claims', claimBody('Galdor'))).json.claims[0];
+  const claim = (await pend(s, 'gina', 'Galdor')).json.claims[0];
   for (const bad of ['inactive', 'boss', 5, null]) {
     const res = await s.call('bob', 'POST', `/claims/${claim.id}/approve`, approveBody('new_person', { teamId: s.A, status: bad }));
     assert.equal(res.status, 400, String(bad));
@@ -817,7 +896,7 @@ check('approve: an unlinked person on the roster is linked to the claimant, no c
   const s = await scenario();
   const ids = await seedRoster(s);
   await link(s, 'gina');
-  const claim = (await s.call('gina', 'POST', '/claims', claimBody('Brindle'))).json.claims[0];
+  const claim = (await pend(s, 'gina', 'Brindle')).json.claims[0];
   const before = await s.w.count('characters');
   const res = await s.call('bob', 'POST', `/claims/${claim.id}/approve`, approveBody('link_person'));
   assert.equal(res.status, 200, JSON.stringify(res.json));
@@ -835,14 +914,14 @@ check('approve: "already" only closes the claim, and a blocked claim cannot be a
   const s = await scenario();
   const ids = await seedRoster(s);
   await link(s, 'erin');
-  const done = (await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0];
+  const done = (await pend(s, 'erin', 'Eliora')).json.claims[0];
   await s.call('bob', 'POST', `/roster/${ids.aldric}/characters`, { name: 'Eliora', class: 'PALADIN', mainSpec: 'Holy', offSpec: null, teamId: s.A, makeMain: false });
   const characters = await s.w.count('characters');
   const ok = await s.call('bob', 'POST', `/claims/${done.id}/approve`, approveBody('already'));
   assert.equal(ok.status, 200);
   assert.equal(ok.json.outcome, 'already');
   assert.equal(await s.w.count('characters'), characters);
-  const blocked = (await s.call('erin', 'POST', '/claims', claimBody('Brindle'))).json.claims[0];
+  const blocked = (await pend(s, 'erin', 'Brindle')).json.claims[0];
   const res = await s.call('bob', 'POST', `/claims/${blocked.id}/approve`, approveBody('blocked'));
   assert.equal(res.status, 409);
   assert.equal(res.json.error, 'claim_blocked');
@@ -856,8 +935,8 @@ check('approve: permissions follow roster.edit by team, a lost race is a 409, an
   await seedRoster(s);
   await link(s, 'erin');
   await link(s, 'gina');
-  const eliora = (await s.call('erin', 'POST', '/claims', claimBody('Eliora', 'Cassia'))).json.claims;
-  const galdor = (await s.call('gina', 'POST', '/claims', claimBody('Galdor'))).json.claims[0];
+  const eliora = (await pend(s, 'erin', 'Eliora', 'Cassia')).json.claims;
+  const galdor = (await pend(s, 'gina', 'Galdor')).json.claims[0];
   const approve = (who, id, body) => s.call(who, 'POST', `/claims/${id}/approve`, body);
   assert.equal((await approve('erin', eliora[0].id, approveBody('add_alt', { teamId: s.A }))).status, 403, 'a member cannot approve');
   assert.equal((await approve('dave', eliora[0].id, approveBody('add_alt', { teamId: s.B }))).status, 403, 'Aldric\'s home team is Alpha');
@@ -878,7 +957,7 @@ check('approve: a name taken in the meantime, a claimant who left and another gu
   const s = await scenario();
   await seedRoster(s);
   await link(s, 'erin');
-  const claim = (await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0];
+  const claim = (await pend(s, 'erin', 'Eliora')).json.claims[0];
   // The same character is added by hand (to a person Erin does not own) between the list and the click.
   assert.equal((await s.call('bob', 'POST', '/roster', mainBody(s.A, 'Eliora', { class: 'PALADIN', mainSpec: 'Holy' }))).status, 201);
   const res = await s.call('bob', 'POST', `/claims/${claim.id}/approve`, approveBody('add_alt', { teamId: s.A }));
@@ -902,7 +981,7 @@ check('reject: officers and team leads reject, members cannot, a decided claim s
   const s = await scenario();
   await seedRoster(s);
   await link(s, 'erin');
-  const [a, b] = (await s.call('erin', 'POST', '/claims', claimBody('Eliora', 'Cassia'))).json.claims;
+  const [a, b] = (await pend(s, 'erin', 'Eliora', 'Cassia')).json.claims;
   const players = await s.w.count('players');
   const characters = await s.w.count('characters');
   assert.equal((await s.call('erin', 'POST', `/claims/${a.id}/reject`, {})).status, 403);
@@ -925,8 +1004,8 @@ check('audit: every Battle.net action is written once and no row holds a BattleT
   const { AUDIT_ACTIONS } = await load('worker/audit.js');
   await link(s, 'erin');
   await link(s, 'gina');
-  const claims = (await s.call('erin', 'POST', '/claims', claimBody('Eliora', 'Cassia', 'Galdor'))).json.claims;
-  const ginaClaim = (await s.call('gina', 'POST', '/claims', claimBody('Brindle'))).json.claims[0];
+  const claims = (await pend(s, 'erin', 'Eliora', 'Cassia', 'Galdor')).json.claims;
+  const ginaClaim = (await pend(s, 'gina', 'Brindle')).json.claims[0];
   await s.call('erin', 'DELETE', `/claims/${claims[2].id}`);
   await s.call('bob', 'POST', `/claims/${claims[0].id}/approve`, approveBody('add_alt', { teamId: s.A }));
   await s.call('bob', 'POST', `/claims/${claims[1].id}/reject`, {});
@@ -1204,8 +1283,8 @@ check('30-day purge: snapshots older than 30 days are cleared, fresh ones stay, 
   await link(s, 'erin');
   await link(s, 'gina');
   await link(s, 'dave');
-  assert.equal((await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).status, 201);
-  const g = (await s.call('gina', 'POST', '/claims', claimBody('Galdor', 'Quillfeather'))).json.claims;
+  assert.equal((await pend(s, 'erin', 'Eliora')).status, 201);
+  const g = (await pend(s, 'gina', 'Galdor', 'Quillfeather')).json.claims;
   await s.call('bob', 'POST', `/claims/${g[0].id}/approve`, approveBody('new_person', { teamId: s.A }));
   await s.call('bob', 'POST', `/claims/${g[1].id}/reject`, {});
   const { purgeExpiredBnetData, runScheduled } = await load('worker/bnet-purge.js');
@@ -1279,7 +1358,7 @@ check('Delete my data: the link, the snapshot and the member\'s claims go with t
   const s = await scenario();
   await seedRoster(s);
   await link(s, 'gina');
-  const claims = (await s.call('gina', 'POST', '/claims', claimBody('Galdor', 'Quillfeather'))).json.claims;
+  const claims = (await pend(s, 'gina', 'Galdor', 'Quillfeather')).json.claims;
   await s.call('bob', 'POST', `/claims/${claims[0].id}/approve`, approveBody('new_person', { teamId: s.A }));
   assert.equal(await s.w.count('bnet_links'), 1);
   assert.equal(await s.w.count('rate_limits', "key = ?", `bnet:${s.ids.gina}`), 1, 'starting the link left a rate-limit row');
@@ -1293,7 +1372,7 @@ check('Delete my data: the link, the snapshot and the member\'s claims go with t
   assert.deepEqual((await s.call('bob', 'GET', '/claims')).json.claims, []);
   // The officers' decisions on someone else's claim keep their audit row; the actor column goes NULL when an officer deletes their data.
   await link(s, 'erin');
-  const claim = (await s.call('erin', 'POST', '/claims', claimBody('Eliora'))).json.claims[0];
+  const claim = (await pend(s, 'erin', 'Eliora')).json.claims[0];
   await s.call('bob', 'POST', `/claims/${claim.id}/reject`, {});
   assert.equal((await s.w.call(s.jars.bob, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
   assert.equal((await s.w.rows('SELECT decided_by FROM character_claims'))[0].decided_by, null);
@@ -1318,7 +1397,7 @@ check('routes: Battle.net routes answer 405 with Allow for the wrong method, 401
   assert.equal(wrapped.status, 405);
 });
 
-check('end to end through tools/fake-battlenet.js: the browser\'s hop to /authorize and back, then claim and approve', async () => {
+check('end to end through tools/fake-battlenet.js: the browser\'s hop to /authorize and back, then claim (applied at once)', async () => {
   const s = await scenario();
   await seedRoster(s);
   const jar = s.jars.gina;
@@ -1335,8 +1414,9 @@ check('end to end through tools/fake-battlenet.js: the browser\'s hop to /author
   assert.equal(mine.json.guilds[0].characters.length, 9);
   const claim = await s.w.call(jar, 'POST', `${s.guildPath}/claims`, claimBody('Galdor'));
   assert.equal(claim.status, 201);
-  const approved = await s.call('bob', 'POST', `/claims/${claim.json.claims[0].id}/approve`, approveBody('new_person', { teamId: s.A, status: 'raider' }));
-  assert.equal(approved.status, 200);
+  assert.deepEqual([claim.json.claims[0].status, claim.json.claims[0].outcome], ['applied', 'new_person'], 'applied at once, no officer in the way');
+  assert.equal(await s.w.count('character_claims'), 0);
+  assert.equal(await s.w.count('characters', "name = 'Galdor' AND is_main = 1"), 1);
   // The user denies access on Battle.net's page.
   s.w.bnet.state.deny = true;
   const loginAgain = await s.w.req('GET', '/auth/bnet/login', { jar });

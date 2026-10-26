@@ -63,6 +63,7 @@ export const AUDIT_ACTIONS = [
   'claim.withdraw',
   'claim.approve',
   'claim.reject',
+  'character.claim',
   'signup.set',
   'signup.remove',
   'signup.link',

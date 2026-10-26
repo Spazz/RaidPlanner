@@ -24,7 +24,7 @@ const LEGACY_READ_ALLOWLIST = [];
 const ALLOWED_CORE_RANK_WRITERS = {
   'worker/person-legacy.js': 'a status change: the person-wide UPDATE of the rank columns (setCharacterRanksStatement)',
   'worker/routes/roster.js': 'insertCharacter (person create, add character, application accept, attendance link)',
-  'worker/routes/bnet-claims.js': 'approving a Battle.net claim (new person, alt)',
+  'worker/claim-apply.js': 'applyClaimPlan: a claimed character (new person, alt), whoever decides - the claimant, or an officer approving a claim',
   'worker/routes/roster-import.js': 'writeImport (Raid-Helper, Warcraft Logs, CSV and Battle.net roster imports)',
 };
 
@@ -257,7 +257,7 @@ check('every INSERT INTO characters in worker/ names core_rank', () => {
     const inComments = raw.split(/\r?\n/).filter((l) => /^\s*\/\//.test(l) && /INTO\s+characters\b/i.test(l)).length;
     assert.equal(mentions - inComments, literal, `${rel}: an INSERT INTO characters outside a plain SQL literal`);
   }
-  assert.equal(seen, 3, 'the three character inserts today: roster.js insertCharacter, bnet-claims.js, roster-import.js writeImport');
+  assert.equal(seen, 3, 'the three character inserts today: roster.js insertCharacter, claim-apply.js, roster-import.js writeImport');
 });
 
 check('core_rank is written only by the allowed paths', () => {
@@ -290,9 +290,9 @@ check('every writer of players.status / trial_start / trial_end / left_on / left
     const lines = sqlLiterals(rel).filter(({ sql }) => writesLegacyField(sql)).map(({ line }) => line);
     if (lines.length) writers.push({ rel, lines });
   }
-  // The mirror writers today: roster.js (create, patch), applications.js (accept), attendance.js (unmatched -> person), bnet-claims.js (new person), roster-import.js (imports).
+  // The mirror writers today: roster.js (create, patch), applications.js (accept), attendance.js (unmatched -> person), claim-apply.js (new person), roster-import.js (imports).
   assert.deepEqual(writers.map((w) => w.rel), [
-    'worker/routes/applications.js', 'worker/routes/attendance.js', 'worker/routes/bnet-claims.js', 'worker/routes/roster-import.js', 'worker/routes/roster.js',
+    'worker/claim-apply.js', 'worker/routes/applications.js', 'worker/routes/attendance.js', 'worker/routes/roster-import.js', 'worker/routes/roster.js',
   ]);
   for (const { rel, lines } of writers) {
     const source = fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -301,7 +301,7 @@ check('every writer of players.status / trial_start / trial_end / left_on / left
 });
 
 check('writer guards on the home or target team use IS ?, never = ? (a character or Main on no team must not make a write silently match nothing)', () => {
-  const GUARDED = ['worker/routes/roster.js', 'worker/routes/accounts.js', 'worker/routes/bnet-claims.js'];
+  const GUARDED = ['worker/routes/roster.js', 'worker/routes/accounts.js', 'worker/routes/bnet-claims.js', 'worker/claim-apply.js', 'worker/team-place.js'];
   const hits = [];
   for (const rel of GUARDED) {
     for (const { line, sql } of sqlLiterals(rel)) {

@@ -54,6 +54,8 @@ export function rateLimitMessage(key) {
   if (/^exp:/.test(key)) return 'Too many guild data exports. Wait a few minutes and try again.';
   if (/^ntest:/.test(key)) return 'That team has had five test posts this hour. Try again later.';
   if (/^rsync:/.test(key)) return 'Too many roster syncs. Try again in a little while.';
+  if (/^char:/.test(key)) return 'You have added a lot of characters this hour. Try again a little later.';
+  if (/^open:/.test(key)) return 'You have signed up for a lot of open raids this hour. Try again a little later.';
   if (/^api:/.test(key)) return 'This key has reached its limit of 60 requests an hour. Try again later.';
   return /^(?:imp|wcl|wclraid):/.test(key)
     ? 'Too many imports. Wait a moment and try again.'

@@ -18,6 +18,7 @@ import {
   BNET_STATE_COOKIE, bnetStateCookie, bnetStateMode, clearBnetStateCookie, hashToken, loadSession, newSessionToken, presentedToken, sessionCookie,
   signBnetSigninState, signBnetState, startSessionStatements, verifyBnetSigninState, verifyBnetState,
 } from '../session.js';
+import { applyPicks } from '../claim-apply.js';
 import { bad, resolveRealm } from './roster.js';
 import { viewerOf } from '../roster-view.js';
 
@@ -28,7 +29,6 @@ const CHARACTERS_REDIRECT = '/#/characters';
 const linkedRedirect = (reason) => `/#/linked?error=${reason}`;
 const signinRedirect = (reason) => `/#/signin?error=${reason}`;
 const MAX_COMBOS = 8;
-const MAX_PENDING_PER_GUILD = 20;
 const LINK_LIMIT = 10;
 const LINK_WINDOW_MS = 10 * 60 * 1000;
 
@@ -327,47 +327,12 @@ export async function createClaims(ctx) {
     return { index, name, realm, character: found, key };
   });
 
-  const [owners, pending, open] = await Promise.all([
-    loadOwners(db, guild.id, picked.map((entryRow) => nameKey(entryRow.name))),
-    db.prepare("SELECT name_key, realm_key FROM character_claims WHERE guild_id = ? AND status = 'pending'").bind(guild.id).all(),
-    db.prepare("SELECT COUNT(*) AS n FROM character_claims WHERE guild_id = ? AND user_id = ? AND status = 'pending'").bind(guild.id, session.user.id).first(),
-  ]);
-  const pendingKeys = new Set(pending.results.map((row) => `${row.name_key}|${row.realm_key}`));
-  if (open.n + picked.length > MAX_PENDING_PER_GUILD) {
-    throw new HttpError(409, 'claim_limit', `You can have at most ${MAX_PENDING_PER_GUILD} claims waiting for officers in one guild.`);
-  }
-  for (const item of picked) {
-    const owner = owners.get(item.key);
-    if (owner && isOwnPlayer(owner, viewerOf(ctx))) {
-      throw new HttpError(409, 'already_yours', `${item.name} is already on your record in this guild.`, { field: 'characters', index: item.index });
-    }
-    if (owner && (owner.discord_user_id || owner.user_id)) {
-      throw new HttpError(409, 'name_taken', `${item.name} is already on someone else's record in this guild.`, { field: 'characters', index: item.index });
-    }
-    if (pendingKeys.has(item.key)) {
-      throw new HttpError(409, 'claim_pending', `${item.name} already has a claim waiting for officers.`, { field: 'characters', index: item.index });
-    }
-  }
-
-  const now = ctx.now();
-  const claims = picked.map((item) => ({ id: newId('cl', ctx.randomBytes), item }));
-  try {
-    await db.batch(claims.flatMap(({ id, item }) => [
-      db.prepare(
-        `INSERT INTO character_claims (id, guild_id, user_id, name, name_key, realm, realm_key, class, level, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      ).bind(id, guild.id, session.user.id, item.name, nameKey(item.name), item.realm.realm, item.realm.key, item.character.class, item.character.level, now),
-      auditStatement(ctx, { guildId: guild.id, actorUserId: session.user.id, action: 'claim.create', entityType: 'claim', entityId: id }),
-    ]));
-  } catch (error) {
-    if (isUniqueViolation(error)) throw new HttpError(409, 'claim_pending', 'One of those characters already has a claim waiting for officers.');
-    throw error;
-  }
-  return jsonResponse({
-    claims: claims.map(({ id, item }) => ({
-      id, name: item.name, realm: item.realm.realm, class: item.character.class, level: item.character.level, status: 'pending',
-    })),
-  }, 201);
+  // Applied at once (D2): the character joins the member's own record, or the member's account is linked to the person that holds it (D2b); only a conflict
+  // goes to the officers as a pending claim. One batch, worker/claim-apply.js.
+  const result = await applyPicks(ctx, guildContext, picked.map((item) => ({
+    index: item.index, name: item.name, realm: item.realm, class: item.character.class, level: item.character.level,
+  })), { source: 'bnet', field: 'characters' });
+  return jsonResponse(result, 201);
 }
 
 export async function withdrawClaim(ctx) {

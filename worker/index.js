@@ -8,7 +8,8 @@ import { loadSession } from './session.js';
 import { callback, deleteMe, guildPageRedirect, login, logout, me, providers, updatePrefs } from './routes/auth.js';
 import { lookupAccounts, patchMe, putReminderOptOut, setPersonAccount, unlinkDiscord } from './routes/accounts.js';
 import { bnetCallback, bnetLogin, createClaims, disconnectBnet, getBnet, withdrawClaim } from './routes/bnet.js';
-import { approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
+import { applyPendingClaims, approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
+import { addMyCharacter } from './routes/me-characters.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
 import { getRosterSyncStatus, postRosterSync } from './routes/roster-sync.js';
 import { runCron } from './scheduler.js';
@@ -243,6 +244,9 @@ export const ROUTES = [
   // Battle.net (Phase 5): character claims and the guild's Battle.net settings.
   { method: 'GET', path: '/api/guild/:gid/claims', auth: true, handler: listClaims },
   { method: 'POST', path: '/api/guild/:gid/claims', auth: true, handler: createClaims },
+  // Lane B3 (D2): a member adds a character to their own record by hand, applied at once; and the one-off for claims that were waiting before claims applied at once (D2e).
+  { method: 'POST', path: '/api/guild/:gid/me/characters', auth: true, handler: addMyCharacter },
+  { method: 'POST', path: '/api/guild/:gid/claims/apply', auth: true, handler: applyPendingClaims },
   { method: 'DELETE', path: '/api/guild/:gid/claims/:clid', auth: true, handler: withdrawClaim },
   { method: 'POST', path: '/api/guild/:gid/claims/:clid/approve', auth: true, handler: approveClaim },
   { method: 'POST', path: '/api/guild/:gid/claims/:clid/reject', auth: true, handler: rejectClaim },

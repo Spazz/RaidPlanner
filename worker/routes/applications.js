@@ -26,8 +26,9 @@ import { characterRankColumns } from '../person-legacy.js';
 import { isSpecOf, nameKey, rosterOptions } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
 import { loadSession, hashToken } from '../session.js';
+import { placeStatement } from '../team-place.js';
 import {
-  LIMIT_KINDS, bad, constraintOf, findNameOwner, insertCharacter, limitError, nameTaken, readClass, readName, requireEdit, requireTarget, resolveRealm,
+  LIMIT_KINDS, bad, constraintOf, findNameOwner, insertCharacter, limitError, nameTaken, readClass, readName, requireEdit, requireTarget, resolveRealm, teamTaken,
 } from './roster.js';
 
 export const APPLY_COOKIE = '__Host-rs_apply';
@@ -325,8 +326,54 @@ export async function deleteApplication(ctx) {
   return jsonResponse({ ok: true });
 }
 
+// The applicant's character is on the roster already: if it is the applicant's OWN character and it is on no team (they added it to their record themselves,
+// characters/teams decision D2), accepting places it on the team through the same guarded statement as the team routes. Anyone else's character, or one that
+// is on a team already, is the name_taken it always was.
+async function placeOwnCharacter(ctx, guildContext, row, team, owner) {
+  const { db } = ctx;
+  const guild = guildContext.guild;
+  const own = row.user_id ? await ownPersonStatement(db, guild.id, row.user_id).first() : null;
+  const character = own && owner.personId === own.id
+    ? await db.prepare('SELECT id, team_id FROM characters WHERE id = ? AND guild_id = ?').bind(owner.characterId, guild.id).first()
+    : null;
+  if (!character || character.team_id !== null) throw nameTaken(row.char_name, owner);
+  const held = await db.prepare('SELECT 1 AS found FROM characters WHERE player_id = ? AND team_id = ?').bind(own.id, team.id).first();
+  if (held) throw teamTaken();
+  const now = ctx.now();
+  const results = await db.batch([
+    placeStatement(db, {
+      guildId: guild.id, personId: own.id, characterId: character.id, teamId: team.id, from: null, now,
+      extra: { sql: "EXISTS (SELECT 1 FROM applications WHERE id = ? AND guild_id = ? AND status IN ('new', 'reviewing'))", params: [row.id, guild.id] },
+    }),
+    db.prepare(
+      `UPDATE applications SET status = 'accepted', player_id = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? WHERE id = ? AND guild_id = ? AND status IN ('new', 'reviewing') AND changes() = 1`,
+    ).bind(own.id, ctx.session.user.id, now, now, row.id, guild.id),
+    auditStatement(ctx, {
+      guildId: guild.id, actorUserId: ctx.session.user.id, action: 'application.accept', entityType: 'application', entityId: row.id,
+      after: { personId: own.id, teamId: team.id, linked: false, placed: true },
+    }, { sql: 'changes() = 1', params: [] }),
+    auditStatement(ctx, {
+      guildId: guild.id, actorUserId: ctx.session.user.id, action: 'character.place', entityType: 'character', entityId: character.id,
+      before: { teamId: null, personId: own.id }, after: { teamId: team.id, personId: own.id, via: 'application' },
+    }, { sql: 'changes() = 1', params: [] }),
+    markRaidsStale(db, guild.id, [row.name_key], null, [team.id]),
+  ]).catch((error) => {
+    if (constraintOf(error) === 'team_taken') throw teamTaken();
+    throw error;
+  });
+  if (results[0].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The character or the application changed while you were deciding. Reload and try again.');
+  return jsonResponse({
+    application: applicationView(await loadApplication(db, guild.id, row.id)),
+    person: { id: own.id, name: row.char_name, teamId: team.id, trialEnd: null },
+    placed: true,
+    accountLinked: false,
+    accountSkipped: false,
+  }, 201);
+}
+
 // Accept: a Trial person (trial from today, 14 days unless the officer says otherwise) whose Main is the applicant's character on the chosen team.
 // The applicant's account is linked to the new person when it has one and is not on the roster of this guild already.
+// A character the applicant already has on their own record, on no team, is placed on the team instead (placeOwnCharacter above).
 export async function acceptApplication(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const row = await ownApplication(ctx, guildContext);
@@ -343,7 +390,7 @@ export async function acceptApplication(ctx) {
   const realmKeyValue = row.realm_key;
   const key = row.name_key;
   const owner = await findNameOwner(db, guild.id, key, realmKeyValue);
-  if (owner) throw nameTaken(row.char_name, owner);
+  if (owner) return placeOwnCharacter(ctx, guildContext, row, team, owner);
 
   let linkUser = null;
   if (row.user_id) {

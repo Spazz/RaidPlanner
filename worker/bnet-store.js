@@ -95,7 +95,7 @@ export async function planClaims(db, guild, claims) {
                                   OR p.discord_user_id IN (SELECT u.discord_id FROM users u WHERE u.id IN (SELECT value FROM json_each(?))))`,
     ).bind(guild.id, userIds, userIds),
     db.prepare(
-      `SELECT c.name_key, c.realm_key, p.id AS player_id, p.discord_user_id, p.user_id, m.name AS main_name, m.team_id AS home_team_id
+      `SELECT c.id AS character_id, c.name_key, c.realm_key, p.id AS player_id, p.discord_user_id, p.user_id, m.name AS main_name, m.team_id AS home_team_id
          FROM characters c JOIN players p ON p.id = c.player_id JOIN characters m ON m.player_id = p.id AND m.is_main = 1
         WHERE c.guild_id = ? AND c.name_key IN (SELECT value FROM json_each(?))`,
     ).bind(guild.id, names),
@@ -107,19 +107,19 @@ export async function planClaims(db, guild, claims) {
     const viewer = user ? { userId: user.id, discordId: user.discord_id } : null;
     const own = viewer ? personResult.results.find((row) => isOwnPlayer(row, viewer)) || null : null;
     const owner = owners.get(`${claim.name_key}|${claim.realm_key}`) || null;
-    const blocked = (reason) => ({ kind: 'blocked', reason, person: owner ? { id: owner.player_id, name: owner.main_name } : null, homeTeamId: null, defaultTeamId: null });
+    const blocked = (reason) => ({ kind: 'blocked', reason, person: owner ? { id: owner.player_id, name: owner.main_name } : null, homeTeamId: null, defaultTeamId: null, characterId: null });
     let plan;
     if (!user || user.member !== 1) plan = blocked('not_member');
     else if (owner && isOwnPlayer(owner, viewer)) {
-      plan = { kind: 'already', reason: null, person: { id: owner.player_id, name: owner.main_name }, homeTeamId: owner.home_team_id, defaultTeamId: null };
+      plan = { kind: 'already', reason: null, person: { id: owner.player_id, name: owner.main_name }, homeTeamId: owner.home_team_id, defaultTeamId: null, characterId: owner.character_id };
     } else if (owner && (owner.discord_user_id || owner.user_id)) plan = blocked('taken');
     else if (owner && own) plan = blocked('other_person');
     else if (owner) {
-      plan = { kind: 'link_person', reason: null, person: { id: owner.player_id, name: owner.main_name }, homeTeamId: owner.home_team_id, defaultTeamId: null };
+      plan = { kind: 'link_person', reason: null, person: { id: owner.player_id, name: owner.main_name }, homeTeamId: owner.home_team_id, defaultTeamId: null, characterId: owner.character_id };
     } else if (own) {
-      plan = { kind: 'add_alt', reason: null, person: { id: own.id, name: own.name }, homeTeamId: own.team_id, defaultTeamId: own.team_id };
+      plan = { kind: 'add_alt', reason: null, person: { id: own.id, name: own.name }, homeTeamId: own.team_id, defaultTeamId: own.team_id, characterId: null };
     } else {
-      plan = { kind: 'new_person', reason: null, person: null, homeTeamId: null, defaultTeamId: null };
+      plan = { kind: 'new_person', reason: null, person: null, homeTeamId: null, defaultTeamId: null, characterId: null };
     }
     plans.set(claim.id, plan);
   }
