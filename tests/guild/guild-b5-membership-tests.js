@@ -394,4 +394,190 @@ check("'ingame': a sync that marks all of a person's characters Former makes the
   assert.deepEqual(await memberGuildIds(s, 'raab'), [s.gid]);
 });
 
+// ---------------------------------------------------------------------------
+// 3. Query plans: "my guilds" never passes over every guild
+
+// Every table alias a statement gives a table (and the table's own name): the names a plan row can call it.
+function namesOf(sql, table) {
+  const skip = /^(WHERE|JOIN|ON|LEFT|INNER|SET|GROUP|ORDER|LIMIT|USING|CROSS|AND|OR|UNION|SELECT|INDEXED|NOT|AS|VALUES)$/i;
+  const names = new Set([table]);
+  for (const match of sql.matchAll(new RegExp(`(?:\\b(?:FROM|JOIN)\\s+|,\\s*)${table}\\b(?:\\s+(?:AS\\s+)?([a-z_]\\w*))?`, 'gi'))) if (match[1] && !skip.test(match[1])) names.add(match[1]);
+  return names;
+}
+
+// The tables this lane keeps off the full-scan path (plan "Read budgets"): the guilds themselves and the tables behind the per-source rule.
+const GUARDED_TABLES = ['guilds', 'players', 'characters', 'guild_roster', 'role_assignments'];
+
+// The statements a request ran (from the log position `from`) whose plan walks a whole guarded table: [{ table, detail, sql }].
+function scansSince(db, from) {
+  const found = [];
+  for (const { sql, values } of db.statementLog.slice(from)) {
+    if (!/\b(guilds|players|characters|guild_roster|role_assignments)\b/.test(sql)) continue;
+    const plan = db.sqlite.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...values);
+    for (const table of GUARDED_TABLES) {
+      const names = namesOf(sql, table);
+      for (const row of plan) {
+        const target = /^SCAN (?:TABLE )?(\S+)/.exec(row.detail);
+        if (target && names.has(target[1])) found.push({ table, detail: row.detail, sql: sql.replace(/\s+/g, ' ').slice(0, 120) });
+      }
+    }
+  }
+  return found;
+}
+
+check('the plan checker sees a scan: a seeded full pass over guilds is reported, an index lookup is not', async () => {
+  const s = await scenario();
+  const from = s.w.db.statementLog.length;
+  await s.w.db.prepare("SELECT g.id FROM guilds g WHERE g.name LIKE '%x%'").bind().all();
+  await s.w.db.prepare('SELECT g.id FROM guilds g WHERE g.id = ?').bind(s.gid).all();
+  await s.w.db.prepare('SELECT 1 FROM players WHERE user_id = ?').bind('u_x').all();
+  const found = scansSince(s.w.db, from);
+  assert.deepEqual(found.map((entry) => [entry.table, entry.detail]), [['guilds', 'SCAN g']]);
+});
+
+check('"my guilds" on a 2,000-guild database: GET /auth/me, the guild payload, PATCH /auth/prefs and loadMemberGuilds never scan guilds (or players, characters, guild_roster, role_assignments), and list exactly the guilds the rule lets the account into', async () => {
+  const s = await scenario();
+  const probe = await s.member('probe', 'Probeone');
+  const raw = rawDb(s.w.db);
+  const gb = (i) => `g_B${String(i).padStart(21, '0')}`;
+  // 2,000 other guilds of every source, each in its own Discord server.
+  s.w.db.sqlite.exec('BEGIN');
+  for (let i = 0; i < 2000; i++) {
+    s.w.db.sqlite.prepare(`INSERT INTO guilds (id, name, realm, realm_kind, region, discord_server_id, time_zone, game_version, created_at, rank_source)
+                           VALUES (?, ?, 'Nightslayer', 'realm', 'US', ?, 'America/New_York', 'tbc', 1, ?)`)
+      .run(gb(i), `Big ${String(i).padStart(4, '0')}`, `8${String(i).padStart(17, '0')}`, [null, 'manual', 'ingame'][i % 3]);
+  }
+  s.w.db.sqlite.exec('COMMIT');
+  const serverOf = (i) => `8${String(i).padStart(17, '0')}`;
+  // The probe's ways in: g_big0 legacy + server (member), g_big1 manual + server (not), g_big4 manual + linked (member), g_big2 ingame + linked on the roster (member),
+  // g_big5 ingame + linked off the roster (not), g_big8 ingame + the Owner seat (member), g_big11 ingame + server only (not).
+  raw.inServer(probe, serverOf(0));
+  raw.inServer(probe, serverOf(1));
+  raw.inServer(probe, serverOf(11));
+  raw.person('p_big4', gb(4), { userId: probe });
+  raw.character('c_big4', gb(4), 'p_big4', { key: 3004 });
+  raw.person('p_big2', gb(2), { userId: probe });
+  raw.character('c_big2', gb(2), 'p_big2', { key: 3002 });
+  raw.rosterRow(gb(2), 3002);
+  raw.person('p_big5', gb(5), { userId: probe });
+  raw.character('c_big5', gb(5), 'p_big5', { key: 3005 });
+  s.w.db.sqlite.prepare('UPDATE guilds SET owner_user_id = ? WHERE id = ?').run(probe, gb(8));
+  // Other accounts crowd the same tables.
+  for (let i = 0; i < 200; i++) {
+    raw.user(`u_crowd${i}`, `4${String(i).padStart(17, '0')}`);
+    raw.inServer(`u_crowd${i}`, serverOf(i));
+    raw.person(`p_crowd${i}`, gb(i), { userId: `u_crowd${i}` });
+    raw.character(`c_crowd${i}`, gb(i), `p_crowd${i}`, { key: 5000 + i });
+  }
+  const expected = [gb(0), gb(2), gb(4), gb(8), s.gid].sort();
+  const db = s.w.db;
+
+  let from = db.statementLog.length;
+  const me = await s.ok('probe', 'GET', '/auth/me');
+  assert.deepEqual(me.guilds.map((guild) => guild.id).sort(), expected, 'GET /auth/me lists exactly the guilds the rule allows');
+  assert(db.statementLog.slice(from).some((entry) => /JOIN guilds g ON g\.id = mx_c\.guild_id/.test(entry.sql)), 'the candidate-driven statement ran');
+  assert.deepEqual(scansSince(db, from), [], 'GET /auth/me');
+
+  from = db.statementLog.length;
+  assert.equal((await s.call('probe', 'GET', '')).status, 200);
+  assert.deepEqual(scansSince(db, from), [], 'loadGuildContext (GET /api/guild/:gid)');
+  from = db.statementLog.length;
+  assert.equal((await s.call('probe', 'GET', '/auth/me').then(() => s.call('probe', 'GET', '/people'))).status, 403, 'a plain member may not list people');
+  assert.deepEqual(scansSince(db, from), [], 'loadGuildContext on a refusal');
+
+  for (const [guild, status] of [[gb(8), 200], [gb(2), 200], [gb(5), 400], [gb(11), 400], [gb(1), 400]]) {
+    from = db.statementLog.length;
+    const res = await s.call('probe', 'PATCH', '/auth/prefs', { lastGuildId: guild });
+    assert.equal(res.status, status, `PATCH /auth/prefs lastGuildId ${guild}: ${res.text}`);
+    assert.deepEqual(scansSince(db, from), [], `PATCH /auth/prefs ${guild}`);
+  }
+
+  from = db.statementLog.length;
+  const { loadMemberGuilds } = await load('worker/bnet-store.js');
+  assert.deepEqual((await loadMemberGuilds(db, probe)).map((guild) => guild.id).sort(), expected, 'loadMemberGuilds');
+  assert.deepEqual(scansSince(db, from), [], 'loadMemberGuilds');
+
+  // The account that leads a guild (Delete my data's impact list) is driven from its own role rows too.
+  raw.gm(gb(3), probe);
+  raw.inServer(probe, serverOf(3));
+  from = db.statementLog.length;
+  await s.ok('probe', 'GET', '/auth/me');
+  assert.deepEqual(scansSince(db, from), [], 'GET /auth/me for a Guild Master of another guild');
+});
+
+// ---------------------------------------------------------------------------
+// 4. CI grep: ONE definition of membership
+
+const { sqlLiterals, workerFiles } = require('../worker-sql');
+
+// Reading user_servers or players.user_id anywhere but worker/membership.js is allowed only for a reason that is not a membership decision. A file is listed with the
+// number of SQL statements that touch the table (a new one fails the test: say what it is for, or fold it into the fragment).
+const touchesUserServers = (sql) => /\buser_servers\b/.test(sql);
+const touchesPlayersUserId = (sql) => /\bplayers\b/.test(sql) && /\buser_id\b/.test(sql);
+
+const USER_SERVERS_ALLOWED = {
+  'worker/discord-sync.js': { count: 3, reason: 'Discord ROLE sync: "is the account in the Discord server" decides whether to call Discord for its roles (and who to sync), not who is in the guild; a stored role grants nothing while membership fails' },
+  'worker/flip-preview.js': { count: 1, reason: 'the flip dry run lists the accounts of the guild\'s Discord server as candidates; today\'s rule is applied by memberSql, the in-game rule by the roster fragments' },
+  'worker/routes/accounts.js': { count: 1, reason: 'write: disconnecting Discord clears the account\'s server rows' },
+  'worker/routes/auth.js': { count: 3, reason: 'writes: a Discord sign-in or link replaces the account\'s server rows; servers that no longer have a guild are pruned' },
+  'worker/routes/guild-data.js': { count: 1, reason: 'write: deleting a guild prunes the server rows of its Discord server' },
+  'worker/routes/guild.js': { count: 2, reason: 'writes: creating or claiming a guild records its creator in the guild\'s server' },
+};
+
+const PLAYERS_USER_ID_ALLOWED = {
+  'worker/bnet-store.js': { count: 2, reason: 'claim planning: which person is the claimant\'s own (ownership of a person; the member test is memberSql)' },
+  'worker/claim-apply.js': { count: 3, reason: 'writes and guards of an applied claim: the person is still the claimant\'s' },
+  'worker/flip-preview.js': { count: 3, reason: 'the flip dry run: the person each account has today and would have after the flip links the Discord-owned ones' },
+  'worker/roster-view.js': { count: 4, reason: 'person pages and roster rows: the accounts linked to a person and the signed-in marker (memberSql decides who counts)' },
+  'worker/routes/accounts.js': { count: 3, reason: 'an officer links or unlinks an account (writes) and the "already another person\'s" check' },
+  'worker/routes/applications.js': { count: 1, reason: 'write: an accepted application makes a person linked to the applicant' },
+  'worker/routes/attendance.js': { count: 2, reason: 'select lists: the person columns the attendance views show' },
+  'worker/routes/auth.js': { count: 2, reason: 'identity guards: a Discord link must not put two people of a guild on one account; Delete my data unlinks the account\'s people' },
+  'worker/routes/bnet-claims.js': { count: 1, reason: 'guard of an approved claim: the person is still the claimant\'s' },
+  'worker/routes/bnet.js': { count: 1, reason: 'claim fixtures: who owns the characters a Battle.net list names' },
+  'worker/routes/loot.js': { count: 1, reason: 'select list: the person columns of a loot award' },
+  'worker/routes/people.js': { count: 1, reason: 'People and roles: the roster entry shown next to each account' },
+  'worker/routes/roster.js': { count: 2, reason: 'the "already another person\'s" check of a Discord link and the list of members with no person yet (memberSql decides who is a member)' },
+  'worker/routes/team-requests.js': { count: 1, reason: 'ownership: the asker\'s account still owns the character\'s person' },
+  'worker/seniority.js': { count: 1, reason: 'the account of a person (players.user_id, else the Discord ID match): the Seniority guard' },
+};
+
+function touchesOutsideMembership(detector) {
+  const found = {};
+  for (const file of workerFiles()) {
+    if (file === 'worker/membership.js') continue;
+    const hits = sqlLiterals(file).filter(({ sql }) => detector(sql)).length;
+    if (hits) found[file] = hits;
+  }
+  return found;
+}
+
+check('CI grep: the detectors see what they must (seeded SQL)', () => {
+  assert(touchesUserServers('SELECT 1 FROM user_servers us WHERE us.user_id = ?'));
+  assert(touchesUserServers('DELETE FROM user_servers WHERE user_id = ?'));
+  assert(!touchesUserServers('SELECT 1 FROM guild_blocks WHERE user_id = ?'));
+  assert(touchesPlayersUserId('SELECT 1 FROM players p WHERE p.user_id = ?'));
+  assert(touchesPlayersUserId('SELECT id FROM players WHERE guild_id = ? AND user_id = ?'));
+  assert(touchesPlayersUserId('UPDATE players SET user_id = NULL WHERE id = ?'));
+  assert(!touchesPlayersUserId('UPDATE players SET version = version + 1 WHERE id = ?'));
+  assert(!touchesPlayersUserId('SELECT 1 FROM guild_blocks WHERE user_id = ?'));
+});
+
+check('CI grep: no worker file outside membership.js reads user_servers or players.user_id for a membership decision (every other touch is listed with its reason)', () => {
+  const check1 = (found, allowed, label) => {
+    for (const [file, count] of Object.entries(found)) {
+      const entry = allowed[file];
+      assert(entry, `${file} touches ${label} in ${count} statement(s) and is not listed: fold the membership decision into worker/membership.js, or list the file with its reason`);
+      assert.equal(count, entry.count, `${file}: ${label} statements went from ${entry.count} to ${count}: say what the new one is for (not a membership decision), then update the count`);
+    }
+    for (const file of Object.keys(allowed)) assert(found[file], `${file} no longer touches ${label}: remove it from the allowlist`);
+    for (const [file, entry] of Object.entries(allowed)) assert(entry.reason && entry.reason.length > 20, `${file}: a reason is required`);
+  };
+  check1(touchesOutsideMembership(touchesUserServers), USER_SERVERS_ALLOWED, 'user_servers');
+  check1(touchesOutsideMembership(touchesPlayersUserId), PLAYERS_USER_ID_ALLOWED, 'players.user_id');
+  // The pure form is not a second copy in use: no worker file but membership.js calls it.
+  const users = workerFiles().filter((file) => file !== 'worker/membership.js' && /\b(membershipOf|reachesOf)\(/.test(fs.readFileSync(path.join(ROOT, file), 'utf8').split('\n').filter((line) => !/^\s*\/\//.test(line)).join('\n')));
+  assert.deepEqual(users, [], 'the SQL fragment is the decision; the pure forms mirror it for tests');
+});
+
 runChecks(checks);

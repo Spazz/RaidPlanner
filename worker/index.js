@@ -12,6 +12,7 @@ import { applyPendingClaims, approveClaim, listClaims, rejectClaim } from './rou
 import { addMyCharacter } from './routes/me-characters.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
 import { getRosterSyncStatus, postRosterSync } from './routes/roster-sync.js';
+import { dryRunFlip } from './routes/flip.js';
 import { dryRunRankMap, getRankMap, putRankMap } from './routes/rank-map.js';
 import { runCron } from './scheduler.js';
 import { SHARE_PATH, handleShare, isSharePagePath, servePlannerPage } from './share.js';
@@ -260,6 +261,7 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/rank-map', auth: true, handler: getRankMap },
   { method: 'POST', path: '/api/guild/:gid/rank-map/dry-run', auth: true, handler: dryRunRankMap },
   { method: 'PUT', path: '/api/guild/:gid/rank-map', auth: true, handler: putRankMap },
+  { method: 'POST', path: '/api/guild/:gid/flip/dry-run', auth: true, handler: dryRunFlip },
   { method: 'GET', path: '/api/guild/:gid/bnet', auth: true, handler: getBnetSettings },
   { method: 'PUT', path: '/api/guild/:gid/bnet', auth: true, handler: putBnetSettings },
   // PM wave 1 (officer tools): the Activity log, the Needs attention home and the calendar feed. The feed file itself needs no session:

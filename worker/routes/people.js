@@ -16,13 +16,13 @@ const MAX_REASON = 200;
 const MAX_EXTRA_ROLES = 40;
 
 // ---------------------------------------------------------------------------
-// The people model: everyone who is a member (in the guild's Discord server or linked to one of its people), holds a role, or is blocked.
+// The people model: everyone who is a member (by the guild's rank source, worker/membership.js), holds a role, or is blocked.
 
 async function loadModel(db, guildContext) {
   const guildId = guildContext.guild.id;
   const serverId = guildContext.guild.discord_server_id;
   const [userResult, assignmentResult, blockResult, rosterResult, mapResult] = await db.batch([
-    // is_member: in the Discord server or linked to a person (the block is read from guild_blocks below, not folded in here).
+    // is_member: the guild's rank source lets the account in (the block is read from guild_blocks below, not folded in here).
     db.prepare(
       `SELECT u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar, u.last_seen_at,
               ${reachesGuildSql('u.id', 'gc.gid', 'gc.sid')} AS is_member

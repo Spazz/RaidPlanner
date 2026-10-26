@@ -24,6 +24,9 @@ export const ROSTER_SYNC_WINDOW_MS = 60 * 60 * 1000;
 // Rank-map dry runs (per Owner): each one reads every character of the guild and writes an approval token.
 export const RANK_MAP_LIMIT = 10;
 export const RANK_MAP_WINDOW_MS = 10 * 60 * 1000;
+// Flip dry runs (per Owner): each one reads every account and person of the guild and writes an approval token.
+export const FLIP_DRY_RUN_LIMIT = 10;
+export const FLIP_DRY_RUN_WINDOW_MS = 10 * 60 * 1000;
 // The longest windowMs any caller passes (api keys, join and apply cookies, ideas, test posts, on-demand syncs: one hour). A rate_limits row whose window
 // started longer ago than this is dead for every key, so the daily retention job (worker/retention.js) deletes it. A test pins that no *_WINDOW_MS
 // constant in worker/ is longer; raising a window means raising this.
@@ -58,6 +61,7 @@ export function rateLimitMessage(key) {
   if (/^ntest:/.test(key)) return 'That team has had five test posts this hour. Try again later.';
   if (/^rsync:/.test(key)) return 'Too many roster syncs. Try again in a little while.';
   if (/^rmap:/.test(key)) return 'Too many rank map dry runs. Try again in a few minutes.';
+  if (/^flip:/.test(key)) return 'Too many flip dry runs. Try again in a few minutes.';
   if (/^char:/.test(key)) return 'You have added a lot of characters this hour. Try again a little later.';
   if (/^open:/.test(key)) return 'You have signed up for a lot of open raids this hour. Try again a little later.';
   if (/^api:/.test(key)) return 'This key has reached its limit of 60 requests an hour. Try again later.';
