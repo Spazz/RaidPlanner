@@ -445,7 +445,10 @@ export async function patchPerson(ctx) {
     });
     // The interim status contract (user-hierarchy build): a change of status, trial dates or left date writes the person's rank on EVERY character first
     // (Inactive = Social; the dates by migration 0030's mapping), and the players row follows as the mirror a rollback to R1 reads. Both statements carry
-    // the same optimistic checks (version, the main still on the home team), so a lost race changes neither.
+    // the same optimistic checks (version, the main still on the home team), so a lost race changes neither. The mirror writes a field only when that field
+    // changed: `next` comes from the characters, which cannot carry what an old players row holds (a Break, a left date without Left or Kicked, trial dates
+    // on a person who is not on trial), so an unrelated PATCH must not wipe it. The UPDATE keeps the stored value itself (no read of the legacy column).
+    const mirrored = (key, value) => [changed.includes(key) ? 1 : 0, value];
     const statements = [];
     if (changed.some((key) => ['status', 'trialStart', 'trialEnd', 'leftOn', 'leftReason'].includes(key))) {
       const unchanged = {
@@ -458,11 +461,14 @@ export async function patchPerson(ctx) {
     const playersAt = statements.length;
     statements.push(
       db.prepare(
-        `UPDATE players SET status = ?, joined_on = ?, trial_start = ?, trial_end = ?, left_on = ?, left_reason = ?, discord_user_id = ?, discord_nickname = ?,
-                version = version + 1, updated_at = ?
+        `UPDATE players SET status = CASE WHEN ? THEN ? ELSE status END, joined_on = ?,
+                trial_start = CASE WHEN ? THEN ? ELSE trial_start END, trial_end = CASE WHEN ? THEN ? ELSE trial_end END,
+                left_on = CASE WHEN ? THEN ? ELSE left_on END, left_reason = CASE WHEN ? THEN ? ELSE left_reason END,
+                discord_user_id = ?, discord_nickname = ?, version = version + 1, updated_at = ?
           WHERE id = ? AND guild_id = ? AND version = ?
             AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?)`,
-      ).bind(next.status, next.joinedOn, next.trialStart, next.trialEnd, next.leftOn, next.leftReason, next.discordUserId, next.nickname, now,
+      ).bind(...mirrored('status', next.status), next.joinedOn, ...mirrored('trialStart', next.trialStart), ...mirrored('trialEnd', next.trialEnd),
+        ...mirrored('leftOn', next.leftOn), ...mirrored('leftReason', next.leftReason), next.discordUserId, next.nickname, now,
         player.id, guildContext.guild.id, player.version, home.id),
       audit(ctx, guildContext, 'person.update', 'person', player.id,
         { ...before, version: player.version },
