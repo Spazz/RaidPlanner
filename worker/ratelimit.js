@@ -18,6 +18,13 @@ export const WCL_GLOBAL_KEY = 'wcl:global';
 // Raid report fetches and the backfill list (per user): one report per request, a backfill is a dozen of them.
 export const WCL_RAID_LIMIT = 40;
 export const WCL_RAID_WINDOW_MS = 10 * 60 * 1000;
+// On-demand roster sync (per user): the per-guild once-an-hour interval is the lease's (worker/roster-sync.js); this caps one account's clicks.
+export const ROSTER_SYNC_LIMIT = 6;
+export const ROSTER_SYNC_WINDOW_MS = 60 * 60 * 1000;
+// The longest windowMs any caller passes (api keys, join and apply cookies, ideas, test posts, on-demand syncs: one hour). A rate_limits row whose window
+// started longer ago than this is dead for every key, so the daily retention job (worker/retention.js) deletes it. A test pins that no *_WINDOW_MS
+// constant in worker/ is longer; raising a window means raising this.
+export const LONGEST_WINDOW_MS = 60 * 60 * 1000;
 const UNAVAILABLE_RETRY_SECONDS = 30;
 
 // Fixed window per key (default `w:<userId>`), one UPSERT ... RETURNING.
@@ -46,6 +53,7 @@ export function rateLimitMessage(key) {
   if (/^acct:/.test(key)) return 'Too many account look-ups. Wait a few minutes and try again.';
   if (/^exp:/.test(key)) return 'Too many guild data exports. Wait a few minutes and try again.';
   if (/^ntest:/.test(key)) return 'That team has had five test posts this hour. Try again later.';
+  if (/^rsync:/.test(key)) return 'Too many roster syncs. Try again in a little while.';
   if (/^api:/.test(key)) return 'This key has reached its limit of 60 requests an hour. Try again later.';
   return /^(?:imp|wcl|wclraid):/.test(key)
     ? 'Too many imports. Wait a moment and try again.'

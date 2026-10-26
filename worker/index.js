@@ -10,6 +10,7 @@ import { lookupAccounts, patchMe, putReminderOptOut, setPersonAccount, unlinkDis
 import { bnetCallback, bnetLogin, createClaims, disconnectBnet, getBnet, withdrawClaim } from './routes/bnet.js';
 import { approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
+import { getRosterSyncStatus, postRosterSync } from './routes/roster-sync.js';
 import { runCron } from './scheduler.js';
 import { SHARE_PATH, handleShare, isSharePagePath, servePlannerPage } from './share.js';
 import { claimGuild, createGuild, getGuild, patchGuild } from './routes/guild.js';
@@ -233,6 +234,8 @@ export const ROUTES = [
   { method: 'DELETE', path: '/api/guild/:gid/claims/:clid', auth: true, handler: withdrawClaim },
   { method: 'POST', path: '/api/guild/:gid/claims/:clid/approve', auth: true, handler: approveClaim },
   { method: 'POST', path: '/api/guild/:gid/claims/:clid/reject', auth: true, handler: rejectClaim },
+  { method: 'GET', path: '/api/guild/:gid/roster-sync', auth: true, handler: getRosterSyncStatus },
+  { method: 'POST', path: '/api/guild/:gid/roster-sync', auth: true, handler: postRosterSync },
   { method: 'GET', path: '/api/guild/:gid/bnet', auth: true, handler: getBnetSettings },
   { method: 'PUT', path: '/api/guild/:gid/bnet', auth: true, handler: putBnetSettings },
   // PM wave 1 (officer tools): the Activity log, the Needs attention home and the calendar feed. The feed file itself needs no session:

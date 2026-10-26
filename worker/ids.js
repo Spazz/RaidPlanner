@@ -31,6 +31,8 @@ const PATTERNS = {
   jl: /^jl_[A-Za-z0-9_-]{22}$/,
   // Home redesign: a shared dismissal of a Needs attention item.
   ad: /^ad_[A-Za-z0-9_-]{22}$/,
+  // Hierarchy build: one roster sync attempt (roster_syncs.id).
+  rs: /^rs_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {

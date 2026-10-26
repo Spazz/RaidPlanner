@@ -764,10 +764,11 @@ check('the Worker\'s scheduled handler picks the work by cron string; the daily 
   await s.run(DAILY);
   assert.deepEqual(dailyLines, ['bnet purge: 0 snapshots, 0 claims']);
   assert.equal(await s.w.count('notification_log'), 0, 'older than 90 days: pruned');
-  // An unknown cron string runs the daily work, like the only trigger did before this one.
+  // An unknown cron string is a no-op that logs one line (hierarchy build, B4a-code: it used to fall through to the daily work, so a typo'd trigger
+  // would have run the retention jobs): no purge line, no result.
   dailyLines.length = 0;
-  await s.run('1 2 3 4 5');
-  assert.deepEqual(dailyLines, ['bnet purge: 0 snapshots, 0 claims']);
+  assert.equal(await s.run('1 2 3 4 5'), null);
+  assert.deepEqual(dailyLines, ['scheduler: unknown cron "1 2 3 4 5" ignored']);
 });
 
 check('"Don\'t mention me in reminders": a row per account, shown by /auth/me, undone by the same call; Delete my data removes it with the account; deleting the guild removes its settings and log', async () => {

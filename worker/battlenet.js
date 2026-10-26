@@ -40,6 +40,11 @@
 //     changes nothing else: to switch it on, set `profile` for `forever` in NAMESPACES below once Blizzard publishes the name.
 //       https://us.forums.blizzard.com/en/blizzard/t/world-of-warcraft-forever-api-namespace/59774
 //       https://us.forums.blizzard.com/en/blizzard/t/when-will-we-gain-api-access-to-forever-apis/59595
+//   IDENTITY PROBE (P0, 2026-10-25, Vindicated): IDS MATCH. The account profile and the guild roster name a character with the SAME numbers: 4 of 4
+//     characters had equal character ids and equal realm ids in both, the roster held 506 members and every one carried an integer character.id and
+//     realm.id, and the roster's guild.id equals the guild id on a character profile. So the identity key (namespace, realm id, character id) is the
+//     same fact from both endpoints: account profile entry `id` + `realm.id`, roster member `character.id` + `character.realm.id`. The response also
+//     carries the guild's own ids (`guild.id`, `guild.realm.id`); a pinned guild's fetch must match both (worker/roster-sync.js).
 //   Class ids (playable class): 1 Warrior, 2 Paladin, 3 Hunter, 4 Rogue, 5 Priest, 6 Death Knight, 7 Shaman, 8 Mage, 9 Warlock, 10 Monk,
 //     11 Druid, 12 Demon Hunter, 13 Evoker (https://warcraft.wiki.gg/wiki/ClassId). Only the nine TBC classes map; others are dropped.
 //   Slugs: realm slug = lower case, spaces to hyphens, apostrophes dropped ("Sul'thraze" -> sulthraze, "Dragon's Call" -> dragons-call,
@@ -47,6 +52,7 @@
 //     lower-cased with spaces to hyphens (/data/wow/guild/thunderstrike/dah-boo/roster for "Dah Boo"); letters outside a-z are kept.
 //   Terms: stored Blizzard data must be refreshed or deleted within 30 days, and deleted when the person disconnects (plan section 11).
 import { HttpError } from './http.js';
+import { nameKey } from './roster-data.js';
 import { fetchWithTimeout, readCapped } from './sources.js';
 
 const LOCAL_BASE = /^http:\/\/(?:localhost|127\.0\.0\.1):\d{1,5}$/;
@@ -129,10 +135,11 @@ export function authorizeUrl(env, state) {
 const basic = (env) => `Basic ${btoa(`${env.BNET_CLIENT_ID}:${env.BNET_CLIENT_SECRET}`)}`;
 
 export class BnetError extends Error {
-  // kind: 'denied' (401/403), 'not_found' (404), 'unavailable' (anything else)
-  constructor(kind, message) {
+  // kind: 'denied' (401/403), 'not_found' (404), 'unavailable' (anything else). status: the HTTP status Blizzard answered with, when there was one.
+  constructor(kind, message, status = null) {
     super(message);
     this.kind = kind;
+    this.status = status;
   }
 }
 
@@ -146,9 +153,9 @@ async function readJson(response, maxBytes, what) {
 }
 
 function statusError(response, what) {
-  if (response.status === 401 || response.status === 403) return new BnetError('denied', `${what} refused (${response.status})`);
-  if (response.status === 404) return new BnetError('not_found', `${what} not found`);
-  return new BnetError('unavailable', `${what} failed (${response.status})`);
+  if (response.status === 401 || response.status === 403) return new BnetError('denied', `${what} refused (${response.status})`, response.status);
+  if (response.status === 404) return new BnetError('not_found', `${what} not found`, response.status);
+  return new BnetError('unavailable', `${what} failed (${response.status})`, response.status);
 }
 
 // The member's OAuth code -> an access token. Throws a BnetError.
@@ -207,7 +214,11 @@ function slugOf(realm) {
   return realm && typeof realm.slug === 'string' && isRealmSlug(realm.slug) ? realm.slug : null;
 }
 
-// The account's characters in one profile namespace -> [{ name, realmName | null, realmSlug, class, level | null }] (the nine classes only).
+const positiveInteger = (value) => (typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null);
+
+// The account's characters in one profile namespace -> [{ name, realmName | null, realmSlug, class, level | null, characterId | null, realmId | null,
+// namespace }] (the nine classes only). characterId + realmId + namespace are the identity key (the same numbers as the guild roster, see the P0
+// note in the header); null when Blizzard sent no usable id. The existing callers read only the first five fields.
 export async function fetchAccountCharacters(ctx, accessToken, region, namespace) {
   if (!Object.prototype.hasOwnProperty.call(API_REGIONS, region)) throw new Error('fetchAccountCharacters needs a known region');
   const query = new URLSearchParams({ namespace, locale: 'en_US' });
@@ -234,6 +245,7 @@ export async function fetchAccountCharacters(ctx, accessToken, region, namespace
       out.push({
         name, realmName: typeof entry.realm.name === 'string' && entry.realm.name.trim() ? lines(entry.realm.name, 40) : null,
         realmSlug, class: classId, level: levelOf(entry.level),
+        characterId: positiveInteger(entry.id), realmId: positiveInteger(entry.realm.id), namespace,
       });
       if (out.length >= MAX_CHARACTERS) return out;
     }
@@ -275,37 +287,127 @@ async function rosterRequest(ctx, region, path, token) {
   }, down('the guild roster'));
 }
 
-// -> { guildName, members: [{ name, realmSlug, class, level | null, rank (0 to 9) }] } for classes the roster knows. Members whose class is
-// not one of the nine, or whose realm is not a plain slug, are left out. Throws a BnetError.
-export async function fetchGuildRoster(ctx, region, namespace, realmSlug, guildName) {
+// ---------------------------------------------------------------------------
+// The fetch contract. fetchGuildRoster / fetchGuildRosterBySlug report what Blizzard SAID, row by row, without guessing: a value that is not what the
+// contract names is counted in `problems`, never coerced (the old `Number(entry.rank)` turned a null rank into rank 0) and never dropped without a
+// trace (the old loop skipped bad rows and cut the list at MAX_MEMBERS silently). assessRoster() then decides GOOD; only a GOOD roster may replace
+// the stored one (worker/roster-sync.js).
+//
+// -> { membersPresent, guildName, guildId | null, guildRealmId | null, namespace, truncated, entries, members, nonTbc, problems }
+//   members: [{ characterId, realmId, namespace, name, nameKey, realmSlug, class, level | null, rank }]   (the nine classes, every field valid)
+//   truncated: the response listed more than MAX_MEMBERS members and only the first MAX_MEMBERS were read
+//   entries: how many members the response listed; nonTbc: rows left out for a class the roster does not know (the only allowed rejection)
+//   problems: { <kind>: count } for every other row that was left out (kinds: shape, class, rank, ids, realm, name, duplicate_id, duplicate_name)
+
+export const ROSTER_FETCH_LIMIT = MAX_MEMBERS;
+const MAX_RANK = 9;
+
+// 'tbc' (one of the nine), 'other' (a real class id the roster does not know, e.g. Death Knight), null (no usable class id).
+function classOf(character) {
+  const id = character.playable_class && character.playable_class.id;
+  if (positiveInteger(id) === null) return { kind: null };
+  return CLASS_BY_ID[id] ? { kind: 'tbc', classId: CLASS_BY_ID[id] } : { kind: 'other' };
+}
+
+// One roster entry -> { member } | { skip: 'class' } | { problem: kind }. The class is judged first: a class the roster does not know is never a problem.
+function readRosterEntry(entry, namespace) {
+  const character = entry && typeof entry === 'object' ? entry.character : null;
+  if (!character || typeof character !== 'object') return { problem: 'shape' };
+  const cls = classOf(character);
+  if (cls.kind === 'other') return { skip: 'class' };
+  if (cls.kind === null) return { problem: 'class' };
+  const rank = entry.rank;
+  if (typeof rank !== 'number' || !Number.isInteger(rank) || rank < 0 || rank > MAX_RANK) return { problem: 'rank' };
+  const characterId = positiveInteger(character.id);
+  const realmId = character.realm && typeof character.realm === 'object' ? positiveInteger(character.realm.id) : null;
+  if (characterId === null || realmId === null) return { problem: 'ids' };
+  const realmSlug = slugOf(character.realm);
+  if (!realmSlug) return { problem: 'realm' };
+  const name = typeof character.name === 'string' ? lines(character.name, 12) : '';
+  if (!name) return { problem: 'name' };
+  return { member: { characterId, realmId, namespace, name, nameKey: nameKey(name), realmSlug, class: cls.classId, level: levelOf(character.level), rank } };
+}
+
+// The parsed body of a 200 answer (pure: the tests feed it fixtures).
+export function parseGuildRoster(body, namespace, fallbackName = '') {
+  const membersPresent = !!body && Array.isArray(body.members);
+  const guild = body && typeof body.guild === 'object' && body.guild ? body.guild : {};
+  const named = typeof guild.name === 'string' ? lines(guild.name, 32) : '';
+  const result = {
+    membersPresent,
+    guildName: named || String(fallbackName),
+    guildId: positiveInteger(guild.id),
+    guildRealmId: guild.realm && typeof guild.realm === 'object' ? positiveInteger(guild.realm.id) : null,
+    namespace,
+    truncated: false,
+    entries: membersPresent ? body.members.length : 0,
+    members: [],
+    nonTbc: 0,
+    problems: {},
+  };
+  if (!membersPresent) return result;
+  result.truncated = body.members.length > MAX_MEMBERS;
+  const problem = (kind) => { result.problems[kind] = (result.problems[kind] || 0) + 1; };
+  const ids = new Set();
+  const names = new Set();
+  for (const entry of body.members.slice(0, MAX_MEMBERS)) {
+    const read = readRosterEntry(entry, namespace);
+    if (read.skip) { result.nonTbc += 1; continue; }
+    if (read.problem) { problem(read.problem); continue; }
+    const { member } = read;
+    const idKey = `${member.realmId}:${member.characterId}`;
+    const nameSlot = `${member.nameKey}|${member.realmSlug}`;
+    if (ids.has(idKey)) { problem('duplicate_id'); continue; }
+    if (names.has(nameSlot)) { problem('duplicate_name'); continue; }
+    ids.add(idKey);
+    names.add(nameSlot);
+    result.members.push(member);
+  }
+  return result;
+}
+
+// GOOD = the roster may replace the stored one. -> { good: true } | { good: false, reason }. `pin` is { guildId, realmId } (a pinned guild: the response
+// must name exactly that Blizzard guild and realm) or null (an unpinned legacy guild's officer import: no pin to compare with, every other rule holds).
+export function assessRoster(roster, pin = null) {
+  const bad = (reason) => ({ good: false, reason });
+  if (!roster.membersPresent) return bad('members_missing');
+  if (pin) {
+    if (roster.guildId !== pin.guildId) return bad('guild_id_mismatch');
+    if (roster.guildRealmId !== pin.realmId) return bad('realm_id_mismatch');
+  }
+  if (roster.truncated) return bad('truncated');
+  const kind = Object.keys(roster.problems).sort()[0];
+  if (kind) return bad(kind.startsWith('duplicate_') ? kind : `${kind}_invalid`);
+  const leaders = roster.members.filter((member) => member.rank === 0).length;
+  if (leaders === 0) return bad('no_rank_zero');
+  if (leaders > 1) return bad('several_rank_zero');
+  return { good: true };
+}
+
+// One roster fetch by the guild's URL slug (a pinned guild: the stored slug, never derived from a display name). Throws a BnetError for a refused,
+// missing or broken answer; a 200 answer is parsed, and assessRoster() decides whether it is good.
+export async function fetchGuildRosterBySlug(ctx, region, namespace, realmSlug, slug, fallbackName = '') {
   if (!Object.prototype.hasOwnProperty.call(API_REGIONS, region) || !isRealmSlug(realmSlug)) throw new Error('fetchGuildRoster needs a known region and a realm slug');
-  const slug = guildSlug(guildName);
-  if (!slug) throw new BnetError('not_found', 'no guild name');
+  if (typeof slug !== 'string' || !slug) throw new BnetError('not_found', 'no guild name');
   const query = new URLSearchParams({ namespace, locale: 'en_US' });
   const path = `/data/wow/guild/${realmSlug}/${encodeURIComponent(slug)}/roster?${query}`;
   let response = await rosterRequest(ctx, region, path, await clientToken(ctx));
   if (response.status === 401) response = await rosterRequest(ctx, region, path, await clientToken(ctx, true));
   if (!response.ok) throw statusError(response, 'the guild roster');
   const body = await readJson(response, ROSTER_BODY, 'the guild roster');
-  if (!body || !Array.isArray(body.members)) throw new BnetError('unavailable', 'unexpected guild roster');
-  const seen = new Set();
-  const members = [];
-  for (const entry of body.members) {
-    const character = entry && entry.character;
-    if (!character || typeof character.name !== 'string') continue;
-    const classId = character.playable_class ? CLASS_BY_ID[character.playable_class.id] : undefined;
-    const memberRealm = slugOf(character.realm);
-    const rank = Number(entry.rank);
-    if (!classId || !memberRealm || !Number.isInteger(rank) || rank < 0 || rank > 9) continue;
-    const name = lines(character.name, 12);
-    const key = `${name.toLowerCase()}|${memberRealm}`;
-    if (!name || seen.has(key)) continue;
-    seen.add(key);
-    members.push({ name, realmSlug: memberRealm, class: classId, level: levelOf(character.level), rank });
-    if (members.length >= MAX_MEMBERS) break;
-  }
-  const named = body.guild && typeof body.guild.name === 'string' ? lines(body.guild.name, 32) : '';
-  return { guildName: named || String(guildName), members };
+  return parseGuildRoster(body, namespace, fallbackName || slug);
+}
+
+// The same fetch for an unpinned guild, whose in-game name an officer typed (the officer roster import).
+export async function fetchGuildRoster(ctx, region, namespace, realmSlug, guildName) {
+  const slug = guildSlug(guildName);
+  if (!slug) throw new BnetError('not_found', 'no guild name');
+  return fetchGuildRosterBySlug(ctx, region, namespace, realmSlug, slug, guildName);
+}
+
+// The HttpError for a roster Blizzard answered but that is not GOOD (assessRoster's reason): the officer import refuses it rather than trust it.
+export function rosterInvalidHttpError(reason) {
+  return new HttpError(502, 'bnet_roster_invalid', 'Battle.net sent a guild roster that looks incomplete or inconsistent, so nothing was read from it. Try again later.', { reason });
 }
 
 // The HttpError a roster failure becomes (the roster routes' response to the officer).
