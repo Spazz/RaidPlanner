@@ -59,7 +59,6 @@ check('migration 0035 is views only; the views are one per source plus a top vie
 
 check('a stored row passes through with its source; a stored guild_master row counts only while the guild has neither a seat nor a rank source', async () => {
   const s = await world();
-  await account(s, 'off', 'Officerone');
   await s.officer('off', 'Officerone');
   await s.member('mem', 'Plainmember');
   // The Discord sync's row keeps its source.
@@ -90,7 +89,6 @@ check('a stored row passes through with its source; a stored guild_master row co
 
 check('derived roles: the rank map gives Officer, Team Lead (for the placed team), a guild\'s own role and, at rank 0 only, Guild Master; a rank with no row or no role gives nothing', async () => {
   const s = await world();
-  await s.member('own', 'Ownerseat');
   const made = {
     a0: await account(s, 'a0', 'Rankzero'),
     a1: await account(s, 'a1', 'Rankone'),
@@ -284,7 +282,6 @@ check('PARITY: isOwner (SQL, through the helper), ownerSql, the owner row of the
     sql(s).prepare("DELETE FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master'").run(s.gid);
     if (holder) sql(s).prepare("INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, source, assigned_at) VALUES ('ra_gmx', ?, ?, 'guild_master', NULL, 'manual', 1)").run(s.gid, s.uids[holder]);
   };
-  const unprove = (key) => { sql(s).prepare("UPDATE characters SET owner_proof = NULL, proof_user_id = NULL, proof_bnet_account_id = NULL WHERE player_id = ?").run(people[key].pid); };
   const cases = [];
   const scene = (name, setup) => cases.push({ name, setup });
   scene('legacy guild, stored Guild Master gm', () => { storedGm('gm'); state({}); });
@@ -303,10 +300,9 @@ check('PARITY: isOwner (SQL, through the helper), ownerSql, the owner row of the
   scene('in-game guild, seat on a, the proof is an officer\'s', () => { sql(s).prepare("UPDATE characters SET owner_proof = 'officer' WHERE player_id = ?").run(people.a.pid); storedGm(null); state({ source: 'ingame', seat: 'a' }); });
   scene('in-game guild, seat on a, proof restored', () => { sql(s).prepare("UPDATE characters SET owner_proof = 'bnet' WHERE player_id = ?").run(people.a.pid); storedGm(null); state({ source: 'ingame', seat: 'a' }); });
   scene('in-game guild, seat on a, the Battle.net link removed', () => { sql(s).prepare('DELETE FROM bnet_links WHERE user_id = ?').run(s.uids.a); storedGm(null); state({ source: 'ingame', seat: 'a' }); });
-  scene('in-game guild, seat on a, the link back', () => { sql(s).prepare("INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, ?, 'A#1', 1, '{}', 1)").run(s.uids.a, people.aProof || (rows(s, 'SELECT proof_bnet_account_id AS id FROM characters WHERE player_id = ?', people.a.pid)[0].id)); storedGm(null); state({ source: 'ingame', seat: 'a' }); });
+  scene('in-game guild, seat on a, the link back', () => { sql(s).prepare("INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, ?, 'A#1', 1, '{}', 1)").run(s.uids.a, rows(s, 'SELECT proof_bnet_account_id AS id FROM characters WHERE player_id = ?', people.a.pid)[0].id); storedGm(null); state({ source: 'ingame', seat: 'a' }); });
   scene('in-game guild, seat on a, the key left the roster', () => { sql(s).prepare('DELETE FROM guild_roster WHERE guild_id = ? AND blizzard_char_id = 9301').run(s.gid); storedGm(null); state({ source: 'ingame', seat: 'a' }); });
   scene('legacy again (the guild never flipped), seat on c', () => { storedGm(null); state({ seat: 'c' }); });
-  void unprove;
   let anyOwner = 0;
   let anySuspended = 0;
   for (const { name, setup } of cases) {
