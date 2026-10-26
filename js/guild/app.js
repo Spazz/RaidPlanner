@@ -623,8 +623,16 @@
     gd.rosterFlags[teamId] = G.rosterSort.trialsToDecide(data.people, teamId).length;
   }
 
+  // The page's one list = the team's roster (GET /roster?team=) plus its inactive people (the same address with &status=inactive: the team's placed Social /
+  // Former people, which the roster list leaves out). They are one list again here, so the Inactive filter, its count and "Show inactive people" work exactly
+  // as before. A failed read of the inactive people never fails the page: the list shows without them. RETIRED when the Users page ships (R4, lane B8a):
+  // delete the second read (and the Worker's status=inactive).
   function fetchRoster(gid, teamId) {
-    return G.api.get(rosterUrl(gid, '?team=' + encodeURIComponent(teamId))).then(function (data) {
+    const url = rosterUrl(gid, '?team=' + encodeURIComponent(teamId));
+    const inactive = G.api.get(url + '&status=inactive').then(function (res) { return res && Array.isArray(res.people) ? res.people : []; }, function () { return []; });
+    return Promise.all([G.api.get(url), inactive]).then(function (got) {
+      const data = got[0];
+      if (data && Array.isArray(data.people) && got[1].length) data.people = data.people.concat(got[1]);
       state.roster = { gid: gid, teamId: teamId, data: data };
       setFlagFromRoster(state.guilds[gid], teamId, data);
       return data;
