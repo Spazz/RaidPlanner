@@ -1,4 +1,6 @@
 -- Raidsmith user hierarchy: how many characters disagree with `players`, per field. Read-only; counts only (no names, ids or values).
+-- R1-R3 TOOL. Since R4 (lane B4b) the Worker no longer writes the players fields (status / trial / left dates): a person created after the R4 push shows as a
+-- mismatch BY DESIGN, and rederive.sql would overwrite the live ranks with stale values. Do not run either against a database that runs R4 code.
 --
 -- One row, five counts: core_rank, left_on, left_reason, trial_start, trial_end. Each counts the characters whose column differs (NULL-safe) from what
 -- tools/hierarchy/rederive.sql would set. All five are 0 = in sync.

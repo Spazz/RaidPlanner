@@ -610,8 +610,9 @@ check('applications accept: a Trial person with the character as Main, trial dat
   // Accept: today in the guild's zone is 2027-01-15 (the test clock), a 14-day trial by default.
   const accepted = await s.ok('lead', 'POST', `/applications/${hopeful.id}/accept`, {}, 201);
   assert.deepEqual([accepted.application.status, accepted.accountLinked, accepted.accountSkipped, accepted.person.trialEnd], ['accepted', true, false, '2027-01-29']);
-  const person = (await s.rows('SELECT * FROM players WHERE id = ?', accepted.person.id))[0];
-  assert.deepEqual([person.status, person.joined_on, person.trial_start, person.trial_end, person.user_id, person.discord_user_id], ['trial', '2027-01-15', '2027-01-15', '2027-01-29', (await s.w.call(a.jar, 'GET', '/auth/me')).json.user.id, null]);
+  // The rank and the Trial dates are the Main's (R4: the players row keeps nothing of them).
+  const person = (await s.rows('SELECT p.*, m.core_rank, m.trial_start, m.trial_end FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1 WHERE p.id = ?', accepted.person.id))[0];
+  assert.deepEqual([person.core_rank, person.joined_on, person.trial_start, person.trial_end, person.user_id, person.discord_user_id], ['trial', '2027-01-15', '2027-01-15', '2027-01-29', (await s.w.call(a.jar, 'GET', '/auth/me')).json.user.id, null]);
   const character = (await s.rows('SELECT * FROM characters WHERE player_id = ?', person.id))[0];
   assert.deepEqual([character.name, character.team_id, character.class, character.main_spec, character.is_main, character.realm, character.realm_key], ['Hopeful', s.tids[0], 'MAGE', 'Frost', 1, 'Dreamscythe', 'dreamscythe']);
   assert.equal(accepted.application.personId, accepted.person.id);
@@ -942,7 +943,7 @@ check('csv import commit: people and characters in one batch with their own team
   ];
   const res = await s.ok('officer', 'POST', '/roster/import/csv/commit', { teamId: s.tid, rows }, 201);
   assert.deepEqual([res.people, res.characters], [2, 4]);
-  const chars = await s.rows('SELECT c.name, c.team_id, c.is_main, c.main_spec, c.player_id, p.status, p.joined_on, p.trial_start FROM characters c JOIN players p ON p.id = c.player_id ORDER BY c.name');
+  const chars = await s.rows('SELECT c.name, c.team_id, c.is_main, c.main_spec, c.player_id, c.core_rank AS status, p.joined_on, c.trial_start FROM characters c JOIN players p ON p.id = c.player_id ORDER BY c.name');
   const byName = Object.fromEntries(chars.map((c) => [c.name, c]));
   assert.deepEqual([byName.Newwarr.team_id, byName.Newwarr.is_main, byName.Newwarr.main_spec, byName.Newwarr.status, byName.Newwarr.joined_on, byName.Newwarr.trial_start], [s.tid, 1, 'Protection', 'trial', '2026-10-01', '2026-10-01']);
   assert.deepEqual([byName.Newmage.team_id, byName.Newmage.is_main, byName.Newmage.player_id === byName.Newwarr.player_id], [null, 0, true], 'an alt on the new person, on no team (a new alt starts teamless whatever the row says)');

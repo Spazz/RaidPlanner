@@ -585,8 +585,8 @@ check('claims: a member with no person claims characters from their own list; th
   assert.equal(res.json.claims[0].personId, res.json.claims[1].personId, 'both on the one new person');
   assert.equal(await s.w.count('character_claims'), 0, 'nothing waits for an officer');
   assert.equal(await s.w.count('players'), 1);
-  const person = (await s.w.rows('SELECT id, status, user_id, discord_user_id, created_by FROM players'))[0];
-  assert.deepEqual([person.id, person.status, person.user_id, person.discord_user_id, person.created_by], [res.json.claims[0].personId, 'trial', s.ids.erin, PEOPLE.erin.id, s.ids.erin]);
+  const person = (await s.w.rows('SELECT id, user_id, discord_user_id, created_by FROM players'))[0];
+  assert.deepEqual([person.id, person.user_id, person.discord_user_id, person.created_by], [res.json.claims[0].personId, s.ids.erin, PEOPLE.erin.id, s.ids.erin]);
   const rows = await s.w.rows('SELECT name, is_main, team_id, core_rank, owner_proof, realm, class FROM characters ORDER BY name');
   assert.deepEqual(rows, [
     { name: 'Cassia', is_main: 0, team_id: null, core_rank: 'trial', owner_proof: 'officer', realm: 'Nightslayer', class: 'PRIEST' },
@@ -859,8 +859,10 @@ check('approve: a claimant with no person becomes a new person (status picked, t
   const claims = (await pend(s, 'gina', 'Galdor', 'Quillfeather')).json.claims;
   const first = await s.call('bob', 'POST', `/claims/${claims[0].id}/approve`, approveBody('new_person', { teamId: s.A }));
   assert.equal(first.status, 200, JSON.stringify(first.json));
-  const [person] = await s.w.rows('SELECT id, status, discord_user_id, joined_on, trial_start, trial_end, created_by, version FROM players WHERE discord_user_id = ?', PEOPLE.gina.id);
-  assert.deepEqual([person.status, person.joined_on === person.trial_start, person.trial_end, person.created_by, person.version], ['trial', true, null, s.ids.bob, 1]);
+  // The rank and the trial dates are the Main's (R4: the players row keeps nothing of them).
+  const [person] = await s.w.rows(`SELECT p.id, p.discord_user_id, p.joined_on, p.created_by, p.version, m.core_rank, m.trial_start, m.trial_end
+    FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1 WHERE p.discord_user_id = ?`, PEOPLE.gina.id);
+  assert.deepEqual([person.core_rank, person.joined_on === person.trial_start, person.trial_end, person.created_by, person.version], ['trial', true, null, s.ids.bob, 1]);
   assert.equal(first.json.personId, person.id);
   const [main] = await s.w.rows('SELECT name, team_id, is_main, class FROM characters WHERE player_id = ?', person.id);
   assert.deepEqual(main, { name: 'Galdor', team_id: s.A, is_main: 1, class: 'WARLOCK' });
@@ -888,8 +890,8 @@ check('approve: new_person takes the status the officer picked and refuses a bad
     assert.equal(res.status, 400, String(bad));
   }
   assert.equal((await s.call('bob', 'POST', `/claims/${claim.id}/approve`, approveBody('new_person', { teamId: s.A, status: 'raider' }))).status, 200);
-  const [person] = await s.w.rows('SELECT status, trial_start FROM players');
-  assert.deepEqual(person, { status: 'raider', trial_start: null });
+  const [person] = await s.w.rows('SELECT core_rank, trial_start FROM characters');
+  assert.deepEqual(person, { core_rank: 'raider', trial_start: null });
 });
 
 check('approve: an unlinked person on the roster is linked to the claimant, no character is added', async () => {
@@ -1207,7 +1209,7 @@ check('roster commit: the selected members become people with their class as Mai
   const res = await RH(s, 'bob', 'commit', body);
   assert.equal(res.status, 201, JSON.stringify(res.json));
   assert.deepEqual([res.json.people, res.json.characters], [3, 3]);
-  const rows = await s.w.rows(`SELECT c.name, c.class, c.team_id, c.realm, c.realm_key, c.is_main, c.main_spec, p.status, p.discord_user_id, p.trial_start, p.created_by
+  const rows = await s.w.rows(`SELECT c.name, c.class, c.team_id, c.realm, c.realm_key, c.is_main, c.main_spec, c.core_rank AS status, p.discord_user_id, c.trial_start, p.created_by
     FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name != 'Thornwick' ORDER BY c.name`);
   assert.deepEqual(rows.map((r) => [r.name, r.class, r.team_id, r.realm, r.realm_key, r.is_main, r.main_spec, r.status, r.discord_user_id, r.created_by]), [
     ['Mendra', 'SHAMAN', s.B, 'Dreamscythe', 'dreamscythe', 1, null, 'trial', null, s.ids.bob],
@@ -1226,7 +1228,7 @@ check('roster commit: the selected members become people with their class as Mai
   assert.equal(await s.w.count('characters', "name = 'Lastcall'"), 0, 'nothing from a refused commit is written');
   const ok = await RH(s, 'bob', 'commit', { teamId: s.A, defaultStatus: 'raider', members: [{ name: 'Lastcall', realmSlug: 'dreamscythe' }] });
   assert.equal(ok.status, 201);
-  assert.equal((await s.w.rows("SELECT p.status FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Lastcall'"))[0].status, 'raider');
+  assert.equal((await s.w.rows("SELECT core_rank FROM characters WHERE name = 'Lastcall'"))[0].core_rank, 'raider');
   await assertOneMain(s.w);
 });
 

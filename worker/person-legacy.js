@@ -2,14 +2,15 @@
 // (characters.core_rank, left_on, left_reason, trial_start, trial_end), and since lane B2 (release R2) the characters are the only source.
 //
 // READS: none. Every reader works from the character columns: worker/person-rank.js (personFields, the person-level answers), worker/person-rank-sql.js
-// (the main's rank in SQL), worker/team-roster.js (the team-roster predicate). CI: tests/guild/guild-legacy-columns-tests.js allows no reader of the
-// legacy players fields at all.
+// (the main's rank in SQL), worker/team-roster.js (the team-roster predicate).
 //
-// WRITES. A writer changes the CHARACTER columns first and the players row follows as a MIRROR, so that a code rollback to R1 (which still reads players)
-// stays correct. The mirror is deleted in R4 (lane B4b). The mapping is migration 0030's, and tools/hierarchy/mismatch.sql must answer 0 in all five
-// fields after every writer:
-//   status raider / trial / reserve -> that core_rank on EVERY character of the person, inactive -> social (the mirror is the main's rank, social -> inactive);
-//   left_on + left_reason only when the person is inactive and the reason is left or kicked (else NULL; a break or an "other" stays on players only);
+// WRITES: the CHARACTER columns only. Since R4 (lane B4b) nothing writes players.status / trial_start / trial_end / left_on / left_reason: the mirror is gone, and
+// tests/guild/guild-legacy-columns-tests.js allows no reader and no writer of them. The old columns stay in the schema (no migration). One exception that is not a
+// value: players.status is NOT NULL with a CHECK and no default (migration 0002) and a table other tables reference is never rebuilt, so every INSERT INTO
+// players still names it and gives the literal 'raider'. It is never read and never updated; the CI pins that literal and nothing else.
+// The mapping a person's status writes onto the characters is migration 0030's:
+//   status raider / trial / reserve -> that core_rank on EVERY character of the person, inactive -> social;
+//   left_on + left_reason only when the person is inactive and the reason is left or kicked (else NULL; a break or an "other" is not kept);
 //   trial_start / trial_end only on the person's main character and only while the status is trial (else NULL).
 // A character that joins a person later takes the person's rank and left date from the person's MAIN in the same statement (RANK_COLUMNS_SQL), so there is
 // no read-then-write race between a new character and a status change.

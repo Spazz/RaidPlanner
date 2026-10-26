@@ -949,7 +949,7 @@ check('review: a loot winner added as a new person becomes a Main; a winner with
   assert.equal(classless.status, 400, 'a character needs a class');
   const added = await s.call('bob', 'POST', `/raids/${s.r1}/unmatched`, { key: 'newbie|nightslayer', action: 'person', status: 'trial' });
   assert.equal(added.status, 200, JSON.stringify(added.json));
-  const person = (await s.w.rows("SELECT p.id, p.status, c.name, c.class, c.is_main, c.team_id FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Newbie'"))[0];
+  const person = (await s.w.rows("SELECT p.id, c.core_rank AS status, c.name, c.class, c.is_main, c.team_id FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Newbie'"))[0];
   assert.deepEqual([person.status, person.class, person.is_main, person.team_id], ['trial', 'PRIEST', 1, s.A]);
   const awards = (await s.call('bob', 'GET', s.loot(s.r1))).json.awards.filter((a) => a.winner.name === 'Newbie');
   assert.deepEqual(awards.map((a) => [a.match.kind, a.match.personId, a.match.isMain]), [['character', person.id, true], ['character', person.id, true]]);

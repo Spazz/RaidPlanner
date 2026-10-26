@@ -1,23 +1,18 @@
 /**
- * Raidsmith guild tracker - the writers of the person fields: characters first, the players row as the mirror (user-hierarchy build, lanes B1a-1 and B2)
+ * Raidsmith guild tracker - the writers of the person fields: the CHARACTER columns only, the players row stays inert (user-hierarchy build, lanes B1a-1, B2 and B4b)
  * Run: node tests/guild/guild-dual-write-tests.js
  *
- * Every Worker writer of a person's rank writes characters.core_rank / left_on / left_reason / trial_start / trial_end (worker/person-legacy.js) and mirrors the
- * players row (status, trial and left dates) in the same batch, so a code rollback to R1, which reads players, stays correct. The mapping of migration 0030:
- * raider / trial / reserve -> that core_rank on every character of the person, inactive -> social; left_on + left_reason only when inactive and the reason is
- * left or kicked; trial dates only on the main while trial. After each writer the re-derive tool's mismatch query (tools/hierarchy/mismatch.sql) must say 0 in
- * all five fields, and the values are pinned by name.
+ * Every Worker writer of a person's rank writes characters.core_rank / left_on / left_reason / trial_start / trial_end (worker/person-legacy.js). Since R4 (lane
+ * B4b) it writes NOTHING to the players row's old fields: after each writer every players row still holds the inert placeholder (status 'raider', no trial or left
+ * date). The mapping of migration 0030: raider / trial / reserve -> that core_rank on every character of the person, inactive -> social; left_on + left_reason
+ * only when inactive and the reason is left or kicked; trial dates only on the main while trial. The character values are pinned by name.
  *
  * Writers covered: create person, add character (+ make main), make main, patch person (status and dates), application accept, attendance "add as a
  * person / alt" (unmatched), Battle.net claim approval (new person, alt), CSV roster import (writeImport, shared by all four imports).
  */
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const { ROOT, adminOf, memberOf, makeWorld, signIn } = require('../guild-world');
+const { adminOf, memberOf, makeWorld, signIn } = require('../guild-world');
 
-const MISMATCH = fs.readFileSync(path.join(ROOT, 'tools/hierarchy/mismatch.sql'), 'utf8');
-const ZERO = { core_rank: 0, left_on: 0, left_reason: 0, trial_start: 0, trial_end: 0 };
 const SERVER = '900000000000000041';
 const person = (n, name) => ({ id: `1100000000000000${String(n).padStart(2, '0')}`, username: name.toLowerCase(), globalName: name });
 const P = { gm: person(61, 'Gmdual'), claimant: person(62, 'Claimdual'), claimant2: person(63, 'Claimtwo') };
@@ -52,7 +47,13 @@ async function scenario() {
       jars[key] = (await signIn(w, P[key], [memberOf(SERVER)])).jar;
       return (await w.call(jars[key], 'GET', '/auth/me')).json.user.id;
     },
-    async inSync(label) { assert.deepEqual(await w.db.prepare(MISMATCH).first(), ZERO, `in sync after ${label}`); },
+    // The players rows are never written: the NOT NULL status holds the placeholder, the old date fields stay empty.
+    async playersInert(label) {
+      const row = await w.db.prepare(
+        `SELECT COUNT(*) AS n FROM players WHERE status != 'raider' OR trial_start IS NOT NULL OR trial_end IS NOT NULL OR left_on IS NOT NULL OR left_reason IS NOT NULL`,
+      ).first();
+      assert.equal(row.n, 0, `players rows inert after ${label}`);
+    },
     // The five character columns of the characters of one person, by character name.
     async chars(playerId) {
       const rows = await w.rows('SELECT name, is_main, core_rank, left_on, left_reason, trial_start, trial_end FROM characters WHERE player_id = ? ORDER BY name', playerId);
@@ -76,7 +77,7 @@ check('create person: a raider, a trial with dates and a reserve start with thei
   assert.deepEqual(cols((await s.chars(trial.pid)).Trialone), ['trial', null, null, trial.today, '2027-02-10']);
   const reserve = await s.newPerson({ name: 'Reserveone', status: 'reserve' });
   assert.deepEqual(cols((await s.chars(reserve.pid)).Reserveone), ['reserve', null, null, null, null]);
-  await s.inSync('create person');
+  await s.playersInert('create person');
 });
 
 check('add character and make main: the alt takes the person\'s rank, the trial dates move with the main', async () => {
@@ -87,7 +88,7 @@ check('add character and make main: the alt takes the person\'s rank, the trial 
   let chars = await s.chars(trial.pid);
   assert.deepEqual(cols(chars.Trialalt), ['trial', null, null, null, null], 'an alt of a trial person is Trial, with no dates');
   assert.deepEqual(cols(chars.Trialmain), ['trial', null, null, trial.today, '2027-02-10']);
-  await s.inSync('add character');
+  await s.playersInert('add character');
 
   const moved = await s.ok('gm', 'POST', `/roster/${trial.pid}/characters`, { teamId: s.tids[0], name: 'Thirdone', class: 'WARLOCK', mainSpec: 'Destruction', offSpec: null, makeMain: true });
   assert.equal(moved.characters.find((c) => c.name === 'Thirdone').isMain, true);
@@ -95,12 +96,12 @@ check('add character and make main: the alt takes the person\'s rank, the trial 
   assert.deepEqual([cols(chars.Thirdone), cols(chars.Trialmain), cols(chars.Trialalt)], [
     ['trial', null, null, trial.today, '2027-02-10'], ['trial', null, null, null, null], ['trial', null, null, null, null],
   ], 'the dates sit on the new main only');
-  await s.inSync('add character with make main');
+  await s.playersInert('add character with make main');
 
   await s.ok('gm', 'POST', `/roster/${trial.pid}/characters/${alt.id}/main`, {}, 200);
   chars = await s.chars(trial.pid);
   assert.deepEqual([cols(chars.Trialalt), cols(chars.Thirdone)], [['trial', null, null, trial.today, '2027-02-10'], ['trial', null, null, null, null]]);
-  await s.inSync('make main');
+  await s.playersInert('make main');
 });
 
 check('patch person: every status change reaches every character; left dates only for left / kicked; trial dates only on the main', async () => {
@@ -117,42 +118,42 @@ check('patch person: every status change reaches every character; left dates onl
   await patch({ status: 'inactive', leftReason: 'left', leftOn: '2027-01-10' });
   assert.deepEqual([cols((await s.chars(p.pid)).Mainone), cols((await s.chars(p.pid)).Alttwo)], [
     ['social', '2027-01-10', 'left', null, null], ['social', '2027-01-10', 'left', null, null]]);
-  await s.inSync('inactive, left');
+  await s.playersInert('inactive, left');
 
   await patch({ leftReason: 'kicked' });
   assert.deepEqual(cols((await s.chars(p.pid)).Alttwo), ['social', '2027-01-10', 'kicked', null, null]);
-  await s.inSync('left reason changed');
+  await s.playersInert('left reason changed');
 
   // Break and Other are refused (U B2-Q1); a clear (null) is a person with no reason.
   const refused = await s.call('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: version, leftReason: 'break' });
   assert.equal(refused.status, 400);
   assert.equal(refused.json.field, 'leftReason');
-  await s.inSync('break refused');
+  await s.playersInert('break refused');
   await patch({ leftReason: null });
   assert.deepEqual(cols((await s.chars(p.pid)).Mainone), ['social', null, null, null, null], 'no reason: the characters keep no left date');
-  await s.inSync('inactive, no reason');
+  await s.playersInert('inactive, no reason');
 
   await patch({ status: 'reserve' });
   assert.deepEqual([cols((await s.chars(p.pid)).Mainone), cols((await s.chars(p.pid)).Alttwo)], [['reserve', null, null, null, null], ['reserve', null, null, null, null]]);
-  await s.inSync('reserve');
+  await s.playersInert('reserve');
 
   await patch({ status: 'trial', trialStart: '2027-01-02', trialEnd: '2027-01-30' });
   assert.deepEqual([cols((await s.chars(p.pid)).Mainone), cols((await s.chars(p.pid)).Alttwo)], [
     ['trial', null, null, '2027-01-02', '2027-01-30'], ['trial', null, null, null, null]]);
-  await s.inSync('trial with dates');
+  await s.playersInert('trial with dates');
 
   await patch({ trialEnd: '2027-03-01' });
   assert.equal((await s.chars(p.pid)).Mainone.trial_end, '2027-03-01');
-  await s.inSync('trial end moved');
+  await s.playersInert('trial end moved');
 
   await patch({ status: 'raider' });
   assert.deepEqual(cols((await s.chars(p.pid)).Mainone), ['raider', null, null, null, null], 'the trial dates stay on players (legacy) but not on the character');
-  await s.inSync('raider');
+  await s.playersInert('raider');
 
   // A no-op patch and a stale version change nothing on either side.
   const stale = await s.call('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: 1, status: 'inactive' });
   assert.equal(stale.status, 409);
-  await s.inSync('stale patch');
+  await s.playersInert('stale patch');
 });
 
 check('application accept: the new Trial person\'s main is Trial with the trial dates', async () => {
@@ -162,12 +163,12 @@ check('application accept: the new Trial person\'s main is Trial with the trial 
                       VALUES ('${id}', '${s.gid}', '${s.tids[0]}', 'new', 'Hopefuldual', 'hopefuldual', 'Nightslayer', 'nightslayer', 'MAGE', 'Frost', 1, 1)`);
   const accepted = await s.ok('gm', 'POST', `/applications/${id}/accept`, {}, 201);
   const chars = await s.chars(accepted.person.id);
-  assert.deepEqual(cols(chars.Hopefuldual), ['trial', null, null, (await s.rows('SELECT trial_start FROM players WHERE id = ?', accepted.person.id))[0].trial_start, accepted.person.trialEnd]);
-  assert(chars.Hopefuldual.trial_start && chars.Hopefuldual.trial_end);
-  await s.inSync('application accept');
+  assert.deepEqual(cols(chars.Hopefuldual), ['trial', null, null, chars.Hopefuldual.trial_start, accepted.person.trialEnd]);
+  assert(chars.Hopefuldual.trial_start && chars.Hopefuldual.trial_end && chars.Hopefuldual.trial_end > chars.Hopefuldual.trial_start);
+  await s.playersInert('application accept');
 });
 
-check('attendance "add as a person" and "add as an alt": the new character follows the players row', async () => {
+check('attendance "add as a person" and "add as an alt": the new character takes the rank of its person', async () => {
   const s = await scenario();
   const raid = (await s.ok('gm', 'POST', '/raids', { teamId: s.tids[0], raidOn: '2027-01-02' })).raid;
   const manual = (name) => s.w.db.sqlite.exec(`INSERT INTO raid_manual_names (raid_id, guild_id, name, name_key, realm, realm_key)
@@ -179,17 +180,17 @@ check('attendance "add as a person" and "add as an alt": the new character follo
   assert(asPerson.raid);
   const owner = (await s.rows("SELECT player_id FROM characters WHERE name = 'Walkindual'"))[0].player_id;
   assert.deepEqual(cols((await s.chars(owner)).Walkindual), ['trial', null, null, '2026-12-20', null]);
-  await s.inSync('unmatched -> person');
+  await s.playersInert('unmatched -> person');
 
   await s.ok('gm', 'POST', `/raids/${raid.id}/unmatched`, { key: 'walkintwo|nightslayer', action: 'alt', personId: owner, class: 'ROGUE' }, 200);
   let chars = await s.chars(owner);
   assert.deepEqual([cols(chars.Walkindual), cols(chars.Walkintwo)], [['trial', null, null, '2026-12-20', null], ['trial', null, null, null, null]]);
-  await s.inSync('unmatched -> alt');
+  await s.playersInert('unmatched -> alt');
 
   await s.ok('gm', 'POST', `/raids/${raid.id}/unmatched`, { key: 'walkinthree|nightslayer', action: 'alt', personId: owner, class: 'WARLOCK', makeMain: true }, 200);
   chars = await s.chars(owner);
   assert.deepEqual([cols(chars.Walkinthree), cols(chars.Walkindual)], [['trial', null, null, '2026-12-20', null], ['trial', null, null, null, null]], 'the dates follow the new main');
-  await s.inSync('unmatched -> alt as main');
+  await s.playersInert('unmatched -> alt as main');
 });
 
 check('Battle.net claim approval: a new person and an alt take the status the person gets', async () => {
@@ -201,17 +202,17 @@ check('Battle.net claim approval: a new person and an alt take the status the pe
   claim(first, 'Claimeddual');
   const approved = await s.ok('gm', 'POST', `/claims/${first}/approve`, { expectedKind: 'new_person', teamId: s.tids[0], status: 'trial' }, 200);
   const chars = await s.chars(approved.personId);
-  const players = (await s.rows('SELECT trial_start, trial_end FROM players WHERE id = ?', approved.personId))[0];
-  assert.deepEqual(cols(chars.Claimeddual), ['trial', null, null, players.trial_start, players.trial_end]);
-  assert(players.trial_start);
-  await s.inSync('claim -> new person');
+  const trial = { trial_start: chars.Claimeddual.trial_start, trial_end: chars.Claimeddual.trial_end };
+  assert.deepEqual(cols(chars.Claimeddual), ['trial', null, null, trial.trial_start, null]);
+  assert(/^\d{4}-\d\d-\d\d$/.test(trial.trial_start), 'the Main starts its Trial today');
+  await s.playersInert('claim -> new person');
 
   const second = 'cl_' + 'c'.repeat(22);
   claim(second, 'Claimedalt');
   await s.ok('gm', 'POST', `/claims/${second}/approve`, { expectedKind: 'add_alt', teamId: s.tids[1] }, 200);
   const both = await s.chars(approved.personId);
-  assert.deepEqual([cols(both.Claimedalt), cols(both.Claimeddual)], [['trial', null, null, null, null], ['trial', null, null, players.trial_start, players.trial_end]]);
-  await s.inSync('claim -> alt');
+  assert.deepEqual([cols(both.Claimedalt), cols(both.Claimeddual)], [['trial', null, null, null, null], ['trial', null, null, trial.trial_start, null]]);
+  await s.playersInert('claim -> alt');
 });
 
 check('CSV roster import (writeImport): people, alts of new people and alts of existing people take their person\'s rank in the one INSERT (no separate sync statement)', async () => {
@@ -238,7 +239,7 @@ check('CSV roster import (writeImport): people, alts of new people and alts of e
   assert.deepEqual(cols((await s.chars(existing.pid)).Csvexalt), ['reserve', null, null, null, null]);
   const raider = (await s.rows("SELECT core_rank, left_on, left_reason, trial_start, trial_end FROM characters WHERE name = 'Csvraider'"))[0];
   assert.deepEqual(cols(raider), ['raider', null, null, null, null]);
-  await s.inSync('csv import');
+  await s.playersInert('csv import');
 });
 
 check('a second writer cannot leave a character behind: after a mixed run every character agrees with its person', async () => {
@@ -250,7 +251,7 @@ check('a second writer cannot leave a character behind: after a mixed run every 
   const chars = await s.chars(a.pid);
   for (const name of ['Mixone', 'Mixtwo', 'Mixthree']) assert.equal(chars[name].core_rank, 'social', name);
   assert.equal(chars.Mixthree.left_reason, 'kicked', 'an alt added to a person who left carries the left date');
-  await s.inSync('mixed run');
+  await s.playersInert('mixed run');
 });
 
 (async () => {

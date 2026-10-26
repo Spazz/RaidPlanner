@@ -345,7 +345,7 @@ check('applications: a signed-out and a signed-in applicant use the apply form, 
   const hopeful = (await A.api.get(`${s.base}/applications`)).applications.find((a) => a.name === 'Hopeful');
   A.handlers.click['app-accept-trial'](el({ 'data-apid': hopeful.id }));
   await settle();
-  const person = (await s.rows("SELECT p.status, p.trial_end, p.user_id, c.team_id, c.is_main FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Hopeful'"))[0];
+  const person = (await s.rows("SELECT c.core_rank AS status, c.trial_end, p.user_id, c.team_id, c.is_main FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Hopeful'"))[0];
   assert.deepEqual([person.status, person.trial_end, person.user_id !== null, person.team_id, person.is_main], ['trial', '2026-10-31', true, s.teamId, 1]);
   assert(A.app.state.att.applications.note.includes('joined on Trial until') && A.app.state.att.applications.note.includes('Their account is linked.'));
   // Hank is a member now: his account belongs to the new person.
@@ -396,7 +396,7 @@ check('CSV import: the page previews a pasted file against the real roster, asks
   await settle();
   assert.equal(A.went, undefined, 'the officer stays on the import page');
   assert.equal(A.app.state.imports.csv.result.title, 'Added 1 person and 3 characters from the CSV file.');
-  const chars = await s.rows("SELECT c.name, c.team_id, c.is_main, c.player_id, p.status, p.joined_on FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name IN ('Newwarr', 'Newmage', 'Lonelyalt') ORDER BY c.name");
+  const chars = await s.rows("SELECT c.name, c.team_id, c.is_main, c.player_id, c.core_rank AS status, p.joined_on FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name IN ('Newwarr', 'Newmage', 'Lonelyalt') ORDER BY c.name");
   const by = Object.fromEntries(chars.map((c) => [c.name, c]));
   assert.deepEqual([by.Newwarr.team_id, by.Newwarr.status, by.Newwarr.joined_on, by.Newwarr.is_main], [s.teamId, 'trial', '2026-10-01', 1]);
   assert.deepEqual([by.Newmage.team_id, by.Newmage.player_id === by.Newwarr.player_id, by.Newmage.is_main], [null, true, 0], 'an alt starts on no team, whatever team the row names');

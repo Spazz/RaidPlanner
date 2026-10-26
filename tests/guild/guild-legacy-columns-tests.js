@@ -1,13 +1,15 @@
 /**
- * Raidsmith guild tracker - the CI greps of the user-hierarchy build (dual write R1 -> R2 in lane B1a-1, readers moved to the characters in lane B2)
+ * Raidsmith guild tracker - the CI greps of the user-hierarchy build (dual write R1 -> R2 in lane B1a-1, readers moved to the characters in lane B2, the mirror
+ * deleted in lane B4b)
  * Run: node tests/guild/guild-legacy-columns-tests.js
  *
  * Static checks over worker/*.js (no database):
  *   1. every INSERT INTO characters names core_rank (migration 0030 defaults it to 'raider', which must never be what a writer gets by accident);
  *   2. core_rank is written only by the allowed paths (ALLOWED_CORE_RANK_WRITERS);
  *   3. the legacy person fields (players.status, trial_start, trial_end, left_on, left_reason) are READ nowhere: since R2 every reader works from the
- *      character columns (LEGACY_READ_ALLOWLIST is empty). Writers of the mirror stay allowed until lane B4b deletes the mirror;
- *   4. every file that writes a legacy players field also writes the character rank columns (characterRankColumns): characters first, players as the mirror;
+ *      character columns (LEGACY_READ_ALLOWLIST is empty);
+ *   4. and WRITTEN nowhere (R4, lane B4b): no UPDATE sets one, no INSERT names a date or reason field, and the one INSERT that must name status (the column is
+ *      NOT NULL without a default) gives the inert literal 'raider' and nothing else;
  *   5. writer guards on the home or target team use `IS ?`: a character or Main on no team must not make a write silently match nothing.
  * The detectors run on seeded SQL first, so a broken detector fails here instead of passing everything.
  */
@@ -170,6 +172,76 @@ function writesLegacyField(sql) {
   return !!update && new RegExp(`\\b(${field})\\s*=`).test(update[1]);
 }
 
+// What is wrong with a statement that writes a legacy players field, as text (empty = fine): an UPDATE players SET ... one; an INSERT INTO players naming a date or
+// reason field; an INSERT naming status with anything but the inert literal 'raider' at that position. Lane B4b deleted the mirror: this is the zero-writers check.
+function legacyWriteProblems(sql) {
+  const out = [];
+  if (/^\s*UPDATE\s+players\s+SET\b/i.test(sql)) {
+    if (writesLegacyField(sql)) out.push('UPDATE players SET names a legacy field');
+    return out;
+  }
+  if (!/^\s*INSERT\s+(OR\s+\w+\s+)?INTO\s+players\b/i.test(sql)) return out;
+  const parts = insertParts(sql);
+  if (!parts) return ['an INSERT INTO players this check cannot read'];
+  parts.columns.forEach((column, index) => {
+    if (!FIELDS.includes(column)) return;
+    if (column !== 'status') out.push(`INSERT INTO players names ${column}`);
+    else if (parts.values[index] !== '\'raider\'') out.push(`INSERT INTO players gives status ${parts.values[index]} (only the literal 'raider')`);
+  });
+  return out;
+}
+
+// INSERT INTO t (a, b) VALUES (x, y) | SELECT x, y ... -> { columns: ['a', 'b'], values: ['x', 'y'] } (top-level commas only), or null.
+function insertParts(sql) {
+  const open = sql.indexOf('(');
+  const close = open < 0 ? -1 : closingParen(sql, open);
+  if (close < 0) return null;
+  const columns = sql.slice(open + 1, close).split(',').map((name) => name.trim());
+  const rest = sql.slice(close + 1);
+  let list;
+  const values = /^\s*VALUES\s*\(/i.exec(rest);
+  if (values) {
+    const start = values[0].length - 1;
+    const end = closingParen(rest, start);
+    if (end < 0) return null;
+    list = rest.slice(start + 1, end);
+  } else {
+    const select = /^\s*SELECT\s+/i.exec(rest);
+    if (!select) return null;
+    const body = rest.slice(select[0].length);
+    const stop = topLevelIndex(body, /^(FROM|WHERE)\b/i);
+    list = stop < 0 ? body : body.slice(0, stop);
+  }
+  return { columns, values: splitTopLevel(list) };
+}
+
+// Walks text outside quotes; fn(index, depth, char) returning true stops. -> the stop index, or -1.
+function walk(text, fn, from = 0) {
+  let depth = 0;
+  let quote = null;
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) { if (ch === quote) quote = null; continue; }
+    if (ch === '\'' || ch === '"') { quote = ch; continue; }
+    if (fn(i, depth, ch)) return i;
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+  }
+  return -1;
+}
+const closingParen = (text, open) => walk(text, (i, depth, ch) => ch === ')' && depth === 1, open);
+const topLevelIndex = (text, pattern) => walk(text, (i, depth) => depth === 0 && (i === 0 || /\W/.test(text[i - 1])) && pattern.test(text.slice(i)));
+function splitTopLevel(text) {
+  const items = [];
+  let from = 0;
+  walk(text, (i, depth, ch) => {
+    if (ch === ',' && depth === 0) { items.push(text.slice(from, i).trim()); from = i + 1; }
+    return false;
+  });
+  items.push(text.slice(from).trim());
+  return items;
+}
+
 // A write of characters.core_rank: INSERT INTO characters naming it in its column list, or UPDATE characters SET ... core_rank =.
 function writesCoreRank(sql) {
   if (/^\s*INSERT\s+(OR\s+\w+\s+)?INTO\s+characters\b/i.test(sql)) return /\bcore_rank\b/.test(columnList(sql));
@@ -226,6 +298,19 @@ check('the detectors flag what they must and nothing else (seeded SQL)', () => {
   assert(!writesCoreRank('INSERT INTO characters (id, name) VALUES (?, ?)'));
   assert(!writesCoreRank('UPDATE characters SET name = ? WHERE id = ?'));
   assert(!writesCoreRank('SELECT core_rank FROM characters'));
+
+  // The zero-writers check: the placeholder form passes, every other way to write a legacy field is a problem.
+  assert.deepEqual(legacyWriteProblems('INSERT INTO players (id, guild_id, status, joined_on) VALUES (?, ?, \'raider\', ?)'), []);
+  assert.deepEqual(legacyWriteProblems('INSERT INTO players (id, guild_id, status, joined_on, discord_user_id) SELECT json_extract(value, \'$.id\'), ?, \'raider\', COALESCE(json_extract(value, \'$.joinedOn\'), ?), json_extract(value, \'$.discord\') FROM json_each(?)'), []);
+  assert.deepEqual(legacyWriteProblems('INSERT INTO players (id, guild_id, status, joined_on) SELECT ?, ?, \'raider\', ? WHERE '), []);
+  assert.deepEqual(legacyWriteProblems('INSERT INTO players (id, guild_id, status, joined_on) VALUES (?, ?, ?, ?)'), ['INSERT INTO players gives status ? (only the literal \'raider\')']);
+  assert.deepEqual(legacyWriteProblems('INSERT INTO players (id, guild_id, status, joined_on) VALUES (?, ?, \'trial\', ?)'), ['INSERT INTO players gives status \'trial\' (only the literal \'raider\')']);
+  assert.deepEqual(legacyWriteProblems('INSERT INTO players (id, status, trial_start, trial_end) VALUES (?, \'raider\', ?, NULL)'), ['INSERT INTO players names trial_start', 'INSERT INTO players names trial_end']);
+  assert.deepEqual(legacyWriteProblems('INSERT INTO players (id, left_on) VALUES (?, ?)'), ['INSERT INTO players names left_on']);
+  assert.deepEqual(legacyWriteProblems('UPDATE players SET status = ?, version = version + 1 WHERE id = ?'), ['UPDATE players SET names a legacy field']);
+  assert.deepEqual(legacyWriteProblems('UPDATE players SET left_reason = ? WHERE id = ?'), ['UPDATE players SET names a legacy field']);
+  assert.deepEqual(legacyWriteProblems('UPDATE players SET joined_on = ?, discord_user_id = ?, version = version + 1 WHERE id = ? AND status = \'trial\''), []);
+  assert.deepEqual(legacyWriteProblems('SELECT status FROM players'), []);
 });
 
 check('the literal reader sees comments, nested templates and regexes the way the CI relies on', () => {
@@ -284,20 +369,20 @@ check('the legacy players fields are read nowhere (R2: the allowlist is empty)',
   assert.deepEqual(violations, [], `read the character columns instead (worker/person-rank.js, worker/person-rank-sql.js, worker/team-roster.js):\n${violations.join('\n')}`);
 });
 
-check('every writer of players.status / trial_start / trial_end / left_on / left_reason also writes the character rank columns (characters first, the players row is the mirror)', () => {
-  const writers = [];
+check('the legacy players fields are written nowhere (R4: the mirror is gone; the only INSERT of status gives the inert literal)', () => {
+  const problems = [];
+  const inserters = [];
   for (const rel of workerFiles()) {
-    const lines = sqlLiterals(rel).filter(({ sql }) => writesLegacyField(sql)).map(({ line }) => line);
-    if (lines.length) writers.push({ rel, lines });
+    for (const { line, sql } of sqlLiterals(rel)) {
+      for (const problem of legacyWriteProblems(sql)) problems.push(`${rel}:${line}: ${problem}`);
+      if (/^\s*INSERT\s+(OR\s+\w+\s+)?INTO\s+players\b/i.test(sql)) inserters.push(rel);
+    }
   }
-  // The mirror writers today: roster.js (create, patch), applications.js (accept), attendance.js (unmatched -> person), claim-apply.js (new person), roster-import.js (imports).
-  assert.deepEqual(writers.map((w) => w.rel), [
+  assert.deepEqual(problems, [], `write the character columns instead (worker/person-legacy.js); players.status is the placeholder 'raider' only:\n${problems.join('\n')}`);
+  // The five places that create a person: roster.js (create), applications.js (accept), attendance.js (unmatched name -> person), claim-apply.js (new person), roster-import.js.
+  assert.deepEqual(inserters, [
     'worker/claim-apply.js', 'worker/routes/applications.js', 'worker/routes/attendance.js', 'worker/routes/roster-import.js', 'worker/routes/roster.js',
   ]);
-  for (const { rel, lines } of writers) {
-    const source = fs.readFileSync(path.join(ROOT, rel), 'utf8');
-    assert(/\bcharacterRankColumns\(/.test(source), `${rel}:${lines.join(',')}: writes a legacy person field without writing the character rank columns (characterRankColumns)`);
-  }
 });
 
 check('writer guards on the home or target team use IS ?, never = ? (a character or Main on no team must not make a write silently match nothing)', () => {

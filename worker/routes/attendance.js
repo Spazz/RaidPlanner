@@ -446,9 +446,9 @@ export async function postUnmatched(ctx) {
     const characterId = newId('c', ctx.randomBytes);
     statements.push(
       db.prepare(
-        `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, version, notes_version, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, NULL, NULL, 1, 0, ?, ?, ?)`,
-      ).bind(playerId, guild.id, status, joinedOn, trialStart, ctx.session.user.id, now, now),
+        `INSERT INTO players (id, guild_id, status, joined_on, discord_user_id, version, notes_version, created_by, created_at, updated_at)
+         VALUES (?, ?, 'raider', ?, NULL, 1, 0, ?, ?, ?)`, // players.status: the inert placeholder (worker/person-legacy.js); the rank is the character's
+      ).bind(playerId, guild.id, joinedOn, ctx.session.user.id, now, now),
       stale,
       insertCharacter(db, guild.id, {
         id: characterId, playerId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: characterClass,

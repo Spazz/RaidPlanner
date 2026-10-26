@@ -44,9 +44,9 @@ const personIsTheirs = (personId, userId) => ({ sql: 'EXISTS (SELECT 1 FROM play
 const INSERT_CHARACTER_SQL = `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at,
                              core_rank, left_on, left_reason, trial_start, trial_end, owner_proof)
      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${RANK_COLUMNS_SQL}, ? WHERE `;
-// The players row of a new person: its status and trial start are the mirror of the Main's rank (worker/person-legacy.js).
-const INSERT_PLAYER_SQL = `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, discord_nickname, user_id, version, notes_version, created_by, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, NULL, ?, NULL, ?, 1, 0, ?, ?, ? WHERE `;
+// The players row of a new person. The rank is the Main's (the INSERT INTO characters above); players.status is the inert placeholder (worker/person-legacy.js).
+const INSERT_PLAYER_SQL = `INSERT INTO players (id, guild_id, status, joined_on, discord_user_id, discord_nickname, user_id, version, notes_version, created_by, created_at, updated_at)
+       SELECT ?, ?, 'raider', ?, ?, NULL, ?, 1, 0, ?, ?, ? WHERE `;
 const LINK_PERSON_SQL = `UPDATE players SET discord_user_id = ?, user_id = ?, discord_nickname = NULL, version = version + 1, updated_at = ?
         WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL AND user_id IS NULL
           AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?) AND `;
@@ -84,7 +84,7 @@ export function applyClaimPlan(ctx, { guild, plan, claimant, character, source, 
     const g = and(guard, hasNoPerson(guild.id, claimant.userId));
     return {
       writes: [
-        db.prepare(INSERT_PLAYER_SQL + g.sql).bind(created, guild.id, status, today, trialStart, claimant.discordId || null, claimant.userId, actorId, now, now, ...g.params),
+        db.prepare(INSERT_PLAYER_SQL + g.sql).bind(created, guild.id, today, claimant.discordId || null, claimant.userId, actorId, now, now, ...g.params),
         insert(created, true, characterRankColumns({ status, trialStart }), team ? team.id : null, personIsTheirs(created, claimant.userId)),
       ],
       stale: [markRaidsStale(db, guild.id, [key], null, team ? [team.id] : [])], personId: created, characterId,

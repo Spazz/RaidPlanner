@@ -294,12 +294,12 @@ export async function writeImport(ctx, guildContext, team, plan) {
   const statements = [];
   if (plan.people.length) {
     statements.push(db.prepare(
-      `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, discord_nickname, version, notes_version, created_by, created_at, updated_at)
-       SELECT json_extract(value, '$.id'), ?, json_extract(value, '$.status'), COALESCE(json_extract(value, '$.joinedOn'), ?),
-              CASE WHEN json_extract(value, '$.status') = 'trial' THEN COALESCE(json_extract(value, '$.joinedOn'), ?) END, NULL,
+      // players.status: the inert placeholder (worker/person-legacy.js); each person's status travels to its characters' rank columns below.
+      `INSERT INTO players (id, guild_id, status, joined_on, discord_user_id, discord_nickname, version, notes_version, created_by, created_at, updated_at)
+       SELECT json_extract(value, '$.id'), ?, 'raider', COALESCE(json_extract(value, '$.joinedOn'), ?),
               json_extract(value, '$.discord'), json_extract(value, '$.nickname'), 1, 0, ?, ?, ?
          FROM json_each(?)`,
-    ).bind(guild.id, today, today, ctx.session.user.id, now, now, JSON.stringify(plan.people)));
+    ).bind(guild.id, today, ctx.session.user.id, now, now, JSON.stringify(plan.people)));
   }
   if (plan.characters.length) {
     const newPerson = new Map(plan.people.map((person) => [person.id, person]));

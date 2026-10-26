@@ -785,7 +785,7 @@ check('update person: Inactive records an optional reason and a left-on date; re
   // Straight into Inactive with both values; then straight out again, with the values still in the audit trail.
   const both = await patch({ expectedVersion: 6, status: 'inactive', leftOn: '2027-01-05', leftReason: 'left' });
   assert.deepEqual([both.json.person.leftOn, both.json.person.leftReason], ['2027-01-05', 'left']);
-  assert.deepEqual((await s.w.rows('SELECT left_on, left_reason FROM players WHERE id = ?', pid))[0], { left_on: '2027-01-05', left_reason: 'left' });
+  assert.deepEqual((await s.w.rows('SELECT left_on, left_reason FROM characters WHERE player_id = ?', pid))[0], { left_on: '2027-01-05', left_reason: 'left' });
   assert.equal((await patch({ expectedVersion: 7, status: 'reserve' })).status, 200);
   const trail = (await s.w.rows("SELECT before, after FROM audit_log WHERE action = 'person.update' ORDER BY rowid")).map((row) => [JSON.parse(row.before), JSON.parse(row.after)]);
   assert.deepEqual([trail[0][0].leftOn, trail[0][1].leftOn, trail[0][1].leftReason], [null, today, null]);
@@ -821,7 +821,7 @@ check('update person: Inactive reasons are Left guild and Kicked only (U B2-Q1);
   assert.deepEqual((await s.w.rows('SELECT status, left_on, left_reason, version FROM players WHERE id = ?', pid))[0], { status: 'raider', left_on: null, left_reason: null, version: 1 });
   assert.equal((await accepted({ status: 'inactive', leftReason: 'left', leftOn: '2027-01-05' })).leftReason, 'left');
   for (const reason of ['break', 'other']) await refused({ leftReason: reason });
-  assert.deepEqual((await s.w.rows('SELECT left_reason FROM players WHERE id = ?', pid))[0], { left_reason: 'left' }, 'a refused reason leaves the stored one');
+  assert.deepEqual((await s.w.rows('SELECT left_reason FROM characters WHERE player_id = ?', pid))[0], { left_reason: 'left' }, 'a refused reason leaves the stored one');
   // Kicked, then no reason as null, then Left again, then no reason as an empty string.
   assert.equal((await accepted({ leftReason: 'kicked' })).leftReason, 'kicked');
   assert.equal((await accepted({ leftReason: null })).leftReason, null);
@@ -846,7 +846,7 @@ check('concurrency: a stale expectedVersion or expectedNotesVersion is a 409 wit
   assert.equal(stale.json.current.person.version, 2);
   assert.equal(stale.json.current.characters.length, 1);
   assert.equal(stale.json.current.notes.version, 0, 'an editor sees notes in current');
-  assert.equal((await s.w.rows('SELECT status FROM players'))[0].status, 'reserve');
+  assert.equal((await s.w.rows('SELECT core_rank FROM characters'))[0].core_rank, 'reserve');
 
   const put = (who, body) => s.call(who, 'PUT', `/roster/${pid}/notes`, body);
   assert.equal((await put('bob', { text: 'first', expectedNotesVersion: 0 })).status, 200);
@@ -864,7 +864,7 @@ check('concurrency: a stale expectedVersion or expectedNotesVersion is a 409 wit
   const real = s.w.db.batch.bind(s.w.db);
   let armed = true;
   s.w.db.batch = async (statements) => {
-    if (armed && statements.some((statement) => /UPDATE players SET status/.test(statement.sql))) {
+    if (armed && statements.some((statement) => /UPDATE players SET joined_on/.test(statement.sql))) {
       armed = false;
       exec(s.w, "UPDATE players SET version = version + 1");
     }
@@ -1505,7 +1505,7 @@ check('Raid-Helper commit: re-fetches the event; Discord IDs and nicknames come 
   assert.deepEqual([r.json.people, r.json.characters], [3, 4]);
   assert.deepEqual(r.json.rosterFlags, { [s.teamId]: 0 });
   assert.equal(rhCalls(s).length, fetchesBefore + 1, 'the commit fetched the event again');
-  const people = await s.w.rows('SELECT status, joined_on, trial_start, trial_end, discord_user_id, discord_nickname, version, created_by FROM players ORDER BY discord_user_id');
+  const people = await s.w.rows('SELECT m.core_rank AS status, p.joined_on, m.trial_start, m.trial_end, p.discord_user_id, p.discord_nickname, p.version, p.created_by FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1 ORDER BY p.discord_user_id');
   assert.deepEqual(people.map((p) => p.discord_user_id), [null, DID(1), DID(3)]);
   assert.deepEqual(people.map((p) => p.discord_nickname), ['Guest Raider', 'Thornwick/Mendra', 'Sølvhand'], 'from the event, not from the request');
   for (const p of people) assert.deepEqual([p.status, p.joined_on, p.trial_start, p.trial_end, p.version, p.created_by], ['trial', '2027-01-15', '2027-01-15', null, 1, s.ids.bob]);
@@ -1533,7 +1533,7 @@ check('Raid-Helper commit: re-fetches the event; Discord IDs and nicknames come 
   assert.equal(alts.status, 201, JSON.stringify(alts.json));
   assert.deepEqual([alts.json.people, alts.json.characters], [0, 1]);
   assert.equal((await s.w.rows('SELECT discord_nickname, version, status FROM players WHERE discord_user_id = ?', DID(1)))[0].discord_nickname, 'Thornwick/Mendra/Newalt');
-  assert.deepEqual((await s.w.rows('SELECT version, status FROM players WHERE discord_user_id = ?', DID(1)))[0], { version: 1, status: 'trial' }, 'a status never changes and a nickname refresh does not bump the version');
+  assert.deepEqual((await s.w.rows('SELECT p.version, m.core_rank AS status FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1 WHERE p.discord_user_id = ?', DID(1)))[0], { version: 1, status: 'trial' }, 'a status never changes and a nickname refresh does not bump the version');
   assert.equal((await s.w.rows('SELECT version FROM players WHERE discord_user_id = ?', DID(3)))[0].version, 1, 'an unchanged nickname is not a write');
   await assertOneMain(s.w);
 });
@@ -1595,12 +1595,12 @@ check('Raid-Helper commit: event_changed, other_server and its accept path, in-r
 
   const ok = await send(accept, [{ signupId: 1, main: main('Aldric') }]);
   assert.equal(ok.status, 201, JSON.stringify(ok.json));
-  assert.equal((await s.w.rows('SELECT status FROM players WHERE discord_user_id = ?', DID(1)))[0].status, 'raider');
+  assert.equal((await s.w.rows('SELECT m.core_rank AS status FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1 WHERE p.discord_user_id = ?', DID(1)))[0].status, 'raider');
   const reserve = await send(accept, [{ signupId: 2, main: main('Brindle') }]);
   assert.equal(reserve.status, 201);
   const defaulted = await commit(s, 'bob', { teamId: s.teamId, eventId: EVENT_ID, acceptOtherServer: true, rows: [{ signupId: 3, main: main('Cormac') }] });
   assert.equal(defaulted.status, 201);
-  assert.equal((await s.w.rows('SELECT status FROM players WHERE discord_user_id = ?', DID(3)))[0].status, 'raider');
+  assert.equal((await s.w.rows('SELECT m.core_rank AS status FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1 WHERE p.discord_user_id = ?', DID(3)))[0].status, 'raider');
   await assertOneMain(s.w);
 });
 
@@ -1971,9 +1971,9 @@ check('Warcraft Logs commit: alt / new / skip in one batch; fields validated lik
   assert.equal(r.status, 201, JSON.stringify(r.json));
   assert.deepEqual([r.json.people, r.json.characters], [2, 3]);
   assert.equal(s.w.sources.calls.length, calls, 'no re-fetch');
-  const mendra = (await s.w.rows("SELECT p.status, p.joined_on, p.trial_start, p.trial_end, p.discord_user_id, c.is_main, c.realm, c.team_id FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Mendra'"))[0];
+  const mendra = (await s.w.rows("SELECT c.core_rank AS status, p.joined_on, c.trial_start, c.trial_end, p.discord_user_id, c.is_main, c.realm, c.team_id FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Mendra'"))[0];
   assert.deepEqual(mendra, { status: 'trial', joined_on: '2027-01-15', trial_start: '2027-01-15', trial_end: null, discord_user_id: null, is_main: 1, realm: 'Nightslayer', team_id: A });
-  const wander = (await s.w.rows("SELECT p.status, c.realm, c.realm_key FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Wanderfell'"))[0];
+  const wander = (await s.w.rows("SELECT c.core_rank AS status, c.realm, c.realm_key FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Wanderfell'"))[0];
   assert.deepEqual(wander, { status: 'reserve', realm: 'Dreamscythe', realm_key: 'dreamscythe' });
   const pyrelo = (await s.w.rows("SELECT is_main, player_id, team_id, realm_key FROM characters WHERE name = 'Pyrelo'"))[0];
   assert.deepEqual(pyrelo, { is_main: 0, player_id: quinzel.person.id, team_id: null, realm_key: 'nightslayer' }, 'an alt starts on no team');
@@ -2242,12 +2242,12 @@ check('fix 3 + 4: writes repeat the permission predicate; a person or character 
 
   // Person PATCH, notes and DELETE by Carol after the Main moved to B.
   p = await mk('Dunmar');
-  done = raceBefore(s.w, /UPDATE players SET status/, moveTo(p.main.id));
+  done = raceBefore(s.w, /UPDATE players SET joined_on/, moveTo(p.main.id));
   r = await s.call('carol', 'PATCH', `/roster/${p.pid}`, { expectedVersion: 1, status: 'reserve' });
   assert.equal(done(), true);
   assert.deepEqual([r.status, r.json.error], [409, 'conflict']);
   assert.equal(r.json.current.person.homeTeam.id, B);
-  assert.equal((await s.w.rows('SELECT status FROM players WHERE id = ?', p.pid))[0].status, 'raider');
+  assert.equal((await s.w.rows('SELECT core_rank FROM characters WHERE id = ?', p.main.id))[0].core_rank, 'raider');
 
   p = await mk('Eliora');
   done = raceBefore(s.w, /UPDATE players SET notes/, moveTo(p.main.id));

@@ -5,8 +5,8 @@
  *   - a new alt starts on NO team (U R3-Q1/R4-Q1), in every path; a new Main takes the team asked for and the previous Main steps off a team they shared;
  *   - D1: an officer creates a person with no team; every writer (notes, delete, edit, make main, remove, account link, claim link) works for a person and
  *     characters on no team instead of silently matching nothing; an alt on no team is edited by whoever edits the person's home team;
- *   - the interim PATCH status contract: a status change writes core_rank on EVERY character (Inactive = Social) and mirrors the players row; the R1
- *     mismatch query (tools/hierarchy/mismatch.sql) says 0 after each writer;
+ *   - the PATCH status contract: a status change writes core_rank on EVERY character (Inactive = Social); since R4 (lane B4b) the players row is never written
+ *     (it keeps the inert placeholder) after any writer;
  *   - patchCharacter: a Battle.net-bound character keeps its name and class; a character on no team is never placed by it; one character per person per team;
  *   - U R4-Q1: a team member signs up ANY of their characters (also a standing sign-up) for their own team's raid, and the attendance goes to the person;
  *   - D7: the guild export carries teamId null for a character on no team, the API roster feed lists only characters on a team roster;
@@ -20,8 +20,6 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { ROOT, adminOf, load, memberOf, makeWorld, signIn } = require('../guild-world');
 
-const MISMATCH = fs.readFileSync(path.join(ROOT, 'tools/hierarchy/mismatch.sql'), 'utf8');
-const ZERO = { core_rank: 0, left_on: 0, left_reason: 0, trial_start: 0, trial_end: 0 };
 const SERVER = '900000000000000081';
 const person = (n, name) => ({ id: `1100000000000008${String(n).padStart(2, '0')}`, username: name.toLowerCase(), globalName: name });
 const P = {
@@ -75,7 +73,13 @@ async function scenario({ teams = ['Alpha', 'Bravo'] } = {}) {
       return res.characters.find((c) => c.name === name).id;
     },
     teamOf: async (characterId) => (await s.rows('SELECT team_id FROM characters WHERE id = ?', characterId))[0].team_id,
-    async inSync(label) { assert.deepEqual(await w.db.prepare(MISMATCH).first(), ZERO, `in sync after ${label}`); },
+    // The players rows are never written (R4): the NOT NULL status holds the placeholder, the old date fields stay empty.
+    async playersInert(label) {
+      const row = await w.db.prepare(
+        `SELECT COUNT(*) AS n FROM players WHERE status != 'raider' OR trial_start IS NOT NULL OR trial_end IS NOT NULL OR left_on IS NOT NULL OR left_reason IS NOT NULL`,
+      ).first();
+      assert.equal(row.n, 0, `players rows inert after ${label}`);
+    },
   };
   return s;
 }
@@ -99,7 +103,7 @@ check('add character: a new alt starts on no team whatever team was asked for; a
   const row = alpha.people.find((x) => x.id === p.pid);
   assert.deepEqual([row.names, row.altCount], [['Mainone'], 2], 'the alts count but are not on the team');
   assert.deepEqual((await s.ok('gm', 'GET', `/roster?team=${s.tids[1]}`)).people, [], 'and they are nowhere else either');
-  await s.inSync('add character');
+  await s.playersInert('add character');
 });
 
 check('add character as the Main: the new Main takes the team asked for (none = no team), the previous Main steps off a team they shared, another character on it refuses', async () => {
@@ -123,7 +127,7 @@ check('add character as the Main: the new Main takes the team asked for (none = 
   const homeless = await s.alt(p.pid, 'Fifthmain', { teamId: undefined, makeMain: true });
   assert.equal(await s.teamOf(homeless), null);
   assert.equal((await s.ok('gm', 'GET', `/roster/${p.pid}`)).person.homeTeam, null, 'the person has no home team now');
-  await s.inSync('add character as the Main');
+  await s.playersInert('add character as the Main');
 });
 
 check('the trial dates move with the Main: add as the Main and Make Main carry them to the new Main, alts keep none', async () => {
@@ -136,7 +140,7 @@ check('the trial dates move with the Main: add as the Main and Make Main carry t
   await s.alt(p.pid, 'Trialnew', { teamId: s.tids[1], makeMain: true });
   rows = await s.rows('SELECT name, trial_start, trial_end FROM characters WHERE player_id = ? ORDER BY name', p.pid);
   assert.deepEqual(rows.map((r) => [r.name, r.trial_start === null, r.trial_end]), [['Trialalt', true, null], ['Trialmain', true, null], ['Trialnew', false, '2027-02-10']]);
-  await s.inSync('trial dates follow the Main');
+  await s.playersInert('trial dates follow the Main');
 });
 
 check('every other path that adds an alt: attendance "add as an alt", Battle.net claim, CSV and Raid-Helper-shaped imports all start it on no team', async () => {
@@ -159,7 +163,7 @@ check('every other path that adds an alt: attendance "add as an alt", Battle.net
           VALUES ('${clid}', '${s.gid}', '${claimant}', 'Claimedalt', 'claimedalt', 'Nightslayer', 'nightslayer', 'MAGE', 70, 'pending', 1)`);
   await s.ok('gm', 'POST', `/claims/${clid}/approve`, { expectedKind: 'add_alt', teamId: s.tids[1] }, 200);
   assert.equal(await s.teamOf((await s.rows("SELECT id FROM characters WHERE name = 'Claimedalt'"))[0].id), null);
-  await s.inSync('alts from imports and claims');
+  await s.playersInert('alts from imports and claims');
 });
 
 check('attendance "add as an alt": the alt starts on no team; as the Main it takes the raid\'s team and the previous Main steps off it; a character already there refuses', async () => {
@@ -184,7 +188,7 @@ check('attendance "add as an alt": the alt starts on no team; as the Main it tak
   const refused = await link('logthree', { makeMain: true });
   assert.deepEqual([refused.status, refused.json.error], [409, 'team_taken']);
   assert.deepEqual(await s.rows('SELECT name, team_id, is_main FROM characters WHERE player_id = ? ORDER BY name', p.pid), before);
-  await s.inSync('attendance alt as the Main');
+  await s.playersInert('attendance alt as the Main');
 });
 
 // ---------------------------------------------------------------------------
@@ -199,7 +203,7 @@ check('D1: an officer creates a person with no team, a Team Lead cannot; notes, 
   const p = await s.newPerson({ name: 'Homeless', teamId: undefined, status: 'trial', trialEnd: '2027-02-10' });
   assert.equal(p.res.person.homeTeam, null);
   assert.equal(await s.teamOf(p.cid), null);
-  await s.inSync('create with no team');
+  await s.playersInert('create with no team');
   // The team lead of Alpha does not reach them.
   const asLead = await s.ok('lead', 'GET', `/roster/${p.pid}`);
   assert.deepEqual([asLead.can.edit, asLead.can.notesEdit, asLead.can.delete], [false, false, false]);
@@ -220,7 +224,7 @@ check('D1: an officer creates a person with no team, a Team Lead cannot; notes, 
   assert.deepEqual(swapped.characters.map((c) => [c.name, c.isMain]), [['Homelessalt', true], ['Homeless', false]]);
   const removed = await s.ok('gm', 'DELETE', `/roster/${p.pid}/characters/${p.cid}`, undefined, 200);
   assert.deepEqual(removed.characters.map((c) => c.name), ['Homelessalt']);
-  await s.inSync('writers on a person with no team');
+  await s.playersInert('writers on a person with no team');
   await s.ok('gm', 'DELETE', `/roster/${p.pid}`, undefined, 200);
   assert.equal(await s.w.count('players', 'id = ?', p.pid), 0, 'the person is really gone');
 });
@@ -271,7 +275,7 @@ check('a Battle.net claim links to a person whose Main is on no team (the link g
 // ---------------------------------------------------------------------------
 // The interim PATCH status contract and the mirror
 
-check('PATCH status: every character of the person takes the rank (Inactive = Social), a teamless alt too; the players row mirrors; Break and Other are refused', async () => {
+check('PATCH status: every character of the person takes the rank (Inactive = Social), a teamless alt too; the players row is not written; Break and Other are refused', async () => {
   const s = await scenario();
   const p = await s.newPerson({ name: 'Statusmain', status: 'trial', trialEnd: '2027-02-10' });
   const placed = await s.alt(p.pid, 'Statusplaced');
@@ -284,34 +288,33 @@ check('PATCH status: every character of the person takes the rank (Inactive = So
   await patch({ status: 'inactive', leftReason: 'left', leftOn: '2027-01-10' });
   let got = await ranks();
   assert.deepEqual(Object.values(got).map((r) => [r.core_rank, r.left_on, r.left_reason, r.trial_start, r.trial_end]), [['social', '2027-01-10', 'left', null, null], ['social', '2027-01-10', 'left', null, null], ['social', '2027-01-10', 'left', null, null]]);
-  assert.deepEqual(await s.rows('SELECT status, left_on, left_reason FROM players WHERE id = ?', p.pid), [{ status: 'inactive', left_on: '2027-01-10', left_reason: 'left' }], 'the mirror');
-  await s.inSync('inactive, left');
+  assert.deepEqual(await s.rows('SELECT status, left_on, left_reason FROM players WHERE id = ?', p.pid), [{ status: 'raider', left_on: null, left_reason: null }], 'the players row keeps its placeholder');
+  await s.playersInert('inactive, left');
   // Break and Other are refused (U B2-Q1): nothing changes on either side.
   for (const reason of ['break', 'other']) {
     const refused = await s.call('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: version, leftReason: reason, leftOn: '2027-01-11' });
     assert.equal(refused.status, 400, reason);
     assert.equal(refused.json.field, 'leftReason', reason);
   }
-  assert.deepEqual(await s.rows('SELECT left_on, left_reason FROM players WHERE id = ?', p.pid), [{ left_on: '2027-01-10', left_reason: 'left' }]);
-  await s.inSync('Break and Other refused');
-  // A Break stored before the decision (players only; no character carries it) -> Kicked with no date: a leaving needs one, it starts today.
-  await s.exec(`UPDATE players SET left_on = '2027-01-11', left_reason = 'break' WHERE id = '${p.pid}'`);
+  assert.deepEqual(await s.rows('SELECT DISTINCT left_on, left_reason FROM characters WHERE player_id = ?', p.pid), [{ left_on: '2027-01-10', left_reason: 'left' }]);
+  await s.playersInert('Break and Other refused');
+  // A Break stored before the decision (no character carries it any more) -> Kicked with no date: a leaving needs one, it starts today.
   await s.exec(`UPDATE characters SET left_on = NULL, left_reason = NULL WHERE player_id = '${p.pid}'`);
-  await s.inSync('inactive, an old break');
+  await s.playersInert('inactive, an old break');
   const kicked = await patch({ leftReason: 'kicked' });
   assert.deepEqual([kicked.person.leftOn, kicked.person.leftReason], [kicked.today, 'kicked']);
-  await s.inSync('break to kicked');
+  await s.playersInert('break to kicked');
   await patch({ status: 'trial', trialStart: '2027-01-02', trialEnd: '2027-01-30' });
   got = await ranks();
   assert.deepEqual([got.Statusmain, got.Statusplaced, got.Statusless].map((r) => [r.core_rank, r.trial_start, r.trial_end]), [['trial', '2027-01-02', '2027-01-30'], ['trial', null, null], ['trial', null, null]]);
   await patch({ status: 'raider' });
   assert.deepEqual(Object.values(await ranks()).map((r) => [r.core_rank, r.trial_start, r.trial_end]), [['raider', null, null], ['raider', null, null], ['raider', null, null]]);
-  await s.inSync('raider');
+  await s.playersInert('raider');
   // A stale version changes neither side.
   const stale = await s.call('gm', 'PATCH', `/roster/${p.pid}`, { expectedVersion: 1, status: 'inactive' });
   assert.equal(stale.status, 409);
   assert.equal((await ranks()).Statusmain.core_rank, 'raider');
-  await s.inSync('stale patch');
+  await s.playersInert('stale patch');
   assert.ok(teamless);
 });
 
@@ -322,7 +325,7 @@ check('a new alt of an Inactive person takes the Social rank and the left date o
   await s.alt(p.pid, 'Leftalt');
   const alt = (await s.rows("SELECT core_rank, left_on, left_reason, trial_start FROM characters WHERE name = 'Leftalt'"))[0];
   assert.deepEqual(alt, { core_rank: 'social', left_on: '2027-01-05', left_reason: 'kicked', trial_start: null });
-  await s.inSync('alt of a Former person');
+  await s.playersInert('alt of a Former person');
 });
 
 // ---------------------------------------------------------------------------
@@ -364,7 +367,7 @@ check('patchCharacter: a character on no team is never placed by it; a placed on
   const moved = await patch(altId, { teamId: charlie });
   assert.equal(moved.status, 200);
   assert.equal(await s.teamOf(altId), charlie);
-  await s.inSync('character moves');
+  await s.playersInert('character moves');
 });
 
 // ---------------------------------------------------------------------------
@@ -516,12 +519,12 @@ check('CSV import: a row that says social becomes a Social person (status inacti
     { line: 3, action: 'new', name: 'Raiderone', class: 'MAGE', spec: 'Fire', teamId: s.tids[0], status: 'raider' },
   ];
   await s.ok('gm', 'POST', '/roster/import/csv/commit', { teamId: s.tids[0], rows }, 201);
-  const got = Object.fromEntries((await s.rows('SELECT c.name, c.core_rank, p.status FROM characters c JOIN players p ON p.id = c.player_id')).map((r) => [r.name, r]));
-  assert.deepEqual([got.Socialone.core_rank, got.Socialone.status, got.Raiderone.core_rank], ['social', 'inactive', 'raider']);
+  const got = Object.fromEntries((await s.rows('SELECT name, core_rank FROM characters')).map((r) => [r.name, r]));
+  assert.deepEqual([got.Socialone.core_rank, got.Raiderone.core_rank], ['social', 'raider']);
   assert.deepEqual((await s.ok('gm', 'GET', `/roster?team=${s.tids[0]}`)).people.map((x) => x.shown.name), ['Raiderone'], 'Social is on no team roster');
   const refused = await s.call('gm', 'POST', '/roster/import/csv/commit', { teamId: s.tids[0], rows: [{ line: 2, action: 'new', name: 'Badstatus', class: 'MAGE', teamId: s.tids[0], status: 'gone' }] });
   assert.deepEqual([refused.status, refused.json.field], [400, 'status']);
-  await s.inSync('csv social');
+  await s.playersInert('csv social');
 });
 
 check('the shared helpers: personFields works from the characters whatever their order; rosterRankOnTeam and the person status read the main', async () => {

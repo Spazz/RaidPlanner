@@ -39,7 +39,7 @@ check('hand add: a member with no person gets a new Trial person with the charac
   assert.equal(first.status, 201, first.text);
   assert.deepEqual([first.json.claims[0].status, first.json.claims[0].outcome], ['applied', 'new_person']);
   const person = await s.one('SELECT * FROM players WHERE user_id = ?', s.uids.m1);
-  assert.deepEqual([person.id, person.status, person.discord_user_id, person.created_by], [first.json.claims[0].personId, 'trial', (await s.one('SELECT discord_id FROM users WHERE id = ?', s.uids.m1)).discord_id, s.uids.m1]);
+  assert.deepEqual([person.id, person.discord_user_id, person.created_by], [first.json.claims[0].personId, (await s.one('SELECT discord_id FROM users WHERE id = ?', s.uids.m1)).discord_id, s.uids.m1]);
   const main = await charOf(s, 'Handmain');
   assert.deepEqual([main.is_main, main.team_id, main.core_rank, main.owner_proof, main.main_spec, main.class, main.realm], [1, null, 'trial', 'hand', 'Fire', 'MAGE', 'Nightslayer']);
   const second = await add(s, 'm1', { name: 'Handalt', class: 'ROGUE', mainSpec: 'Combat', offSpec: 'Assassination' });
@@ -47,9 +47,8 @@ check('hand add: a member with no person gets a new Trial person with the charac
   const alt = await charOf(s, 'Handalt');
   assert.deepEqual([alt.is_main, alt.team_id, alt.core_rank, alt.owner_proof, alt.off_spec, alt.player_id], [0, null, 'trial', 'hand', 'Assassination', person.id]);
   assert.equal((await s.rows("SELECT id FROM audit_log WHERE action = 'character.claim'")).length, 2);
-  // The mirror: the five person fields agree with the characters (tools/hierarchy/mismatch.sql says 0).
-  const mismatch = await s.w.db.prepare(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'tools/hierarchy/mismatch.sql'), 'utf8')).first();
-  assert.deepEqual(Object.values(mismatch), [0, 0, 0, 0, 0]);
+  // R4: the players row keeps only the inert placeholder; the rank is the characters'.
+  assert.deepEqual(await s.rows('SELECT status, trial_start, trial_end, left_on, left_reason FROM players WHERE id = ?', person.id), [{ status: 'raider', trial_start: null, trial_end: null, left_on: null, left_reason: null }]);
   // The new person is the member's own record: they see it, and an officer can place the character on a team.
   const record = await s.ok('m1', 'GET', `/roster/${person.id}`);
   assert.deepEqual(record.characters.map((c) => [c.name, c.team.id]).sort(), [['Handalt', null], ['Handmain', null]]);
@@ -199,8 +198,8 @@ check('apply pending claims (D2e): a new person, a link, an alt and an already-d
   assert.equal((await charOf(s, 'Brandnew')).player_id, unlinkedA.pid, 'and the next character joined that person');
   assert.equal((await s.one('SELECT user_id FROM players WHERE id = ?', unlinkedB.pid)).user_id, null);
   assert.equal((await s.one('SELECT user_id FROM players WHERE id = ?', unlinkedC.pid)).user_id, null);
-  const fresh = await s.one('SELECT p.status, p.user_id, c.is_main, c.team_id, c.core_rank FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name = ?', 'Freshone');
-  assert.deepEqual([fresh.status, fresh.user_id, fresh.is_main, fresh.team_id, fresh.core_rank], ['trial', s.uids.m3, 1, null, 'trial']);
+  const fresh = await s.one('SELECT p.user_id, c.is_main, c.team_id, c.core_rank FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name = ?', 'Freshone');
+  assert.deepEqual([fresh.user_id, fresh.is_main, fresh.team_id, fresh.core_rank], [s.uids.m3, 1, null, 'trial']);
   assert.equal((await s.rows("SELECT id FROM audit_log WHERE action = 'claim.approve'")).length, 4);
   assert.deepEqual(done.pendingClaims, 2);
   // Run again: only the two that stay, nothing is applied twice.

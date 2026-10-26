@@ -1,4 +1,6 @@
 -- Raidsmith user hierarchy: re-derive the person fields on the characters from `players`.
+-- R1-R3 TOOL. Since R4 (lane B4b) the Worker no longer writes the players fields (status / trial / left dates): a person created after the R4 push shows as a
+-- mismatch BY DESIGN, and rederive.sql would overwrite the live ranks with stale values. Do not run either against a database that runs R4 code.
 --
 -- Sets characters.core_rank, left_on, left_reason, trial_start and trial_end from players.status / left_on / left_reason / trial_start / trial_end
 -- with the mapping of migration 0030 (and worker/person-legacy.js, the dual write):

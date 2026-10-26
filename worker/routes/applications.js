@@ -403,9 +403,9 @@ export async function acceptApplication(ctx) {
   try {
     await db.batch([
       db.prepare(
-        `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, user_id, version, notes_version, created_by, created_at, updated_at)
-         VALUES (?, ?, 'trial', ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
-      ).bind(playerId, guild.id, today, today, trialEnd, linkUser, ctx.session.user.id, now, now),
+        `INSERT INTO players (id, guild_id, status, joined_on, user_id, version, notes_version, created_by, created_at, updated_at)
+         VALUES (?, ?, 'raider', ?, ?, 1, 0, ?, ?, ?)`, // players.status: the inert placeholder (worker/person-legacy.js); the Trial is the character's
+      ).bind(playerId, guild.id, today, linkUser, ctx.session.user.id, now, now),
       insertCharacter(db, guild.id, {
         id: characterId, playerId, teamId: team.id, name: row.char_name, realm: row.realm, realmKey: realmKeyValue, class: row.class, mainSpec, offSpec: null, isMain: true,
         rank: characterRankColumns({ status: 'trial', trialStart: today, trialEnd }),
