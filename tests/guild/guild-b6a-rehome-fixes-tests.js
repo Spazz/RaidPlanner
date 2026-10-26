@@ -638,6 +638,25 @@ check('L6: the Activity / audit JSON never carries a placeholder id - a re-home 
   assert(!csv.text.includes(res.plan.placeholderId));
 });
 
+check('L7: the recent-bench count reads a plan seat through the alias helper - an old bench seat of a re-homed character stays with the old owner, not the new one', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'] });
+  const [alpha] = s.tids;
+  const A = await mk(s, 'Foo');
+  await s.alt(A.pid, 'Fooalt');
+  const B = await mk(s, 'Bar');
+  const old = await raidOn(s, alpha, 5);
+  const target = await raidOn(s, alpha, 20);
+  sRun(s, "INSERT INTO raid_plan (raid_id, name, name_key, group_number) VALUES (?, 'Foo', 'foo', 0)", old);
+  const benched = async () => Object.fromEntries((await s.ok('gm', 'GET', `/raids/${target}/planner`)).signups.map((row) => [row.personId, row.benchedRecently]));
+  const signUp = async () => { for (const person of [A, B]) await s.ok('gm', 'PUT', `/raids/${target}/signups/${person.pid}`, { kind: 'signed' }, 200); };
+  await signUp();
+  assert.deepEqual(await benched(), { [A.pid]: 1, [B.pid]: 0 }, 'before the re-home Foo sat out for A');
+
+  assert((await rehome(s, A.cid, B.pid)).applied);
+  await signUp(); // the re-home removed the upcoming sign-up that named Foo
+  assert.deepEqual(await benched(), { [A.pid]: 1, [B.pid]: 0 }, 'Foo now belongs to B, but the seat of the old raid is still A\'s');
+});
+
 // ==== more checks above this line
 
 // ---------------------------------------------------------------------------

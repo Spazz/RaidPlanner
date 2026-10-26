@@ -223,7 +223,7 @@ const ALLOWED = [
   ["worker/routes/paste.js", "json_each(?2) w) k JOIN characters c ON c.guild_id = ?1 AND c.name_key =", "evidence"],
   ["worker/routes/person-blocks.js", "THEN 2 ELSE 3 END) FROM characters c JOIN guild_roster gr ON gr.guild_id =", "key"],
   ["worker/routes/raids.js", "raid_signups s LEFT JOIN characters c ON c.id = s.character_id WHERE", "id"],
-  ["worker/routes/raids.js", "FROM raid_plan p JOIN characters c ON c.guild_id = ? AND c.name_key =", "key"],
+  ["worker/routes/raids.js", "FROM raid_plan pl JOIN raids pr ON pr.id = pl.raid_id JOIN characters c ON c.guild_id = ? AND c.name_key =", "evidence"],
   ["worker/routes/ranks.js", "SELECT 1 AS found FROM characters WHERE player_id = ? AND team_id = ? AND", "team"],
   ["worker/routes/recruiting.js", "m.class, m.main_spec FROM characters m WHERE m.guild_id = ? AND m.is_main = 1", "team"],
   ["worker/routes/roster-import.js", "c.name_key FROM characters c WHERE c.guild_id = ? AND c.player_id IN (", "key"],
