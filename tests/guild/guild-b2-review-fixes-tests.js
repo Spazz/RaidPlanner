@@ -284,6 +284,18 @@ check('add character as the Main: a Team Lead cannot add a new Main on no team, 
   await s.inSync('the new Mains');
 });
 
+// ---------------------------------------------------------------------------
+// 6. What's new
+
+check('What\'s new: the newest entry says alts start on no team and the Inactive reasons', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'js/changelog.js'), 'utf8').split(/\r?\n/);
+  const start = source.findIndex((line) => /^const CHANGELOG = \[/.test(line)) + 1;
+  const entry = source.slice(start, source.findIndex((line, index) => index > start && /^\s*\] \},/.test(line)) + 1).join('\n');
+  assert.match(entry, /title: 'Alts start on no team'/);
+  assert.ok(entry.includes('Alts now start on no team. An alt shows on a team roster, and in the API roster feed, only when it is placed on a team itself.'));
+  assert.ok(entry.includes('Inactive reasons are Left guild or Kicked.'));
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of checks) {
