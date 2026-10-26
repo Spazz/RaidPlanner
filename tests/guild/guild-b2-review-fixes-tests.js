@@ -137,6 +137,65 @@ check('PATCH: a change of status or of a date still mirrors into players, and on
   await s.inSync('Break row back to Raider');
 });
 
+// ---------------------------------------------------------------------------
+// 2. The trial review shows the home team's notes only
+
+check('trial review: the lead of the Trial alt\'s team reads that team\'s attendance and loot but not the home team\'s officer notes; the home lead and an officer read them', async () => {
+  const s = await scenario();
+  const [alpha, bravo] = s.tids;
+  const p = await s.newPerson({ name: 'Homeone' });
+  const alt = await s.alt(p.pid, 'Trialalt');
+  const before = await s.ok('gm', 'GET', `/roster/${p.pid}`);
+  await s.ok('gm', 'PUT', `/roster/${p.pid}/notes`, { text: 'PRIVATE officer note of the home team', expectedNotesVersion: before.notes.version }, 200);
+  s.exec(`UPDATE characters SET team_id = '${bravo}', core_rank = 'trial', trial_start = '2027-01-01', trial_end = '2027-02-01' WHERE id = '${alt}'`);
+  await s.lead('lead', [alpha]);
+  await s.lead('lead2', [bravo]);
+
+  const bravoCard = await s.ok('lead2', 'GET', `/roster/${p.pid}/trial`);
+  assert.equal(bravoCard.attendance.team.id, bravo, 'the Bravo lead reads the Bravo card');
+  assert.notEqual(bravoCard.loot, undefined, 'and its loot section');
+  assert.equal(bravoCard.notes, null, 'but not the notes of Alpha');
+  assert.equal((await s.ok('lead2', 'GET', `/roster/${p.pid}`)).notes, null, 'the same answer as the person record');
+
+  const alphaCard = await s.ok('lead', 'GET', `/roster/${p.pid}/trial`);
+  assert.match(alphaCard.notes.excerpt, /PRIVATE officer note/, 'the lead of the home team reads them');
+  const officerCard = await s.ok('gm', 'GET', `/roster/${p.pid}/trial`);
+  assert.match(officerCard.notes.excerpt, /PRIVATE officer note/, 'so does an officer');
+  assert.equal(officerCard.attendance.team.id, bravo);
+});
+
+// ---------------------------------------------------------------------------
+// 3. A lost Make-Main race changes nothing
+
+check('Make Main: the loser of a race (the same move already done) does not wipe the new Main\'s trial dates', async () => {
+  const roster = await load('worker/routes/roster.js');
+  const legacy = await load('worker/person-legacy.js');
+  const s = await scenario();
+  const alpha = s.tids[0];
+  const p = await s.newPerson({ name: 'Trialmain', status: 'trial', trialEnd: '2027-02-10' });
+  const alt = await s.alt(p.pid, 'Trialalt');
+  const dates = (await s.rows('SELECT trial_start, trial_end FROM characters WHERE id = ?', p.cid))[0];
+  assert.ok(dates.trial_start && dates.trial_end, 'the Main carries the trial dates');
+  // The request that wins.
+  await s.ok('gm', 'POST', `/roster/${p.pid}/characters/${alt}/main`, {}, 200);
+  const after = (await s.rows('SELECT name, is_main, trial_start, trial_end FROM characters WHERE player_id = ? ORDER BY name', p.pid));
+  assert.deepEqual(after, [
+    { name: 'Trialalt', is_main: 1, trial_start: dates.trial_start, trial_end: dates.trial_end },
+    { name: 'Trialmain', is_main: 0, trial_start: null, trial_end: null },
+  ]);
+  await s.inSync('the winning Make Main');
+  // The loser read the person before that: the old Main on Alpha, the same target. Its batch, statement for statement, as the route builds it.
+  const db = s.w.db;
+  const results = await db.batch([
+    ...roster.makeMainStatements(db, p.pid, alt, 1, { homeTeamId: alpha, targetTeamId: null }),
+    db.prepare('SELECT 1').bind(),
+    ...legacy.trialDatesFollowMainStatements(db, p.cid, alt),
+  ]);
+  assert.deepEqual([results[0].meta.changes, results[1].meta.changes], [0, 0], 'the swap changed nothing (the route answers 409)');
+  assert.deepEqual(await s.rows('SELECT name, is_main, trial_start, trial_end FROM characters WHERE player_id = ? ORDER BY name', p.pid), after, 'and neither did the trial dates');
+  await s.inSync('the losing Make Main');
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of checks) {

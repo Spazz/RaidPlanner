@@ -101,7 +101,9 @@ export async function getTrialReview(ctx) {
     };
   }
 
-  const notes = notesView(data, guildContext, home);
+  // The officer notes belong to the person's home team (the Main's), as in GET /roster/:pid: a Team Lead of the team this Trial alt sits on reads the
+  // attendance and loot of that team, not the notes of another one.
+  const notes = notesView(data, guildContext, homeTeam);
   const main = data.characters.find((entry) => entry.row.is_main === 1);
   return jsonResponse({
     today,

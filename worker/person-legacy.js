@@ -64,12 +64,15 @@ export function setCharacterRanksStatement(db, guildId, personId, columns, guard
 }
 
 // Two statements for a db.batch, AFTER the statements that moved the main from oldMainId to newMainId: the trial dates sit on the main, so they move with
-// it. Both do nothing when the move did not happen (the old main is still the main).
+// it. Both do nothing when the move did not happen (the old main is still the main). The copy also does nothing when the old main holds no trial dates:
+// that is the loser of a race in which another request already made the same move (the dates left the old main with it), whose copy would overwrite the
+// new main's dates with NULL.
 export function trialDatesFollowMainStatements(db, oldMainId, newMainId) {
   return [
     db.prepare(
       `UPDATE characters SET trial_start = (SELECT o.trial_start FROM characters o WHERE o.id = ?1), trial_end = (SELECT o.trial_end FROM characters o WHERE o.id = ?1)
-        WHERE id = ?2 AND is_main = 1`,
+        WHERE id = ?2 AND is_main = 1
+          AND EXISTS (SELECT 1 FROM characters o WHERE o.id = ?1 AND (o.trial_start IS NOT NULL OR o.trial_end IS NOT NULL))`,
     ).bind(oldMainId, newMainId),
     db.prepare('UPDATE characters SET trial_start = NULL, trial_end = NULL WHERE id = ? AND is_main = 0').bind(oldMainId),
   ];
