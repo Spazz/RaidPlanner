@@ -427,6 +427,12 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('attention.dismiss', 'attention', 'watch:t_a:p_kael', null, { itemId: 'watch:t_a:p_kael', kind: 'watch', mode: 'reviewed', until: null, teamId: 't_a', personId: 'p_kael' }), 'Marked Kaelith as reviewed on the attendance watch list'],
     [row('attention.restore', 'attention', 'log_missing:r_1', { itemId: 'log_missing:r_1', kind: 'log_missing', mode: 'dismiss', until: null, teamId: 't_a', raidId: 'r_1' }, null), 'Restored the to-do "missing log" for the raid on Tue Oct 21 (Alpha)'],
     [row('attention.restore', 'attention', 'watch:t_a:p_kael', { itemId: 'watch:t_a:p_kael', kind: 'watch', mode: 'reviewed', until: null, teamId: 't_a', personId: 'p_kael' }, null), 'Took Kaelith off Reviewed on the attendance watch list'],
+    // Hierarchy B6a: a person join (the loser is named by its characters) and Match to roster.
+    [row('person.join', 'person', 'p_thoren', { personId: 'p_kael', characterIds: ['c_alt'] }, { personId: 'p_thoren', via: 'officer' }), 'Joined the person with Thorenmage into Thoren'],
+    [row('person.join', 'person', 'p_thoren', { personId: 'p_kael', characterIds: ['c_alt', 'c_th'] }, { personId: 'p_thoren', via: 'bnet' }), 'Joined the person with Thorenmage and Thoren into Thoren (proved by Battle.net)'],
+    [row('person.join', 'person', 'p_thoren', null, null), 'Joined a person into Thoren'],
+    [row('character.match_roster', 'character', 'c_th', { personId: 'p_thoren' }, { personId: 'p_thoren', renamed: true }), 'Matched Thoren to its place on the in-game roster and took its name'],
+    [row('character.match_roster', 'character', 'c_th', { personId: 'p_thoren' }, { personId: 'p_thoren', renamed: false }), 'Matched Thoren to its place on the in-game roster'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {

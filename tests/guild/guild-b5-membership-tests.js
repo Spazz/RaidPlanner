@@ -528,6 +528,7 @@ const PLAYERS_USER_ID_ALLOWED = {
   'worker/bnet-store.js': { count: 2, reason: 'claim planning: which person is the claimant\'s own (ownership of a person; the member test is memberSql)' },
   'worker/claim-apply.js': { count: 3, reason: 'writes and guards of an applied claim: the person is still the claimant\'s' },
   'worker/flip-preview.js': { count: 3, reason: 'the flip dry run: the person each account has today and would have after the flip links the Discord-owned ones' },
+  'worker/person-join.js': { count: 2, reason: 'the person join: whose person each one is (the refusal when two accounts own them, the survivor) and the account a carried block lands on; not a membership decision' },
   'worker/roster-view.js': { count: 4, reason: 'person pages and roster rows: the accounts linked to a person and the signed-in marker (memberSql decides who counts)' },
   'worker/routes/accounts.js': { count: 3, reason: 'an officer links or unlinks an account (writes) and the "already another person\'s" check' },
   'worker/routes/applications.js': { count: 1, reason: 'write: an accepted application makes a person linked to the applicant' },

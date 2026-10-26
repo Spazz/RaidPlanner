@@ -35,6 +35,8 @@ const PATTERNS = {
   rs: /^rs_[A-Za-z0-9_-]{22}$/,
   // Hierarchy build, lane B3: a team request (a person asks for one of their characters to be placed on a team).
   tq: /^tq_[A-Za-z0-9_-]{22}$/,
+  // Hierarchy build, lane B6a: one person join (person_joins.id).
+  pj: /^pj_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {
