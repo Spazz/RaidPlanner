@@ -1,5 +1,6 @@
 import { HttpError, isUniqueViolation, jsonResponse, redirectResponse, safeEqual, parseCookies } from '../http.js';
 import { auditStatement } from '../audit.js';
+import { matchAccountAtSignIn } from '../block-tombstones.js';
 import { isConfigured as bnetConfigured } from '../battlenet.js';
 import {
   authorizeUrl, canonicalOrigin, exchangeCode, fetchDiscordGuilds, fetchDiscordUser,
@@ -146,11 +147,12 @@ async function finishSignin(ctx, discordUser, servers, manageable, clear) {
     ...serverStatements(db, user.sql, user.params, servers, now),
     ...startSessionStatements(db, { userId: user, tokenHash, earlierHash: earlier ? await hashToken(earlier) : null, now, manageable }),
   ]);
+  const signedInAs = await findUserByDiscord(db, discordUser.id);
+  // A returning blocked person: a block survives Delete my data, so the new account is matched against the tombstones of every guild it reaches and, on a
+  // hit, blocked for review (sec A9-11, worker/block-tombstones.js). Best effort: a failure is logged and never blocks the sign-in.
+  if (signedInAs) await matchAccountAtSignIn(ctx, signedInAs);
   // The roles Discord gives in the guilds that mapped them. Best effort: a failure never blocks the sign-in (worker/discord-sync.js).
-  if (botConfigured(ctx.env)) {
-    const signedInAs = await findUserByDiscord(db, discordUser.id);
-    if (signedInAs) await syncSignIn(ctx, signedInAs);
-  }
+  if (botConfigured(ctx.env) && signedInAs) await syncSignIn(ctx, signedInAs);
   return redirectResponse(HOME_REDIRECT, [clear, sessionCookie(token)]);
 }
 
@@ -189,6 +191,8 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
     }, linked)] : []),
   ]);
   if (results[0].meta.changes !== 1) return fail('roster_conflict');
+  // The Discord id just joined this account: match it (and the account's other keys) against the tombstones of the guilds it reaches (sec A9-11).
+  await matchAccountAtSignIn(ctx, userId);
   await syncSignIn(ctx, userId);
   return redirectResponse(LINKED_REDIRECT, [clear]);
 }

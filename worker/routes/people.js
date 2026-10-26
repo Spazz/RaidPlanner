@@ -1,5 +1,9 @@
 import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
+import { blockEffectStatements } from '../block-effects.js';
+import {
+  MISSING_KEY_LINE, accountBlockRef, accountKeys, matchedRefsOf, planTombstones, tombstoneDeleteStatement, tombstoneInsertStatements,
+} from '../block-tombstones.js';
 import { newId } from '../ids.js';
 import { requireOwner } from '../owner.js';
 import { boundMember, memberCandidatesSql, reachesGuildSql } from '../membership.js';
@@ -167,13 +171,13 @@ function findRoleTarget(model, userId, guildContext) {
   return entry;
 }
 
-const and = (...guards) => ({
+export const and = (...guards) => ({
   sql: guards.map((guard) => `(${guard.sql})`).join(' AND '),
   params: guards.flatMap((guard) => guard.params),
 });
 
 // True while the acting user still holds a role that grants the action guild-wide.
-function actorHolds(action, guildId, actorId) {
+export function actorHolds(action, guildId, actorId) {
   return {
     sql: `EXISTS (SELECT 1 FROM role_assignments ra JOIN effective_role_permissions rp ON rp.guild_id = ra.guild_id AND rp.role_id = ra.role_id
             WHERE ra.guild_id = ? AND ra.user_id = ? AND rp.action = ? AND rp.scope = 'guild')`,
@@ -436,24 +440,32 @@ export async function blockPerson(ctx) {
 
   const guildId = guildContext.guild.id;
   const now = ctx.now();
+  // The tombstones of the keys this account proved (Discord id, Battle.net id, Battle.net-proven characters): they outlive the block row, so Delete my data
+  // and a fresh account do not undo the block (worker/block-tombstones.js). No usable TOMBSTONE_KEY: the block still applies, flagged for the daily repair.
+  const plan = await planTombstones(ctx.env, guildId, await accountKeys(ctx.db, target.id, guildId));
+  if (plan.missing) ctx.log(MISSING_KEY_LINE);
   // One guarded INSERT: the actor still holds the right and still outranks the target (an Officer cannot
-  // remove an Officer or the Guild Master). The audit row follows only if the block was written.
+  // remove an Officer or the Guild Master). Everything else in the batch follows only if THIS call's block row was written.
   const guard = and(actorHolds('guild.access', guildId, guildContext.userId), actorOutranks(guildId, guildContext.userId, target.id));
+  const written = {
+    sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND blocked_by = ? AND created_at = ?)',
+    params: [guildId, target.id, guildContext.userId, now],
+  };
   let results;
   try {
     results = await ctx.db.batch([
       ctx.db.prepare(
-        `INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at)
-         SELECT ?, ?, ?, ?, ? WHERE ${guard.sql}`,
-      ).bind(guildId, target.id, guildContext.userId, reason, now, ...guard.params),
+        `INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at, tombstone_missing)
+         SELECT ?, ?, ?, ?, ?, ? WHERE ${guard.sql}`,
+      ).bind(guildId, target.id, guildContext.userId, reason, now, plan.missing ? 1 : 0, ...guard.params),
+      ...tombstoneInsertStatements(ctx.db, { guildId, blockRef: accountBlockRef(target.id), plan, now, guard: written }),
+      // A block takes the person off every team and withdraws their upcoming sign-ups (plan M11).
+      ...(await blockEffectStatements(ctx.db, { guildId, target: { userId: target.id }, nowMs: now, guard: written })),
       // The reason text stays out of the audit log.
       auditStatement(ctx, {
         guildId, actorUserId: guildContext.userId, action: 'access.remove', entityType: 'user',
         entityId: target.id, before: { blocked: false }, after: { blocked: true, reasonSet: reason !== null },
-      }, {
-        sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND blocked_by = ? AND created_at = ?)',
-        params: [guildId, target.id, guildContext.userId, now],
-      }),
+      }, written),
     ]);
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
@@ -476,21 +488,25 @@ export async function restorePerson(ctx) {
     sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)',
     params: [guildId, target.id],
   };
-  // The same actor guards as removing access, on the audit row and on the DELETE.
+  // The same actor guards as removing access, on the audit row, the tombstones and the DELETE.
   const guard = and(
     stillBlocked,
     actorHolds('guild.access', guildId, guildContext.userId),
     actorOutranks(guildId, guildContext.userId, target.id),
   );
+  // Unblock deletes the block's tombstones by block_ref: the account's own, and every ref its keys hit (a pending-review block matched an earlier block's
+  // tombstones; lifting it must lift those too, or the next sign-in would block it again).
+  const refs = [...new Set([accountBlockRef(target.id), ...(await matchedRefsOf(ctx.db, ctx.env, guildId, await accountKeys(ctx.db, target.id, guildId)))])];
   const results = await ctx.db.batch([
     auditStatement(ctx, {
       guildId, actorUserId: guildContext.userId, action: 'access.restore', entityType: 'user',
       entityId: target.id, before: { blocked: true }, after: { blocked: false },
     }, guard),
+    tombstoneDeleteStatement(ctx.db, { guildId, blockRefs: refs, guard }),
     ctx.db.prepare(`DELETE FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND ${guard.sql}`)
       .bind(guildId, target.id, ...guard.params),
   ]);
-  if (results[1].meta.changes !== 1) {
+  if (results[2].meta.changes !== 1) {
     // Someone else restoring first is fine. If the block is still there, the actor lost the right.
     const still = await ctx.db.prepare('SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?')
       .bind(guildId, target.id).first();
