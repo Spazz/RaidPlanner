@@ -689,6 +689,66 @@ check('F5 (part 2b pin): a Battle.net proof beats a squatted hand-added characte
 
 // ---- F6: unblocking and the tombstones of the blocks a hit matched
 
+check('F6: restoring an account deletes a matched earlier block\'s tombstones only when the actor outranks that block\'s actor_role snapshot - an Officer cannot lift the tombstones of a block the Owner made; the response says so', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'], env: { TOMBSTONE_KEY } });
+  await s.officer('o1', 'Officerone');
+  await s.member('m1', 'Memberone');
+  // The Owner blocks m1; m1 deletes the account; the same Discord ID signs in again as a NEW account and is matched against the tombstone.
+  await s.ok('gm', 'POST', `/people/${s.uids.m1}/block`, {}, 200);
+  const oldRef = `u:${s.uids.m1}`;
+  const refCount = () => sOne(s, 'SELECT COUNT(*) AS n FROM block_tombstones WHERE guild_id = ? AND block_ref = ?', s.gid, oldRef).n;
+  assert(refCount() > 0, 'the Owner\'s block left tombstones');
+  assert.equal((await s.w.call(s.jars.m1, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
+  const comeBack = async (key) => {
+    s.jars[key] = (await signIn(s.w, scenarioDiscord('m1', 'Memberone'), [memberOf(s.serverId)])).jar;
+    s.uids[key] = (await s.w.call(s.jars[key], 'GET', '/auth/me')).json.user.id;
+    return s.uids[key];
+  };
+  const m1b = await comeBack('m1b');
+  const pending = sOne(s, 'SELECT * FROM guild_blocks WHERE guild_id = ? AND user_id = ?', s.gid, m1b);
+  assert(pending && pending.pending_review === 1, 'the new account is blocked for review');
+
+  // The Officer lifts the pending block: the account is restored, the Owner's tombstones stay.
+  const lifted = await s.call('o1', 'DELETE', `/people/${m1b}/block`);
+  assert.equal(lifted.status, 200, lifted.text);
+  assert.equal(sOne(s, 'SELECT COUNT(*) AS n FROM guild_blocks WHERE user_id = ?', m1b).n, 0, 'the block row is gone');
+  assert(refCount() > 0, 'but the tombstones of the Owner\'s block stay');
+  assert.equal(lifted.json.tombstonesKept, 1, 'and the response says so');
+
+  // It signs in again: matched again. The Owner lifts it and the tombstones go with it.
+  const m1c = await comeBack('m1c');
+  assert(sOne(s, 'SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?', s.gid, m1c), 'matched again');
+  const byOwner = await s.call('gm', 'DELETE', `/people/${m1c}/block`);
+  assert.equal(byOwner.status, 200, byOwner.text);
+  assert.equal(refCount(), 0, 'the Owner lifts the Owner\'s tombstones');
+  assert.equal(byOwner.json.tombstonesKept, undefined);
+});
+
+check('F6: the same for an account-less person - an Officer lifting a person block does not delete the tombstones of the Owner\'s earlier block the person\'s keys matched', async () => {
+  const s = await scenario({ teams: ['Alpha', 'Bravo'], env: { TOMBSTONE_KEY } });
+  await s.officer('o1', 'Officerone');
+  const DISCORD_ID = '130000000000000077';
+  const first = await s.person({ name: 'Firstguy' });
+  sRun(s, 'UPDATE players SET discord_user_id = ? WHERE id = ?', DISCORD_ID, first.pid);
+  await s.ok('gm', 'POST', `/roster/${first.pid}/block`, {}, 200);
+  const firstRef = `p:${first.pid}`;
+  const refCount = () => sOne(s, 'SELECT COUNT(*) AS n FROM block_tombstones WHERE guild_id = ? AND block_ref = ?', s.gid, firstRef).n;
+  assert(refCount() > 0);
+  sRun(s, 'DELETE FROM players WHERE id = ?', first.pid); // the person is deleted; the block row goes with it, the tombstones stay
+  const second = await s.person({ name: 'Secondguy' });
+  sRun(s, 'UPDATE players SET discord_user_id = ? WHERE id = ?', DISCORD_ID, second.pid);
+  await s.ok('o1', 'POST', `/roster/${second.pid}/block`, {}, 200);
+  const lifted = await s.call('o1', 'DELETE', `/roster/${second.pid}/block`);
+  assert.equal(lifted.status, 200, lifted.text);
+  assert.equal(sOne(s, 'SELECT COUNT(*) AS n FROM person_blocks WHERE player_id = ?', second.pid).n, 0);
+  assert(refCount() > 0, 'the Owner\'s tombstones stay');
+  assert.equal(lifted.json.tombstonesKept, 1);
+  await s.ok('o1', 'POST', `/roster/${second.pid}/block`, {}, 200);
+  const byOwner = await s.call('gm', 'DELETE', `/roster/${second.pid}/block`);
+  assert.equal(byOwner.status, 200, byOwner.text);
+  assert.equal(refCount(), 0, 'the Owner lifts them');
+});
+
 // ---- F7: the officer join and the daily cron
 
 async function populatedLoser(s, L, S) {
