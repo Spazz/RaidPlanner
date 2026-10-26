@@ -1,6 +1,7 @@
 import { HttpError } from './http.js';
 import { isId } from './ids.js';
 import { blockedSql, inServerSql, membershipOf, ownPlayerSql, rosterLinkSql } from './membership.js';
+import { teamRosterSql } from './team-roster.js';
 
 export const ACTIONS = [
   'roster.view', 'roster.edit', 'roster.notes.view', 'roster.notes.edit',
@@ -226,11 +227,12 @@ export async function loadGuildContext(db, userId, guildId, viewAs = null) {
         WHERE ra.guild_id = ? AND ra.user_id = ?`,
     ).bind(guildId, userId),
     effectivePermissionsStatement(db, guildId),
-    // The teams of the characters of the person who is this user's (linked to the account, or matching its Discord ID). A teamless character
-    // (team_id NULL) is on no team and grants no team scope.
+    // ownTeamIds (U R8-Q2): the teams of the characters of the person who is this user's (linked to the account, or matching its Discord ID) that are on a
+    // TEAM ROSTER (worker/team-roster.js: placed, still here, a raiding rank). A teamless, Social or Former character grants no team scope; another
+    // visible character of the same person on that team still does.
     db.prepare(
       `SELECT DISTINCT c.team_id FROM characters c JOIN players p ON p.id = c.player_id
-        WHERE p.guild_id = ? AND c.team_id IS NOT NULL AND ${ownPlayerSql('p', '?')}`,
+        WHERE p.guild_id = ? AND ${teamRosterSql('c')} AND ${ownPlayerSql('p', '?')}`,
     ).bind(guildId, userId, userId),
   ]);
   const guild = guildResult.results[0];

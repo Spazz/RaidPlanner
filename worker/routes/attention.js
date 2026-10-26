@@ -26,6 +26,7 @@ import { ladderOf, rankReview } from '../rank-ladder.js';
 import { makePolicyResolver, policyRowsStatement } from '../attendance-store.js';
 import { displayCharacter, groupBy } from '../attendance-view.js';
 import { ATTENTION_VIEW_ACTIONS, LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, WEEK_OFFSET_MAX, DISMISS_RULES, buildAttention, dismissalUntil, findAttentionItem } from '../attention.js';
+import { winnerNameKeySql } from '../name-alias.js';
 import { onboardingStatement, shapeOnboarding } from '../onboarding.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { legacyColumnSql, legacyColumnsSql, onTrialSql, raidingSql } from '../person-legacy.js';
@@ -107,7 +108,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
               GROUP_CONCAT(DISTINCT a.winner_name_key || '|' || a.winner_realm_key) AS keys
          FROM loot_awards a JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id
         WHERE a.guild_id = ?1 AND a.winner_name_key IS NOT NULL
-          AND NOT EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.name_key = a.winner_name_key AND c.realm_key = a.winner_realm_key)
+          AND NOT EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.name_key = ${winnerNameKeySql('a')} AND c.realm_key = a.winner_realm_key)
           AND NOT EXISTS (SELECT 1 FROM attendance_guests g WHERE g.guild_id = ?1 AND g.name_key = a.winner_name_key AND g.realm_key = a.winner_realm_key)
         GROUP BY a.raid_id ORDER BY r.raid_on DESC LIMIT ${READ_CAP}`,
     ),

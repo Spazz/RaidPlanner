@@ -4,6 +4,7 @@
 //   GET /guilds/{id}/members/{user_id}     one member's role ids (no privileged intent: the Server Members Intent is not needed for a single fetch)
 // The token goes to apiBase(env) only (discord.com or a local fake) and is never logged, returned or stored. The fetch is injected.
 import { apiBase } from './discord.js';
+import { hasDiscordServerId } from './discord-guard.js';
 
 const SNOWFLAKE = /^\d{1,25}$/;
 const MAX_ROLES = 250;
@@ -15,6 +16,7 @@ export function botConfigured(env) {
 
 // The link an officer opens to add the bot to their server: pre-selects the server and asks for no permissions at all. null without a client id.
 export function inviteUrl(env, serverId) {
+  if (!hasDiscordServerId(serverId)) return null; // a guild without Discord has no server to invite the bot to
   if (typeof env.DISCORD_CLIENT_ID !== 'string' || !env.DISCORD_CLIENT_ID || !SNOWFLAKE.test(String(serverId))) return null;
   const query = new URLSearchParams({
     client_id: env.DISCORD_CLIENT_ID, scope: 'bot', permissions: '0', guild_id: String(serverId), disable_guild_select: 'true',
@@ -53,6 +55,7 @@ const colorOf = (value) => (Number.isInteger(value) && value > 0 && value <= 0xf
 
 // The server's roles, highest first, without @everyone (its id is the server's) -> { ok: true, roles: [{ id, name, color, position, managed }] }.
 export async function fetchServerRoles(env, fetchImpl, serverId) {
+  if (!hasDiscordServerId(serverId)) return { ok: false, reason: 'no_server' }; // a guild without Discord: no call at all
   if (!botConfigured(env)) return { ok: false, reason: 'not_configured' };
   if (!SNOWFLAKE.test(String(serverId))) return { ok: false, reason: 'bot_missing' };
   const result = await botGet(env, fetchImpl, `/api/v10/guilds/${serverId}/roles`);
@@ -70,6 +73,7 @@ export async function fetchServerRoles(env, fetchImpl, serverId) {
 
 // One member's role ids -> { ok: true, roleIds, absent }. A person who is not in the server has no roles (absent: true) - that is an answer, not a failure.
 export async function fetchMemberRoleIds(env, fetchImpl, serverId, discordUserId) {
+  if (!hasDiscordServerId(serverId)) return { ok: false, reason: 'no_server' }; // a guild without Discord: no call at all
   if (!botConfigured(env)) return { ok: false, reason: 'not_configured' };
   if (!SNOWFLAKE.test(String(serverId)) || !SNOWFLAKE.test(String(discordUserId))) return { ok: false, reason: 'unavailable' };
   const result = await botGet(env, fetchImpl, `/api/v10/guilds/${serverId}/members/${discordUserId}`);

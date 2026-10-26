@@ -3,6 +3,7 @@ import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';
 import { boundMember, memberCandidatesSql, reachesGuildSql } from '../membership.js';
 import { botConfigured } from '../discord-bot.js';
+import { requireDiscord } from '../discord-guard.js';
 import { discordProblem, syncMember } from '../discord-sync.js';
 import { assertMayGrant, loadRolesData } from '../roles-store.js';
 import { ROLE_RANK, isCustomRole, loadGuildContext, rankOf, requireAction, requireAnyAction, shapeRoles } from '../permissions.js';
@@ -352,6 +353,7 @@ export async function setRoles(ctx) {
 export async function syncPerson(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
+  requireDiscord(guildContext.guild);
   const model = await loadModel(ctx.db, guildContext);
   const target = findTarget(model, ctx.params.uid);
   if (!isCurrentMember(target)) throw notFound();

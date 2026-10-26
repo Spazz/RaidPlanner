@@ -4,8 +4,9 @@ import { guestIdentityStatement, guestKeysFor } from './guest-identity.js';
 import { consolidateRaid, resolveFillIns } from './attendance-consolidate.js';
 import { attendanceAwaySignups, noticeOfRow } from './away.js';
 import { REGION_RESET_DAY, consolidationFingerprint, resolvePolicy } from './attendance-policy.js';
+import { resolvedNameKeySql } from './name-alias.js';
 import { allows } from './permissions.js';
-import { legacyColumnsSql } from './person-legacy.js';
+import { characterOfRow } from './person-rank.js';
 
 export const SIGNUP_KINDS = ['signed', 'late', 'standby', 'bench', 'tentative', 'absence'];
 
@@ -82,20 +83,43 @@ const HAS_EVIDENCE = `(raids.log_mode = 'manual'
     OR EXISTS (SELECT 1 FROM raid_manual x WHERE x.raid_id = raids.id)
     OR EXISTS (SELECT 1 FROM raid_reports x WHERE x.raid_id = raids.id))`;
 
+// A name stored on a raid (a log line, a pasted roster, a plan seat) counts for the character that carried it when the raid was held (worker/name-alias.js): the
+// stored key turned into the key the characters carry today. A logged or pasted name is queried as `rp` (raid_presence or raid_manual_names) and a plan seat as
+// `pl` (raid_plan), each with its raid joined as `pr`; a plan seat has a name only (no realm, no guild_id), so its guild is the raid's.
+const PRESENCE_KEY = resolvedNameKeySql({ guild: 'rp.guild_id', nameKey: 'rp.name_key', realmKey: 'rp.realm_key', at: 'pr.starts_at' });
+const MANUAL_KEY = PRESENCE_KEY;
+const PLAN_KEY = resolvedNameKeySql({ guild: 'pr.guild_id', nameKey: 'pl.name_key', at: 'pr.starts_at' });
+// The same two for the other readers of a raid's stored names (attendance-view.js, routes/attendance.js).
+export const EVIDENCE_NAME_KEY = PRESENCE_KEY;
+export const PLAN_NAME_KEY = PLAN_KEY;
+
+// The marking statements below never scan a guild's whole log (raid_presence is the biggest table): they start from the stored names that could be meant
+// (the raid_presence_name index) and only then apply the date-aware rule. The names that could be meant by some live keys are the keys themselves and the old
+// names (aliases) of the characters that carry them now.
+const MARKED_KEY = resolvedNameKeySql({
+  guild: 'rp.guild_id', nameKey: 'rp.name_key', realmKey: 'rp.realm_key', at: '(SELECT sr.starts_at FROM raids sr WHERE sr.id = rp.raid_id)',
+});
+const storedNamesOf = (liveKeysSql) => `${liveKeysSql} UNION SELECT nal.name_key FROM character_name_aliases nal
+          JOIN characters nlc ON nlc.guild_id = nal.guild_id AND nlc.id = nal.character_id WHERE nal.guild_id = ?1 AND nlc.name_key IN (${liveKeysSql})`;
+// The raids whose log names these characters, by the key they are given under or by the name they carried when the raid was logged (a rename marks the raids
+// logged under the old name and under the new one).
+const loggedUnder = (keysSql) => `SELECT rp.raid_id FROM raid_presence rp
+          WHERE rp.guild_id = ?1 AND rp.name_key IN (${storedNamesOf(keysSql)}) AND (rp.name_key IN (${keysSql}) OR ${MARKED_KEY} IN (${keysSql}))`;
+
 // One UPDATE for a db.batch: every raid whose log names one of these characters, and every raid of these teams that holds evidence
 // (a roster change moves "expected" and the team's rows without any presence), keeps its results but is marked for recalculation.
 // The version bump makes a recompute that read the old roster discard its write. Callers skip it when there is nothing to mark.
 const MARK_STALE_SQL = `UPDATE raids SET policy_fp = '', version = version + 1
-      WHERE guild_id = ? AND id != ?
-        AND (id IN (SELECT raid_id FROM raid_presence WHERE guild_id = ? AND name_key IN (SELECT value FROM json_each(?)))
-             OR (team_id IN (SELECT value FROM json_each(?)) AND ${HAS_EVIDENCE}))`;
+      WHERE guild_id = ?1 AND id != ?2
+        AND (id IN (${loggedUnder('SELECT value FROM json_each(?3)')})
+             OR (team_id IN (SELECT value FROM json_each(?4)) AND ${HAS_EVIDENCE}))`;
 const MARK_PERSON_STALE_SQL = `UPDATE raids SET policy_fp = '', version = version + 1
       WHERE guild_id = ?1
-        AND (id IN (SELECT raid_id FROM raid_presence WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM characters WHERE guild_id = ?1 AND player_id = ?2))
+        AND (id IN (${loggedUnder('SELECT name_key FROM characters WHERE guild_id = ?1 AND player_id = ?2')})
              OR (team_id IN (SELECT team_id FROM characters WHERE guild_id = ?1 AND player_id = ?2) AND ${HAS_EVIDENCE}))`;
 
 export function markRaidsStale(db, guildId, nameKeys, exceptRaidId = null, teamIds = []) {
-  return db.prepare(MARK_STALE_SQL).bind(guildId, exceptRaidId || '', guildId, JSON.stringify([...new Set(nameKeys)]), JSON.stringify([...new Set(teamIds)]));
+  return db.prepare(MARK_STALE_SQL).bind(guildId, exceptRaidId || '', JSON.stringify([...new Set(nameKeys)]), JSON.stringify([...new Set(teamIds)]));
 }
 
 // A person's status, join date or Discord link changed: every raid of every team they have a character on, plus the raids naming them.
@@ -170,25 +194,32 @@ export async function loadDay(db, guildId, raidId) {
            WHERE raid_id IN (SELECT id FROM day) AND source != 'plan' AND player_id IS NOT NULL
              AND NOT (source = 'raid_helper' AND EXISTS (SELECT 1 FROM raid_signups n
                WHERE n.raid_id = raid_signups.raid_id AND n.rh_signup_id = raid_signups.signup_id))`),
-    bind(`SELECT raid_id, name, name_key, group_number FROM raid_plan WHERE raid_id IN (SELECT id FROM day) ORDER BY rowid`),
+    // Each stored name also carries match_name_key: the key the characters carry today (worker/name-alias.js), dated at the raid.
+    bind(`SELECT pl.raid_id, pl.name, pl.name_key, pl.group_number, ${PLAN_KEY} AS match_name_key
+            FROM raid_plan pl JOIN raids pr ON pr.id = pl.raid_id WHERE pl.raid_id IN (SELECT id FROM day) ORDER BY pl.rowid`),
     bind('SELECT id, raid_id, started_at, kill FROM raid_pulls WHERE raid_id IN (SELECT id FROM day)'),
-    bind('SELECT pull_id, raid_id, name, name_key, realm, realm_key, class FROM raid_presence WHERE raid_id IN (SELECT id FROM day)'),
+    bind(`SELECT rp.pull_id, rp.raid_id, rp.name, rp.name_key, rp.realm, rp.realm_key, rp.class, ${PRESENCE_KEY} AS match_name_key
+            FROM raid_presence rp JOIN raids pr ON pr.id = rp.raid_id WHERE rp.raid_id IN (SELECT id FROM day)`),
     bind('SELECT raid_id, player_id FROM raid_manual WHERE raid_id IN (SELECT id FROM day)'),
     guestIdentityStatement(db, guildId),
     bind('SELECT raid_id, player_id, outcome, credit, credit_id, reason, flags FROM attendance_decisions WHERE raid_id IN (SELECT id FROM day)'),
     // Every character of every person involved: on a team of the day, in a log, a sign-up, a manual tick, a stored row or the plan.
     // D1 allows at most 5 terms in one compound SELECT, so the people are gathered in two CTEs of at most 4 terms each.
+    // The rank columns are the CHARACTER's (core_rank, left_on, trial dates): worker/person-rank.js turns them into the person's answers.
     bind(`, who_by_character AS (
             SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id IN (SELECT team_id FROM raids WHERE id IN (SELECT id FROM day))
-            UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_presence WHERE raid_id IN (SELECT id FROM day))
-            UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_manual_names WHERE raid_id IN (SELECT id FROM day))
-            UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_plan WHERE raid_id IN (SELECT id FROM day))),
+            UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN
+              (SELECT ${PRESENCE_KEY} FROM raid_presence rp JOIN raids pr ON pr.id = rp.raid_id WHERE rp.raid_id IN (SELECT id FROM day))
+            UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN
+              (SELECT ${MANUAL_KEY} FROM raid_manual_names rp JOIN raids pr ON pr.id = rp.raid_id WHERE rp.raid_id IN (SELECT id FROM day))
+            UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN
+              (SELECT ${PLAN_KEY} FROM raid_plan pl JOIN raids pr ON pr.id = pl.raid_id WHERE pl.raid_id IN (SELECT id FROM day))),
           who_by_row AS (
             SELECT player_id FROM raid_signups WHERE raid_id IN (SELECT id FROM day) AND player_id IS NOT NULL
             UNION SELECT player_id FROM raid_manual WHERE raid_id IN (SELECT id FROM day)
             UNION SELECT player_id FROM attendance WHERE raid_id IN (SELECT id FROM day)
             UNION SELECT player_id FROM attendance_decisions WHERE raid_id IN (SELECT id FROM day))
-          SELECT c.player_id, c.name_key, c.realm_key, c.team_id, c.is_main, ${legacyColumnsSql('p', 'status')}, p.joined_on, ${legacyColumnsSql('p', 'leftOn')}
+          SELECT c.id, c.player_id, c.name_key, c.realm_key, c.team_id, c.is_main, c.core_rank, c.left_on, c.trial_start, c.trial_end, p.joined_on
             FROM characters c JOIN players p ON p.id = c.player_id
            WHERE c.guild_id = ?1 AND (c.player_id IN (SELECT player_id FROM who_by_character) OR c.player_id IN (SELECT player_id FROM who_by_row))`),
     // The Away notices that cover the day (worker/away.js): each one is one more, weakest, sign-up of its person for the raids of the day (consolidateDay).
@@ -196,7 +227,8 @@ export async function loadDay(db, guildId, raidId) {
            WHERE guild_id = ?1 AND kind = 'away' AND starts_on <= (SELECT raid_on FROM raids WHERE id = ?2 AND guild_id = ?1)
              AND (ends_on IS NULL OR ends_on >= (SELECT raid_on FROM raids WHERE id = ?2 AND guild_id = ?1))`),
     // The names of a pasted roster that matched nobody when it was pasted (wave 8).
-    bind('SELECT raid_id, name, name_key, realm, realm_key FROM raid_manual_names WHERE raid_id IN (SELECT id FROM day)'),
+    bind(`SELECT rp.raid_id, rp.name, rp.name_key, rp.realm, rp.realm_key, ${MANUAL_KEY} AS match_name_key
+            FROM raid_manual_names rp JOIN raids pr ON pr.id = rp.raid_id WHERE rp.raid_id IN (SELECT id FROM day)`),
   ]);
   return {
     raids: raidResult.results,
@@ -220,7 +252,8 @@ const keyOf = (nameKeyValue, realmKeyValue) => `${nameKeyValue}|${realmKeyValue}
 function planSignups(raidId, plan, charactersByName, teamId) {
   const rows = [];
   plan.forEach((entry, index) => {
-    const candidates = charactersByName.get(entry.name_key) || [];
+    // The seat's name as the characters carry it today (match_name_key, worker/name-alias.js); candidates in a fixed order, so the pick never depends on row order.
+    const candidates = [...(charactersByName.get(entry.match_name_key || entry.name_key) || [])].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const pick = candidates.find((character) => character.team_id === teamId) || candidates[0];
     if (!pick) return;
     rows.push({ raidId, signupId: index + 1, position: index + 1, kind: entry.group_number === 0 ? 'bench' : 'signed', playerId: pick.player_id });
@@ -235,9 +268,9 @@ export function consolidateDay(guild, loaded) {
   const people = new Map();
   const charactersByName = new Map();
   for (const row of loaded.characters) {
-    if (!people.has(row.player_id)) people.set(row.player_id, { playerId: row.player_id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on, homeTeamId: null, characters: [] });
-    if (row.is_main === 1) people.get(row.player_id).homeTeamId = row.team_id;
-    people.get(row.player_id).characters.push({ key: keyOf(row.name_key, row.realm_key), teamId: row.team_id });
+    // A person is their characters (worker/person-rank.js): no rank scalar is taken from whichever row came first.
+    if (!people.has(row.player_id)) people.set(row.player_id, { playerId: row.player_id, joinedOn: row.joined_on, characters: [] });
+    people.get(row.player_id).characters.push({ ...characterOfRow(row), key: keyOf(row.name_key, row.realm_key) });
     if (!charactersByName.has(row.name_key)) charactersByName.set(row.name_key, []);
     charactersByName.get(row.name_key).push(row);
   }
@@ -265,11 +298,13 @@ export function consolidateDay(guild, loaded) {
   const decisionsBy = group(loaded.decisions);
   const keysByPull = new Map();
   const logPlayersByRaid = new Map();
+  // Every log or pasted name is keyed by the name the characters carry today (match_name_key), so a renamed character keeps its old raids.
+  const evidenceKey = (row) => keyOf(row.match_name_key || row.name_key, row.realm_key);
   for (const row of loaded.presence) {
     if (!keysByPull.has(row.pull_id)) keysByPull.set(row.pull_id, []);
-    keysByPull.get(row.pull_id).push(keyOf(row.name_key, row.realm_key));
+    keysByPull.get(row.pull_id).push(evidenceKey(row));
     if (!logPlayersByRaid.has(row.raid_id)) logPlayersByRaid.set(row.raid_id, {});
-    logPlayersByRaid.get(row.raid_id)[keyOf(row.name_key, row.realm_key)] = { name: row.name, realm: row.realm, class: row.class };
+    logPlayersByRaid.get(row.raid_id)[evidenceKey(row)] = { name: row.name, realm: row.realm, class: row.class };
   }
 
   const results = loaded.raids.map((raid) => {
@@ -287,7 +322,7 @@ export function consolidateDay(guild, loaded) {
     ];
     const pasted = raid.log_mode === 'manual' ? (manualNamesBy.get(raid.id) || []) : [];
     const logPlayers = { ...(logPlayersByRaid.get(raid.id) || {}) };
-    for (const row of pasted) logPlayers[keyOf(row.name_key, row.realm_key)] = { name: row.name, realm: row.realm, class: null };
+    for (const row of pasted) logPlayers[evidenceKey(row)] = { name: row.name, realm: row.realm, class: null };
     const evidence = {
       raid: { id: raid.id, teamId: raid.team_id, raidOn: raid.raid_on, hasLog: raid.reports > 0, manual: raid.log_mode === 'manual' },
       people: [...people.values()],
@@ -297,7 +332,7 @@ export function consolidateDay(guild, loaded) {
       guests: [...guestKeysFor(loaded.guests, raid.id)],
       decisions,
       logPlayers,
-      manualKeys: pasted.map((row) => keyOf(row.name_key, row.realm_key)),
+      manualKeys: pasted.map(evidenceKey),
     };
     const result = consolidateRaid(evidence, resolver.resolved(raid.team_id));
     return { raid, rows: result.rows, unmatched: result.unmatched, planSignups: plan, fingerprint: resolver.fingerprint(raid.team_id) };
@@ -418,8 +453,9 @@ export async function recomputeRaid(ctx, guild, raidId) {
 export function findUnmatched(presence, characterKeys, guestKeys) {
   return presence
     .filter((row) => {
+      // A character is found by the logged name as the characters carry it today (match_name_key, worker/name-alias.js); a guest mark by the name as logged.
       const key = keyOf(row.name_key, row.realm_key);
-      return !characterKeys.has(key) && !guestKeys.has(key);
+      return !characterKeys.has(keyOf(row.match_name_key || row.name_key, row.realm_key)) && !guestKeys.has(key);
     })
     .map((row) => ({ key: keyOf(row.name_key, row.realm_key), name: row.name, realm: row.realm, class: row.class, pullsPresent: row.pulls }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));

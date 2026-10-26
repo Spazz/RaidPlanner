@@ -6,6 +6,7 @@
 // A notice is { from, to, weekday }: a RANGE (weekday null) covers every date from `from` to `to`; a RECURRING notice (weekday 0 = Sunday ... 6) covers
 // every such weekday from `from` to `to`, `to` null = open-ended. Kinds: 'away' (the whole raid), 'late' and 'leaving' (the time they arrive / leave).
 import { addDays, daysBetween, weekdayOf } from './attendance-calendar.js';
+import { isGoneOn } from './person-rank.js';
 import { SINGLE_LINE_STRIP, isRealDate } from './roster-data.js';
 
 export const AWAY_KINDS = ['away', 'late', 'leaving'];
@@ -93,13 +94,12 @@ export function raidNoticeEffects(notices, raidOn, eligible) {
 // has a character on the raid's team, was still in the guild on that date (not inactive, or inactive with a left-on date on or after it), and whose
 // notice was filed before the raid began (createdAt <= startsAt). The weakest rank: it only matters for a person with no other sign-up kind and no
 // presence in the log. notices: [{ personId, kind, from, to, weekday, createdAt }]; raid: { raidOn, teamId, startsAt };
-// people: [{ playerId, status, leftOn, characters: [{ teamId }] }].
+// people: [{ playerId, characters: [{ teamId, coreRank, leftOn }] }] (worker/person-rank.js: "gone" is read off all the characters, never a person status).
 export function attendanceAwaySignups(notices, raid, people) {
   const eligible = new Map();
   for (const person of people) {
     if (!(person.characters || []).some((character) => character.teamId === raid.teamId)) continue;
-    const gone = person.status === 'inactive' && !(person.leftOn && raid.raidOn <= person.leftOn);
-    if (!gone) eligible.set(person.playerId, true);
+    if (!isGoneOn(person, raid.raidOn)) eligible.set(person.playerId, true);
   }
   const covered = new Set();
   for (const notice of notices) {

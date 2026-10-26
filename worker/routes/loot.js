@@ -13,10 +13,11 @@ import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { lootBalance } from '../loot-metrics.js';
 import { DEFAULT_LOOT_POLICY, LOOT_TAGS, validateLootOverride } from '../loot-policy.js';
 import {
-  AWARD_SELECT, LOOT_LIST_CAP, awardView, lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver, makeMatcher, matchStatements,
+  AWARD_SELECT, LOOT_LIST_CAP, awardView, importMatchStatements, lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver, makeMatcher,
   ownPersonStatement, viewAwards,
 } from '../loot-store.js';
 import { isOwnPlayer } from '../membership.js';
+import { winnerNameKeySql } from '../name-alias.js';
 import { announceLoot } from '../notify-run.js';
 import { teamNotifyStatement } from '../notify-store.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
@@ -69,18 +70,20 @@ async function planImport(ctx, guildContext, raid, awards) {
   const { db } = ctx;
   const guild = guildContext.guild;
   const checksums = JSON.stringify(awards.map((award) => award.checksum));
-  const [existingResult, deletedResult, characterResult, guestResult] = await db.batch([
+  const [existingResult, deletedResult, keyResult, characterResult, guestResult] = await db.batch([
     db.prepare(`${AWARD_SELECT} WHERE a.guild_id = ?1 AND a.checksum IN (SELECT value FROM json_each(?2))`).bind(guild.id, checksums),
     db.prepare('SELECT checksum, raid_id, deleted_at FROM loot_award_deletions WHERE guild_id = ?1 AND checksum IN (SELECT value FROM json_each(?2))').bind(guild.id, checksums),
-    ...matchStatements(db, guild.id, awards.map((award) => award.nameKey)),
+    // The winners are matched by the name the characters carried on the day of the award (worker/name-alias.js).
+    ...importMatchStatements(db, guild.id, awards),
   ]);
   const existing = new Map(existingResult.results.map((row) => [row.checksum, row]));
   const tombstones = new Map(deletedResult.results.map((row) => [row.checksum, row]));
+  const resolvedKeys = new Map(keyResult.results.map((row) => [row.i, row.match_name_key]));
   const matcher = makeMatcher(characterResult.results, guestResult.results);
-  return awards.map((award) => {
+  return awards.map((award, index) => {
     const stored = existing.get(award.checksum) || null;
     const classified = classifyAward(award, stored, raid, guild.time_zone, tombstones.get(award.checksum) || null);
-    const matched = matcher({ winner_name_key: award.nameKey, winner_realm_key: award.realmKey, team_id: raid.team_id });
+    const matched = matcher({ winner_name_key: award.nameKey, winner_realm_key: award.realmKey, match_name_key: resolvedKeys.get(index) || award.nameKey, team_id: raid.team_id });
     return { award, stored, ...classified, matched };
   });
 }
@@ -446,11 +449,12 @@ async function loadTeamLoot(ctx, extra = () => []) {
   };
 }
 
-// The newest awards of the team, the characters their winners belong to, and the guests: the matcher's input.
+// The newest awards of the team, the characters their winners belong to, and the guests: the matcher's input. A winner is read by the name the characters
+// carry today (worker/name-alias.js), dated at the award.
 const teamAwardStatements = (bind, db, guild) => [
   bind(`${AWARD_SELECT} WHERE a.guild_id = ?1 AND a.team_id = ?2 ORDER BY a.awarded_at DESC, a.id LIMIT ${LOOT_LIST_CAP}`),
   bind(`SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id IN
-          (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT winner_name_key FROM loot_awards WHERE guild_id = ?1 AND team_id = ?2))`),
+          (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT ${winnerNameKeySql('la')} FROM loot_awards la WHERE la.guild_id = ?1 AND la.team_id = ?2))`),
   guestIdentityStatement(db, guild.id),
 ];
 
@@ -483,7 +487,8 @@ const balanceStatements = (bind, db, guild) => [
             AND p.id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`),
     bind(`SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1
             AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`),
-    bind('SELECT raid_id, tag, winner_name_key, winner_realm_key FROM loot_awards WHERE guild_id = ?1 AND team_id = ?2 AND winner_name_key IS NOT NULL'),
+    bind(`SELECT la.raid_id, la.tag, la.winner_name_key, la.winner_realm_key, ${winnerNameKeySql('la')} AS match_name_key
+            FROM loot_awards la WHERE la.guild_id = ?1 AND la.team_id = ?2 AND la.winner_name_key IS NOT NULL`),
 ];
 
 export async function getBalance(ctx) {
@@ -513,7 +518,7 @@ function buildBalance(ctx, loaded, rest) {
     return { id: row.id, name: character ? character.name : 'Unknown', class: character ? character.class : null, status: row.status };
   });
   const awards = awardResult.results
-    .map((row) => ({ raidId: row.raid_id, tag: row.tag, personId: personOfKey.get(`${row.winner_name_key}|${row.winner_realm_key}`) }))
+    .map((row) => ({ raidId: row.raid_id, tag: row.tag, personId: personOfKey.get(`${row.match_name_key || row.winner_name_key}|${row.winner_realm_key}`) }))
     .filter((award) => award.personId !== undefined);
   const balance = lootBalance({
     people,
@@ -605,7 +610,7 @@ export async function getPersonLoot(ctx) {
     bind(`SELECT id, ${legacyColumnsSql('players', 'status')}, discord_user_id, user_id FROM players WHERE guild_id = ?1 AND id = ?2`),
     bind('SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`${AWARD_SELECT} WHERE a.guild_id = ?1 AND EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.player_id = ?2
-            AND c.name_key = a.winner_name_key AND c.realm_key = a.winner_realm_key) ORDER BY a.awarded_at DESC, a.id LIMIT ${LOOT_LIST_CAP}`),
+            AND c.name_key = ${winnerNameKeySql('a')} AND c.realm_key = a.winner_realm_key) ORDER BY a.awarded_at DESC, a.id LIMIT ${LOOT_LIST_CAP}`),
     lootPolicyRowsStatement(db, guild.id),
     guestIdentityStatement(db, guild.id),
   ]);
@@ -758,7 +763,7 @@ export async function getLootItem(ctx) {
     db.prepare(`${AWARD_SELECT} WHERE a.guild_id = ?1 AND a.team_id = ?2 AND a.item_id = ?3 ORDER BY a.awarded_at DESC, a.id LIMIT ?4`).bind(guild.id, teamParam, itemId, LOOT_LIST_CAP),
     db.prepare(
       `SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id IN
-         (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT winner_name_key FROM loot_awards WHERE guild_id = ?1 AND team_id = ?2 AND item_id = ?3))`,
+         (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT ${winnerNameKeySql('la')} FROM loot_awards la WHERE la.guild_id = ?1 AND la.team_id = ?2 AND la.item_id = ?3))`,
     ).bind(guild.id, teamParam, itemId),
     guestIdentityStatement(db, guild.id),
     db.prepare(`SELECT id, raid_on, title, event_title, zone FROM raids WHERE guild_id = ?1 AND id IN (SELECT raid_id FROM loot_awards WHERE guild_id = ?1 AND team_id = ?2 AND item_id = ?3)`)

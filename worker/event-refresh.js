@@ -5,6 +5,7 @@
 // ctx: { db, env, fetch, now, randomBytes, log } (the scheduler's; no session).
 import { localDate } from './attendance-calendar.js';
 import { recomputeRaid } from './attendance-store.js';
+import { hasDiscord } from './discord-guard.js';
 import { MAX_GUILDS_PER_RUN, MAX_REFRESHES_PER_RUN, refreshDue } from './notify.js';
 import { eventLinkStatements } from './routes/raids.js';
 import { fetchRaidHelperEvent } from './sources.js';
@@ -17,6 +18,11 @@ const GUILD_COLUMNS = 'id, name, realm, realm_kind, realm_slug, region, discord_
 async function refreshOne(ctx, guild, raid) {
   const { db } = ctx;
   const stamp = () => db.prepare('UPDATE raids SET event_checked_at = ? WHERE id = ? AND guild_id = ?').bind(ctx.now(), raid.id, guild.id).run();
+  // Raid-Helper events live in a Discord server: a guild without one never asks Raid-Helper.
+  if (!hasDiscord(guild)) {
+    await stamp();
+    return 'failed';
+  }
   let event;
   try {
     event = await fetchRaidHelperEvent(ctx, raid.event_id);
@@ -71,7 +77,7 @@ export async function refreshDueEvents(ctx, { maxRefreshes = MAX_REFRESHES_PER_R
         guilds.set(raid.guild_id, await ctx.db.prepare(`SELECT ${GUILD_COLUMNS} FROM guilds WHERE id = ?`).bind(raid.guild_id).first());
       }
       const guild = guilds.get(raid.guild_id);
-      if (!guild) continue;
+      if (!guild || !hasDiscord(guild)) continue; // no guild, or one without a Discord server: nothing to ask Raid-Helper
       asked++;
       const result = await refreshOne(ctx, guild, raid);
       totals[result]++;

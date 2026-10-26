@@ -6,6 +6,7 @@ import { displayCharacter, groupBy } from './attendance-view.js';
 import { isPlainObject } from './attendance-store.js';
 import { resolveLootPolicy } from './loot-policy.js';
 import { ownPersonStatement } from './membership.js';
+import { resolvedNameKeySql, winnerNameKeySql } from './name-alias.js';
 import { allows } from './permissions.js';
 
 // The newest awards a team-wide list reads (By raid, By item): a guard on the response size, far above a real team's history.
@@ -78,8 +79,9 @@ export { ownPersonStatement };
 // ---------------------------------------------------------------------------
 // Awards and the match of their winners
 
-// An award with its raid's date (the date every window and list uses).
-export const AWARD_SELECT = `SELECT a.*, r.raid_on FROM loot_awards a JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id`;
+// An award with its raid's date (the date every window and list uses), and match_name_key: the winner's name as the characters carry it today (worker/name-alias.js,
+// dated at the award), which the matcher reads instead of winner_name_key so an award to a renamed character still finds it.
+export const AWARD_SELECT = `SELECT a.*, r.raid_on, ${winnerNameKeySql('a')} AS match_name_key FROM loot_awards a JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id`;
 
 export const parseFlags = (text) => { const value = parseJson(text, []); return Array.isArray(value) ? value : []; };
 
@@ -98,6 +100,26 @@ export function matchStatements(db, guildId, nameKeys) {
   ];
 }
 
+// The same for awards that are not stored yet (an import preview or commit): each winner's name as the characters carry it on the day of the award
+// (worker/name-alias.js). awards: [{ nameKey, realmKey, awardedAt }] (loot-import.js readAwards). -> three statements: the resolved key per award
+// (rows { i, match_name_key }, i = the award's index), then the characters of the people named, then the guests: feed the last two to makeMatcher and
+// pass each award's resolved key as match_name_key.
+const IMPORT_KEY = resolvedNameKeySql({
+  guild: '?1', nameKey: "json_extract(value, '$.k')", realmKey: "json_extract(value, '$.r')", at: "json_extract(value, '$.t')",
+});
+export function importMatchStatements(db, guildId, awards) {
+  const list = JSON.stringify(awards.map((award, i) => ({ i, k: award.nameKey, r: award.realmKey, t: award.awardedAt })));
+  return [
+    db.prepare(`SELECT json_extract(value, '$.i') AS i, ${IMPORT_KEY} AS match_name_key FROM json_each(?2) WHERE json_extract(value, '$.k') IS NOT NULL`).bind(guildId, list),
+    db.prepare(
+      `SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters
+        WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN
+          (SELECT ${IMPORT_KEY} FROM json_each(?2) WHERE json_extract(value, '$.k') IS NOT NULL))`,
+    ).bind(guildId, list),
+    guestIdentityStatement(db, guildId),
+  ];
+}
+
 // -> (award row) => { match, characterClass }. match is the contract's { kind, personId?, personName?, characterId?, characterName?, isMain? };
 // the person is shown as their character on the award's team (the Main there, else any there, else their Main).
 // An award with no winner (a disenchant: winner_name_key NULL) is { kind: 'disenchanted' }: no person, never unmatched.
@@ -108,7 +130,8 @@ export function makeMatcher(characterRows, guestRows) {
   return (award) => {
     if (award.winner_name_key === null) return { match: { kind: 'disenchanted' }, characterClass: null };
     const key = keyOf(award.winner_name_key, award.winner_realm_key);
-    const character = byKey.get(key);
+    // The character is found by the winner's name as the characters carry it today (match_name_key, worker/name-alias.js); a guest by the name as stored.
+    const character = byKey.get(keyOf(award.match_name_key || award.winner_name_key, award.winner_realm_key));
     if (character) {
       const person = displayCharacter(byPlayer.get(character.player_id), award.team_id);
       return {
@@ -126,7 +149,7 @@ export function makeMatcher(characterRows, guestRows) {
 // The matcher for these award rows: one batch.
 export async function loadMatcher(db, guildId, awardRows) {
   if (!awardRows.length) return makeMatcher([], []);
-  const [characterResult, guestResult] = await db.batch(matchStatements(db, guildId, awardRows.map((row) => row.winner_name_key)));
+  const [characterResult, guestResult] = await db.batch(matchStatements(db, guildId, awardRows.map((row) => row.match_name_key || row.winner_name_key)));
   return makeMatcher(characterResult.results, guestResult.results);
 }
 

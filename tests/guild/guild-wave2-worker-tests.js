@@ -295,7 +295,8 @@ async function wave2World() {
   await alt(s.p.jorund, A, 'Thessaly', { class: 'MAGE', mainSpec: 'Fire' });
   // Two people who left: Ivor on 2027-01-20 (still expected up to and including that day), Lysandra with no date (never expected again).
   const leave = async (key, leftOn) => {
-    const r = await s.call('bob', 'PATCH', `/roster/${s.p[key]}`, { expectedVersion: 1, status: 'inactive', leftOn });
+    // They left the guild (reason left): the character keeps the date, so the days up to it still count (a break or an unexplained Inactive has no dated history).
+    const r = await s.call('bob', 'PATCH', `/roster/${s.p[key]}`, { expectedVersion: 1, status: 'inactive', leftOn, leftReason: 'left' });
     assert.equal(r.status, 200, JSON.stringify(r.json));
   };
   await leave('ivor', '2027-01-20');
@@ -2812,7 +2813,7 @@ check('standby: the consolidation ranks it above tentative and absence, below la
   const { consolidateRaid } = await load('worker/attendance-consolidate.js');
   const { resolvePolicy } = await load('worker/attendance-policy.js');
   const policy = resolvePolicy({}, {}, 'US');
-  const person = (playerId) => ({ playerId, status: 'raider', joinedOn: null, leftOn: null, homeTeamId: 't', characters: [{ key: `${playerId}|x`, teamId: 't' }] });
+  const person = (playerId) => ({ playerId, joinedOn: null, characters: [{ key: `${playerId}|x`, teamId: 't', isMain: true, coreRank: 'raider', leftOn: null }] });
   const evidence = (signups, extra = {}) => ({
     raid: { id: 'r', teamId: 't', raidOn: '2027-01-15', hasLog: false, manual: true }, people: [person('p1')], signups, pulls: [], manualPresent: [], guests: [], decisions: {}, logPlayers: {}, ...extra,
   });
@@ -2876,7 +2877,8 @@ check('away (pure): the effects on one raid - who is Away, who is Late or Leavin
 
   // Attendance: only Away notices, a character on the team, still in the guild that day, filed before the raid began.
   const raid = { raidOn: '2027-01-21', teamId: 't_a', startsAt: 1000 };
-  const person = (playerId, status, teamId = 't_a', leftOn = null) => ({ playerId, status, leftOn, characters: [{ teamId }] });
+  // A person is their characters (worker/person-rank.js); the dual write maps inactive to Social and keeps a left-on date only for those.
+  const person = (playerId, status, teamId = 't_a', leftOn = null) => ({ playerId, characters: [{ teamId, isMain: true, coreRank: status === 'inactive' ? 'social' : status, leftOn: status === 'inactive' ? leftOn : null }] });
   const people = [person('p1', 'raider'), person('p2', 'inactive'), person('p3', 'raider', 't_b'), person('p4', 'inactive', 't_a', '2027-01-21'), person('p5', 'inactive', 't_a', '2027-01-20'),
     person('p6', 'raider'), person('p7', 'trial'), person('p8', 'raider'), person('p9', 'reserve')];
   const away = (personId, extra = {}) => ({ personId, kind: 'away', from: '2027-01-20', to: '2027-01-27', weekday: null, createdAt: 500, ...extra });
@@ -3569,7 +3571,7 @@ check('away attendance: only people on the raid\'s team who were still in the gu
     s.names[s.p[key]] = name;
   };
   await add('inactive', 'Inactiva', s.A); await add('leftlate', 'Leftlate', s.A); await add('leftearly', 'Leftearly', s.A); await add('bravo', 'Wanderfell', s.B, 'DRUID', 'Restoration');
-  const retire = async (key, leftOn) => assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p[key]}`, { expectedVersion: 1, status: 'inactive', leftOn })).status, 200);
+  const retire = async (key, leftOn) => assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p[key]}`, { expectedVersion: 1, status: 'inactive', leftOn, leftReason: 'left' })).status, 200);
   await retire('inactive', null); await retire('leftlate', '2027-01-19'); await retire('leftearly', '2027-01-18');
   for (const key of ['inactive', 'leftlate', 'leftearly', 'bravo', 'brindle']) await s.notice(key, { kind: 'away', from: '2027-01-19', to: '2027-01-19' });
   const rid = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-19', startTime: '20:00' })).id;

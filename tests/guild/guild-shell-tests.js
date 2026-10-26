@@ -178,7 +178,9 @@ function makeEnv(opts) {
     G: sandbox.Guild, sessionStore, sandbox, els, body, store, loc, history, fetchCalls, timers, plannerCalls, documentFake, listeners, fire, fireCapture,
     setUnseen: v => { o.unseen = v; },
     html: id => els[id].innerHTML,
-    fetched: needle => fetchCalls.filter(c => c.url.indexOf(needle) >= 0).length,
+    // The Roster page reads the team's inactive people beside every roster load (...&status=inactive, retired when Users ships): that companion read is not
+    // counted as a roster load unless the needle names it.
+    fetched: needle => fetchCalls.filter(c => c.url.indexOf(needle) >= 0 && (needle.indexOf('status=inactive') >= 0 || c.url.indexOf('status=inactive') < 0)).length,
     click: (attrs, extra) => {
       const t = target(attrs, extra && extra.scoped);
       const ev = Object.assign({ target: t, button: 0, defaultPrevented: false, prevented: 0, preventDefault() { this.prevented++; } }, extra || {});
@@ -209,6 +211,7 @@ const signedInRoutes = (can, extra) => Object.assign({
   '/auth/me': { status: 200, body: meBody() },
   '/api/guild/g1': { status: 200, body: guildBody(can) },
   '/api/guild/g1/roster?team=t1': { status: 200, body: ROSTER_BODY },
+  '/api/guild/g1/roster?team=t1&status=inactive': { status: 200, body: Object.assign({}, ROSTER_BODY, { filter: 'inactive' }) },
   '/api/guild/g1/raids?team=t1': { status: 200, body: { team: { id: 't1', name: 'Main' }, today: '2026-10-17', can: { edit: false, signup: false }, upcoming: [], raids: [], hasMore: false } },
   'PATCH /auth/prefs': init => ({ status: 200, body: { prefs: Object.assign({}, USER.prefs, JSON.parse(init.body)) } }),
   'POST /auth/logout': { status: 200, body: {} },
@@ -605,6 +608,38 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(env.fetched('/roster?team=t1'), 2, 'same address: nothing');
     await env.G.app.routeAll({ force: true });
     assert.equal(env.fetched('/roster?team=t1'), 3, 'force runs again');
+  });
+
+  await check('Roster load: the list is the roster plus the inactive people read beside it (one companion read per load); a failed inactive read leaves the list without them', async () => {
+    const person = (id, name, status) => ({ id, status, shown: { id: 'c_' + id, name, class: 'MAGE' }, main: { id: 'c_' + id, name, class: 'MAGE', team: { id: 't1', name: 'Main' } }, names: [name], altCount: 0, version: 1 });
+    const rosterBody = { team: { id: 't1', name: 'Main' }, today: '2026-10-17', people: [person('p1', 'Aldric', 'raider')], can: { edit: true }, teams: [] };
+    const inactiveBody = { team: { id: 't1', name: 'Main' }, today: '2026-10-17', filter: 'inactive', people: [person('p2', 'Oldtimer', 'inactive')], can: { edit: true } };
+    const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(OFFICER_CAN, {
+      '/api/guild/g1/roster?team=t1': { status: 200, body: rosterBody },
+      '/api/guild/g1/roster?team=t1&status=inactive': { status: 200, body: inactiveBody },
+    }) });
+    await settle();
+    assert.equal(env.fetched('/roster?team=t1'), 1);
+    assert.equal(env.fetched('/roster?team=t1&status=inactive'), 1, 'one companion read per roster load');
+    assert.deepEqual(plain(env.G.app.state.roster.data.people.map(p => [p.shown.name, p.status])), [['Aldric', 'raider'], ['Oldtimer', 'inactive']], 'one list again');
+    assert.equal(env.G.app.state.roster.data.filter, undefined, 'the list keeps the roster answer\'s own fields');
+    // The page, through the app: inactive people appear only under the Inactive filter, and the count matches.
+    const main = () => env.html('gs-main');
+    assert(main().includes('Aldric') && !main().includes('Oldtimer'), 'the default view lists the roster only');
+    assert(main().includes('Show inactive people (1)'), 'the More item counts the inactive people read');
+    assert(main().includes('1 inactive person is hidden.'), 'and so does the footer');
+    env.click({ 'data-action': 'roster-show-inactive' });
+    await settle();
+    assert(main().includes('Oldtimer') && main().includes('Aldric'), 'Show inactive people brings them in beside the roster');
+    assert.equal(env.G.app.state.rosterUi.status, 'everyone');
+    // A failed inactive read never fails the page.
+    const failing = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(OFFICER_CAN, {
+      '/api/guild/g1/roster?team=t1': { status: 200, body: rosterBody },
+      '/api/guild/g1/roster?team=t1&status=inactive': { status: 500, body: { error: 'server_error' } },
+    }) });
+    await settle();
+    assert.deepEqual(plain(failing.G.app.state.roster.data.people.map(p => p.shown.name)), ['Aldric']);
+    assert.equal(failing.G.app.state.roster.error, undefined);
   });
 
   await check('routeAll: every former route() call site goes through it (go() on the same hash, retry, the #/ re-route, the import team switch)', async () => {

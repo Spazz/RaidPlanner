@@ -734,7 +734,10 @@ check('update person: Inactive records an optional reason and a left-on date; re
   assert.equal(gone.status, 200, JSON.stringify(gone.json));
   assert.deepEqual([gone.json.person.status, gone.json.person.leftOn, gone.json.person.leftReason, gone.json.person.version], ['inactive', today, null, 2]);
   const listed = (await s.call('bob', 'GET', `/roster?team=${s.teamId}`)).json.people.find((p) => p.id === pid);
-  assert.deepEqual([listed.leftOn, listed.leftReason], [today, null], 'the roster list carries both fields');
+  assert.equal(listed, undefined, 'an inactive person is Social: the default team list does not mix them in (U R6-Q2)');
+  // The Inactive filter keeps working until the Users page ships (R4): the same rows as before, with both fields.
+  const inactiveListed = (await s.call('bob', 'GET', `/roster?team=${s.teamId}&status=inactive`)).json.people.find((p) => p.id === pid);
+  assert.deepEqual([inactiveListed.leftOn, inactiveListed.leftReason, inactiveListed.status], [today, null, 'inactive'], 'the Inactive list carries both fields');
 
   // Changing them while inactive: reason alone keeps the date; an explicit null clears the date.
   const kicked = await patch({ expectedVersion: 2, leftReason: 'kicked' });
@@ -871,8 +874,10 @@ check('GET /roster: one row per person with a character on the team, the shown c
 
   const bravoList = await s.call('bob', 'GET', `/roster?team=${bravo}`);
   assert.deepEqual(bravoList.json.can, { edit: true });
-  assert.deepEqual(bravoList.json.people.map((p) => [p.shown.name, p.status, p.altCount]), [['Brindle', 'trial', 1], ['Cassia', 'raider', 3], ['Fenwick', 'inactive', 0]],
-    'inactive people are listed too; the browser filters');
+  assert.deepEqual(bravoList.json.people.map((p) => [p.shown.name, p.status, p.altCount]), [['Brindle', 'trial', 1], ['Cassia', 'raider', 3]],
+    'an inactive person (Fenwick) is Social and is not mixed into the default list (U R6-Q2)');
+  const bravoInactive = await s.call('bob', 'GET', `/roster?team=${bravo}&status=inactive`);
+  assert.deepEqual(bravoInactive.json.people.map((p) => [p.shown.name, p.status, p.altCount]), [['Fenwick', 'inactive', 0]], 'the Inactive filter still lists them, as the page did');
   assert.equal((await s.call('carol', 'GET', `/roster?team=${bravo}`)).json.can.edit, false);
   for (const bad of ['', '?team=', '?team=nope', `?team=t_AAAAAAAAAAAAAAAAAAAAAA`]) {
     const r = await s.call('erin', 'GET', `/roster${bad}`);

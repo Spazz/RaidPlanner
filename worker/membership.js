@@ -16,6 +16,8 @@
 // rely on the order of placeholders inside a fragment; the bound forms (boundMember, boundReaches) exist for guards that carry their own values.
 // (ownPlayerSql repeats only its user, so a bare `?` for the user is fine there: bind the user twice.)
 
+import { serverIdIsDiscordSql } from './discord-guard.js';
+
 // Pure form of the rule, for the places that already hold the three facts.
 // -> 'blocked' | 'member' | 'none'
 export function membershipOf({ blocked, inServer, linked }) {
@@ -26,8 +28,10 @@ export function membershipOf({ blocked, inServer, linked }) {
 export const blockedSql = (userExpr, guildExpr) =>
   `EXISTS (SELECT 1 FROM guild_blocks mb WHERE mb.guild_id = ${guildExpr} AND mb.user_id = ${userExpr})`;
 
+// A guild without Discord (hasDiscord, worker/discord-guard.js: server id NULL or 'none:<guild>') has no server to be in. The guard is on the matched
+// user_servers column, so the server expression is still used once (a bare `?` stays safe).
 export const inServerSql = (userExpr, serverExpr) =>
-  `EXISTS (SELECT 1 FROM user_servers ms WHERE ms.user_id = ${userExpr} AND ms.server_id = ${serverExpr})`;
+  `EXISTS (SELECT 1 FROM user_servers ms WHERE ms.user_id = ${userExpr} AND ms.server_id = ${serverExpr} AND ${serverIdIsDiscordSql('ms.server_id')})`;
 
 export const rosterLinkSql = (userExpr, guildExpr) =>
   `EXISTS (SELECT 1 FROM players ml WHERE ml.guild_id = ${guildExpr} AND ml.user_id = ${userExpr})`;
@@ -43,7 +47,7 @@ export const memberSql = (userExpr, guildExpr, serverExpr) =>
 // The accounts that can be members of a guild at all (a one-column subquery of user ids): everyone in its Discord server plus everyone
 // linked to one of its people. List screens start from this set and then apply memberSql / blockedSql.
 export const memberCandidatesSql = (guildExpr, serverExpr) =>
-  `SELECT user_id FROM user_servers WHERE server_id = ${serverExpr} UNION SELECT user_id FROM players WHERE guild_id = ${guildExpr} AND user_id IS NOT NULL`;
+  `SELECT user_id FROM user_servers WHERE server_id = ${serverExpr} AND ${serverIdIsDiscordSql('server_id')} UNION SELECT user_id FROM players WHERE guild_id = ${guildExpr} AND user_id IS NOT NULL`;
 
 // A guard that carries its own values, for the statements that repeat an authorization inside the write: { sql, params }, true while the
 // account is a current member (or, for boundReaches, in the server or linked whether or not it is blocked).

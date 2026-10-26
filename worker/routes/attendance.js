@@ -9,16 +9,19 @@ import { watchStaysReviewed } from '../attention.js';
 import { teamMetrics, watchList, WATCH_MIN_PREVIOUS } from '../attendance-metrics.js';
 import { ladderOf, rankReview } from '../rank-ladder.js';
 import {
-  bumpRaidStatement, findUnmatched, isPlainObject, makePolicyResolver, markRaidsStale, policyRowsStatement, presenceKey, recomputeRaid,
+  EVIDENCE_NAME_KEY, bumpRaidStatement, findUnmatched, isPlainObject, makePolicyResolver, markRaidsStale, policyRowsStatement, presenceKey, recomputeRaid,
 } from '../attendance-store.js';
 import { displayCharacter, groupBy, isStale, loadRaidDetail, raidState } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
 import { isOwnPlayer } from '../membership.js';
+import { winnerNameKeySql } from '../name-alias.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { legacyColumnsSql, syncCharacterRanksStatement } from '../person-legacy.js';
+import { characterOfRow, homeTeamId } from '../person-rank.js';
 import { CLASS_IDS, CREATE_STATUSES, cleanCharacterName, DEFAULT_WCL_FLAVOUR, isRealDate, nameKey } from '../roster-data.js';
 import { guildToday, viewerOf } from '../roster-view.js';
 import { listWclReports, requireWclConfigured } from '../sources.js';
+import { isTeamRosterRow } from '../team-roster.js';
 import {
   bad, constraintOf, errorText, findNameOwner, insertCharacter, LIMIT_KINDS, limitError, makeMainStatements, nameTaken, requireTarget, resolveRealm,
 } from './roster.js';
@@ -217,14 +220,18 @@ export async function getReview(ctx) {
     bind(`SELECT player_id, name, class, team_id, is_main FROM characters
            WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM attendance WHERE guild_id = ?1 AND team_id = ?2 AND needs_review = 1)`),
     // The log's names, then the names of a pasted roster that matched nobody (wave 8; pulls 0 tells them apart).
-    bind(`SELECT raid_id, name, name_key, realm, realm_key, class, COUNT(*) AS pulls FROM raid_presence
-           WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)
-           GROUP BY raid_id, name_key, realm_key
-          UNION ALL SELECT raid_id, name, name_key, realm, realm_key, NULL, 0 FROM raid_manual_names
-           WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)`),
+    // match_name_key: the logged name as the characters carry it today (worker/name-alias.js), dated at the raid.
+    bind(`SELECT rp.raid_id, rp.name, rp.name_key, rp.realm, rp.realm_key, rp.class, COUNT(*) AS pulls, ${EVIDENCE_NAME_KEY} AS match_name_key
+            FROM raid_presence rp JOIN raids pr ON pr.id = rp.raid_id
+           WHERE rp.guild_id = ?1 AND rp.raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)
+           GROUP BY rp.raid_id, rp.name_key, rp.realm_key
+          UNION ALL SELECT rp.raid_id, rp.name, rp.name_key, rp.realm, rp.realm_key, NULL, 0, ${EVIDENCE_NAME_KEY} FROM raid_manual_names rp JOIN raids pr ON pr.id = rp.raid_id
+           WHERE rp.guild_id = ?1 AND rp.raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)`),
     bind(`SELECT name_key, realm_key FROM characters WHERE guild_id = ?1 AND name_key IN
-            (SELECT name_key FROM raid_presence WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)
-             UNION SELECT name_key FROM raid_manual_names WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0))`),
+            (SELECT ${EVIDENCE_NAME_KEY} FROM raid_presence rp JOIN raids pr ON pr.id = rp.raid_id
+              WHERE rp.guild_id = ?1 AND rp.raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)
+             UNION SELECT ${EVIDENCE_NAME_KEY} FROM raid_manual_names rp JOIN raids pr ON pr.id = rp.raid_id
+              WHERE rp.guild_id = ?1 AND rp.raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0))`),
     guestIdentityStatement(ctx.db, guild.id),
     bind(`SELECT id, team_id, policy_fp, log_mode, open_flags, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id = ?2`),
@@ -235,7 +242,7 @@ export async function getReview(ctx) {
                  a.winner_realm_key AS realm_key, MAX(a.winner_class) AS class, COUNT(*) AS awards
             FROM loot_awards a JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id
            WHERE a.guild_id = ?1 AND a.team_id = ?2 AND a.winner_name_key IS NOT NULL
-             AND NOT EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.name_key = a.winner_name_key AND c.realm_key = a.winner_realm_key)
+             AND NOT EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.name_key = ${winnerNameKeySql('a')} AND c.realm_key = a.winner_realm_key)
              AND NOT EXISTS (SELECT 1 FROM attendance_guests g WHERE g.guild_id = ?1 AND g.name_key = a.winner_name_key AND g.realm_key = a.winner_realm_key)
            GROUP BY a.raid_id, a.winner_name_key, a.winner_realm_key`),
   ]);
@@ -567,6 +574,7 @@ export async function getTeamAttendance(ctx) {
 // The team page's data: one team's weeks, people and metrics over the window in `params` (?window=). viewer: { userId, discordId } marks the viewer's own row
 // (isMe); null for someone with no account (a guest link, the public page). Callers check attendance.view for the team first.
 // options.includeWatch: add the Watch list (the caller has checked attendance.review on the team); off by default.
+// options.rosterOnly: list only the people on the team's roster, each with rosterRank (the public page, guest links and API keys); off by default.
 export async function teamAttendanceData(db, guild, team, params, nowMs, viewer, options = {}) {
   const bind = (sql) => db.prepare(sql).bind(guild.id, team.id);
   const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult, dismissalResult, reviewedResult] = await db.batch([
@@ -579,7 +587,7 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
            WHERE a.guild_id = ?1 AND a.credit_team_id = ?2 AND a.credit = 1 AND a.outcome = 'fill_in'`),
     bind(`SELECT p.id, ${legacyColumnsSql('p', 'status')}, p.joined_on, ${legacyColumnsSql('p', 'leftOn')}, p.discord_user_id, p.user_id, p.rank, p.rank_on FROM players p WHERE p.guild_id = ?1
              AND (p.id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR p.id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
-    bind(`SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1
+    bind(`SELECT id, player_id, name, class, team_id, is_main, core_rank, left_on FROM characters WHERE guild_id = ?1
              AND (player_id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR player_id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
     db.prepare('SELECT id, name FROM teams WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT via_raid_id FROM attendance WHERE guild_id = ?1 AND team_id = ?2 AND via_raid_id IS NOT NULL)`),
@@ -613,10 +621,8 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
   });
   // The rank ladder (PM wave 7): each person's rank, and for viewers who review attendance the suggestions (promote / review) not dismissed.
   const ladder = ladderOf(policy);
-  const mainTeamOf = (playerId) => {
-    const main = (charactersByPlayer.get(playerId) || []).find((entry) => entry.is_main === 1);
-    return main ? main.team_id : null;
-  };
+  // The home team of a person is their Main's (worker/person-rank.js), the one rule attendance uses for the ladder and the Other-team credit.
+  const mainTeamOf = (playerId) => homeTeamId({ characters: (charactersByPlayer.get(playerId) || []).map(characterOfRow) });
   const review = ladder.length ? rankReview({
     ladder, policy, today, resetDay, nowMs, teamId: team.id, homeTeamOf: mainTeamOf, metrics,
     people: peopleResult.results.map((row) => ({ id: row.id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on, rank: row.rank, rankOn: row.rank_on })),
@@ -633,7 +639,15 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
     borrowed: borrowedResult.results.map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
     policy, today: addDays(metrics.windowStart, -1), resetDay, windowWeeks: weeks,
   }) : null;
-  const people = peopleResult.results.map((row) => {
+  // options.rosterOnly (the public page, guest links and API keys): only the people on this team's roster (worker/team-roster.js), each with the core rank of
+  // their roster character as rosterRank. A Social or Former character, or a person who only has attendance rows here, is left out.
+  const rosterRankOf = new Map();
+  if (options.rosterOnly) {
+    for (const row of [...characterResult.results].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+      if (row.team_id === team.id && isTeamRosterRow(row) && !rosterRankOf.has(row.player_id)) rosterRankOf.set(row.player_id, row.core_rank);
+    }
+  }
+  const everyone = peopleResult.results.map((row) => {
     const character = displayCharacter(charactersByPlayer.get(row.id) || [], team.id);
     const mine = metricsOf(metrics, row.id) || {};
     const ranked = review ? review.get(row.id) : null;
@@ -649,8 +663,10 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
       status: row.status,
       isMe: viewer ? isOwnPlayer(row, viewer) : false,
       ...(ranked ? { rank: { id: ranked.rank.id, name: ranked.rank.name, set: ranked.rank.set }, ...(options.includeWatch && ranked.suggestion ? { rankSuggestion: ranked.suggestion } : {}) } : {}),
+      ...(options.rosterOnly ? { rosterRank: rosterRankOf.get(row.id) || null } : {}),
     };
   }).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const people = options.rosterOnly ? everyone.filter((person) => person.rosterRank !== null) : everyone;
 
   const weekMap = new Map();
   for (const raid of raids) {

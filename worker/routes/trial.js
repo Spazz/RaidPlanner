@@ -6,6 +6,7 @@ import { HttpError, jsonResponse } from '../http.js';
 import { summarizeCells, teamMetrics } from '../attendance-metrics.js';
 import { makePolicyResolver, policyRowsStatement } from '../attendance-store.js';
 import { lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver } from '../loot-store.js';
+import { winnerNameKeySql } from '../name-alias.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { trialFlag } from '../roster-data.js';
 import { guildToday, homeTeamOf, loadPersonData, notesView } from '../roster-view.js';
@@ -55,7 +56,7 @@ export async function getTrialReview(ctx) {
     db.prepare(
       `SELECT a.item_id, a.item_name, a.tag, r.raid_on FROM loot_awards a JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id
         WHERE a.guild_id = ?1 AND a.team_id = ?3 AND a.winner_name_key IS NOT NULL AND (?4 IS NULL OR r.raid_on >= ?4)
-          AND EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.player_id = ?2 AND c.name_key = a.winner_name_key AND c.realm_key = a.winner_realm_key)
+          AND EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.player_id = ?2 AND c.name_key = ${winnerNameKeySql('a')} AND c.realm_key = a.winner_realm_key)
         ORDER BY r.raid_on DESC, a.awarded_at DESC, a.id LIMIT ?5`,
     ).bind(guild.id, player.id, home.id, since, LOOT_READ_CAP),
   ]);
