@@ -75,7 +75,8 @@ check('the stored attendance is left as it is, and the raid now reads as stale t
 });
 
 check('the statement is one UPDATE on raids and nothing else (a whole-or-nothing script)', async () => {
-  const code = SQL.split('\n').filter((line) => !line.trim().startsWith('--') && line.trim()).join(' ');
+  // \r?\n: a Windows checkout (autocrlf) writes the .sql file with CRLF endings.
+  const code = SQL.split(/\r?\n/).filter((line) => !line.trim().startsWith('--') && line.trim()).join(' ');
   assert.match(code, /^UPDATE raids SET policy_fp = '', version = version \+ 1 WHERE policy_fp != '';$/);
 });
 
