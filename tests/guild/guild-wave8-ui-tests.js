@@ -273,6 +273,10 @@ check('join page: the raid, the form with a hidden field, a hint per game versio
   assert(t.includes('2 to 12 letters.') && !t.includes('a first name, then a surname'));
   assert(text(G.pages.join.joinHtml({ state: state({ data: JOIN_DATA({ guild: { name: 'Ravens', gameVersion: 'forever', realmKind: 'ruleset' } }) }) })).includes('a first name, then a surname if it has one'));
   assert(text(G.pages.join.joinHtml({ state: state({ data: JOIN_DATA({ spotsLeft: 1 }) }) })).includes('One spot is left on the link.'));
+  for (const none of [null, undefined]) {
+    const noSpots = text(G.pages.join.joinHtml({ state: state({ data: JOIN_DATA({ spotsLeft: none }) }) }));
+    assert(noSpots.includes('join this raid as a guest.') && !noSpots.includes('spot'), 'no number of spots (an open raid without a guest limit): the line is left out');
+  }
   assert(G.pages.join.joinHtml({ state: state({ done: true }) }).includes('You are signed up'));
   assert(text(G.pages.join.joinHtml({ state: state({ status: 'gone', title: 'This link has stopped working', message: 'It stopped when the raid started.' }) })).includes('This link has stopped working'));
   assert(G.pages.join.joinHtml({ state: null }).includes('Loading'));

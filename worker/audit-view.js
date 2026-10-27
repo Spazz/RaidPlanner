@@ -377,6 +377,7 @@ export function describeRow(row, names = {}) {
       if (after.signupCloseHours !== undefined && after.signupCloseHours !== before.signupCloseHours) {
         parts.push(after.signupCloseHours === null ? 'sign-up deadline back to the team default' : `sign-ups close ${plural(after.signupCloseHours, 'hour', 'hours')} before the start`);
       }
+      if (after.guestLimit !== undefined && after.guestLimit !== before.guestLimit) parts.push(after.guestLimit === null ? 'no guest limit' : `at most ${plural(after.guestLimit, 'guest', 'guests')}`);
       return `Changed the settings of ${onRaid(ent)}${parts.length ? `: ${list(parts)}` : ''}`;
     }
     case 'schedule.update': return `Changed the weekly raid schedule of ${team(ent)}`;

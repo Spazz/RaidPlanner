@@ -8,7 +8,8 @@
 // the account (guest_user_id) with join_link_id NULL. Rules:
 //   - one sign-up per account per raid (unique index, 409 already_signed_up); a name that is on the guild's roster is 409 on_roster, as in the join view, and a
 //     name already signed up there 409 already_joined; a member signs up from the raid page (409 member);
-//   - the 15 guests of a raid (link guests and open guests together) are counted inside the INSERT, 409 raid_full; per account 5 an hour and 10 a day;
+//   - the raid's optional guest limit (raids.guest_limit, set by an officer; none = no cap) counts link guests and open guests together inside the INSERT,
+//     409 raid_full; spotsLeft is the places left under it and null when the raid has no limit; per account 5 an hour and 10 a day;
 //   - a blocked account is refused on all three (403 access_removed, worker/block-check.js); Delete my data removes the account's open sign-ups;
 //   - a filled hidden "website" field stores nothing and says it worked, as on the other public forms.
 import { HttpError, jsonResponse } from '../http.js';
@@ -17,7 +18,7 @@ import { assertNotBlocked, isBlocked } from '../block-check.js';
 import { memberSql } from '../membership.js';
 import { checkRateLimit } from '../ratelimit.js';
 import { nameKey } from '../roster-data.js';
-import { GUESTS_PER_RAID, joinViewOf, readGuestFields } from './join.js';
+import { guestRoom, guestsAtLimit, joinViewOf, limitSpotsOf, readGuestFields } from './join.js';
 
 export const OPEN_SIGNUPS_PER_HOUR = 5;
 export const OPEN_SIGNUPS_PER_DAY = 10;
@@ -30,7 +31,7 @@ const notOpen = () => new HttpError(404, 'not_found', 'That raid is not open to 
 async function loadOpenRaid(ctx) {
   const row = await ctx.db.prepare(
     `SELECT r.id, r.guild_id, r.raid_on, r.starts_at, r.time_known, r.zone, COALESCE(r.title, r.event_title) AS title, t.name AS team_name,
-            g.name AS guild_name, g.game_version, g.realm_kind, g.time_zone,
+            g.name AS guild_name, g.game_version, g.realm_kind, g.time_zone, r.guest_limit,
             (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND s.source = 'raidsmith' AND s.guest = 1) AS guests
        FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id JOIN guilds g ON g.id = r.guild_id
       WHERE r.id = ? AND r.guild_id = ? AND r.guests_open = 1 AND r.starts_at > ? AND t.archived = 0`,
@@ -39,7 +40,6 @@ async function loadOpenRaid(ctx) {
   return row;
 }
 
-const spotsOf = (row) => Math.max(0, GUESTS_PER_RAID - row.guests);
 
 // Is the account a current member of the guild (in its Discord server or linked to one of its people, not blocked)?
 async function isMember(db, guildId, userId) {
@@ -60,7 +60,7 @@ export async function viewOpenRaid(ctx) {
   await assertNotBlocked(ctx.db, row.guild_id, userId);
   const [member, mine] = await Promise.all([isMember(ctx.db, row.guild_id, userId), ownSignup(ctx.db, row.id, userId)]);
   return jsonResponse({
-    ...joinViewOf(row, spotsOf(row)),
+    ...joinViewOf(row, limitSpotsOf(row)),
     // A member signs up from the raid page; the page sends them there. mine: the account's own sign-up here (to withdraw it), else null.
     member,
     mine: mine ? { name: mine.nickname, className: mine.class_name, specName: mine.spec_name, note: mine.note } : null,
@@ -95,29 +95,33 @@ export async function signUpOpenRaid(ctx) {
   if (own.results.length) throw new HttpError(409, 'already_signed_up', 'You have signed up for this raid already. Withdraw first to sign up again.');
   if (onRoster.results.length) throw new HttpError(409, 'on_roster', 'That character is on the guild\'s roster. Sign in with Discord to sign up.', { field: 'name' });
   if (listed.results.some((entry) => nameKey(entry.nickname || '') === key)) throw new HttpError(409, 'already_joined', 'That character is already signed up for this raid.', { field: 'name' });
-  if (row.guests >= GUESTS_PER_RAID) throw new HttpError(409, 'raid_full', 'This raid has no guest places left.');
+  if (guestsAtLimit(row)) throw new HttpError(409, 'raid_full', 'This raid has no guest places left.');
 
-  // Everything the world can change between the reads above and the write is checked again inside the INSERT: the raid still open and upcoming, not full
-  // (link guests count too), the account not blocked meanwhile and under its daily cap.
+  // Everything the world can change between the reads above and the write is checked again inside the INSERT: the raid still open and upcoming, under its guest
+  // limit if it has one (link guests count too; the limit is read from the raid at the write), the account not blocked meanwhile and under its daily cap.
+  const guard = {
+    sql: `EXISTS (SELECT 1 FROM raids WHERE id = ? AND guild_id = ? AND guests_open = 1 AND starts_at > ?)
+          AND NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)
+          AND ${guestRoom.sql}
+          AND (SELECT COUNT(*) FROM raid_signups WHERE guest_user_id = ? AND created_at > ?) < ?`,
+    params: [row.id, row.guild_id, now, row.guild_id, userId, ...guestRoom.params(row.id), userId, now - DAY_MS, OPEN_SIGNUPS_PER_DAY],
+  };
   const results = await db.batch([
     db.prepare(
       `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, standby, class_name, spec_name, position, guild_id, player_id,
                                  character_id, note, updated_by, created_at, updated_at, guest, join_link_id, guest_user_id)
        SELECT ?, 'raidsmith', n.next, NULL, ?, 'signed', 0, ?, ?, n.next, ?, NULL, NULL, ?, NULL, ?, ?, 1, NULL, ?
          FROM (SELECT COALESCE(MAX(signup_id), 0) + 1 AS next FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith') n
-        WHERE EXISTS (SELECT 1 FROM raids WHERE id = ? AND guild_id = ? AND guests_open = 1 AND starts_at > ?)
-          AND NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)
-          AND (SELECT COUNT(*) FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1) < ?
-          AND (SELECT COUNT(*) FROM raid_signups WHERE guest_user_id = ? AND created_at > ?) < ?`,
-    ).bind(row.id, name, className, specKey, row.guild_id, note, now, now, userId, row.id,
-      row.id, row.guild_id, now, row.guild_id, userId, row.id, GUESTS_PER_RAID, userId, now - DAY_MS, OPEN_SIGNUPS_PER_DAY),
+        WHERE ${guard.sql}`,
+    ).bind(row.id, name, className, specKey, row.guild_id, note, now, now, userId, row.id, ...guard.params),
     auditStatement(ctx, { guildId: row.guild_id, actorUserId: userId, action: 'signup.open', entityType: 'raid', entityId: row.id, after: { class: classId } }, CHANGED_ONE),
   ]).catch((error) => {
     if (/UNIQUE constraint failed/i.test(String(error && error.message))) throw new HttpError(409, 'already_signed_up', 'You have signed up for this raid already. Withdraw first to sign up again.');
     throw error;
   });
   if (results[0].meta.changes !== 1) await explainRefusal(ctx, row, userId, now);
-  return jsonResponse({ ok: true, spotsLeft: Math.max(0, spotsOf(row) - 1) }, 201);
+  const spots = limitSpotsOf(row);
+  return jsonResponse({ ok: true, spotsLeft: spots === null ? null : Math.max(0, spots - 1) }, 201);
 }
 
 // The INSERT matched nothing: say why, from what is true now.
@@ -125,8 +129,8 @@ async function explainRefusal(ctx, row, userId, now) {
   const { db } = ctx;
   await loadOpenRaid(ctx); // closed, started or gone since: 404
   if (await isBlocked(db, row.guild_id, userId)) throw new HttpError(403, 'access_removed', 'An officer has removed your access to this guild.');
-  const guests = await db.prepare("SELECT COUNT(*) AS n FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1").bind(row.id).first();
-  if (guests.n >= GUESTS_PER_RAID) throw new HttpError(409, 'raid_full', 'This raid has no guest places left.');
+  const live = await db.prepare("SELECT guest_limit, (SELECT COUNT(*) FROM raid_signups WHERE raid_id = raids.id AND source = 'raidsmith' AND guest = 1) AS guests FROM raids WHERE id = ?").bind(row.id).first();
+  if (live && guestsAtLimit(live)) throw new HttpError(409, 'raid_full', 'This raid has no guest places left.');
   const today = await db.prepare('SELECT COUNT(*) AS n, MIN(created_at) AS first FROM raid_signups WHERE guest_user_id = ? AND created_at > ?').bind(userId, now - DAY_MS).first();
   if (today.n >= OPEN_SIGNUPS_PER_DAY) {
     throw new HttpError(429, 'rate_limited', 'You have signed up for the most open raids a day allows. Try again tomorrow.', { retryAfter: Math.max(1, Math.ceil((today.first + DAY_MS - now) / 1000)) });

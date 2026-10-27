@@ -5,7 +5,7 @@
  *   - "Open to guests" (guestsOpen) is set when a raid is created and by the raid edit (raids.edit) and shows on the Raids list and the raid;
  *   - GET/POST/DELETE /api/open/:gid/raids/:rid: a signed-in non-member sees exactly the join-link view, signs up as a guest (guest = 1, no link, attached to the
  *     account), is refused when the name is on the roster, signs up once per account, withdraws; a raid that is not open answers 404 on all of them; a blocked
- *     account is refused; the caps (15 guests with the link guests, 5 an hour, 10 a day) hold inside the INSERT; Delete my data removes the rows;
+ *     account is refused; the caps (the raid's optional guest limit with the link guests counted too, 5 an hour, 10 a day) hold inside the INSERT; Delete my data removes the rows;
  *   - the public page and guest links mark open upcoming raids (open + raidId) and no other;
  *   - DELETE /raids/:rid/guests removes every guest of a raid;
  *   - GET /join-links and DELETE /join-links/:jid: guild.access lists and turns off every link whoever made it; a link keeps working when its maker is demoted
@@ -51,7 +51,7 @@ check('guestsOpen: set at creation (default off) and by the raid edit for whoeve
   await s.fail('tlb', 'PATCH', `/raids/${s.closed}`, { guestsOpen: false }, 403);
   await s.fail('m1', 'PATCH', `/raids/${s.closed}`, { guestsOpen: false }, 403);
   assert.equal((await s.fail('tla', 'PATCH', `/raids/${s.closed}`, { guestsOpen: 'yes' }, 400)).field, 'guestsOpen');
-  assert.equal((await s.fail('tla', 'PATCH', `/raids/${s.closed}`, {}, 400)).message, 'Send size, signupCloseHours, guestsOpen, or any of them.');
+  assert.equal((await s.fail('tla', 'PATCH', `/raids/${s.closed}`, {}, 400)).message, 'Send size, signupCloseHours, guestsOpen, guestLimit, or any of them.');
   assert.equal((await s.call('gm', 'POST', '/raids', { teamId: s.alpha, raidOn: '2099-03-01', guestsOpen: 'x' })).json.field, 'guestsOpen');
   // It does not disturb the other settings.
   const both = await s.ok('tla', 'PATCH', `/raids/${s.closed}`, { size: 10, guestsOpen: false }, 200);
@@ -71,7 +71,7 @@ check('the view: exactly the join-link view (guild, raid, spots, choices) for a 
   const joinView = (await s.w.call({}, 'POST', '/api/join/view', { token: link.created.token })).json;
   for (const key of ['guild', 'raid', 'rosterOptions', 'noteMax']) assert.deepEqual(res.json[key], joinView[key], key);
   assert.deepEqual(Object.keys(res.json).sort(), [...Object.keys(joinView), 'member', 'mine'].sort());
-  assert.deepEqual([res.json.spotsLeft, res.json.member, res.json.mine], [15, false, null]);
+  assert.deepEqual([res.json.spotsLeft, res.json.member, res.json.mine], [null, false, null], 'no guest limit: no spots to show');
   assert.deepEqual([res.json.guild.name, res.json.raid.teamName, res.json.raid.zone], ['Writers B3', 'Alpha', 'Karazhan']);
   for (const word of ['Rosterguy', 'Memberone', 'Officerone']) assert(!res.text.includes(word), `the view leaks ${word}`);
   // Not open: every kind of "no".
@@ -95,7 +95,7 @@ check('sign up: a guest sign-up attached to the account (guest 1, no link, no pe
   const uid = await s.outsider('out1', 'Outsiderone');
   const res = await signUp(s, 'out1');
   assert.equal(res.status, 201, res.text);
-  assert.deepEqual([res.json.ok, res.json.spotsLeft], [true, 14]);
+  assert.deepEqual([res.json.ok, res.json.spotsLeft], [true, null]);
   const [row] = await guestRows(s);
   assert.deepEqual(
     [row.source, row.guest, row.join_link_id, row.guest_user_id, row.player_id, row.character_id, row.nickname, row.class_name, row.kind, row.note, row.discord_user_id, row.guild_id],
@@ -108,7 +108,7 @@ check('sign up: a guest sign-up attached to the account (guest 1, no link, no pe
   assert.equal((await s.rows('SELECT 1 FROM attendance WHERE raid_id = ?', s.raid)).length, 0);
   // The view now knows it; a second sign-up is refused whatever the name.
   const mine = (await view(s, 'out1')).json;
-  assert.deepEqual([mine.mine.name, mine.mine.className, mine.spotsLeft], ['Wanderer', 'Mage', 14]);
+  assert.deepEqual([mine.mine.name, mine.mine.className, mine.spotsLeft], ['Wanderer', 'Mage', null]);
   const again = await signUp(s, 'out1', guest({ name: 'Otherwander' }));
   assert.deepEqual([again.status, again.json.error], [409, 'already_signed_up']);
   assert.equal((await guestRows(s)).length, 1);
@@ -164,7 +164,7 @@ check('a block made between the check and the write stops the INSERT itself (the
   s.exec(`INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at) VALUES ('${s.gid}', '${uid}', '${s.uids.gm}', 'x', 1)`);
   // The same INSERT the route runs, with the route's guards, matches no row for a blocked account.
   const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'worker/routes/open-raids.js'), 'utf8').split(/\r?\n/).join('\n');
-  for (const guard of ['guests_open = 1 AND starts_at > ?', 'NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)', 'raid_signups WHERE raid_id = ? AND source = \'raidsmith\' AND guest = 1) < ?', 'guest_user_id = ? AND created_at > ?) < ?']) {
+  for (const guard of ['guests_open = 1 AND starts_at > ?', 'NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)', 'AND ${guestRoom.sql}', 'guest_user_id = ? AND created_at > ?) < ?']) {
     assert(source.includes(guard), `the INSERT carries: ${guard}`);
   }
   const now = s.w.clock.now;
@@ -176,8 +176,9 @@ check('a block made between the check and the write stops the INSERT itself (the
   assert.equal(results[0].meta.changes, 0);
 });
 
-check('the caps: 15 guests per raid with the link guests counted too (409 raid_full), 5 an hour and 10 a day per account (429), per account not per raid', async () => {
+check('the caps: a guest limit of 15 with the link guests counted too (409 raid_full), 5 an hour and 10 a day per account (429), per account not per raid', async () => {
   const s = await world();
+  await s.ok('gm', 'PATCH', `/raids/${s.raid}`, { guestLimit: 15 }, 200);
   // 14 guests from a link, one open sign-up fills the raid.
   const link = await s.ok('gm', 'POST', `/raids/${s.raid}/join-links`, { maxUses: 50 });
   for (let i = 0; i < 14; i++) {

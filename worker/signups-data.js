@@ -11,6 +11,9 @@ import {
 export const SELF_KINDS = ['signed', 'late', 'standby', 'tentative', 'absence'];
 export const SIGNUP_KINDS = ['signed', 'late', 'standby', 'tentative', 'bench', 'absence'];
 export const NOTE_MAX = 120;
+// A raid's optional guest limit (raids.guest_limit): the most guest sign-ups, link guests and open-raid guests together, an officer lets it take. NULL = no limit.
+export const MAX_GUEST_LIMIT = 100;
+export const isGuestLimit = (value) => Number.isInteger(value) && value >= 1 && value <= MAX_GUEST_LIMIT;
 
 // The kinds that count as coming to the raid: the people "expected" in the counts, the role and class tallies and the attendance.
 export const EXPECTED_KINDS = ['signed', 'late', 'standby'];

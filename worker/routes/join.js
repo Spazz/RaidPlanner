@@ -15,7 +15,9 @@
 //     POST /api/join       { token, name, class, spec, note?, website }   sign up as a guest
 // The token is 32 random bytes in base64url; D1 keeps its SHA-256. A link works until the raid starts (read from the raid, so it follows the raid if it moves),
 // until an officer turns it off, and for max_uses guest sign-ups. Spam, as on the apply page: the POST needs the cookie the view handed out, allows 3 sign-ups
-// an hour per cookie, 15 guests per raid, and drops a submission whose hidden "website" field is filled without storing it or telling the sender.
+// an hour per cookie, and drops a submission whose hidden "website" field is filled without storing it or telling the sender.
+// Guest limit: a raid takes as many guests as its links and its open sign-up allow unless an officer sets raids.guest_limit (1 to 100, NULL = none). The limit
+// counts link guests and open-raid guests together and is checked inside the INSERT, read from the raid row at the moment of the write.
 import { HttpError, jsonResponse, parseCookies, serializeCookie } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { oneLine } from '../apply-data.js';
@@ -35,13 +37,23 @@ export const JOIN_COOKIE = '__Host-rs_join';
 export const JOIN_COOKIE_TTL = 30 * 24 * 60 * 60;
 export const JOIN_PER_COOKIE = 3;
 export const JOIN_COOKIE_WINDOW_MS = 60 * 60 * 1000;
-export const GUESTS_PER_RAID = 15;
 export const LINKS_PER_RAID = 5;
 export const DEFAULT_MAX_USES = 10;
 export const MAX_USES_LIMIT = 50;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const COOKIE_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
+// The raid's guest limit inside an INSERT ... SELECT ... WHERE: true when the raid has no limit (NULL) or fewer guests than the limit, both read at the moment
+// of the write. Three parameters: the raid id three times (guestRoom.params).
+export const guestRoom = {
+  sql: `((SELECT guest_limit FROM raids WHERE id = ?) IS NULL
+         OR (SELECT COUNT(*) FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1) < (SELECT guest_limit FROM raids WHERE id = ?))`,
+  params: (raidId) => [raidId, raidId, raidId],
+};
+// Is the raid at its guest limit? row: guest_limit, guests. No limit: never.
+export const guestsAtLimit = (row) => row.guest_limit !== null && row.guest_limit !== undefined && row.guests >= row.guest_limit;
+// Guest places left under the raid's limit: a number only when a limit is set, else null.
+export const limitSpotsOf = (row) => (row.guest_limit === null || row.guest_limit === undefined ? null : Math.max(0, row.guest_limit - row.guests));
 const invalidLink = () => new HttpError(404, 'link_invalid', 'This sign-up link is not valid. Ask the officer who sent it for a new one.');
 
 // 'revoked' | 'full' | 'started' | 'active' (a link of an upcoming raid that still has room).
@@ -66,7 +78,8 @@ export function readGuestFields(body, gameVersion) {
 }
 
 // What a guest is shown about the raid before signing up - the same for a link and for an open raid. row: guild_name, game_version, realm_kind, time_zone,
-// raid_on, starts_at, time_known, zone, title, team_name. Nothing of the roster.
+// raid_on, starts_at, time_known, zone, title, team_name. Nothing of the roster. spotsLeft: guest places left, or null when nothing limits them (an open raid
+// without a guest limit).
 // timeZone: the guild's, so the page writes the raid's start the way the guild does ("8:00 PM ET"), not in the visitor's zone.
 export const joinViewOf = (row, spotsLeft) => ({
   guild: { name: row.guild_name, gameVersion: row.game_version, realmKind: row.realm_kind, timeZone: row.time_zone },
@@ -228,7 +241,7 @@ async function findWorkingLink(ctx, token) {
   const row = await ctx.db.prepare(
     `SELECT l.id, l.guild_id, l.raid_id, l.max_uses, l.uses, l.revoked_at, r.team_id, r.raid_on, r.starts_at, r.time_known, r.zone, COALESCE(r.title, r.event_title) AS title,
             t.name AS team_name, g.name AS guild_name, g.game_version, g.realm_kind, g.time_zone,
-            (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND s.source = 'raidsmith' AND s.guest = 1) AS guests
+            r.guest_limit, (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND s.source = 'raidsmith' AND s.guest = 1) AS guests
        FROM raid_join_links l JOIN raids r ON r.id = l.raid_id AND r.guild_id = l.guild_id JOIN teams t ON t.id = r.team_id JOIN guilds g ON g.id = l.guild_id
       WHERE l.token_hash = ?`,
   ).bind(await hashToken(token)).first();
@@ -236,11 +249,16 @@ async function findWorkingLink(ctx, token) {
   const status = statusOf(row, ctx.now());
   if (status === 'revoked') throw new HttpError(410, 'link_revoked', 'An officer turned this sign-up link off. Ask them for a new one.');
   if (status === 'started') throw new HttpError(410, 'link_expired', 'This sign-up link stopped working when the raid started.');
-  if (status === 'full' || row.guests >= GUESTS_PER_RAID) throw new HttpError(410, 'link_full', 'This sign-up link has reached its limit of guests. Ask an officer to make room.');
+  if (status === 'full' || guestsAtLimit(row)) throw new HttpError(410, 'link_full', 'This sign-up link has reached its limit of guests. Ask an officer to make room.');
   return row;
 }
 
-const spotsOf = (row) => Math.max(0, Math.min(row.max_uses - row.uses, GUESTS_PER_RAID - row.guests));
+// Places left on a link: its own uses (always a number) under the raid's guest limit when one is set.
+const spotsOf = (row) => {
+  const ofLink = Math.max(0, row.max_uses - row.uses);
+  const ofRaid = limitSpotsOf(row);
+  return ofRaid === null ? ofLink : Math.min(ofLink, ofRaid);
+};
 
 // POST /api/join/view { token }: what the form needs, and the cookie the POST requires. Nothing of the roster.
 export async function viewJoin(ctx) {
@@ -275,15 +293,19 @@ export async function submitJoin(ctx) {
   if (listed.results.some((entry) => nameKey(entry.nickname || '') === key)) throw new HttpError(409, 'already_joined', 'That character is already signed up for this raid.', { field: 'name' });
 
   // The link must still work at the moment of the write (turned off, used up or started in between: nothing is stored).
-  const guard = { sql: 'EXISTS (SELECT 1 FROM raid_join_links l JOIN raids r ON r.id = l.raid_id WHERE l.id = ? AND l.revoked_at IS NULL AND l.uses < l.max_uses AND r.starts_at > ?)', params: [row.id, now] };
+  const guard = {
+    sql: `EXISTS (SELECT 1 FROM raid_join_links l JOIN raids r ON r.id = l.raid_id WHERE l.id = ? AND l.revoked_at IS NULL AND l.uses < l.max_uses AND r.starts_at > ?)
+          AND ${guestRoom.sql}`,
+    params: [row.id, now, ...guestRoom.params(row.raid_id)],
+  };
   const results = await db.batch([
     db.prepare(
       `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, standby, class_name, spec_name, position, guild_id, player_id,
                                  character_id, note, updated_by, created_at, updated_at, guest, join_link_id)
        SELECT ?, 'raidsmith', n.next, NULL, ?, 'signed', 0, ?, ?, n.next, ?, NULL, NULL, ?, NULL, ?, ?, 1, ?
          FROM (SELECT COALESCE(MAX(signup_id), 0) + 1 AS next FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith') n
-        WHERE ${guard.sql} AND (SELECT COUNT(*) FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1) < ?`,
-    ).bind(row.raid_id, name, className, specKey, row.guild_id, note, now, now, row.id, row.raid_id, ...guard.params, row.raid_id, GUESTS_PER_RAID),
+        WHERE ${guard.sql}`,
+    ).bind(row.raid_id, name, className, specKey, row.guild_id, note, now, now, row.id, row.raid_id, ...guard.params),
     db.prepare('UPDATE raid_join_links SET uses = uses + 1 WHERE id = ? AND changes() = 1').bind(row.id),
     auditStatement(ctx, { guildId: row.guild_id, actorUserId: null, action: 'signup.guest', entityType: 'raid', entityId: row.raid_id, after: { class: classId, linkId: row.id } }, CHANGED_ONE),
   ]);
