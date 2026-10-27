@@ -144,6 +144,37 @@ export async function personKeys(db, guildId, playerId) {
   return { discordId: row.discordId || null, bnetAccountId: null, identityKeys: characters.results };
 }
 
+// The same for MANY accounts / persons at once, as the statements of a db.batch (the Users page's bulk Block and Unblock stay inside one request's statement budget however many
+// names they take). -> [statement, statement]; decode with keysOfAccounts / keysOfPersons. An account's identity keys are capped at MAX_VALUES each by typedValuesOf, so the
+// read is capped at MAX_VALUES rows per account.
+export function accountKeysStatements(db, userIds, guildId) {
+  const list = JSON.stringify(userIds);
+  return [
+    db.prepare('SELECT u.id AS id, u.discord_id AS discordId, (SELECT b.bnet_account_id FROM bnet_links b WHERE b.user_id = u.id) AS bnetAccountId FROM users u WHERE u.id IN (SELECT value FROM json_each(?))').bind(list),
+    db.prepare(
+      `SELECT DISTINCT c.proof_user_id AS id, ${IDENTITY_COLUMNS} FROM characters c
+        WHERE c.proof_user_id IN (SELECT value FROM json_each(?)) AND c.owner_proof = 'bnet' AND ${HAS_IDENTITY} AND c.guild_id = ? LIMIT ?`,
+    ).bind(list, guildId, MAX_VALUES * userIds.length),
+  ];
+}
+export function personKeysStatements(db, playerIds, guildId) {
+  const list = JSON.stringify(playerIds);
+  return [
+    db.prepare('SELECT id, discord_user_id AS discordId FROM players WHERE guild_id = ? AND id IN (SELECT value FROM json_each(?))').bind(guildId, list),
+    db.prepare(`SELECT DISTINCT c.player_id AS id, ${IDENTITY_COLUMNS} FROM characters c WHERE c.guild_id = ? AND c.player_id IN (SELECT value FROM json_each(?)) AND ${HAS_IDENTITY} LIMIT ?`).bind(guildId, list, MAX_VALUES * playerIds.length),
+  ];
+}
+// [heads, identity rows] -> Map<id, keys> (the shape accountKeys / personKeys return)
+export function keysOfMany([heads, identities]) {
+  const out = new Map();
+  for (const row of heads.results) out.set(row.id, { discordId: row.discordId || null, bnetAccountId: row.bnetAccountId || null, identityKeys: [] });
+  for (const row of identities.results) {
+    const keys = out.get(row.id);
+    if (keys && keys.identityKeys.length < MAX_VALUES) keys.identityKeys.push({ namespace: row.namespace, realmId: row.realmId, charId: row.charId });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Writing and deleting
 
@@ -275,6 +306,46 @@ async function findHits(db, env, guildId, keys, log = null) {
     'SELECT DISTINCT block_ref, hmac FROM block_tombstones WHERE guild_id = ? AND hmac IN (SELECT value FROM json_each(?)) LIMIT 50',
   ).bind(guildId, JSON.stringify([...kindOf.keys()])).all();
   return { hits: { rows: found.results, kindOf }, reads: 2 };
+}
+
+// matchedRefsOf for many targets with ONE read of the key versions and ONE read of the hits (an unblock of many names): keysByTarget is a Map<target id, keys>. -> { refs: Map<target id,
+// [block_ref]> (a target's own ref is NOT removed here: the caller drops it), reads }. At most 50 hits per target.
+export async function matchedRefsOfMany(db, env, guildId, keysByTarget) {
+  const wanted = new Map(); // target -> typed values
+  for (const [target, keys] of keysByTarget) {
+    const values = typedValuesOf(keys);
+    if (values.length) wanted.set(target, values);
+  }
+  const refs = new Map([...keysByTarget.keys()].map((target) => [target, []]));
+  if (!wanted.size) return { refs, reads: 0 };
+  const versionResult = await db.prepare('SELECT DISTINCT key_version FROM block_tombstones WHERE guild_id = ?').bind(guildId).all();
+  const versions = versionResult.results.map((row) => row.key_version);
+  if (!versions.length) return { refs, reads: 1 };
+  const ring = readKeyring(env);
+  const targetsOf = new Map(); // hmac -> Set<target>
+  for (const version of versions) {
+    const secret = ring.keys.get(version);
+    if (!secret) continue;
+    const key = await importKey(secret);
+    for (const [target, values] of wanted) {
+      for (const value of values) {
+        const hmac = await hmacWith(key, guildId, value);
+        if (!targetsOf.has(hmac)) targetsOf.set(hmac, new Set());
+        targetsOf.get(hmac).add(target);
+      }
+    }
+  }
+  if (!targetsOf.size) return { refs, reads: 1 };
+  const found = await db.prepare(
+    'SELECT DISTINCT block_ref, hmac FROM block_tombstones WHERE guild_id = ? AND hmac IN (SELECT value FROM json_each(?)) LIMIT ?',
+  ).bind(guildId, JSON.stringify([...targetsOf.keys()]), 50 * wanted.size).all();
+  for (const row of found.results) {
+    for (const target of targetsOf.get(row.hmac) || []) {
+      const list = refs.get(target);
+      if (!list.includes(row.block_ref)) list.push(row.block_ref);
+    }
+  }
+  return { refs, reads: 2 };
 }
 
 // Ranks, lower is more senior: what an audit row's actor_role snapshot means.

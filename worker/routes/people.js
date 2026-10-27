@@ -208,9 +208,15 @@ export function actorHolds(action, guildId, actorId) {
 // True while the actor's best role is strictly senior to the target's (this also rules out the actor
 // themself and the Guild Master). A person with no role counts as Member.
 function actorOutranks(guildId, actorId, targetId) {
-  const rank = `COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id
-                            WHERE ra.guild_id = ? AND ra.user_id = ?), ${ROLE_RANK.member})`;
-  return { sql: `${rank} < ${rank}`, params: [guildId, actorId, guildId, targetId] };
+  return { sql: outranksSql('?', '?', '?'), params: [guildId, actorId, guildId, targetId] };
+}
+
+// The same test over SQL expressions (columns or numbered parameters), for a write that checks many targets in one statement (worker/users-bulk.js). The guild expression is
+// written twice and the actor and the target once each, in the order guild, actor, guild, target.
+export function outranksSql(guildExpr, actorExpr, targetExpr) {
+  const rank = (user) => `COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id
+                            WHERE ra.guild_id = ${guildExpr} AND ra.user_id = ${user}), ${ROLE_RANK.member})`;
+  return `${rank(actorExpr)} < ${rank(targetExpr)}`;
 }
 
 // True while the target still holds a role here (used when a change only removes roles).

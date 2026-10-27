@@ -22,7 +22,7 @@ import { claimGuild, createGuild, getGuild, patchGuild } from './routes/guild.js
 import { startFresh } from './routes/fresh.js';
 import { deleteGuild, dismissOnboarding, exportGuild } from './routes/guild-data.js';
 import { blockPerson, getPeople, keepBlock, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
-import { getUser, getUsers } from './routes/users.js';
+import { addNamesToPerson, blockUsers, getUser, getUsers, unblockUsers } from './routes/users.js';
 import { blockRosterPerson, unblockRosterPerson } from './routes/person-blocks.js';
 import { createRole, deleteRole, getRoles, resetRole, updateRole } from './routes/roles.js';
 import { getDiscord, putMaps, syncEveryone } from './routes/discord.js';
@@ -138,6 +138,10 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/people/:uid/block/keep', auth: true, handler: keepBlock },
   { method: 'GET', path: '/api/guild/:gid/users', auth: true, handler: getUsers },
   { method: 'GET', path: '/api/guild/:gid/users/:ukey', auth: true, handler: getUser },
+  // Lane B7b part 2: Manage users - bulk Block and Unblock of the names a page selected, and Add to a person (a name seen in a log or loot becomes a character of a person).
+  { method: 'POST', path: '/api/guild/:gid/users/block', auth: true, handler: blockUsers },
+  { method: 'POST', path: '/api/guild/:gid/users/unblock', auth: true, handler: unblockUsers },
+  { method: 'POST', path: '/api/guild/:gid/users/add-to-person', auth: true, handler: addNamesToPerson },
   // B7a: blocking a roster person who has no account (a marker + tombstones; the same permission as the account block).
   { method: 'POST', path: '/api/guild/:gid/roster/:pid/block', auth: true, handler: blockRosterPerson },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/block', auth: true, handler: unblockRosterPerson },

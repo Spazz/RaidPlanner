@@ -165,11 +165,13 @@ const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, be
 //                   (effective_roles: stored + derived from the in-game rank; guild_master, officer, team_lead), else 'member'; NULL for a row with no actor or no guild
 //                   (an account's own sign-in)
 // Both survive the account's deletion (the foreign key sets actor_user_id NULL). Placeholders in order: actor | actor, guild | guild, actor, actor | guild, actor.
-const SNAPSHOT_SQL = `substr(?, 3, 8),
-  CASE WHEN ? IS NULL OR ? IS NULL THEN NULL
-       WHEN ${ownerSql('?', '?')} THEN 'owner'
+// snapshotSqlOf takes the actor and the guild as SQL expressions (a bare `?` for each use, or a numbered parameter).
+const snapshotSqlOf = (actor, guild) => `substr(${actor}, 3, 8),
+  CASE WHEN ${actor} IS NULL OR ${guild} IS NULL THEN NULL
+       WHEN ${ownerSql(guild, actor)} THEN 'owner'
        ELSE COALESCE((SELECT ra.role_id FROM effective_roles ra JOIN roles r ON r.id = ra.role_id
-                       WHERE ra.guild_id = ? AND ra.user_id = ? AND ra.role_id IN ('guild_master', 'officer', 'team_lead') ORDER BY r.rank LIMIT 1), 'member') END`;
+                       WHERE ra.guild_id = ${guild} AND ra.user_id = ${actor} AND ra.role_id IN ('guild_master', 'officer', 'team_lead') ORDER BY r.rank LIMIT 1), 'member') END`;
+const SNAPSHOT_SQL = snapshotSqlOf('?', '?');
 const snapshotParams = (actorUserId, guildId) => [actorUserId, actorUserId, guildId, guildId, actorUserId, actorUserId, guildId, actorUserId];
 // A row that records WHAT the actor became rather than what they were (the GM claim: the claimant takes the seat in the same batch, and a claimant whose character the batch has
 // not placed yet would read as suspended): the role is given, the short id still comes from the actor. Placeholders: actor, role.
@@ -199,6 +201,26 @@ export function auditStatement({ db, randomBytes, now }, entry, guard = null) {
   const snapshotSql = forced ? FORCED_SNAPSHOT_SQL : SNAPSHOT_SQL;
   return db.prepare(`INSERT INTO audit_log (${COLUMNS}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ${snapshotSql}${where}`)
     .bind(...values, ...(forced ? [actorUserId, entry.actorRole] : snapshotParams(actorUserId, guildId)), ...(guard ? guard.params : []));
+}
+
+// One statement for a db.batch: one audit row for EACH entity a SELECT names (a bulk Block writes the same row for every account it blocked). buildSource(add) -> the SQL of a
+// SELECT with ONE column named entity_id; `add(value)` registers a bound value and returns its numbered placeholder (?1, ?2, ...): the statement numbers all of its own, so the
+// source may use them freely. The row is written only for the entities the SELECT returns, so the SELECT carries the guard (the block rows THIS call wrote). entry as for
+// auditStatement without entityId and with one before/after for all rows.
+export function auditManyStatement({ db, now }, entry, buildSource) {
+  if (entry.actorRole !== undefined) throw new Error('auditManyStatement: the actor snapshot comes from the database');
+  const values = [];
+  const add = (value) => { values.push(value); return `?${values.length}`; };
+  const guild = add(entry.guildId ?? null);
+  const actor = add(entry.actorUserId ?? null);
+  const source = buildSource(add);
+  const json = (value) => (value === undefined || value === null ? null : JSON.stringify(value));
+  // (Built apart from prepare(): the interpolations are fixed column lists, numbered placeholders and the source SELECT, never request data.)
+  const sql = `INSERT INTO audit_log (${COLUMNS})
+     SELECT 'al_' || lower(hex(randomblob(16))), ${guild}, ${actor}, ${add(entry.action)}, ${add(entry.entityType)}, e.entity_id, ${add(json(entry.before))}, ${add(json(entry.after))}, ${add(now())},
+            ${snapshotSqlOf(actor, guild)}
+       FROM (${source}) e`;
+  return db.prepare(sql).bind(...values);
 }
 
 // One statement for a db.batch: the same audit row in EACH guild the actor is a member of right now (identity changes: plan "Identity-change protection" (c)). Put it BEFORE

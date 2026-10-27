@@ -8,7 +8,8 @@
  *                     persons, Former against Social, a person with an account listed once, the guild-scoped rule (an account that never touched the guild is not listed)
  *   tags, filters ... every where-from tag of a non-member, q (prefix over the name and the Main), rank, from
  *   sort, paging .... every column both ways, ties, a page boundary between the core (accounts, persons) and the names (no duplicate, no gap), counts
- *   last seen ....... attendance, sign-up (held raids only), loot, application (guild time zone), the sign-in term OFF, and the switch that turns it on
+ *   last seen ....... attendance, sign-up (held raids only), loot, application (guild time zone) and the account's sign-in (the newest wins; the constant is TRUE since 2026-10-26),
+ *                     the list and the page of a user agree on every row
  *   page of a user .. an account, a person, a name; 404 for an unknown key, another guild's key, a person who has an account; blockedBy only for guild.access
  *   keep ............ happy path (blocked_by, own tombstones, off the teams, sign-ups withdrawn, audit, the review item drops), not senior, nothing pending, a lost race
  *   redaction ....... a Discord id, a Battle.net account id, a BattleTag, a Blizzard id, a token hash or a tombstone hash planted in the fixture is in no reply, for any principal
@@ -43,6 +44,11 @@ const bigWorld = async (options) => unlimited(await baseBigWorld(options));
 
 const MIGRATIONS = path.join(__dirname, '..', '..', 'migrations');
 const KEY = 'test-tombstone-key-0123456789abcdef';
+// The sign-in is a Last seen term (LAST_SEEN_INCLUDES_SIGN_IN), and the stand-in's clock sits at 2027-01-15, after every raid of the fixtures: an account that has just signed in would
+// date itself 2027-01-15. The fixtures of the raid-level checks start every account at a sign-in BEFORE their first raid; QUIET_DAY is that date in the guild's zone.
+const QUIET_SIGN_IN = Date.parse('2026-11-15T17:00:00Z');
+const QUIET_DAY = '2026-11-15';
+const quietSignIns = (s) => exec(s, 'UPDATE users SET last_seen_at = ?', QUIET_SIGN_IN);
 const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
 
@@ -83,6 +89,7 @@ async function legacy() {
   addApplication(s, { name: 'Hopeful', at: Date.parse('2026-12-03T12:00:00Z') });
   addManual(s, s.r2, 'Pasted');
   markGuest(s, 'Marked');
+  quietSignIns(s);
   return s;
 }
 
@@ -488,12 +495,14 @@ check('sort: ties are stable - members with no permission, no Main or the same d
 // ---------------------------------------------------------------------------
 // Last seen
 
-check('last seen: attendance, a sign-up on a raid that has been held, loot and an application each date a row; a future sign-up and the sign-in do not; the date is the guild\'s', async () => {
+check('last seen: attendance, a sign-up on a raid that has been held, loot, an application and the account\'s sign-in each date a row, the newest wins; a sign-up on a raid to come does not; the date is the guild\'s', async () => {
   const s = await legacy();
   const { LAST_SEEN_INCLUDES_SIGN_IN } = await load('worker/users-list.js');
-  assert.equal(LAST_SEEN_INCLUDES_SIGN_IN, false, 'plan v9: never the account-wide sign-in (the user\'s H-Q36 says including it: an open decision)');
+  assert.equal(LAST_SEEN_INCLUDES_SIGN_IN, true, 'user decision 2026-10-26: the newest of the sign-in and the raid-level facts');
+  s.dateless = await s.person({ name: 'Dateless' });
   const get = async (name, query = 'segment=members') => row(await list(s, 'gm', `${query}&limit=100`), name);
-  assert.equal((await get('Memberone')).lastSeen, null, 'nothing yet: a dash');
+  assert.equal((await get('Memberone')).lastSeen, QUIET_DAY, 'no raid fact yet: the sign-in dates the account');
+  assert.equal((await get('Dateless')).lastSeen, null, 'a person without an account has no sign-in: a dash');
   // Attendance: only when the person attended.
   attend(s, s.r1, s.alpha, s.mone.pid);
   assert.equal((await get('Memberone')).lastSeen, '2026-12-01');
@@ -507,11 +516,17 @@ check('last seen: attendance, a sign-up on a raid that has been held, loot and a
   const later = addRaid(s, '2027-01-10');
   addLoot(s, later, 'Mone');
   assert.equal((await get('Memberone')).lastSeen, '2027-01-10');
-  // The sign-in is NOT a term: touching last_seen_at changes nothing.
-  exec(s, 'UPDATE users SET last_seen_at = ? WHERE id = ?', Date.parse('2027-01-14T12:00:00Z'), s.uids.m1);
+  // The sign-in IS a term: an older one changes nothing, a newer one leads (the account's sign-in is account-wide, it is not a fact about this guild).
+  exec(s, 'UPDATE users SET last_seen_at = ? WHERE id = ?', Date.parse('2027-01-05T12:00:00Z'), s.uids.m1);
   assert.equal((await get('Memberone')).lastSeen, '2027-01-10');
-  // An account-less person: attendance, sign-up and loot, never an account's facts.
+  exec(s, 'UPDATE users SET last_seen_at = ? WHERE id = ?', Date.parse('2027-01-14T12:00:00Z'), s.uids.m1);
+  assert.equal((await get('Memberone')).lastSeen, '2027-01-14');
+  // ... in the sort as well (Memberone leads Ghost, whose newest fact is 2026-12-08), and the page of the user says the same.
   attend(s, s.r2, s.alpha, s.ghost.pid);
+  const byDate = (await list(s, 'gm', 'segment=members&sort=lastSeen&dir=desc&limit=100')).rows.map((entry) => entry.name);
+  assert(byDate.indexOf('Memberone') < byDate.indexOf('Ghost'), 'the sign-in moves Memberone ahead in the sort');
+  assert.equal((await s.ok('gm', 'GET', `/users/${s.uids.m1}`)).lastSeen, '2027-01-14');
+  // An account-less person: attendance, sign-up and loot, never an account's facts or a sign-in.
   assert.equal((await get('Ghost')).lastSeen, '2026-12-08');
   // An application is dated in the guild's zone (New York): 02:00 UTC is still the evening before.
   addApplication(s, { name: 'Lateapp', userId: s.uids.out3, at: Date.parse('2027-01-15T02:00:00Z') });
@@ -523,13 +538,13 @@ check('last seen: attendance, a sign-up on a raid that has been held, loot and a
   // Sorting by last seen puts rows without a date last in both directions.
   for (const dir of ['asc', 'desc']) {
     const rows = (await list(s, 'gm', `segment=members&sort=lastSeen&dir=${dir}&limit=100`)).rows;
+    assert.equal(rows[rows.length - 1].name, 'Dateless', dir);
     assert.equal(rows[rows.length - 1].lastSeen, null, dir);
     assert.notEqual(rows[0].lastSeen, null, dir);
   }
-  assert.deepEqual((await list(s, 'gm', 'segment=members&sort=lastSeen&dir=desc')).rows.slice(0, 2).map((entry) => entry.name), ['Memberone', 'Ghost']);
 });
 
-check('last seen: the sign-in is ONE isolated term, off by constant and switchable - with it on, the newest of the sign-in and the raid-level facts wins (date only, guild zone)', async () => {
+check('last seen: the sign-in is ONE isolated term - on by the constant, switchable off per call; with it on the newest of the sign-in and the raid-level facts wins (date only, guild zone)', async () => {
   const s = await legacy();
   const { listUsers, parseUsersQuery } = await load('worker/users-list.js');
   const { loadGuildContext } = await load('worker/permissions.js');
@@ -538,16 +553,46 @@ check('last seen: the sign-in is ONE isolated term, off by constant and switchab
   const guildContext = await loadGuildContext(s.w.db, s.uids.gm, s.gid);
   const ctx = { db: s.w.db, now: () => s.w.clock.now };
   const query = parseUsersQuery(new URLSearchParams('segment=members&sort=lastSeen&limit=100'));
-  const off = await listUsers(ctx, guildContext, query);
-  const on = await listUsers(ctx, guildContext, query, { signIn: true });
+  const on = await listUsers(ctx, guildContext, query);
+  const off = await listUsers(ctx, guildContext, query, { signIn: false });
   const dateOf = (res, name) => res.rows.find((entry) => entry.name === name).lastSeen;
-  assert.equal(dateOf(off, 'Memberone'), '2026-12-01');
   assert.equal(dateOf(on, 'Memberone'), '2027-01-13', 'the sign-in, in the guild\'s zone');
-  assert.equal(dateOf(on, 'Membertwo'), dateOf(off, 'Membertwo') === null ? dateOf(on, 'Membertwo') : null);
-  // The page of a user follows the same switch.
+  assert.equal(dateOf(off, 'Memberone'), '2026-12-01', 'the raid-level facts alone');
+  assert.equal(dateOf(on, 'Membertwo'), QUIET_DAY, 'no raid fact: the sign-in dates the account');
+  assert.equal(dateOf(off, 'Membertwo'), null);
+  // The page of a user follows the same switch, and by default says what the list says.
   const { loadUserDetail } = await load('worker/users-detail.js');
-  assert.equal((await loadUserDetail(ctx, guildContext, s.uids.m1)).lastSeen, '2026-12-01');
-  assert.equal((await loadUserDetail(ctx, guildContext, s.uids.m1, { signIn: true })).lastSeen, '2027-01-13');
+  assert.equal((await loadUserDetail(ctx, guildContext, s.uids.m1)).lastSeen, '2027-01-13');
+  assert.equal((await loadUserDetail(ctx, guildContext, s.uids.m1, { signIn: false })).lastSeen, '2026-12-01');
+  assert.equal((await loadUserDetail(ctx, guildContext, s.uids.m2, { signIn: false })).lastSeen, null);
+});
+
+check('last seen: the list and the page of a user agree on every row of every segment - accounts (with and without raid facts), persons and names, a sign-up on a raid to come included', async () => {
+  const s = await legacy();
+  attend(s, s.r1, s.alpha, s.mone.pid);
+  exec(s, 'UPDATE users SET last_seen_at = ? WHERE id = ?', Date.parse('2027-01-14T12:00:00Z'), s.uids.m1);        // a sign-in newer than the facts
+  exec(s, 'UPDATE users SET last_seen_at = ? WHERE id = ?', Date.parse('2026-12-20T12:00:00Z'), s.uids.out1);      // a sign-in newer than the application of 2026-12-05
+  attend(s, s.r2, s.alpha, s.ghost.pid);
+  // A name with a sign-up on a held raid and one on a raid to come: both dates it by the held one. A name with only a sign-up to come has no date in either.
+  const future = addRaid(s, '2027-03-01');
+  addSignup(s, s.r2, { guest: 1, nickname: 'Mixedguest' });
+  addSignup(s, future, { guest: 1, nickname: 'Mixedguest' });
+  addSignup(s, future, { guest: 1, nickname: 'Futureonly' });
+  for (let i = 0; i < 12; i++) addSignup(s, addRaid(s, `2027-04-${String(i + 1).padStart(2, '0')}`), { guest: 1, nickname: 'Mixedguest' }); // more sign-ups to come than a page of sightings holds
+  let seen = 0;
+  for (const segment of ['members', 'former', 'nonmembers', 'blocked']) {
+    for (const entry of await all(s, 'gm', `segment=${segment}`)) {
+      const page = await s.ok('gm', 'GET', `/users/${entry.key}`);
+      assert.equal(page.lastSeen, entry.lastSeen, `${segment} ${entry.kind} ${entry.name}`);
+      seen++;
+    }
+  }
+  assert(seen >= 20, `walked ${seen} rows`);
+  const nonmembers = await all(s, 'gm', 'segment=nonmembers');
+  assert.equal(row({ rows: nonmembers }, 'Mixedguest').lastSeen, '2026-12-08', 'the held sign-up, not one of the raids to come');
+  assert.equal(row({ rows: nonmembers }, 'Futureonly').lastSeen, null);
+  assert.equal(row({ rows: await all(s, 'gm', 'segment=members') }, 'Memberone').lastSeen, '2027-01-14');
+  assert.equal(row({ rows: nonmembers }, 'Outsiderone').lastSeen, '2026-12-20');
 });
 
 // ---------------------------------------------------------------------------
@@ -1204,8 +1249,8 @@ check('G4: the Users list and the user page leave out what the viewer\'s role ma
 
   // No attendance.view: no attendance date, no officer-marked guest.
   dropFromOfficer(s, ['loot.view', 'attendance.view']);
-  assert.equal(await lastSeenOf('off', 'Memberone'), null, 'no raid-level fact the viewer may see is left');
-  assert.equal((await mone('off')).lastSeen, null);
+  assert.equal(await lastSeenOf('off', 'Memberone'), QUIET_DAY, 'no raid-level fact the viewer may see is left: only the sign-in dates the account');
+  assert.equal((await mone('off')).lastSeen, QUIET_DAY);
   assert(!names(await nonmembers('off')).includes('Marked'));
   assert.equal(await lastSeenOf('gm', 'Memberone'), '2026-12-08');
 
@@ -1215,7 +1260,7 @@ check('G4: the Users list and the user page leave out what the viewer\'s role ma
   for (const name of ['Logguy', 'Helperguy', 'Linkguest', 'Pasted']) assert(!names(noRaids).includes(name), `${name} is a raid fact`);
   assert(names(noRaids).includes('Hopeful'), 'an application is no raid fact');
   const out2 = row(noRaids, 'Outsidertwo');
-  assert(!out2 || (out2.tags.length === 0 && out2.lastSeen === null), 'the account with only a guest sign-up carries neither tag nor date');
+  assert(!out2 || (out2.tags.length === 0 && out2.lastSeen === QUIET_DAY), 'the account with only a guest sign-up carries no tag and no raid date (its sign-in dates it)');
   if (out2) assert.deepEqual((await s.ok('off', 'GET', `/users/${out2.key}`)).sightings, []);
   assert(!JSON.stringify(noRaids).includes('Raid 2026-12'), 'no raid title anywhere');
   assert(row(await nonmembers('gm'), 'Outsidertwo').tags.includes('guest_signup'), 'the Guild Master still sees the tag');
