@@ -16,8 +16,8 @@
 // The token is 32 random bytes in base64url; D1 keeps its SHA-256. A link works until the raid starts (read from the raid, so it follows the raid if it moves),
 // until an officer turns it off, and for max_uses guest sign-ups. Spam, as on the apply page: the POST needs the cookie the view handed out, allows 3 sign-ups
 // an hour per cookie, and drops a submission whose hidden "website" field is filled without storing it or telling the sender.
-// Guest limit: a raid takes as many guests as its links and its open sign-up allow unless an officer sets raids.guest_limit (1 to 100, NULL = none). The limit
-// counts link guests and open-raid guests together and is checked inside the INSERT, read from the raid row at the moment of the write.
+// Guest limit: a raid takes as many guests as its links and its open sign-up allow, up to GUEST_CEILING (100), unless an officer sets raids.guest_limit (1 to 100,
+// NULL = the ceiling). The limit counts link guests and open-raid guests together and is checked inside the INSERT, read from the raid row at the moment of the write.
 import { HttpError, jsonResponse, parseCookies, serializeCookie } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { oneLine } from '../apply-data.js';
@@ -44,15 +44,17 @@ export const MAX_USES_LIMIT = 50;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const COOKIE_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
-// The raid's guest limit inside an INSERT ... SELECT ... WHERE: true when the raid has no limit (NULL) or fewer guests than the limit, both read at the moment
-// of the write. Three parameters: the raid id three times (guestRoom.params).
+// A raid with no guest limit (raids.guest_limit NULL) still takes at most this many guests, link guests and open-raid guests together: the same number as the column's CHECK
+// maximum (migration 0041). A guard, not a shown limit: spotsLeft stays null while no limit is set (review R3-2).
+export const GUEST_CEILING = 100;
+// The raid's guest limit (else GUEST_CEILING) inside an INSERT ... SELECT ... WHERE: true when the raid has fewer guests than that, both read at the moment of the write.
+// Two parameters: the raid id twice (guestRoom.params).
 export const guestRoom = {
-  sql: `((SELECT guest_limit FROM raids WHERE id = ?) IS NULL
-         OR (SELECT COUNT(*) FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1) < (SELECT guest_limit FROM raids WHERE id = ?))`,
-  params: (raidId) => [raidId, raidId, raidId],
+  sql: `((SELECT COUNT(*) FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1) < COALESCE((SELECT guest_limit FROM raids WHERE id = ?), ${GUEST_CEILING}))`,
+  params: (raidId) => [raidId, raidId],
 };
-// Is the raid at its guest limit? row: guest_limit, guests. No limit: never.
-export const guestsAtLimit = (row) => row.guest_limit !== null && row.guest_limit !== undefined && row.guests >= row.guest_limit;
+// Is the raid at its guest limit, or at the ceiling when it has none? row: guest_limit, guests.
+export const guestsAtLimit = (row) => row.guests >= (row.guest_limit === null || row.guest_limit === undefined ? GUEST_CEILING : row.guest_limit);
 // Guest places left under the raid's limit: a number only when a limit is set, else null.
 export const limitSpotsOf = (row) => (row.guest_limit === null || row.guest_limit === undefined ? null : Math.max(0, row.guest_limit - row.guests));
 const invalidLink = () => new HttpError(404, 'link_invalid', 'This sign-up link is not valid. Ask the officer who sent it for a new one.');

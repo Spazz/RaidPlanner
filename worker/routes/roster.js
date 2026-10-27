@@ -8,7 +8,7 @@ import { allows, isGranted, loadGuildContext, requireAction } from '../permissio
 import { personFor, viewerFor } from '../redact.js';
 import { RANK_COLUMNS_SQL, characterRankColumns, rankBinds, setCharacterRanksStatement, trialDatesFollowMainStatements } from '../person-legacy.js';
 import {
-  CLASS_IDS, CREATE_STATUSES, LEFT_REASONS, allowsSurname, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
+  CLASS_IDS, CREATE_STATUSES, LEFT_REASONS, allowsSurname, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, mixesAlphabets, nameKey, realmKey,
 } from '../roster-data.js';
 import { LIMITS } from '../limits.js';
 import { findRealm } from '../realms.js';
@@ -80,6 +80,8 @@ export async function requireTarget(db, guildId, teamId, field = 'teamId') {
 export function readName(raw, field = 'name', extra = {}, gameVersion = undefined) {
   const name = cleanCharacterName(raw, gameVersion);
   if (!name) throw bad(allowsSurname(gameVersion) ? 'A character name is 2 to 12 letters, or a first name and a surname of 2 to 12 letters each.' : 'A character name is 2 to 12 letters.', field, extra);
+  // A name that mixes alphabets looks like another name (a Cyrillic а among Latin letters), so it could pass for a member's. Typed names only: stored names are not re-checked.
+  if (mixesAlphabets(name)) throw bad('Use letters from one alphabet.', field, extra);
   return name;
 }
 

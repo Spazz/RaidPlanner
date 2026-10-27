@@ -159,6 +159,25 @@ export function cleanCharacterName(raw, gameVersion) {
   return cleaned.every(Boolean) ? cleaned.join(' ') : null;
 }
 
+// The alphabets a name's letters are sorted into. Latin covers accented Latin; the East Asian scripts are one group, since Japanese and Korean writing mixes them. A letter of a
+// script not listed here counts as one more alphabet of its own, so it still tells apart from Latin.
+const ALPHABETS = [
+  /\p{Script=Latin}/u, /\p{Script=Cyrillic}/u, /\p{Script=Greek}/u, /\p{Script=Armenian}/u, /\p{Script=Georgian}/u, /\p{Script=Hebrew}/u, /\p{Script=Arabic}/u,
+  /\p{Script=Devanagari}/u, /\p{Script=Thai}/u, /\p{Script=Ethiopic}/u, /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Bopomofo}\p{Script=Hangul}]/u,
+];
+
+// True when the letters of a name come from more than one alphabet ("Mаinone" with a Cyrillic а): such a name looks like another name and is refused for a typed name
+// (routes/roster.js readName). Combining marks follow their letter and say nothing.
+export function mixesAlphabets(name) {
+  const seen = new Set();
+  for (const char of String(name)) {
+    if (!/^\p{L}$/u.test(char)) continue;
+    seen.add(ALPHABETS.findIndex((alphabet) => alphabet.test(char)));
+    if (seen.size > 1) return true;
+  }
+  return false;
+}
+
 export function nameKey(name) {
   return String(name).normalize('NFC').toLowerCase();
 }

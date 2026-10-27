@@ -7,7 +7,8 @@
 //                   not on the in-game roster, and NAMES (kind 'name'): sightings that resolve to no character (guest sign-ups, Raid-Helper sign-ups, applications, raid log, loot)
 //   blocked ....... guild_blocks (accounts) and person_blocks (account-less persons). A block row on the unsuspended Owner blocks nobody (ignored, as everywhere) but is KEPT, so it is
 //                   listed here too with flags.ignoredWhileOwner (the Owner stays a member as well): somebody must be able to see it and restore it
-// A person who HAS an account (players.user_id, or the Discord id they carry) is listed once, as the account. Precedence: blocked > member (the rank source's rule, which already lets the
+// A person who HAS an account (players.user_id, or the Discord id they carry when that account is on the list for another reason: a Discord ID recorded on a person ties nobody to
+// the guild by itself) is listed once, as the account. Precedence: blocked > member (the rank source's rule, which already lets the
 // live Owner of an 'ingame' guild in; the Owner is never Former) > former > non-member.
 //
 // A row is an `account` (key = users.id), a `person` (key = players.id) or a `name` (key = 'n_' + the hex of the lower-cased name: a typed or logged name). A key never carries a
@@ -120,13 +121,13 @@ export function newScope(guild, now, { signIn, viewer }) {
 export const flag = (allowed) => (allowed ? '1 = 1' : '1 = 0');
 
 // The accounts that can be in the list: a SUPERSET of the accounts of this guild (the segment tests decide), every lookup index-backed. Two FROM-subqueries of at most five
-// terms each (D1's compound limit), their union at the top.
+// terms each (D1's compound limit), their union at the top. A Discord ID recorded on a person (players.discord_user_id) is bookkeeping and ties nobody: an officer can record the
+// ID of any account on Raidsmith (review R3-1), so that join is not a term here. The account is listed when something else ties it (the terms below); the person then shows on its own.
 function candidateAccountsSql(sc) {
   const g = sc.g();
   return `SELECT user_id FROM (
       SELECT us.user_id AS user_id FROM user_servers us WHERE us.server_id = ${sc.s()} AND ${serverIdIsDiscordSql('us.server_id')}
       UNION SELECT lp.user_id FROM players lp WHERE lp.guild_id = ${g} AND lp.user_id IS NOT NULL
-      UNION SELECT du.id FROM players dp JOIN users du ON du.discord_id = dp.discord_user_id WHERE dp.guild_id = ${g} AND dp.discord_user_id IS NOT NULL
       UNION SELECT er.user_id FROM effective_roles_stored er WHERE er.guild_id = ${g}
       UNION SELECT oc.user_id FROM (${ownerCandidatesSql(g)}) oc)
     UNION SELECT user_id FROM (
@@ -148,10 +149,14 @@ export const accountsCte = (sc, only = null) => `a AS MATERIALIZED (
          ${personOfAccountSql(sc.g(), 'u.id', 'u.discord_id')} AS pid
     FROM users u WHERE u.id IN (${candidateAccountsSql(sc)})${only ? onlyIn(sc, 'u.id', only) : ''})`;
 
-// CTE `solo`: the account-less persons (no players.user_id and no account holding the Discord id they carry). `only`: one person's id, or a list of ids.
+// An account of the list (a candidate: tied to the guild by something other than a person's recorded Discord ID) holds this Discord id: the person that carries the id is listed as
+// that account. Any other account that holds the id is not on this guild's list, so the person stays a person of its own.
+const listedAccountHoldsSql = (sc, discordExpr) => `EXISTS (SELECT 1 FROM users du WHERE du.discord_id = ${discordExpr} AND du.id IN (${candidateAccountsSql(sc)}))`;
+
+// CTE `solo`: the account-less persons (no players.user_id and no listed account holding the Discord id they carry). `only`: one person's id, or a list of ids.
 export const personsCte = (sc, only = null) => `solo AS MATERIALIZED (
   SELECT p.id AS id, p.discord_nickname AS nick FROM players p
-   WHERE p.guild_id = ${sc.g()} AND p.user_id IS NULL AND NOT EXISTS (SELECT 1 FROM users du WHERE du.discord_id = p.discord_user_id)${only ? onlyIn(sc, 'p.id', only) : ''})`;
+   WHERE p.guild_id = ${sc.g()} AND p.user_id IS NULL AND NOT ${listedAccountHoldsSql(sc, 'p.discord_user_id')}${only ? onlyIn(sc, 'p.id', only) : ''})`;
 
 // The person has characters and every one of them is Former (worker/person-rank.js leftOn): read through characters_player only.
 const formerSql = (pid) => `(EXISTS (SELECT 1 FROM characters fv WHERE fv.player_id = ${pid} AND ${visibleCharacterSql('fv')})

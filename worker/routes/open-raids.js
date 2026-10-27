@@ -9,8 +9,8 @@
 // the account (guest_user_id) with join_link_id NULL. Rules:
 //   - one sign-up per account per raid (unique index, 409 already_signed_up); a name that is on the guild's roster is 409 on_roster, as in the join view, and a
 //     name already signed up there 409 already_joined; a member signs up from the raid page (409 member);
-//   - the raid's optional guest limit (raids.guest_limit, set by an officer; none = no cap) counts link guests and open guests together inside the INSERT,
-//     409 raid_full; spotsLeft is the places left under it and null when the raid has no limit; per account 5 an hour and 10 a day;
+//   - the raid's optional guest limit (raids.guest_limit, set by an officer; none = the ceiling of 100, join.js GUEST_CEILING) counts link guests and open guests
+//     together inside the INSERT, 409 raid_full; spotsLeft is the places left under the limit and null when the raid has no limit; per account 5 an hour and 10 a day;
 //   - a blocked account is refused on all three (403 access_removed, worker/block-check.js); Delete my data removes the account's open sign-ups;
 //   - a filled hidden "website" field stores nothing and says it worked, as on the other public forms;
 //   - HOW the guest names the character depends on the guild's rank source (user decision 2026-10-26, B3 minimal UI): in an IN-GAME guild (rank_source 'ingame') the guest
