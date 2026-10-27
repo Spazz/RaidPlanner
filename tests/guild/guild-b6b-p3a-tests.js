@@ -925,7 +925,7 @@ check('dry run, permissions: who gains and loses a role at the flip - derived Of
   const res = await dryRun(s);
   assert.equal(res.status, 200, res.text);
   const { permissions, owner } = res.json;
-  assert.deepEqual(Object.keys(res.json).sort(), ['access', 'expiresAt', 'needsClaim', 'owner', 'permissions', 'rankSource', 'rosterSyncId', 'token'], 'additive: the older sections are still there');
+  assert.deepEqual(Object.keys(res.json).sort(), ['access', 'blockers', 'expiresAt', 'nameBinding', 'needsClaim', 'owner', 'permissions', 'rankSource', 'ranks', 'rosterSyncId', 'token'], 'additive: the older sections are still there (lane B9 adds nameBinding, ranks and blockers)');
   const byName = (a, b) => a[0].localeCompare(b[0]);
   assert.deepEqual(sampleKeys(permissions.gains).sort(byName), [
     ['Derivedgm', 'guild_master', null],
@@ -1053,9 +1053,15 @@ check('dry run, the Owner line follows the seat, and B5 open point (c): an Owner
 check('dry run: the new lines read the guild by index (no scan of players, characters, guild_roster, role_assignments or guilds) in 4 statements of the one snapshot', async () => {
   const s = await permissionWorld();
   const { FLIP_SECTIONS } = await load('worker/flip-preview.js');
-  assert.deepEqual(FLIP_SECTIONS.map((section) => section.key), ['access', 'needsClaim', 'permissions', 'owner']);
+  assert.deepEqual(FLIP_SECTIONS.map((section) => section.key), ['access', 'needsClaim', 'permissions', 'owner', 'nameBinding', 'ranks']);
   const statements = FLIP_SECTIONS.filter((section) => ['permissions', 'owner'].includes(section.key)).flatMap((section) => section.statements(s.w.db, s.gid));
   assert.equal(statements.length, 4);
+  // Lane B9's two sections (the name binding: 1 statement, the rank changes: 3) read by index too.
+  const binding = FLIP_SECTIONS.filter((section) => ['nameBinding', 'ranks'].includes(section.key)).flatMap((section) => section.statements(s.w.db, s.gid));
+  assert.equal(binding.length, 4);
+  const bindingMark = s.w.db.statementLog.length;
+  await s.w.db.batch(binding);
+  assert.deepEqual(scansSince(s.w.db, bindingMark), []);
   const mark = s.w.db.statementLog.length;
   await s.w.db.batch(statements);
   assert.deepEqual(scansSince(s.w.db, mark), []);

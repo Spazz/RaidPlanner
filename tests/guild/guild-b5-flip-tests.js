@@ -133,7 +133,9 @@ check('the dry run lists who loses access (discord_only, needs_claim, no_roster_
   assert.deepEqual([claims.count, claims.onRoster, claims.ownerIncluded], [4, 2, true], 'dcown, dcoff, the Guild Master\'s person, the gainer; the twin\'s account has its own person');
   assert.deepEqual(claims.samples.map((entry) => [entry.name, entry.onRoster]).sort(), [['Dcoffmain', false], ['Dcownmain', true], ['Gainermain', true], ['Gmmain', false]]);
   // The blocked account is in no list; the account that keeps access is in none either.
-  assert(!JSON.stringify(body).includes('Blockedone') && !JSON.stringify(body).includes('Keepmain') && !JSON.stringify(body).includes('Conflictmain'));
+  // (The account lists only: the rank-change samples of lane B9 name characters, whoever owns them.)
+  const accountLists = JSON.stringify({ access: body.access, needsClaim: body.needsClaim, permissions: body.permissions, owner: body.owner });
+  assert(!accountLists.includes('Blockedone') && !accountLists.includes('Keepmain') && !accountLists.includes('Conflictmain'));
   // No Discord ID, no BattleTag, no Discord handle of anyone.
   const discordIds = (await s.rows('SELECT discord_id FROM users WHERE discord_id IS NOT NULL')).map((row) => row.discord_id);
   assert(discordIds.length >= 10);

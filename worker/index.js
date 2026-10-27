@@ -13,7 +13,7 @@ import { addMyCharacter } from './routes/me-characters.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
 import { postBnetPin } from './routes/bnet-pin.js';
 import { getRosterSyncStatus, postRosterSync } from './routes/roster-sync.js';
-import { dryRunFlip } from './routes/flip.js';
+import { dryRunFlip, flipGuild } from './routes/flip.js';
 import { dryRunRankMap, getRankMap, putRankMap } from './routes/rank-map.js';
 import { runCron } from './scheduler.js';
 import { SHARE_PATH, handleShare, isSharePagePath, servePlannerPage } from './share.js';
@@ -291,6 +291,7 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/rank-map/dry-run', auth: true, handler: dryRunRankMap },
   { method: 'PUT', path: '/api/guild/:gid/rank-map', auth: true, handler: putRankMap },
   { method: 'POST', path: '/api/guild/:gid/flip/dry-run', auth: true, handler: dryRunFlip },
+  { method: 'POST', path: '/api/guild/:gid/flip', auth: true, handler: flipGuild },
   { method: 'GET', path: '/api/guild/:gid/bnet', auth: true, handler: getBnetSettings },
   { method: 'PUT', path: '/api/guild/:gid/bnet', auth: true, handler: putBnetSettings },
   // The setup pin (lane B6b part 3a): the Owner links the guild to its in-game guild (fresh grant `pin`, behind SETUP_PIN_GUILDS). worker/routes/bnet-pin.js.

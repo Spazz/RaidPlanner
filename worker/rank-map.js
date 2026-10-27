@@ -95,12 +95,12 @@ export async function rankMapGaps(db, guildId) {
 }
 
 // The every-rank-mapped gate (lane B9's flip calls it): throws 409 rank_map_incomplete, listing the ranks, while any rank on the stored roster has no map row.
+export const rankMapIncompleteError = (gaps) =>
+  new HttpError(409, 'rank_map_incomplete', `Map every in-game rank first. Not mapped yet: ${gaps.map((gap) => `rank ${gap.rank}`).join(', ')}.`, { ranks: gaps });
+
 export async function assertRankMapComplete(db, guildId) {
   const gaps = await rankMapGaps(db, guildId);
-  if (gaps.length) {
-    const names = gaps.map((gap) => `rank ${gap.rank}`).join(', ');
-    throw new HttpError(409, 'rank_map_incomplete', `Map every in-game rank first. Not mapped yet: ${names}.`, { ranks: gaps });
-  }
+  if (gaps.length) throw rankMapIncompleteError(gaps);
 }
 
 // The same rank without a map row, against a PROPOSED map (the dry run's "still unmapped").

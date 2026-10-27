@@ -234,7 +234,12 @@ export function describeRow(row, names = {}) {
     case 'guild.pin': return after.rePin ? 'Linked the guild again to its in-game guild (it was renamed or moved)' : 'Linked the guild to its in-game guild';
     case 'guild.source_switch': {
       const name = (source) => ({ ingame: 'the in-game guild roster', manual: 'hand-set ranks' }[source] || 'the Discord server');
-      return `Moved the guild from ${name(before.rankSource)} to ${name(after.rankSource)}${after.unpinned ? ' and cut its link to the in-game guild' : ''}`;
+      const counted = (n, what) => `${n} ${what}`;
+      // The flip (lane B9) and the unflip tool record what they did.
+      const detail = after.flip
+        ? ` (${counted(after.charactersBound || 0, 'characters matched to the roster by name')}, ${counted(after.ranksChanged || 0, 'ranks changed')}, ${counted((after.discordRolesConverted || 0) + (after.discordRolesDropped || 0), 'Discord-given roles made hand-set')})`
+        : (after.unflip ? ' (undone by the unflip tool)' : '');
+      return `Moved the guild from ${name(before.rankSource)} to ${name(after.rankSource)}${after.unpinned ? ' and cut its link to the in-game guild' : ''}${detail}`;
     }
     case 'guild_master.auto_promote': return after.guildMasterUserId ? `Guild Master passed to ${user(after.guildMasterUserId)}` : 'The guild has no Guild Master';
     case 'access.remove': return `Removed the access of ${user(ent)}`;

@@ -19,6 +19,7 @@ function check(name, fn) { checks.push({ name, fn }); }
 // Files whose SQL literals say `FROM role_assignments` / `JOIN role_assignments`: all writes (DELETE ... FROM) or guards inside a write batch.
 const STORED_PATHS = {
   'worker/discord-sync.js': { count: 1, reason: 'write: the Discord role sync removes the Discord-source rows it gave and no longer maps (it manages only its own rows; its reads go through effective_roles_stored)' },
+  'worker/flip.js': { count: 4, reason: 'the flip (lane B9): the guards that the Owner holds the stored Guild Master row (the preflight statement and the rank-source compare-and-set), and the two deletes: the stored Guild Master row goes with the seat, the leftover Discord-source rows that already had a hand-set twin go after the others became hand-set' },
   'worker/routes/accounts.js': { count: 1, reason: 'write: disconnecting Discord deletes the Discord-source rows of the account' },
   'worker/routes/auth.js': { count: 5, reason: 'writes of the Delete-my-data succession of the pre-flip stored Guild Master (lane B6b part 2 replaces it with the seat): delete the departing row, insert the successor\'s with the one-Guild-Master-row guard, drop that account\'s Officer row, and the two audit guards that ask whether the insert applied' },
   'worker/routes/claim-review.js': { count: 1, reason: 'read-only listing, no decision: the new Owner\'s claim review (lane B6b part 2b) shows who assigned each stored role and when; assigned_by is not in the effective-roles view, which exists for decisions' },
@@ -59,7 +60,7 @@ check('CI grep: only the listed files write role_assignments (INSERT / UPDATE / 
     if (sqlLiterals(file).some(({ sql }) => /\b(INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM)\s+role_assignments\b/.test(sql))) writers.push(file);
   }
   assert.deepEqual(writers, [
-    'worker/discord-sync.js', 'worker/routes/accounts.js', 'worker/routes/auth.js', 'worker/routes/discord.js', 'worker/routes/guild.js', 'worker/routes/people.js', 'worker/routes/roles.js',
+    'worker/discord-sync.js', 'worker/flip.js', 'worker/routes/accounts.js', 'worker/routes/auth.js', 'worker/routes/discord.js', 'worker/routes/guild.js', 'worker/routes/people.js', 'worker/routes/roles.js',
   ], 'a new writer of stored rows says so here (and whether the roles it creates belong in the view)');
 });
 

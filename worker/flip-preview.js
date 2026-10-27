@@ -20,6 +20,8 @@
 //           the flip they are a member only while the Owner is live),
 //           no_roster_character (their person has no character on the in-game roster; unkeyedCharacters counts the characters with no identity key yet, the ones
 //           the flip's name binding could still match), all_former (every character of their person is Former)
+//           A person counts as on the roster AFTER the flip when it has a character on the roster now or one the flip's NAME BINDING (worker/flip-binding.js) gives a key to: the
+//           access lists and the needsClaim `onRoster` flag follow that (lane B9); `unkeyedCharacters` still counts every character with no key yet.
 //   gains   not a member today, one after the flip. Reasons: owner (the Owner exemption), linked_person (their person is linked to them and on the roster, and they are no member
 //           today: a link the 0039 backfill wrote from a Discord ID does not count in a legacy guild, but it counts in the in-game rule)
 // The NEEDS-CLAIM section lists the persons that record an account's Discord ID with nobody owning them and the account owning no person of the guild: the flip does not link them,
@@ -31,11 +33,12 @@
 // (membership.js: the Owner exemption ends with suspension), because the Owner view of a guild before the flip never suspends anybody.
 // Both read the STORED roster (guild_roster), the roster the approval token binds to (roster sync id): a roster that moves between the dry run and the flip makes the token stale.
 // Nothing returned carries a Discord ID or a BattleTag.
-import { memberSql, personOnRosterSql, rankSourceSql, unsuspendedOwnerSql, blockedSql } from './membership.js';
+import { memberSql, rankSourceSql, unsuspendedOwnerSql, blockedSql } from './membership.js';
 import { serverIdIsDiscordSql } from './discord-guard.js';
 import { ownerCandidatesSql, seatHolderSql } from './owner.js';
 import { hashToken } from './session.js';
 import { visibleCharacterSql } from './character-visibility.js';
+import { nameBindingSection, ranksSection, willBeOnRosterSql } from './flip-binding.js';
 
 export const FLIP_SAMPLES = 25;
 export const FLIP_PURPOSE = 'flip';
@@ -53,14 +56,15 @@ const UNIVERSE_SQL = `SELECT us.user_id FROM user_servers us WHERE us.server_id 
 // 0035) WITHOUT its rank_source test (the guild is not in-game yet). owner_proof 'bnet', the proof belongs to the account that holds the person NOW, the identity key is a
 // guild_roster row, and the account's CURRENT Battle.net link is the one that proved it. Same joins in the same forced order as the view; tests/guild/guild-b6b-p3a-tests.js
 // runs both against a guild flipped by hand and finds the same roles and the same Owner liveness. A person nobody has linked has no proof to count.
-const PROVEN_AFTER = `SELECT pp.user_id AS user_id, pc.id AS character_id, pc.name AS name, pc.team_id AS team_id, pr.rank AS roster_rank, pc.left_on AS left_on
+export const provenAfterSql = (guild) => `SELECT pp.user_id AS user_id, pc.id AS character_id, pc.name AS name, pc.team_id AS team_id, pr.rank AS roster_rank, pc.left_on AS left_on
   FROM players pp
   CROSS JOIN characters pc ON pc.player_id = pp.id AND pc.guild_id = pp.guild_id
                           AND pc.owner_proof = 'bnet' AND pc.proof_user_id IS NOT NULL AND pc.proof_user_id = pp.user_id
   CROSS JOIN guild_roster pr ON pr.guild_id = pp.guild_id AND pr.namespace = pc.namespace
                             AND pr.blizzard_realm_id = pc.blizzard_realm_id AND pr.blizzard_char_id = pc.blizzard_char_id
   CROSS JOIN bnet_links pb ON pb.user_id = pp.user_id AND pb.bnet_account_id = pc.proof_bnet_account_id
- WHERE pp.guild_id = ${GUILD} AND pp.user_id IS NOT NULL`;
+ WHERE pp.guild_id = ${guild} AND pp.user_id IS NOT NULL`;
+const PROVEN_AFTER = provenAfterSql(GUILD);
 
 // What an account is called in the lists: its person's Main, else the name it chose, else (a Discord account) its Discord display name or handle. Never an ID.
 const NAME_OF = (userExpr) => `COALESCE((SELECT fm.name FROM players fp JOIN characters fm ON fm.player_id = fp.id AND fm.is_main = 1 WHERE fp.guild_id = ${GUILD} AND fp.user_id = ${userExpr}),
@@ -81,7 +85,7 @@ const ACCOUNTS_CTE = `WITH proven AS (${PROVEN_AFTER}), base AS (
 ), acc AS (
   SELECT b.*, b.linked_person AS person_id,
          CASE WHEN b.owner_live = 1 THEN 1
-              WHEN b.linked_person IS NOT NULL AND ${personOnRosterSql('b.linked_person', GUILD)} THEN 1
+              WHEN b.linked_person IS NOT NULL AND ${willBeOnRosterSql('b.linked_person', GUILD)} THEN 1
               ELSE 0 END AS after_member
     FROM base b
 )`;
@@ -109,7 +113,7 @@ SELECT COALESCE(SUM(a.today), 0) AS today_members, COALESCE(SUM(a.after_member),
 
 // The persons that record an account's Discord ID with nobody owning them, for an account that owns no person of the guild: the account claims the person ("This is me"), the
 // flip does not link it. (An account that owns another person of the guild already has its person; the Discord ID on this one is bookkeeping and needs no claim.)
-const NEEDS_CLAIM_SQL = `SELECT dp.id AS person_id, du.id AS user_id, ${personOnRosterSql('dp.id', GUILD)} AS on_roster,
+const NEEDS_CLAIM_SQL = `SELECT dp.id AS person_id, du.id AS user_id, ${willBeOnRosterSql('dp.id', GUILD)} AS on_roster,
        ${unsuspendedOwnerSql('du.id', GUILD)} AS is_owner,
        ${MAIN_NAME('dp.id')} AS name
   FROM players dp JOIN users du ON du.discord_id = dp.discord_user_id
@@ -307,17 +311,19 @@ const ownerSection = {
   },
 };
 
-// The sections, in order. Lane B9 pushes its own (the name-binding confirmations).
-export const FLIP_SECTIONS = [accessSection, needsClaimSection, permissionsSection, ownerSection];
+// The sections, in order. Lane B9 adds the NAME BINDING (the id-less characters the flip binds to the stored roster by name, which the Owner confirms with the approval) and the RANK
+// CHANGES (what every character's core rank becomes, counted as if the binding had happened): worker/flip-binding.js. The approval covers both lists.
+export const FLIP_SECTIONS = [accessSection, needsClaimSection, permissionsSection, ownerSection, nameBindingSection, ranksSection];
 
 // 'flip:' + the hash of the parts. The prefix is the purpose (worker/dry-run.js): a token minted here is never valid for a rank-map change, and the other way round.
 export async function flipStateHash(hashParts) {
   return `${FLIP_PURPOSE}:${await hashToken(JSON.stringify(hashParts))}`;
 }
 
-const GUILD_ROW_SQL = 'SELECT id, rank_source, last_good_sync_id FROM guilds WHERE id = ?';
+const GUILD_ROW_SQL = `SELECT id, rank_source, last_good_sync_id, pinned_guild_slug IS NOT NULL AND pinned_realm_slug IS NOT NULL AND pinned_namespace IS NOT NULL
+       AND blizzard_guild_id IS NOT NULL AND blizzard_realm_id IS NOT NULL AS pin_complete FROM guilds WHERE id = ?`;
 
-// -> { guild: { id, rankSource, rosterSyncId } | null, payload, stateHash }. One batch: the guild row and every section's reads come from the same snapshot.
+// -> { guild: { id, rankSource, rosterSyncId, hasGoodSync, pinComplete } | null, payload, hashParts (what the token covers, per section: the flip binds the ids of nameBinding's), stateHash }. One batch: the guild row and every section's reads come from the same snapshot.
 export async function previewFlip(db, guildId, sections = FLIP_SECTIONS) {
   const statements = [db.prepare(GUILD_ROW_SQL).bind(guildId)];
   const spans = sections.map((section) => {
@@ -328,8 +334,8 @@ export async function previewFlip(db, guildId, sections = FLIP_SECTIONS) {
   });
   const results = await db.batch(statements);
   const row = results[0].results[0];
-  if (!row) return { guild: null, payload: {}, stateHash: null };
-  const guild = { id: row.id, rankSource: row.rank_source, rosterSyncId: row.last_good_sync_id || '' };
+  if (!row) return { guild: null, payload: {}, hashParts: {}, stateHash: null };
+  const guild = { id: row.id, rankSource: row.rank_source, rosterSyncId: row.last_good_sync_id || '', hasGoodSync: !!row.last_good_sync_id, pinComplete: row.pin_complete === 1 };
   const payload = {};
   const hashParts = {};
   sections.forEach((section, index) => {
@@ -338,5 +344,5 @@ export async function previewFlip(db, guildId, sections = FLIP_SECTIONS) {
     payload[section.key] = built.payload;
     hashParts[section.key] = built.hashPart;
   });
-  return { guild, payload, stateHash: await flipStateHash(hashParts) };
+  return { guild, payload, hashParts, stateHash: await flipStateHash(hashParts) };
 }
