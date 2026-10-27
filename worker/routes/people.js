@@ -548,7 +548,7 @@ export async function blockPerson(ctx) {
       ).bind(guildId, target.id, guildContext.userId, reason, now, plan.missing ? 1 : 0, ...guard.params),
       ...tombstoneInsertStatements(ctx.db, { guildId, blockRef: accountBlockRef(target.id), plan, now, guard: written }),
       // A block takes the person off every team and withdraws their upcoming sign-ups (plan M11).
-      ...(await blockEffectStatements(ctx.db, { guildId, target: { userId: target.id }, nowMs: now, guard: written })),
+      ...(await blockEffectStatements(ctx.db, { guildId, target: { userId: target.id }, nowMs: now, guard: written, timeZone: guildContext.guild.time_zone })),
       // The reason text stays out of the audit log.
       auditStatement(ctx, {
         guildId, actorUserId: guildContext.userId, action: 'access.remove', entityType: 'user',
@@ -639,7 +639,7 @@ export async function keepBlock(ctx) {
       guildId, actorUserId: actorId, action: 'block.keep', entityType: 'user', entityId: target.id, before: { pendingReview: true }, after: { pendingReview: false },
     }, guard),
     ...tombstoneInsertStatements(ctx.db, { guildId, blockRef: accountBlockRef(target.id), plan, now, guard }),
-    ...(await blockEffectStatements(ctx.db, { guildId, target: { userId: target.id }, nowMs: now, guard })),
+    ...(await blockEffectStatements(ctx.db, { guildId, target: { userId: target.id }, nowMs: now, guard, timeZone: guildContext.guild.time_zone })),
     ctx.db.prepare(
       `UPDATE guild_blocks SET pending_review = 0, blocked_by = ?, tombstone_missing = ? WHERE guild_id = ? AND user_id = ? AND pending_review = 1 AND ${guard.sql}`,
     ).bind(actorId, plan.missing ? 1 : 0, guildId, target.id, ...guard.params),

@@ -421,11 +421,14 @@ check('rehome: one batch moves the character, hands over the Main, leaves a plac
   const fooAlt = await s.alt(A.pid, 'Fooalt');
   const B = await mk(s, 'Bar', { teamId: bravo });
   await s.link(B.pid, 'm1');
-  const r1 = await raidOn(s, alpha, 10);
-  const r2 = await raidOn(s, alpha, 11);
+  // (The clock is Friday 2027-01-15, the running week started Tuesday 01-12: r1 and r2 are in it, r0 is in a finished week and is frozen.)
+  const r0 = await raidOn(s, alpha, 5);
+  const r1 = await raidOn(s, alpha, 12);
+  const r2 = await raidOn(s, alpha, 13);
   const rf = await raidOn(s, alpha, 25);
   const rf2 = await raidOn(s, alpha, 26);
   await seedHistory(s, A.pid, 'Foo', { teamId: alpha, r1, r2, rf, rf2, characterId: A.cid, altId: fooAlt });
+  sRun(s, "UPDATE raids SET log_mode = 'manual', manual_reason = 'no log' WHERE id = ?", r0);
   sRun(s, "UPDATE raids SET policy_fp = 'x'");
   sRun(s, "INSERT INTO character_name_aliases (id, guild_id, character_id, name_key, realm_key, renamed_at) VALUES ('na_older0000000000000001', ?, ?, 'foold', 'nightslayer', 5)", s.gid, A.cid);
   const versions = () => ({ a: sOne(s, 'SELECT version FROM players WHERE id = ?', A.pid).version, b: sOne(s, 'SELECT version FROM players WHERE id = ?', B.pid).version });
@@ -468,6 +471,7 @@ check('rehome: one batch moves the character, hands over the Main, leaves a plac
   assert.deepEqual(sAll(s, 'SELECT weekday, character_id FROM standing_signups WHERE player_id = ? ORDER BY weekday', A.pid), [{ weekday: 4, character_id: fooAlt }, { weekday: 5, character_id: null }]);
   // stale: the upcoming raid and the raids of the character's team
   for (const raidId of [rf, r1, r2]) assert.equal(sOne(s, 'SELECT policy_fp FROM raids WHERE id = ?', raidId).policy_fp, '', `${raidId} is marked stale`);
+  assert.equal(sOne(s, 'SELECT policy_fp FROM raids WHERE id = ?', r0).policy_fp, 'x', 'the team raid of a finished week keeps its result');
   // the audit row: ids and flags, no names
   const audit = sAll(s, "SELECT * FROM audit_log WHERE action = 'character.rehome'");
   assert.equal(audit.length, 1);

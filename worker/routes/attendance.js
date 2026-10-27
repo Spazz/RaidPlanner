@@ -9,9 +9,9 @@ import { watchStaysReviewed } from '../attention.js';
 import { teamMetrics, watchList, WATCH_MIN_PREVIOUS } from '../attendance-metrics.js';
 import { ladderOf, rankReview } from '../rank-ladder.js';
 import {
-  EVIDENCE_NAME_KEY, bumpRaidStatement, findUnmatched, isPlainObject, makePolicyResolver, markRaidsStale, policyRowsStatement, presenceKey, recomputeRaid,
+  EVIDENCE_NAME_KEY, bumpRaidStatement, findUnmatched, isPlainObject, makePolicyResolver, markRaidsStale, policyRowsStatement, presenceKey, recomputeRaid, weekFreeze,
 } from '../attendance-store.js';
-import { displayCharacter, groupBy, isStale, loadRaidDetail, raidState } from '../attendance-view.js';
+import { recalcsAutomatically, displayCharacter, groupBy, isStale, loadRaidDetail, raidState } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
 import { isOwnPlayer } from '../membership.js';
 import { winnerNameKeySql } from '../name-alias.js';
@@ -419,7 +419,7 @@ export async function postUnmatched(ctx) {
   const now = ctx.now();
   const statements = [];
   let mainIndex = -1;
-  const stale = markRaidsStale(db, guild.id, [keyName], raid.id, body.action === 'guest' ? [] : [raid.team_id]);
+  const stale = markRaidsStale(db, guild.id, [keyName], raid.id, body.action === 'guest' ? [] : [raid.team_id], null, weekFreeze(guild.time_zone, now));
 
   if (body.action === 'guest') {
     statements.push(
@@ -708,6 +708,8 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
     people,
     awaitingReview: raids.filter((raid) => raid.open_flags > 0).length,
     staleRaids: raids.filter((raid) => isStale(raidState(raid, raid.reports, resolver))).length,
+    // ... of which the page recalculates by itself when it opens (the rest wait for the button: a finished week the rules changed under).
+    staleAuto: raids.filter((raid) => recalcsAutomatically(raid, raidState(raid, raid.reports, resolver), today, resetDay)).length,
     watch,
     ladder: ladder.map((rank) => ({ id: rank.id, name: rank.name })),
   };

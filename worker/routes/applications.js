@@ -15,7 +15,7 @@ import { HttpError, jsonResponse, parseCookies, serializeCookie } from '../http.
 import { auditStatement } from '../audit.js';
 import { addDays } from '../attendance-calendar.js';
 import { assertNotBlocked } from '../block-check.js';
-import { markRaidsStale } from '../attendance-store.js';
+import { markRaidsStale, weekFreeze } from '../attendance-store.js';
 import { base64url, isId, newId } from '../ids.js';
 import { ownPersonStatement } from '../membership.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
@@ -356,7 +356,7 @@ async function placeOwnCharacter(ctx, guildContext, row, team, owner) {
       guildId: guild.id, actorUserId: ctx.session.user.id, action: 'character.place', entityType: 'character', entityId: character.id,
       before: { teamId: null, personId: own.id }, after: { teamId: team.id, personId: own.id, via: 'application' },
     }, { sql: 'changes() = 1', params: [] }),
-    markRaidsStale(db, guild.id, [row.name_key], null, [team.id]),
+    markRaidsStale(db, guild.id, [row.name_key], null, [team.id], null, weekFreeze(guild.time_zone, now)),
   ]).catch((error) => {
     if (constraintOf(error) === 'team_taken') throw teamTaken();
     throw error;
@@ -417,7 +417,7 @@ export async function acceptApplication(ctx) {
         guildId: guild.id, actorUserId: ctx.session.user.id, action: 'application.accept', entityType: 'application', entityId: row.id,
         after: { personId: playerId, teamId: team.id, linked: !!linkUser, trialEnd },
       }, { sql: 'changes() = 1', params: [] }),
-      markRaidsStale(db, guild.id, [key], null, [team.id]),
+      markRaidsStale(db, guild.id, [key], null, [team.id], null, weekFreeze(guild.time_zone, now)),
     ]);
   } catch (error) {
     const kind = constraintOf(error);

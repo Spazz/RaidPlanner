@@ -62,3 +62,9 @@ export function weekStart(date, resetDay) {
   const back = (weekdayOf(date) - resetDay + 7) % 7;
   return addDays(date, -back);
 }
+
+// The first day of the reset week `date` is in, for every possible reset day (index 0 = Sunday ... 6): weekStart(date, 0) .. weekStart(date, 6). A statement
+// that does not know the guild's reset day (it lives in the guild's policy row) picks the entry with it, so the week arithmetic stays this module's.
+export function weekStartsByResetDay(date) {
+  return [0, 1, 2, 3, 4, 5, 6].map((resetDay) => weekStart(date, resetDay));
+}

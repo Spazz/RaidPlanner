@@ -12,7 +12,7 @@ import {
 } from '../roster-data.js';
 import { LIMITS } from '../limits.js';
 import { findRealm } from '../realms.js';
-import { linkSignupsStatement, markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
+import { linkSignupsStatement, markPersonRaidsStale, markRaidsStale, weekFreeze } from '../attendance-store.js';
 import { assertSenior, seniorityDeleteOk, seniorityOk } from '../seniority.js';
 import {
   guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
@@ -359,8 +359,8 @@ export async function createPerson(ctx) {
         status, joinedOn, trialStart, trialEnd, version: 1, linked: !!link, characterId, teamId: team ? team.id : null, class: classId, mainSpec, offSpec,
       }),
       // Raids whose logs name this character show "Recalculate".
-      markRaidsStale(db, guild.id, [nameKey(name)], null, team ? [team.id] : []),
-      ...(fromSignup ? [linkSignupsStatement(db, guild.id, playerId, fromSignup.discordId, fromSignup.raidId, fromSignup.signupId), markPersonRaidsStale(db, guild.id, playerId)] : []),
+      markRaidsStale(db, guild.id, [nameKey(name)], null, team ? [team.id] : [], null, weekFreeze(guild.time_zone, ctx.now())),
+      ...(fromSignup ? [linkSignupsStatement(db, guild.id, playerId, fromSignup.discordId, fromSignup.raidId, fromSignup.signupId), markPersonRaidsStale(db, guild.id, playerId, null, weekFreeze(guild.time_zone, ctx.now()))] : []),
     ]);
   } catch (error) {
     if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realm);
@@ -508,7 +508,7 @@ export async function patchPerson(ctx) {
         { ...snapshot(next), version: player.version + 1, changed },
         CHANGED_ONE),
       // Status, join and left dates and the Discord link decide who is expected and which sign-ups are theirs: their teams' raids need recalculating.
-      ...(changed.some((key) => ['status', 'joinedOn', 'leftOn', 'link'].includes(key)) ? [markPersonRaidsStale(db, guildContext.guild.id, player.id)] : []),
+      ...(changed.some((key) => ['status', 'joinedOn', 'leftOn', 'link'].includes(key)) ? [markPersonRaidsStale(db, guildContext.guild.id, player.id, null, weekFreeze(guildContext.guild.time_zone, ctx.now()))] : []),
     );
     let results;
     try {
@@ -590,7 +590,7 @@ export async function deletePerson(ctx) {
           AND ${senior.sql}
         RETURNING id`,
     ).bind(player.id, guildContext.guild.id, ...guardParams, ...senior.params),
-    markRaidsStale(db, guildContext.guild.id, data.characters.map((entry) => nameKey(entry.row.name)), null, teamIds),
+    markRaidsStale(db, guildContext.guild.id, data.characters.map((entry) => nameKey(entry.row.name)), null, teamIds, null, weekFreeze(guildContext.guild.time_zone, ctx.now())),
   ]);
   if (results[1].results.length !== 1) {
     return conflict(ctx, guildContext, player.id, 'Someone moved this person. The page now shows their current record.');
@@ -683,7 +683,7 @@ export async function addCharacter(ctx) {
       ...trialDatesFollowMainStatements(db, previous.id, characterId),
     );
   }
-  statements.push(markRaidsStale(db, guild.id, [nameKey(name)], null, team ? [team.id] : []));
+  statements.push(markRaidsStale(db, guild.id, [nameKey(name)], null, team ? [team.id] : [], null, weekFreeze(guild.time_zone, ctx.now())));
   let results;
   try {
     results = await db.batch(statements);
@@ -756,7 +756,7 @@ export async function patchCharacter(ctx) {
           CHANGED_ONE),
         // A rename or a move changes which raids' results depend on this character.
         ...(changed.includes('name') || changed.includes('teamId')
-          ? [markRaidsStale(db, guild.id, [nameKey(current.name), nameKey(name)], null, [current.team_id, teamId].filter(Boolean))] : []),
+          ? [markRaidsStale(db, guild.id, [nameKey(current.name), nameKey(name)], null, [current.team_id, teamId].filter(Boolean), null, weekFreeze(guild.time_zone, ctx.now()))] : []),
       ]);
     } catch (error) {
       if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realmColumns(guild, current.realm));
@@ -815,7 +815,7 @@ export async function makeMain(ctx) {
       ? [
         ...homeTeamFollowsMainStatements(db, { playerId: data.player.id, oldMainId: previous.id, newMainId: target.id, homeTeamId: home.id, now }),
         // Which character holds the home team's spot changed: that team's raids (and the two names) are recalculated.
-        markRaidsStale(db, guildContext.guild.id, [nameKey(previous.name), nameKey(target.name)], null, [home.id]),
+        markRaidsStale(db, guildContext.guild.id, [nameKey(previous.name), nameKey(target.name)], null, [home.id], null, weekFreeze(guildContext.guild.time_zone, ctx.now())),
       ] : []),
   ]);
   if (results[1].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, target.id);
@@ -841,7 +841,7 @@ export async function removeCharacter(ctx) {
       { personId: data.player.id, teamId: target.team_id, class: target.class, mainSpec: target.main_spec, offSpec: target.off_spec }, null, removable),
     db.prepare(`DELETE FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ? AND ${senior.sql} RETURNING id`)
       .bind(target.id, data.player.id, target.team_id, ...senior.params),
-    markRaidsStale(db, guildContext.guild.id, [nameKey(target.name)], null, target.team_id ? [target.team_id] : []),
+    markRaidsStale(db, guildContext.guild.id, [nameKey(target.name)], null, target.team_id ? [target.team_id] : [], null, weekFreeze(guildContext.guild.time_zone, ctx.now())),
   ]);
   if (results[1].results.length !== 1) {
     const reread = await loadPersonData(db, guildContext.guild.id, data.player.id);

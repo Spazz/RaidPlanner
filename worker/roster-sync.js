@@ -12,7 +12,8 @@
 //
 // THE BATCH (rosterReplaceStatements), in this order. EVERY statement carries the monotonic guard, so a fetch that is older than the roster already
 // stored (or for a guild whose pin changed) changes nothing at all; the guilds update is LAST because it moves the value the guard reads.
-//   1  stale marking   raids whose logs name a renamed / leaving / returning bound character, and those characters' teams' raids with evidence
+//   1  stale marking   raids whose logs name a renamed / leaving / returning bound character, and those characters' teams' raids with evidence whose week is still running
+//                      (the freeze, worker/attendance-store.js)
 //   2  aliases         the old name_key of every renamed bound character -> character_name_aliases (renamed_at = fetch time)
 //   3  renames         characters.name / name_key follow the roster (skipped while the new name is taken by another character)
 //   4  Former          a bound character whose identity key was in the stored roster and is absent from the new one gets left_on = today
@@ -27,7 +28,7 @@
 // nor run them before it. Before the flip the batch therefore writes only guild_roster + roster_syncs + the guild's sync columns.
 // HAS_EVIDENCE: a raid that holds any evidence a roster change can move; the sync suite pins that the sync marks the same raids stale as roster.js's
 // rename path (markRaidsStale).
-import { HAS_EVIDENCE } from './attendance-store.js';
+import { HAS_EVIDENCE, weekFreeze, weekRunningSql } from './attendance-store.js';
 import { BnetError, assessRoster, bnetSupport, fetchGuildRosterBySlug } from './battlenet.js';
 import { newId } from './ids.js';
 import { INGAME_SQL, rankMapApplyStatements } from './rank-map.js';
@@ -117,7 +118,7 @@ const STALE_SQL = `WITH ${NEW_ROSTER_FULL},
      UPDATE raids SET policy_fp = '', version = version + 1
       WHERE guild_id = ?
         AND (id IN (SELECT raid_id FROM raid_presence WHERE guild_id = ? AND (name_key IN (SELECT old_key FROM hit) OR name_key IN (SELECT new_key FROM hit)))
-             OR (team_id IN (SELECT team_id FROM hit WHERE team_id IS NOT NULL) AND ${HAS_EVIDENCE}))
+             OR (team_id IN (SELECT team_id FROM hit WHERE team_id IS NOT NULL) AND ${HAS_EVIDENCE} AND ${weekRunningSql('?', '?')}))
         AND ${BOTH_GUARDS}`;
 
 const ALIAS_SQL = `WITH ${NEW_ROSTER_FULL}
@@ -180,7 +181,7 @@ export function rosterReplaceStatements(db, run) {
   const idsJson = JSON.stringify(members.map((m) => [m.realmId, m.characterId]));
   const statements = [];
 
-  statements.push(db.prepare(STALE_SQL).bind(fullJson, run.guildId, run.namespace, run.guildId, run.guildId, run.guildId, ...I, ...G));
+  statements.push(db.prepare(STALE_SQL).bind(fullJson, run.guildId, run.namespace, run.guildId, run.guildId, run.guildId, weekFreeze(run.timeZone, run.now).starts, run.guildId, ...I, ...G));
 
   statements.push(db.prepare(ALIAS_SQL).bind(fullJson, run.fetchedAt, run.guildId, run.namespace, ...I, ...G));
 

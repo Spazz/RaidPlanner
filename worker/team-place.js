@@ -71,5 +71,5 @@ export const personLeftTeamSql = (guildId, personId, teamId) => ({
   params: [guildId, personId, teamId],
 });
 
-// Raids whose results depend on this character or on these teams' rosters.
-export const staleStatement = (db, guildId, nameKeys, teamIds) => markRaidsStale(db, guildId, nameKeys, null, teamIds.filter(Boolean));
+// Raids whose results depend on this character or on these teams' rosters. freeze: weekFreeze(guild.time_zone, now), the raids of finished weeks stay as they are.
+export const staleStatement = (db, guildId, nameKeys, teamIds, freeze) => markRaidsStale(db, guildId, nameKeys, null, teamIds.filter(Boolean), null, freeze);

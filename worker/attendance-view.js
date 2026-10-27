@@ -1,6 +1,7 @@
 import { guestIdentityStatement, guestKeysFor } from './guest-identity.js';
 // Read side of the raids: the raid detail every raid route answers with, the shared character-display rule and
 // the redaction (nicknames, reasons, other teams' attendance) by permission.
+import { weekStart } from './attendance-calendar.js';
 import { hasDiscord } from './discord-guard.js';
 import { HttpError } from './http.js';
 import { allows } from './permissions.js';
@@ -25,6 +26,11 @@ export function raidState(raid, reports, resolver = null) {
 }
 
 export const isStale = (state) => state === 'stale';
+
+// THE FREEZE meets the pages (worker/attendance-store.js): a stale raid recalculates by itself when an officer opens Attendance or Raids (js/guild/pages-attendance.js
+// autoRecalc), except the raids held back for the "Recalculate" button, the deliberate history action: the raid's attendance week is over and nothing marked it but a
+// rules change (a roster edit or a log name sets policy_fp = '', a policy edit only changes the fingerprint the policy resolves to). `resetDay` is the guild's.
+export const recalcsAutomatically = (raid, state, today, resetDay) => isStale(state) && !(raid.raid_on < weekStart(today, resetDay) && raid.policy_fp !== '');
 
 // The character a person is shown as on a team: the Main there, else the first by name there, else their Main elsewhere. No team (null, as the person pages
 // ask) prefers none: a character on no team is not "on" it.

@@ -16,7 +16,7 @@
 //
 // THE GATE. rankMapGaps / assertRankMapComplete tell lane B9's flip which rank indexes on the stored roster have no map row.
 import { HttpError } from './http.js';
-import { HAS_EVIDENCE } from './attendance-store.js';
+import { HAS_EVIDENCE, weekFreeze, weekRunningSql } from './attendance-store.js';
 import { RANK_COUNT, rankLabelOf } from './bnet-store.js';
 import { hashToken } from './session.js';
 import { trialClockStatement, zoneOffsetMinutes } from './trial-clock.js';
@@ -122,7 +122,8 @@ export const newCoreRankSql = (c) => `COALESCE((SELECT COALESCE(m.core_rank, 'so
        WHERE g.guild_id = ${c}.guild_id AND g.namespace = ${c}.namespace AND g.blizzard_realm_id = ${c}.blizzard_realm_id AND g.blizzard_char_id = ${c}.blizzard_char_id), 'social')`;
 
 // Raids to recalculate: every raid whose log names a character whose rank is about to change (by its name today or any old name), and every raid with evidence of
-// the teams of the people they belong to (a rank change moves who is expected and the fill-in credit). Runs BEFORE the rank UPDATE, like the sync's own stale step.
+// the teams of the people they belong to whose week is still running (a rank change moves who is expected and the fill-in credit; a finished week keeps its result,
+// worker/attendance-store.js THE FREEZE). Runs BEFORE the rank UPDATE, like the sync's own stale step.
 const STALE_SQL = `WITH ${STORED_MAP_CTE},
      changed AS (SELECT c.id AS id, c.player_id AS player_id, c.name_key AS name_key FROM characters c WHERE c.guild_id = ? AND c.core_rank != ${newCoreRankSql('c')})
 UPDATE raids SET policy_fp = '', version = version + 1
@@ -131,7 +132,7 @@ UPDATE raids SET policy_fp = '', version = version + 1
                 WHERE rp.guild_id = ? AND (rp.name_key IN (SELECT name_key FROM changed)
                       OR rp.name_key IN (SELECT a.name_key FROM character_name_aliases a WHERE a.guild_id = ? AND a.character_id IN (SELECT id FROM changed))))
         OR (team_id IN (SELECT t.team_id FROM characters t WHERE t.guild_id = ? AND t.team_id IS NOT NULL AND t.player_id IN (SELECT player_id FROM changed))
-            AND ${HAS_EVIDENCE}))`;
+            AND ${HAS_EVIDENCE} AND ${weekRunningSql('?', '?')}))`;
 
 const APPLY_SQL = `WITH ${STORED_MAP_CTE}
 UPDATE characters SET core_rank = ${newCoreRankSql('characters')}, trial_start = NULL, trial_end = NULL, updated_at = ?
@@ -150,7 +151,7 @@ export function rankMapApplyStatements(db, run, guards) {
   if (!guards.some((guard) => guard.sql === INGAME_SQL)) throw new Error('applyRankMap needs the in-game guard');
   const extra = guardParams(guards);
   return [
-    db.prepare(withGuards(STALE_SQL, guards)).bind(run.guildId, run.guildId, run.guildId, run.guildId, run.guildId, run.guildId, ...extra),
+    db.prepare(withGuards(STALE_SQL, guards)).bind(run.guildId, run.guildId, run.guildId, run.guildId, run.guildId, run.guildId, weekFreeze(run.timeZone, run.now).starts, run.guildId, ...extra),
     db.prepare(withGuards(APPLY_SQL, guards)).bind(run.guildId, run.now, run.guildId, ...extra),
     trialClockStatement(db, run.guildId, { offsetMinutes: zoneOffsetMinutes(run.timeZone, run.now), guards }),
   ];

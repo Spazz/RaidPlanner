@@ -104,7 +104,7 @@ export async function blockRosterPerson(ctx) {
          SELECT ?, ?, ?, ?, ?, ? WHERE ${guard.sql}`,
       ).bind(guildId, target.pid, actorId, reason, plan.missing ? 1 : 0, now, ...guard.params),
       ...tombstoneInsertStatements(ctx.db, { guildId, blockRef: personBlockRef(target.pid), plan, now, guard: written }),
-      ...(await blockEffectStatements(ctx.db, { guildId, target: { playerId: target.pid }, nowMs: now, guard: written })),
+      ...(await blockEffectStatements(ctx.db, { guildId, target: { playerId: target.pid }, nowMs: now, guard: written, timeZone: guildContext.guild.time_zone })),
       // The reason text stays out of the audit log.
       auditStatement(ctx, {
         guildId, actorUserId: actorId, action: 'person.block', entityType: 'person', entityId: target.pid,

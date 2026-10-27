@@ -421,7 +421,9 @@ check('applyRankMap marks the raids of a changed character stale (its log, its t
   const [alpha, bravo] = s.tids;
   const raid = (id, team, mode, on) => s.exec(`INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, log_mode, manual_reason, policy_fp, version, created_at, updated_at)
     VALUES ('${id}', '${s.gid}', '${team}', '${on}', 1, '${mode}', ${mode === 'manual' ? "'no log'" : 'NULL'}, 'fp', 5, 1, 1)`);
-  raid('ra_alpha_manual', alpha, 'manual', '2027-01-01'); // team evidence of the changed character's team
+  // (The world's clock is Friday 2027-01-15; the running week started Tuesday 2027-01-12. A finished week is frozen: tests/guild/guild-recalc-freeze-tests.js.)
+  raid('ra_alpha_manual', alpha, 'manual', '2027-01-12'); // team evidence of the changed character's team, week still running
+  raid('ra_alpha_old', alpha, 'manual', '2027-01-05'); // the same team's evidence in a finished week: frozen
   raid('ra_bravo_manual', bravo, 'manual', '2027-01-01'); // another team's evidence
   raid('ra_named', bravo, 'log', '2027-01-02'); // a log that names the changed character
   raid('ra_other', bravo, 'log', '2027-01-03'); // a log that names nobody who changes
@@ -433,7 +435,8 @@ check('applyRankMap marks the raids of a changed character stale (its log, its t
   const same = [{ rank: 0, label: 'GM', coreRank: 'raider' }, { rank: 4, label: 'Raider', coreRank: 'raider' }];
   await s.apply(same);
   assert.deepEqual(await marked(), []);
-  // Aone (rank 0) becomes Social: its log (ra_named) and its team's evidence (ra_alpha_manual) are marked; Bravo's evidence and an unrelated log are not.
+  // Aone (rank 0) becomes Social: its log (ra_named, a finished week: the log names it) and its team's evidence in the running week (ra_alpha_manual) are marked;
+  // the finished week's evidence (ra_alpha_old), Bravo's evidence and an unrelated log are not.
   await s.apply([{ rank: 0, label: 'GM', coreRank: 'social' }, { rank: 4, label: 'Raider', coreRank: 'raider' }]);
   assert.deepEqual(await marked(), ['ra_alpha_manual', 'ra_named']);
   assert.equal((await s.one("SELECT version FROM raids WHERE id = 'ra_named'")).version, 6, 'the version bump makes a running recompute discard its write');

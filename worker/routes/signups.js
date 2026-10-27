@@ -4,7 +4,7 @@
 // The attendance recompute reads it with the other sources and is otherwise unchanged. Spec: tasks/reference/guild-phase6-signups-spec.md.
 import { HttpError, jsonResponse } from '../http.js';
 import { raidAwayEffects, readNotices, teamCharactersStatement, teamNoticesStatement } from '../away-store.js';
-import { linkSignupsStatement, markPersonRaidsStale, recomputeRaid } from '../attendance-store.js';
+import { linkSignupsStatement, markPersonRaidsStale, recomputeRaid, weekFreeze } from '../attendance-store.js';
 import { displayCharacter } from '../attendance-view.js';
 import { isId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
@@ -522,7 +522,7 @@ export async function linkSignup(ctx) {
   }
   statements.push(
     linkSignupsStatement(db, guild.id, person.id, discordId, raid.id, body.signupId, senior),
-    markPersonRaidsStale(db, guild.id, person.id),
+    markPersonRaidsStale(db, guild.id, person.id, null, weekFreeze(guild.time_zone, now)),
     db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ?").bind(raid.id, guild.id),
   );
   const auditIndex = statements.length;

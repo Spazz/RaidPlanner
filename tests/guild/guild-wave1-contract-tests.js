@@ -513,6 +513,51 @@ check('calendar: the Raids page offers the button, the link is made, shown once,
   assert(stripTags(G.pages.calendar.mainHtml({ phase: 'revoked', busy: false, error: '', status: gone })).includes('Calendar link turned off.'));
 });
 
+check('stale raids (recalc freeze): opening Attendance recalculates the raids the Worker marks autoRecalc through the existing loop; a finished week the rules changed under waits for the button', async () => {
+  const s = await scenario();
+  s.world.clock.now += 61000; // the write window of the rate limit starts over
+  const G = s.pages.bob;
+  const gd = await s.guildData('bob');
+  const S = pageState(s, G, gd);
+  G.app.render = () => {};
+  const reloads = [];
+  G.app.routeAll = async (o) => { reloads.push(o); };
+  const posts = [];
+  const post = G.api.post;
+  G.api.post = (urlPath, body) => { posts.push(urlPath); return post(urlPath, body); };
+  const staleOf = async () => (await G.api.get(`${s.base}/raids?team=${s.A}`)).raids.filter((r) => r.stale);
+  // (The weekly Tuesday raids have no log: they read "awaiting log", never stale. Two of them get a hand-entered attendance, so they can be.)
+  const old = {};
+  for (const day of ['2026-10-20', '2026-10-27']) {
+    old[day] = s.world.db.sqlite.prepare('SELECT id FROM raids WHERE raid_on = ?').get(day).id;
+    await G.api.put(`${s.base}/raids/${old[day]}/manual`, { reason: 'No log kept', presentPlayerIds: [s.p.Thoren] });
+  }
+  assert.equal((await staleOf()).length, 0, 'the scenario starts fresh');
+  // The running week (Tuesday 2027-01-12 on), a finished week a roster edit marked (its log named the character), and a finished week nothing marked: then the rules change.
+  s.exec(`UPDATE raids SET policy_fp = '' WHERE id IN ('${s.r.flag}', '${s.r.noLoot}', '${old['2026-10-20']}')`);
+  const policy = await G.api.get(`${s.base}/attendance/policy`);
+  await G.api.put(`${s.base}/attendance/policy`, { policy: { tentative: 'asSignedUp' }, expectedVersion: policy.versions.guild });
+  const all = await staleOf();
+  assert.deepEqual(all.map((r) => r.raidOn).sort(), ['2026-10-20', '2026-10-27', '2027-01-13', '2027-01-14', '2027-01-15'], 'the rules changed under every raid that has a result');
+  const auto = all.filter((r) => r.autoRecalc === true).map((r) => r.raidOn).sort();
+  assert.deepEqual(auto, ['2026-10-20', '2027-01-13', '2027-01-14', '2027-01-15'], 'the running week and the marked raid; the finished week the rules changed under is held');
+  // Opening the page: the loop runs over exactly those four and the route is read again.
+  const view = { name: 'section', gid: s.gid, section: 'attendance' };
+  await G.pages.attendance.load(view, gd);
+  assert.equal(S.att.team.data.staleRaids, 5);
+  assert.equal(S.att.team.data.staleAuto, 4);
+  await S.att.autoRun;
+  assert.equal(posts.filter((u) => /\/recompute$/.test(u)).length, 4);
+  assert.equal(reloads.length, 1);
+  const left = await staleOf();
+  assert.deepEqual(left.map((r) => [r.raidOn, r.autoRecalc]), [['2026-10-27', false]], 'the finished week waits for the button');
+  // The banner's button is the deliberate action and covers it.
+  G.handlers.click['att-recalc']();
+  for (let i = 0; i < 300 && (reloads.length < 2 || S.att.recalc); i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal((await staleOf()).length, 0);
+  assert.equal(posts.filter((u) => /\/recompute$/.test(u)).length, 5);
+});
+
 // ---------------------------------------------------------------------------
 
 async function main() {

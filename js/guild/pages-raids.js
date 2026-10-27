@@ -426,6 +426,7 @@
     const kept = keptTab === 'progress' ? null : keptTab; // the Progress board is read again when its tab is opened
     return G.api.get(A().apiBase(gid) + '/raids?team=' + encodeURIComponent(teamId)).then(function (data) {
       a().raids = { gid: gid, teamId: teamId, data: data, more: !!(data && data.hasMore), tab: kept || null, note: '' };
+      A().autoRecalc(gd, teamId, !!(data && data.raids && data.raids.some(function (x) { return x.autoRecalc === true; })));
       return autoFill(a().raids);
     });
   }

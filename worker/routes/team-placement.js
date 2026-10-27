@@ -16,6 +16,7 @@ import { nameKey } from '../roster-data.js';
 import { visibleCharacterSql } from '../character-visibility.js';
 import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
 import { assertSenior, seniorityOk } from '../seniority.js';
+import { weekFreeze } from '../attendance-store.js';
 import { dropUpcomingSignupsStatements, personLeftTeamSql, placeStatement, releaseStatement, staleStatement, upcomingSignupsOf } from '../team-place.js';
 import { audit, bad, characterMoved, constraintOf, findCharacter, requireEdit, requireTarget, teamTaken } from './roster.js';
 
@@ -82,7 +83,7 @@ export async function putCharacterTeam(ctx) {
     placeStatement(db, { ...base, teamId: team.id, from: current.team_id, extra: senior }),
     audit(ctx, guildContext, moving ? 'character.move' : 'character.place', 'character', current.id,
       { teamId: current.team_id, personId: data.player.id }, { teamId: team.id, personId: data.player.id, removeSignups: moving && removeSignups }, CHANGED_ONE),
-    staleStatement(db, guild.id, [nameKey(current.name)], [current.team_id, team.id]),
+    staleStatement(db, guild.id, [nameKey(current.name)], [current.team_id, team.id], weekFreeze(guild.time_zone, now)),
   ];
   if (moving && removeSignups) {
     statements.push(...dropUpcomingSignupsStatements(db, { guildId: guild.id, personId: data.player.id, teamId: current.team_id, nowMs: now, left: personLeftTeamSql(guild.id, data.player.id, current.team_id) }));
@@ -117,7 +118,7 @@ export async function deleteCharacterTeam(ctx) {
     releaseStatement(db, { guildId: guild.id, personId: data.player.id, characterId: current.id, from: current.team_id, now, extra: senior }),
     audit(ctx, guildContext, 'character.release', 'character', current.id,
       { teamId: current.team_id, personId: data.player.id }, { teamId: null, personId: data.player.id, removeSignups }, CHANGED_ONE),
-    staleStatement(db, guild.id, [nameKey(current.name)], [current.team_id]),
+    staleStatement(db, guild.id, [nameKey(current.name)], [current.team_id], weekFreeze(guild.time_zone, now)),
   ];
   if (removeSignups) {
     statements.push(...dropUpcomingSignupsStatements(db, { guildId: guild.id, personId: data.player.id, teamId: current.team_id, nowMs: now, left: personLeftTeamSql(guild.id, data.player.id, current.team_id) }));
