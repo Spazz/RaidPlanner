@@ -15,6 +15,7 @@ import { base64url, newId } from '../ids.js';
 import { canGrant, loadGuildContext, requireAction } from '../permissions.js';
 import { personFor, viewerFor } from '../redact.js';
 import { hashToken } from '../session.js';
+import { wrote } from '../d1-changes.js';
 
 async function keysPayload(db, guildContext, nowMs) {
   const guildId = guildContext.guild.id;
@@ -115,7 +116,7 @@ export async function createApiKey(ctx) {
       after: { teamId, datasets, expiresAt },
     }, made),
   ]);
-  if (results[0].meta.changes !== 1) {
+  if (!wrote(results[0])) {
     throw new HttpError(400, 'bad_request', `A guild can have at most ${MAX_ACTIVE_KEYS} keys that still work. Turn some off first.`, { field: 'name' });
   }
   return jsonResponse({ ...(await keysPayload(ctx.db, guildContext, now)), created: { id, token } }, 201);

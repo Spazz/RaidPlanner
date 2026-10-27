@@ -32,6 +32,7 @@ import { loadRaid, raidAudit } from './raids.js';
 import { bad, readClass, readName } from './roster.js';
 import { buildView } from './signups.js';
 import { recomputeRaid } from '../attendance-store.js';
+import { wrote } from '../d1-changes.js';
 
 export const JOIN_COOKIE = '__Host-rs_join';
 export const JOIN_COOKIE_TTL = 30 * 24 * 60 * 60;
@@ -134,7 +135,7 @@ export async function createJoinLink(ctx) {
     // The token and its hash never go in the audit log.
     raidAudit(ctx, guildContext, 'join.create', raid.id, null, { maxUses }, made),
   ]);
-  if (results[0].meta.changes !== 1) throw bad(`A raid can have ${LINKS_PER_RAID} sign-up links that still work. Turn one off first.`, 'maxUses');
+  if (!wrote(results[0])) throw bad(`A raid can have ${LINKS_PER_RAID} sign-up links that still work. Turn one off first.`, 'maxUses');
   return jsonResponse({ ...(await linksPayload(ctx, raid)), created: { id, token, path: `/#/join/${token}` } }, 201);
 }
 
@@ -309,6 +310,6 @@ export async function submitJoin(ctx) {
     db.prepare('UPDATE raid_join_links SET uses = uses + 1 WHERE id = ? AND changes() = 1').bind(row.id),
     auditStatement(ctx, { guildId: row.guild_id, actorUserId: null, action: 'signup.guest', entityType: 'raid', entityId: row.raid_id, after: { class: classId, linkId: row.id } }, CHANGED_ONE),
   ]);
-  if (results[0].meta.changes !== 1) throw new HttpError(410, 'link_full', 'This sign-up link stopped taking guests. Ask an officer for a new one.');
+  if (!wrote(results[0])) throw new HttpError(410, 'link_full', 'This sign-up link stopped taking guests. Ask an officer for a new one.');
   return jsonResponse({ ok: true, spotsLeft: Math.max(0, spotsOf(row) - 1) }, 201);
 }

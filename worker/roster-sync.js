@@ -34,6 +34,7 @@ import { newId } from './ids.js';
 import { INGAME_SQL, rankMapApplyStatements } from './rank-map.js';
 import { COMPLETE_PIN_SQL, PIN_SQL, pinOf } from './roster-pin.js';
 import { todayIn } from './roster-data.js';
+import { wrote } from './d1-changes.js';
 
 export const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // The on-demand claim is allowed once next_sync_at <= now + (interval - gap): at least one hour since the last claim, whoever made it.
@@ -57,7 +58,7 @@ const RELEASE_SQL = `UPDATE guilds SET next_sync_at = ? WHERE id = ? AND next_sy
 export async function claimSyncLease(db, guildId, nowMs, { onDemand = false } = {}) {
   const dueBefore = onDemand ? nowMs + SYNC_INTERVAL_MS - ON_DEMAND_MIN_GAP_MS : nowMs;
   const result = await db.prepare(LEASE_SQL).bind(nowMs + SYNC_INTERVAL_MS, guildId, dueBefore).run();
-  return result.meta.changes === 1;
+  return wrote(result);
 }
 
 // Hands a lease back so the guild is due NOW: for the sync that ran inside the setup pin (worker/routes/bnet-pin.js), which leaves the lease one interval ahead because its sync
@@ -65,7 +66,7 @@ export async function claimSyncLease(db, guildId, nowMs, { onDemand = false } = 
 // the value the caller's own lease wrote: a claim made since (a Sync now, a cron tick) moved the column and is left alone. -> true when the lease was released.
 export async function releaseSyncLease(db, guildId, { leasedUntil, nowMs }) {
   const result = await db.prepare(RELEASE_SQL).bind(nowMs, guildId, leasedUntil).run();
-  return result.meta.changes === 1;
+  return wrote(result);
 }
 
 // Seconds until an on-demand claim could succeed (for Retry-After), from the guild's current next_sync_at.
@@ -180,7 +181,7 @@ export function applyRankMapStatements(db, run, guards) {
 }
 
 // -> { statements, syncIndex }. run: { guildId, blizzardGuildId, blizzardRealmId, namespace, fetchedAt, startedAt, finishedAt, now, today, timeZone, syncId, hash,
-//   roster }. syncIndex = the position of the roster_syncs statement: its meta.changes is 1 when the batch applied, 0 when the guard refused it.
+//   roster }. syncIndex = the position of the roster_syncs statement: wrote() is true when the batch applied, false when the guard refused it.
 export function rosterReplaceStatements(db, run) {
   const guards = replaceGuards(run);
   const G = guards.monotonic.params;
@@ -263,7 +264,7 @@ export async function replaceStoredRoster(deps, { guildId, guild, pin, roster, h
     return { status: 'failed', statements: count };
   }
   // A refused guard leaves every statement a no-op.
-  return { status: results[syncIndex].meta.changes === 1 ? 'applied' : 'superseded', statements: count };
+  return { status: wrote(results[syncIndex]) ? 'applied' : 'superseded', statements: count };
 }
 
 const rosterCounts = (roster) => ({ entries: roster.entries, members: roster.members.length, nonTbc: roster.nonTbc, truncated: roster.truncated, problems: roster.problems });

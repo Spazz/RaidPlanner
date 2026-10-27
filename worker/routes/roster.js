@@ -18,6 +18,7 @@ import { trialClockStatement, zoneOffsetMinutes } from '../trial-clock.js';
 import {
   guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
 } from '../roster-view.js';
+import { wrote } from '../d1-changes.js';
 
 const MAX_NOTES = 4000;
 // An audit row guard for the statement right before it in the same batch: true only if that write changed one row.
@@ -526,7 +527,7 @@ export async function patchPerson(ctx) {
     } catch (error) {
       mapCreateError(error);
     }
-    if (results[playersAt].meta.changes !== 1) {
+    if (!wrote(results[playersAt])) {
       return conflict(ctx, guildContext, player.id, 'Someone else changed this person. The page now shows their version.');
     }
   }
@@ -564,7 +565,7 @@ export async function saveNotes(ctx) {
       { notesVersion: player.notes_version + 1 },
       CHANGED_ONE),
   ]);
-  if (results[0].meta.changes !== 1) return stale();
+  if (!wrote(results[0])) return stale();
   const record = await personRecordFor(ctx, guildContext, player.id);
   return jsonResponse({ notes: record.notes, rosterFlags: await loadRosterFlags(db, guildContext, record.today) });
 }
@@ -701,7 +702,7 @@ export async function addCharacter(ctx) {
     if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realm);
     mapCreateError(error);
   }
-  if (makeMain && results[mainAt].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The Main could not be changed. Reload and try again.');
+  if (makeMain && !wrote(results[mainAt])) throw new HttpError(409, 'conflict', 'The Main could not be changed. Reload and try again.');
   return jsonResponse(await personReply(ctx, guildContext, player.id), 201);
 }
 
@@ -774,7 +775,7 @@ export async function patchCharacter(ctx) {
       if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realmColumns(guild, current.realm));
       mapCreateError(error);
     }
-    if (results[0].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, current.id);
+    if (!wrote(results[0])) return characterMoved(ctx, guildContext, data.player.id, current.id);
   }
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));
 }
@@ -830,7 +831,7 @@ export async function makeMain(ctx) {
         markRaidsStale(db, guildContext.guild.id, [nameKey(previous.name), nameKey(target.name)], null, [home.id], null, weekFreeze(guildContext.guild.time_zone, ctx.now())),
       ] : []),
   ]);
-  if (results[1].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, target.id);
+  if (!wrote(results[1])) return characterMoved(ctx, guildContext, data.player.id, target.id);
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));
 }
 

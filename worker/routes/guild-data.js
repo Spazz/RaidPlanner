@@ -13,6 +13,7 @@ import { loadGuildContext } from '../permissions.js';
 import { EXPORT_LIMIT, EXPORT_WINDOW_MS, enforceRateLimit } from '../ratelimit.js';
 import { todayIn } from '../roster-data.js';
 import { slugOf } from './audit.js';
+import { wrote } from '../d1-changes.js';
 
 function requireGuildMaster(guildContext) {
   if (!guildContext.isGuildMaster) throw new HttpError(403, 'forbidden', 'Only the Guild Master can do that.');
@@ -62,7 +63,7 @@ export async function deleteGuild(ctx) {
       .bind(guild.discord_server_id, ...act.guard.params)] : []),
   ]);
   if (!act.consumed(results)) throw freshRequiredError('guild_delete');
-  if (results[act.offset + 1].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The guild changed while you were deleting it. Reload and try again.');
+  if (!wrote(results[act.offset + 1])) throw new HttpError(409, 'conflict', 'The guild changed while you were deleting it. Reload and try again.');
   return jsonResponse({ ok: true });
 }
 

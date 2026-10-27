@@ -30,6 +30,7 @@ import {
 import { applyPicks } from '../claim-apply.js';
 import { bad, resolveRealm } from './roster.js';
 import { viewerOf } from '../roster-view.js';
+import { wrote } from '../d1-changes.js';
 
 // Fixed targets inside the app shell; the hash router reads them. No user input reaches a Location header.
 const SIGNIN_REDIRECT = '/#/signin';
@@ -134,7 +135,7 @@ async function refreshPinCharacters(ctx, { userId, bnetAccountId, guildId, acces
   const written = await ctx.db.prepare(
     `UPDATE bnet_links SET snapshot = json_set(CASE WHEN json_valid(snapshot) THEN snapshot ELSE '{}' END, ?, json(?)) WHERE user_id = ? AND bnet_account_id = ?`,
   ).bind(`$."${namespace}"`, JSON.stringify(entry), userId, bnetAccountId).run();
-  return written.meta.changes === 1 ? { ok: true } : { ok: false, reason: 'mismatch' };
+  return wrote(written) ? { ok: true } : { ok: false, reason: 'mismatch' };
 }
 
 // After the token exchange and user info, before the snapshot fan-out of Blizzard calls: one Blizzard account may come back BNET_CALLBACK_LIMIT times
@@ -299,7 +300,7 @@ export async function bnetCallback(ctx) {
       auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'bnet.link', entityType: 'user', entityId: userId }, allOf(here, gate)),
     ]);
     if (act && !act.consumed(saved)) return fail('fresh_required');
-    if (saved[act ? act.offset + 2 : 0].meta.changes !== 1) {
+    if (!wrote(saved[act ? act.offset + 2 : 0])) {
       // Nothing was linked. A first link: the account became staff between the read and the write (fresh_required), or another Battle.net account is linked already. A refresh: another
       // Battle.net account is linked now (has_bnet), or none is any more (it was disconnected since the read: a lost race, 'state' = connect again).
       if (first) return fail((await isProtectedAccount(db, userId)) ? 'fresh_required' : 'has_bnet');
@@ -402,7 +403,7 @@ export async function disconnectBnet(ctx) {
       { sql: 'changes() = 1', params: [] }),
   ]);
   if (!act.consumed(results)) throw freshRequiredError('identity_change', { change: 'unlink_bnet' });
-  if (results[act.offset + 3].meta.changes === 1) return jsonResponse({ ok: true, removed: true });
+  if (wrote(results[act.offset + 3])) return jsonResponse({ ok: true, removed: true });
   throw new HttpError(409, 'conflict', 'That changed while you were working on it. Reload and try again.');
 }
 
@@ -537,6 +538,6 @@ export async function withdrawClaim(ctx) {
       guildId: guildContext.guild.id, actorUserId: session.user.id, action: 'claim.withdraw', entityType: 'claim', entityId: ctx.params.clid,
     }, { sql: 'changes() = 1', params: [] }),
   ]);
-  if (results[0].meta.changes !== 1) throw new HttpError(404, 'not_found', 'That claim is not waiting any more.');
+  if (!wrote(results[0])) throw new HttpError(404, 'not_found', 'That claim is not waiting any more.');
   return jsonResponse({ ok: true });
 }

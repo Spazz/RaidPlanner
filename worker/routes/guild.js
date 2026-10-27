@@ -18,6 +18,7 @@ import { loadAttendanceFlags } from '../attendance-store.js';
 import { isTeamRosterRow } from '../team-roster.js';
 import { loadTeams } from './teams.js';
 import { devPayload } from './dev-view-as.js';
+import { wrote } from '../d1-changes.js';
 
 const SINGLE_TEAM_NAME = 'Main team';
 const MAX_TEAMS_AT_CREATE = LIMITS.teams;
@@ -313,7 +314,7 @@ export async function claimGuild(ctx) {
     if (isUniqueViolation(error)) throw conflict();
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw conflict();
+  if (!wrote(results[0])) throw conflict();
   const guildContext = await loadGuildContext(db, userId, guild.id);
   return jsonResponse(await guildPayload(db, guildContext, ctx.now()));
 }

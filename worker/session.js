@@ -1,6 +1,7 @@
 import { base64url } from './ids.js';
 import { parseCookies, safeEqual, serializeCookie } from './http.js';
 import { readViewAs } from './view-as.js';
+import { wrote } from './d1-changes.js';
 
 export const SESSION_COOKIE = '__Host-rs_session';
 export const STATE_COOKIE = '__Host-rs_state';
@@ -177,7 +178,7 @@ export async function claimStateNonce(db, state, now) {
     const result = await db.prepare(
       'INSERT INTO oauth_state_nonces (nonce_hash, created_at, used_at) VALUES (?, ?, ?) ON CONFLICT(nonce_hash) DO NOTHING',
     ).bind(await hashToken(tail.nonce), Math.max(now, tail.issuedAt), now).run();
-    return result.meta.changes === 1;
+    return wrote(result);
   } catch {
     return false;
   }

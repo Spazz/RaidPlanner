@@ -1,6 +1,7 @@
 import { newId } from './ids.js';
 import { MEMBER_GUILD_IDS_SQL } from './membership.js';
 import { ownerSql } from './owner.js';
+import { wrote } from './d1-changes.js';
 
 // The audited actions (nothing else writes the log).
 export const AUDIT_ACTIONS = [
@@ -292,7 +293,7 @@ export async function flushFailureCounters({ db, now, randomBytes }) {
     }
     statements.push(db.prepare('DELETE FROM rate_limits WHERE key = ?').bind(row.key));
     const results = await db.batch(statements);
-    if (statements.length === 2 && results[0].meta.changes === 1) written++;
+    if (statements.length === 2 && wrote(results[0])) written++;
   }
   return written;
 }

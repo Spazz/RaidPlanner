@@ -12,6 +12,7 @@
 //                            each (audit.js flushFailureCounters) BEFORE the rate_limits rule drops their counters.
 // guild_roster is NOT touched here and NOT by worker/bnet-purge.js: the in-game roster is the guild's own public roster data, kept while the guild lives.
 import { AUDIT_PRUNE_AFTER_MS, PRUNABLE_ACTIONS, flushFailureCounters } from './audit.js';
+import { countedRun } from './d1-changes.js';
 import { defaultRandomBytes } from './ids.js';
 import { LONGEST_WINDOW_MS } from './ratelimit.js';
 
@@ -61,7 +62,7 @@ export async function runRetention({ db, now, log, randomBytes = defaultRandomBy
   for (const [name, rule] of Object.entries(RETENTION_RULES)) {
     try {
       const { sql, values } = rule(nowMs);
-      deleted[name] = (await db.prepare(sql).bind(...values).run()).meta.changes;
+      deleted[name] = await countedRun(db, db.prepare(sql).bind(...values));
     } catch (error) {
       deleted[name] = null;
       try { log(`retention: ${name} failed: ${error && error.message}`); } catch { /* logging must not throw */ }

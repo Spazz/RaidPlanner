@@ -14,6 +14,7 @@ import {
   ACTIONS, ACTION_INFO, BUILTIN_ROLES, EVERYONE_ROLES, VIEWER_ROLES, isCustomRole, isGranted, loadGuildContext, permissionProblem, requireAction,
 } from '../permissions.js';
 import { MAX_CUSTOM_ROLES } from '../roles-store.js';
+import { wrote } from '../d1-changes.js';
 
 const MAX_NAME = 32;
 const BUILTIN_NAMES = { guild_master: 'Guild Master', officer: 'Officer', team_lead: 'Team Lead', member: 'Member', guest: 'Guest', public: 'Public' };
@@ -184,7 +185,7 @@ export async function createRole(ctx) {
     if (isUniqueViolation(error)) throw nameTaken();
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw bad(`A guild can have at most ${MAX_CUSTOM_ROLES} roles of its own. Delete one first.`, 'name');
+  if (!wrote(results[0])) throw bad(`A guild can have at most ${MAX_CUSTOM_ROLES} roles of its own. Delete one first.`, 'name');
   return reply(ctx, guildContext, 201);
 }
 

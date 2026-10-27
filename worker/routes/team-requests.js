@@ -20,6 +20,7 @@ import { weekFreeze } from '../attendance-store.js';
 import { placeStatement, staleStatement } from '../team-place.js';
 import { trialClockStatement, zoneOffsetMinutes } from '../trial-clock.js';
 import { bad, constraintOf, requireTarget, teamTaken } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const NOTE_MAX = 200;
@@ -158,7 +159,7 @@ export async function withdrawTeamRequest(ctx) {
       .bind(ctx.session.user.id, now, row.id, guild.id, ctx.session.user.id),
     AUDIT(ctx, guildContext, 'team_request.withdraw', row.id, { teamId: row.team_id, characterId: row.character_id }),
   ]);
-  if (results[0].meta.changes !== 1) throw new HttpError(409, 'request_decided', 'That request was decided already.');
+  if (!wrote(results[0])) throw new HttpError(409, 'request_decided', 'That request was decided already.');
   return jsonResponse({ request: { id: row.id, status: 'withdrawn' } });
 }
 
@@ -222,9 +223,9 @@ export async function approveTeamRequest(ctx) {
     if (constraintOf(error) === 'team_taken') throw teamTaken();
     throw error;
   }
-  // D1 reports total_changes for a statement: the characters_team_since_move trigger (migration 0040) adds its own row, so a placement that worked says 2 here (the in-memory
-  // test D1 says 1). The guards inside the batch use SQLite's changes(), which leaves trigger rows out; this check only asks whether the placement wrote at all.
-  if (results[0].meta.changes < 1) throw changed();
+  // D1's meta.changes counts the row the characters_team_since_move trigger (migration 0040) writes, so a placement that worked says 2 here. The guards inside the batch use
+  // SQLite's changes(), which leaves trigger rows out; this check only asks whether the placement wrote at all (worker/d1-changes.js).
+  if (!wrote(results[0])) throw changed();
   return jsonResponse({
     request: { id: row.id, status: 'approved' }, personId: row.player_id, teamRequestFlags: await loadTeamRequestFlags(db, guildContext),
   });
@@ -240,6 +241,6 @@ export async function rejectTeamRequest(ctx) {
       .bind(ctx.session.user.id, ctx.now(), row.id, guild.id),
     AUDIT(ctx, guildContext, 'team_request.reject', row.id, { teamId: row.team_id, characterId: row.character_id, personId: row.player_id }),
   ]);
-  if (results[0].meta.changes !== 1) throw new HttpError(409, 'request_decided', 'That request was decided already.');
+  if (!wrote(results[0])) throw new HttpError(409, 'request_decided', 'That request was decided already.');
   return jsonResponse({ request: { id: row.id, status: 'rejected' }, teamRequestFlags: await loadTeamRequestFlags(db, guildContext) });
 }

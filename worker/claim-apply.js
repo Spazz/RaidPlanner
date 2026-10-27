@@ -25,6 +25,7 @@ import { RANK_COLUMNS_SQL, characterRankColumns, rankBinds } from './person-lega
 import { nameKey } from './roster-data.js';
 import { guildToday } from './roster-view.js';
 import { constraintOf, limitError } from './routes/roster.js';
+import { wrote } from './d1-changes.js';
 
 export const ALWAYS = { sql: '1 = 1', params: [] };
 export const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
@@ -228,7 +229,7 @@ export async function applyPicks(ctx, guildContext, picks, { source, field = 'ch
       const pick = entry.pick;
       const base = { name: pick.name, realm: pick.realm.realm, class: pick.class, level: pick.level ?? null };
       if (entry.kind === 'conflict') return { ...base, id: claimId, status: 'pending', outcome: 'needs_officer', reason: entry.reason };
-      if (results[keyAt].meta.changes !== 1) return { ...base, status: 'failed', reason: 'changed' };
+      if (!wrote(results[keyAt])) return { ...base, status: 'failed', reason: 'changed' };
       return { ...base, status: 'applied', outcome: entry.kind, personId: applied.personId, characterId: applied.characterId };
     }),
   };

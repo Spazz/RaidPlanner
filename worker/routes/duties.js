@@ -3,6 +3,7 @@
 //   PUT /api/guild/:gid/raids/:rid/duties   (raids.edit)  { duties: [{ duty, personId, label? }] }: replaces them all; [] clears. -> the raid detail (its `duties`)
 // The raid detail carries the duties for everyone who can see the raid (worker/attendance-view.js).
 import { HttpError, jsonResponse } from '../http.js';
+import { wrote } from '../d1-changes.js';
 import { loadDuties, readDuties } from '../duties.js';
 import { loadGuildContext } from '../permissions.js';
 import { loadRaid, raidAudit, raidReply } from './raids.js';
@@ -43,6 +44,7 @@ export async function putDuties(ctx) {
     ).bind(raid.id, guild.id, JSON.stringify(rows), ...guard.params),
     raidAudit(ctx, guildContext, 'duties.set', raid.id, { duties: before }, { duties: rows.map((row) => row.duty) }, guard),
   ]);
-  if (results[1].meta.changes !== rows.length) throw new HttpError(409, 'conflict', 'The raid changed. Reload and try again.');
+  // One INSERT ... SELECT under one guard: every row or none, so "nothing written" is the whole question (a list of no rows writes nothing and has nothing to refuse).
+  if (rows.length && !wrote(results[1])) throw new HttpError(409, 'conflict', 'The raid changed. Reload and try again.');
   return raidReply(ctx, guildContext, raid.id);
 }

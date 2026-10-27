@@ -16,6 +16,7 @@ import { ROLE_RANK, isCustomRole, isGranted, loadGuildContext, rankOf, requireAc
 import { personFor, viewerFor } from '../redact.js';
 import { PEOPLE_LIMIT, PEOPLE_WINDOW_MS, enforceRateLimit, peopleKey } from '../ratelimit.js';
 import { visibleCharacterSql } from '../character-visibility.js';
+import { wrote } from '../d1-changes.js';
 
 const MAX_TEAM_LEAD_TEAMS = 20;
 const TEAM_ID = /^t_[A-Za-z0-9_-]{22}$/;
@@ -384,7 +385,7 @@ export async function setRoles(ctx) {
     if (isUniqueViolation(error)) return peopleReply(ctx, guildContext);
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw conflict();
+  if (!wrote(results[0])) throw conflict();
   return peopleReply(ctx, guildContext);
 }
 
@@ -461,7 +462,7 @@ export async function makeGuildMaster(ctx) {
         }, guards),
         moveSeatStatement(ctx.db, { guildId, from: oldMasterId, to: targetId, guards: [guards] }),
       ]);
-      moved = results[act.offset + 1].meta.changes;
+      moved = wrote(results[act.offset + 1]);
     } else {
       const guard = allOf(memberGuard(guildContext, targetId), act.guard);
       const targetIsMaster = allOf({
@@ -488,7 +489,7 @@ export async function makeGuildMaster(ctx) {
           before: { guildMasterUserId: oldMasterId }, after: { guildMasterUserId: targetId },
         }, targetIsMaster),
       ]);
-      moved = results[act.offset].meta.changes;
+      moved = wrote(results[act.offset]);
     }
   } catch (error) {
     // A concurrent identical hand-over won the unique index: answer from the fresh state.
@@ -496,7 +497,7 @@ export async function makeGuildMaster(ctx) {
     return handOverReply(ctx, oldMasterId, guildId);
   }
   if (!act.consumed(results)) throw freshRequiredError('handover', { targetUserId: targetId });
-  if (moved !== 1) {
+  if (!moved) {
     throw new HttpError(409, 'conflict', 'The guild changed while you were handing it over. Reload and try again.');
   }
   return handOverReply(ctx, oldMasterId, guildId);
@@ -569,7 +570,7 @@ export async function blockPerson(ctx) {
     if (!isUniqueViolation(error)) throw error;
     return peopleReply(ctx, guildContext);
   }
-  if (results[0].meta.changes !== 1) throw conflict();
+  if (!wrote(results[0])) throw conflict();
   return peopleReply(ctx, guildContext);
 }
 
@@ -610,7 +611,7 @@ export async function restorePerson(ctx) {
     ctx.db.prepare(`DELETE FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND ${guard.sql}`)
       .bind(guildId, target.id, ...guard.params),
   ]);
-  if (results[results.length - 1].meta.changes !== 1) {
+  if (!wrote(results[results.length - 1])) {
     // Someone else restoring first is fine. If the block is still there, the actor lost the right.
     const still = await ctx.db.prepare('SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?')
       .bind(guildId, target.id).first();
@@ -654,6 +655,6 @@ export async function keepBlock(ctx) {
       `UPDATE guild_blocks SET pending_review = 0, blocked_by = ?, tombstone_missing = ? WHERE guild_id = ? AND user_id = ? AND pending_review = 1 AND ${guard.sql}`,
     ).bind(actorId, plan.missing ? 1 : 0, guildId, target.id, ...guard.params),
   ]);
-  if (results[results.length - 1].meta.changes !== 1) throw conflict();
+  if (!wrote(results[results.length - 1])) throw conflict();
   return peopleReply(ctx, guildContext);
 }

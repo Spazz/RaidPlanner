@@ -89,7 +89,9 @@ check('the writes are guarded statements: a team of another guild, a moved chara
   assert.equal(gm2.status, 201, gm2.text);
   const foreignTeam = gm2.json.teams[0].id;
   const now = 1;
-  const run = async (statement) => (await s.w.db.batch([statement]))[0].meta.changes;
+  // The own rows of the statement (SQL changes()): meta.changes also counts the rows the characters_team_since_move trigger writes (worker/d1-changes.js).
+  const { directRows, directRowsStatement } = await import('../../worker/d1-changes.js');
+  const run = async (statement) => directRows((await s.w.db.batch([statement, directRowsStatement(s.w.db)]))[1]);
   const base = { guildId: s.gid, personId: s.m1.pid, characterId: s.alt1, now };
   assert.equal(await run(placeStatement(s.w.db, { ...base, teamId: foreignTeam })), 0, 'a team of another guild');
   assert.equal(await run(placeStatement(s.w.db, { ...base, teamId: s.alpha })), 0, 'the person holds Alpha with the Main');

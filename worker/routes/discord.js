@@ -5,6 +5,7 @@
 // One Raidsmith role per Discord role; a person with several mapped Discord roles gets all of them. The mapping is applied at every sign-in and by
 // Sync now (worker/discord-sync.js). The Guild Master cannot be mapped; @everyone is not offered (everyone in the server is a Member already).
 import { HttpError, jsonResponse } from '../http.js';
+import { directRows, directRowsStatement } from '../d1-changes.js';
 import { auditStatement } from '../audit.js';
 import { botConfigured, fetchServerRoles, inviteUrl } from '../discord-bot.js';
 import { requireDiscord } from '../discord-guard.js';
@@ -135,6 +136,7 @@ export async function putMaps(ctx) {
         WHERE guild_id = ? AND source = 'discord'
           AND (role_id || '|' || COALESCE(team_id, '')) IN (SELECT value FROM json_each(?))`,
     ).bind(guild.id, JSON.stringify(changedTuples(before, maps))),
+    directRowsStatement(ctx.db),
   ];
   let results;
   try {
@@ -143,7 +145,7 @@ export async function putMaps(ctx) {
     // A role or team deleted while the request ran (the foreign keys refuse a mapping to something that is gone).
     throw new HttpError(409, 'conflict', 'A role or team changed while you were working on it. Reload and try again.');
   }
-  return jsonResponse({ maps: await loadMaps(ctx.db, guild.id), cleared: results[results.length - 1].meta.changes });
+  return jsonResponse({ maps: await loadMaps(ctx.db, guild.id), cleared: directRows(results[results.length - 1]) });
 }
 
 export async function syncEveryone(ctx) {

@@ -29,6 +29,7 @@ import { windowStartFor } from './attendance.js';
 import { loadNames, parseJson } from './audit.js';
 import { loadRaid } from './raids.js';
 import { bad, errorText } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 // 500 awards of about 700 bytes at the most each.
 export const LOOT_MAX_BODY = 512 * 1024;
@@ -397,7 +398,7 @@ export async function patchLoot(ctx) {
   ]);
   const fresh = await db.prepare(`${AWARD_SELECT} WHERE a.id = ? AND a.guild_id = ?`).bind(award.id, guild.id).first();
   if (!fresh) throw awardNotFound();
-  if (results[0].meta.changes !== 1) throw staleAward(await currentView(db, guild.id, fresh));
+  if (!wrote(results[0])) throw staleAward(await currentView(db, guild.id, fresh));
   return jsonResponse({ award: await currentView(db, guild.id, fresh) });
 }
 
@@ -419,7 +420,7 @@ export async function deleteLoot(ctx) {
       before: { raidId: award.raid_id, itemId: award.item_id, tag: award.tag },
     }, CHANGED_ONE),
   ]);
-  if (results[1].meta.changes !== 1) throw awardNotFound();
+  if (!wrote(results[1])) throw awardNotFound();
   return jsonResponse({ ok: true });
 }
 
@@ -943,6 +944,6 @@ export async function putLootPolicy(ctx) {
     if (isUniqueViolation(error)) throw stale((await readPolicy(ctx, guild.id)).view);
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw stale((await readPolicy(ctx, guild.id)).view);
+  if (!wrote(results[0])) throw stale((await readPolicy(ctx, guild.id)).view);
   return jsonResponse((await readPolicy(ctx, guild.id)).view);
 }

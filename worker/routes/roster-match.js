@@ -22,6 +22,7 @@ import { CLASS_IDS, isSpecOf } from '../roster-data.js';
 import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
 import { assertMayMatchRow, assertSenior, rosterRowOk, seniorityOk } from '../seniority.js';
 import { bad, characterMoved, constraintOf, findCharacter, findNameOwner, nameTaken, requireEdit } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 const notFound = (message) => new HttpError(404, 'not_found', message);
 
@@ -139,6 +140,6 @@ export async function matchToRoster(ctx) {
     if (kind === 'character_name') throw nameTaken(row.name, await findNameOwner(db, guild.id, row.name_key, old.realm_key));
     throw error;
   }
-  if (results[updateAt].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, current.id);
+  if (!wrote(results[updateAt])) return characterMoved(ctx, guildContext, data.player.id, current.id);
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));
 }

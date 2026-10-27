@@ -11,6 +11,7 @@
 // roster.edit; the guild is still not in-game; the Seniority guard of worker/seniority.js on the person; the person exists), so a lost race writes nothing.
 import { HttpError } from './http.js';
 import { auditStatement } from './audit.js';
+import { wrote } from './d1-changes.js';
 import { markRaidsStale, weekFreeze } from './attendance-store.js';
 import { visibleCharacterSql } from './character-visibility.js';
 import { newId } from './ids.js';
@@ -169,7 +170,7 @@ export async function addToPerson(ctx, guildContext, { person, names }) {
       throw error;
     }
     // One INSERT ... SELECT under one guard: it wrote every name or none (a guard that said no between the read and the write).
-    const written = outcomeOfBatch[0].meta.changes === additions.length;
+    const written = wrote(outcomeOfBatch[0]);
     for (const one of additions) outcome.set(one.key, written ? { done: true, name: one.name, characterId: one.id } : { reason: 'conflict', name: one.name });
   }
 

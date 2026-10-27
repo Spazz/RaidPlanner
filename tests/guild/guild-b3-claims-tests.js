@@ -141,8 +141,10 @@ check('applyClaimPlan: every write is guarded - an alt for a person the claimant
   const character = (name) => ({ name, realm: 'Nightslayer', realmKey: 'nightslayer', class: 'MAGE' });
   const run = async (plan, who, name, extra = {}) => {
     const applied = applyClaimPlan(ctx, { guild, plan, claimant: { userId: s.uids[who], discordId: null }, character: character(name), source: 'bnet', now: 5, actorId: s.uids[who], ...extra });
-    const results = await s.w.db.batch(applied.writes);
-    return results[results.length - 1].meta.changes;
+    // The own rows of the last write (SQL changes() behind it): meta.changes also counts the trigger rows of migrations 0036 and 0040 (worker/d1-changes.js).
+    const { directRows, directRowsStatement } = await import('../../worker/d1-changes.js');
+    const results = await s.w.db.batch([...applied.writes, directRowsStatement(s.w.db)]);
+    return directRows(results[results.length - 1]);
   };
   // m1 does not own m2's person: no alt.
   assert.equal(await run({ kind: 'add_alt', person: { id: owned.pid } }, 'm1', 'Stolenalt'), 0);
