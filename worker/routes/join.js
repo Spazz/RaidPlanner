@@ -21,7 +21,7 @@ import { auditStatement } from '../audit.js';
 import { oneLine } from '../apply-data.js';
 import { base64url, newId } from '../ids.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
-import { toPerson } from '../person.js';
+import { personFor, viewerFor } from '../redact.js';
 import { checkRateLimit } from '../ratelimit.js';
 import { isSpecOf, nameKey, rosterOptions } from '../roster-data.js';
 import { hashToken } from '../session.js';
@@ -169,7 +169,9 @@ export async function deleteAllGuestSignups(ctx) {
 
 // The guild's own list (Guild settings, next to the API keys and guest links): every link of a raid that has not started, whoever made it.
 const GUILD_LINKS_LIMIT = 200;
-async function guildLinksPayload(ctx, guild) {
+async function guildLinksPayload(ctx, guildContext) {
+  const guild = guildContext.guild;
+  const who = viewerFor(guildContext);
   const now = ctx.now();
   const result = await ctx.db.prepare(
     `SELECT l.id, l.raid_id, l.max_uses, l.uses, l.revoked_at, l.created_at, r.raid_on, r.starts_at, r.zone, COALESCE(r.title, r.event_title) AS title, t.name AS team_name,
@@ -182,7 +184,7 @@ async function guildLinksPayload(ctx, guild) {
     links: result.results.map((row) => ({
       id: row.id, raidId: row.raid_id, maxUses: row.max_uses, uses: row.uses, status: statusOf(row, now), createdAt: row.created_at,
       // The maker, by the name the account shows (null once the account is gone). Never an avatar: it carries a Discord ID.
-      createdBy: row.user_id ? toPerson({ id: row.user_id, discord_id: row.discord_id, username: row.username, global_name: row.global_name, display_name: row.display_name, avatar: row.avatar }, { avatar: false }) : null,
+      createdBy: row.user_id ? personFor({ id: row.user_id, discord_id: row.discord_id, username: row.username, global_name: row.global_name, display_name: row.display_name, avatar: row.avatar }, who, { ceiling: ['handle'] }) : null,
       raid: { raidOn: row.raid_on, startsAt: row.starts_at, zone: row.zone, title: row.title, teamName: row.team_name },
     })),
     limits: { defaultUses: DEFAULT_MAX_USES, maxUses: MAX_USES_LIMIT, perRaid: LINKS_PER_RAID },
@@ -192,7 +194,7 @@ async function guildLinksPayload(ctx, guild) {
 export async function listGuildJoinLinks(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
-  return jsonResponse(await guildLinksPayload(ctx, guildContext.guild));
+  return jsonResponse(await guildLinksPayload(ctx, guildContext));
 }
 
 // Anyone holding guild.access turns any link off, regardless of who made it (a link is the guild's, U R7-Q1). A link already off answers the same list.
@@ -209,7 +211,7 @@ export async function revokeGuildJoinLink(ctx) {
       raidAudit(ctx, guildContext, 'join.revoke', link.raid_id, null, null, CHANGED_ONE),
     ]);
   }
-  return jsonResponse(await guildLinksPayload(ctx, guild));
+  return jsonResponse(await guildLinksPayload(ctx, guildContext));
 }
 
 // ---------------------------------------------------------------------------

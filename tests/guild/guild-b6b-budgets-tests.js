@@ -12,7 +12,7 @@
 const assert = require('node:assert/strict');
 const { load, runChecks, scenario } = require('../guild-b3-world');
 const { flip, makeProven } = require('../guild-ingame');
-const { scansSince, statementsSince } = require('../guild-plans');
+const { anyScansSince, scansSince, statementsSince } = require('../guild-plans');
 const { NAMESPACE, REALM_ID } = require('../guild-seat');
 
 const checks = [];
@@ -114,6 +114,48 @@ check('loadGuildContext on the flipped guild: no table walked, the same five sta
   // And the answer is right under the load: the derived Team Lead of Alpha, scoped to Alpha.
   const lead = await loadGuildContext(db, s.uids.dtl, s.gid);
   assert.deepEqual(lead.can['roster.edit'], [s.alpha]);
+});
+
+// The ceiling of loadGuildContext (plan "Read budgets", lane B6b part 3b): the statements it runs and the rows those statements RETURN (the stand-in's rows_read counts returned rows),
+// for a request that is not about the member count at all. Measured on the flipped 1,200-member guild: 5 statements, 54 rows (53 for a plain member); 50 of the rows are the guild's
+// effective permission rows (its roles, not its members), the rest are the guild, the standing, the account's role rows and its team. Stated bounds: 5 statements, 64 rows.
+const LOAD_CONTEXT_STATEMENTS = 5;
+const LOAD_CONTEXT_ROWS = 64;
+
+check('loadGuildContext on the flipped 1,200-member guild: at most 5 statements and 64 returned rows for every kind of principal, none of it grows with the members, and no statement walks a table', async () => {
+  const s = await bigWorld();
+  const { loadGuildContext } = await load('worker/permissions.js');
+  const db = s.w.db;
+  const bulk = 'u_bulk00021'; // one of the 1,200 members written straight into the tables: proven by Battle.net (21 % 3 = 0) on in-game rank 1 (21 % 10), so a derived Officer
+  const accounts = { own: s.uids.own, dof: s.uids.dof, dtl: s.uids.dtl, mem: s.uids.mem, bulkDerived: bulk, bulkPlain: 'u_bulk00004' };
+  const measured = {};
+  for (const [key, userId] of Object.entries(accounts)) {
+    const from = db.statementLog.length;
+    await loadGuildContext(db, userId, s.gid);
+    const log = db.statementLog.slice(from);
+    measured[key] = { statements: log.length, rows: log.reduce((sum, entry) => sum + entry.rowsRead, 0) };
+    dump(`loadGuildContext for ${key}: a guarded table`, scansSince(db, from));
+    assert.deepEqual(anyScansSince(db, from).map((entry) => entry.detail), [], `loadGuildContext for ${key} walks a table`);
+    assert(measured[key].statements <= LOAD_CONTEXT_STATEMENTS, `${key}: ${measured[key].statements} statements`);
+    assert(measured[key].rows <= LOAD_CONTEXT_ROWS, `${key}: ${measured[key].rows} rows returned`);
+  }
+  console.log(`      measured: loadGuildContext ${JSON.stringify(measured)}`);
+  // The rows do not depend on how many people the guild has: the same principal on a four-person legacy guild returns the same (the permission rows are the roles' own).
+  const small = await scenario();
+  const mark = small.w.db.statementLog.length;
+  await loadGuildContext(small.w.db, small.uids.gm, small.gid);
+  const smallRows = small.w.db.statementLog.slice(mark).reduce((sum, entry) => sum + entry.rowsRead, 0);
+  assert(Math.abs(measured.own.rows - smallRows) <= 4, `1,204 members return ${measured.own.rows} rows, 4 members ${smallRows}`);
+  // The positive control of the scan check: a request that reads the members of the guild is reported.
+  const walk = db.statementLog.length;
+  await db.prepare('SELECT COUNT(*) AS n FROM users WHERE username LIKE ?').bind('x%').all();
+  assert(anyScansSince(db, walk).length > 0, 'a full scan is seen by the plan check');
+  const viewWalk = db.statementLog.length;
+  await db.prepare("SELECT guild_id FROM effective_roles WHERE role_id = 'officer'").bind().all();
+  assert(anyScansSince(db, viewWalk).length > 0, 'a scan inside a view is seen too');
+  const searched = db.statementLog.length;
+  await db.prepare('SELECT role_id FROM effective_roles WHERE guild_id = ? AND user_id = ?').bind(s.gid, s.uids.dof).all();
+  assert.deepEqual(anyScansSince(db, searched), [], 'a lookup by guild and account is no scan');
 });
 
 check('GET /auth/me and My guilds (memberGuildsStatement) on the flipped guild: no table walked, a fixed statement count', async () => {

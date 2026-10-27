@@ -25,6 +25,8 @@ const { newJar } = require('../guild-world');
 const { flip, makeProven } = require('../guild-ingame');
 const { scansSince, statementsSince, GUARDED_TABLES } = require('../guild-plans');
 const { bigWorld: baseBigWorld } = require('../guild-users-fixture');
+const { sentinelWorld: baseSentinelWorld, sentinelsOf: baseSentinelsOf } = require('../guild-sentinels');
+const { exec, rowsOf, sql, addRaid, addLoot, addPresence, addSignup, addApplication, addManual, markGuest, attend, leave, pendingBlock } = require('../guild-evidence');
 
 // The routes allow 30 requests a minute per user (review G3) and the fixtures below ask far more than that within a few simulated seconds, so a request of the helpers (s.call, s.ok)
 // to the users routes starts with an empty window. The rate-limit check itself goes through s.w.call, which this leaves alone.
@@ -45,44 +47,7 @@ const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
 
 // ---------------------------------------------------------------------------
-// Fixtures: rows written straight into the tables (the writers are other lanes' business)
-
-const sql = (s) => s.w.db.sqlite;
-const exec = (s, text, ...values) => sql(s).prepare(text).run(...values);
-const rowsOf = (s, text, ...values) => sql(s).prepare(text).all(...values).map((row) => ({ ...row }));
-let seq = 0;
-const pad = (n, width = 18) => String(n).padStart(width, '0');
-
-function addRaid(s, on, team = s.alpha) {
-  const id = `r_Fix${pad(++seq)}`;
-  exec(s, 'INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, 1)', id, s.gid, team, on, Date.parse(`${on}T20:00:00Z`), `Raid ${on}`);
-  return id;
-}
-function addLoot(s, raidId, name, team = s.alpha) {
-  const n = ++seq;
-  exec(s, `INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, item_name, awarded_at, winner_name, winner_name_key, winner_realm, winner_realm_key, winner_class, tag, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 30001, 'Fixture Blade', 5, ?, ?, 'Nightslayer', 'nightslayer', 'WARRIOR', 'MS', 1, 1)`, `lo_Fix${pad(n)}`, s.gid, raidId, team, `fix${pad(n, 8)}`, name, name.toLowerCase());
-}
-function addPresence(s, raidId, name) {
-  const n = ++seq;
-  const code = `Rpt${pad(n, 13)}`;
-  exec(s, "INSERT INTO raid_reports (raid_id, guild_id, code, flavour, started_at, ended_at, owner, synced_at) VALUES (?, ?, ?, 'classic', 1, 2, 'Uploader', 3)", raidId, s.gid, code);
-  exec(s, "INSERT INTO raid_pulls (id, raid_id, report_code, fight_id, encounter_id, encounter_name, kill, started_at, ended_at) VALUES (?, ?, ?, 1, 100, 'Boss', 1, 1, 2)", 5000 + n, raidId, code);
-  exec(s, "INSERT INTO raid_presence (pull_id, raid_id, guild_id, name, name_key, realm, realm_key, class) VALUES (?, ?, ?, ?, ?, 'Nightslayer', 'nightslayer', 'ROGUE')", 5000 + n, raidId, s.gid, name, name.toLowerCase());
-}
-function addSignup(s, raidId, { source = 'raidsmith', nickname = null, playerId = null, guest = 0, guestUserId = null, discordId = null, kind = 'signed' }) {
-  exec(s, `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, position, guild_id, player_id, guest, guest_user_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1, 1)`, raidId, source, ++seq, discordId, nickname, kind, s.gid, playerId, guest, guestUserId);
-}
-function addApplication(s, { name, userId = null, at = 1_790_000_000_000, team = s.alpha }) {
-  exec(s, `INSERT INTO applications (id, guild_id, team_id, status, char_name, name_key, realm, realm_key, class, user_id, created_at, updated_at)
-    VALUES (?, ?, ?, 'new', ?, ?, 'Nightslayer', 'nightslayer', 'MAGE', ?, ?, 1)`, `am_Fix${pad(++seq)}`, s.gid, team, name, name.toLowerCase(), userId, at);
-}
-const addManual = (s, raidId, name) => exec(s, "INSERT INTO raid_manual_names (raid_id, guild_id, name, name_key, realm, realm_key) VALUES (?, ?, ?, ?, 'Nightslayer', 'nightslayer')", raidId, s.gid, name, name.toLowerCase());
-const markGuest = (s, name) => exec(s, "INSERT INTO attendance_guests (guild_id, name_key, realm_key, name, created_at) VALUES (?, ?, 'nightslayer', ?, 1)", s.gid, name.toLowerCase(), name);
-const attend = (s, raidId, team, playerId) => exec(s, "INSERT INTO attendance (raid_id, guild_id, team_id, player_id, outcome, attended) VALUES (?, ?, ?, ?, 'present', 1)", raidId, s.gid, team, playerId);
-const leave = (s, characterId, on = '2026-12-01') => exec(s, "UPDATE characters SET left_on = ?, left_reason = 'left', core_rank = 'social' WHERE id = ?", on, characterId);
-const pendingBlock = (s, key, at = 1_790_000_000_000) => exec(s, "INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at, pending_review) VALUES (?, ?, NULL, 'Matched an earlier block of the same person', ?, 1)", s.gid, s.uids[key], at);
+// Fixtures: rows written straight into the tables (the writers are other lanes' business) live in tests/guild-evidence.js
 
 // The guild of the segment checks (rank source NULL = legacy): the Guild Master is the Owner; an Officer and a Team Lead; members in the Discord server with and without a person;
 // account-less persons (a member and a Former one); blocked accounts and a blocked person; outsiders that touched the guild; names that resolve to no character.
@@ -905,72 +870,10 @@ check('keep: without a TOMBSTONE_KEY the block still applies and is flagged for 
 // ---------------------------------------------------------------------------
 // Redaction
 
-// An in-game guild with every kind of principal, and a sentinel planted wherever the Worker keeps something the Users replies must never carry: a Discord id (accounts, a person,
-// a Raid-Helper sign-up), a Battle.net account id, a BattleTag, a Blizzard character / realm id and the namespace of an identity key, a session token hash, a tombstone hash and
-// a webhook address.
-async function sentinelWorld() {
-  const s = await scenario({ teams: ['Alpha', 'Bravo'], env: { TOMBSTONE_KEY: KEY } });
-  [s.alpha, s.bravo] = s.tids;
-  s.people = {};
-  const spec = [
-    ['own', 'Seatowner', 4], ['dgm', 'Derivedgm', 0], ['dof', 'Derivedoff', 1], ['dtl', 'Derivedlead', 2], ['sof', 'Storedoff', 5], ['stl', 'Storedlead', 5], ['cust', 'Customholder', 5],
-    ['mem', 'Plainmember', 5], ['blk', 'Blockedone', 5], ['pnd', 'Pendingone', 5],
-  ];
-  for (const [key, name] of spec) {
-    await s.member(key, name);
-    s.people[key] = await s.person({ name });
-    await s.link(s.people[key].pid, key);
-  }
-  await s.ok('gm', 'PUT', `/people/${s.uids.sof}/roles`, { officer: true, teamLeadTeamIds: [] }, 200);
-  await s.ok('gm', 'PUT', `/people/${s.uids.stl}/roles`, { officer: false, teamLeadTeamIds: [s.alpha] }, 200);
-  const role = await s.ok('gm', 'POST', '/roles', { name: 'Loot council', permissions: { 'loot.view': 'guild' } });
-  await s.ok('gm', 'PUT', `/people/${s.uids.cust}/roles`, { officer: false, teamLeadTeamIds: [], roles: [{ roleId: role.roles.find((entry) => entry.name === 'Loot council').id, teamId: null }] }, 200);
-  let index = 0;
-  for (const [key, , rank] of spec) {
-    index++;
-    const derivedRole = ['own', 'dgm', 'dof', 'dtl'].includes(key);
-    makeProven(s, key, s.people[key], { rank, id: 91827300 + index, bnetId: `98700000${index}`, proof: derivedRole ? 'bnet' : 'officer', link: derivedRole });
-    // Every account has a Battle.net link of its own, proven or not.
-    exec(s, "INSERT OR IGNORE INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, ?, ?, 1, '{}', 1)", s.uids[key], `98700000${index}`, `Sentineltag${index}#7777`);
-    exec(s, 'UPDATE bnet_links SET battletag = ? WHERE user_id = ?', `Sentineltag${index}#7777`, s.uids[key]);
-  }
-  flip(s, { owner: 'own' });
-  exec(s, 'UPDATE characters SET blizzard_realm_id = 87654321 WHERE blizzard_realm_id IS NOT NULL');
-  exec(s, 'UPDATE guild_roster SET blizzard_realm_id = 87654321');
-  await s.ok('own', 'POST', `/people/${s.uids.blk}/block`, { reason: 'Rude' }, 200);
-  pendingBlock(s, 'pnd');
-  // A person with a Discord id of their own, and every kind of name.
-  s.ghost = await s.person({ name: 'Ghost' }, 'own');
-  exec(s, "UPDATE players SET discord_user_id = '888000000000000001' WHERE id = ?", s.ghost.pid);
-  s.wanted = await s.person({ name: 'Wanted' }, 'own');
-  exec(s, "UPDATE players SET discord_user_id = '888000000000000002' WHERE id = ?", s.wanted.pid);
-  await s.ok('own', 'POST', `/roster/${s.wanted.pid}/block`, { reason: 'Banned' }, 200);
-  s.r1 = addRaid(s, '2026-12-01');
-  addLoot(s, s.r1, 'Lootguy');
-  addPresence(s, s.r1, 'Logguy');
-  addSignup(s, s.r1, { source: 'raid_helper', nickname: 'Helperguy', discordId: '555000000000000001' });
-  addSignup(s, s.r1, { source: 'raid_helper', nickname: 'Selfhelper', discordId: rowsOf(s, 'SELECT discord_id FROM users WHERE id = ?', s.uids.dof)[0].discord_id });
-  addApplication(s, { name: 'Hopeful' });
-  await s.outsider('out1', 'Outsiderone');
-  addApplication(s, { name: 'Appchar', userId: s.uids.out1 });
-  exec(s, "INSERT INTO team_notifications (team_id, guild_id, webhook_url, updated_at) VALUES (?, ?, 'https://discord.com/api/webhooks/123456789012345678/SentinelWebhookSecret', 1)", s.alpha, s.gid);
-  return s;
-}
-
-const sentinelsOf = (s) => {
-  const values = new Set(['SentinelWebhookSecret', '123456789012345678', '87654321', 'profile-classicann', '555000000000000001', '888000000000000001', '888000000000000002']);
-  const take = (text, ...bind) => rowsOf(s, text, ...bind).forEach((entry) => Object.values(entry).forEach((value) => { if (value !== null && String(value).length >= 6) values.add(String(value)); }));
-  take('SELECT discord_id FROM users WHERE discord_id IS NOT NULL');
-  take('SELECT account_key FROM users WHERE account_key <> id'); // an account made without Discord has its own id as the key: that is no secret
-  take('SELECT discord_user_id FROM players WHERE discord_user_id IS NOT NULL');
-  take('SELECT discord_user_id FROM raid_signups WHERE discord_user_id IS NOT NULL');
-  take('SELECT bnet_account_id, battletag FROM bnet_links');
-  take('SELECT proof_bnet_account_id FROM characters WHERE proof_bnet_account_id IS NOT NULL');
-  take('SELECT blizzard_char_id FROM characters WHERE blizzard_char_id IS NOT NULL');
-  take('SELECT token_hash FROM sessions');
-  take('SELECT hmac FROM block_tombstones');
-  return [...values];
-};
+// The sentinel world (an in-game guild with every kind of principal and a unique value planted for every class the replies must not carry) is shared with the redaction suite of part 3b
+// (tests/guild-sentinels.js, walked over EVERY route by tests/guild/guild-b6b-p3b-redaction-tests.js); here it is asked through the Users routes, segment by segment and sort by sort.
+const sentinelWorld = () => baseSentinelWorld({ wrap: unlimited });
+const sentinelsOf = (s) => baseSentinelsOf(s).map((entry) => entry.value);
 
 check('redaction: no Discord id, Battle.net account id, BattleTag, Blizzard id, token hash, tombstone or webhook is in any Users reply, for the Owner, a derived Guild Master and Officer, a stored Officer, and every principal that is refused', async () => {
   const s = await sentinelWorld();

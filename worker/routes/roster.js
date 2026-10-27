@@ -5,7 +5,7 @@ import { isId, newId } from '../ids.js';
 import { memberCandidatesSql, memberSql } from '../membership.js';
 import { PROVEN_LINK_MESSAGE, ownerGuard, requireOwner } from '../owner.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
-import { toPerson } from '../person.js';
+import { personFor, viewerFor } from '../redact.js';
 import { RANK_COLUMNS_SQL, characterRankColumns, rankBinds, setCharacterRanksStatement, trialDatesFollowMainStatements } from '../person-legacy.js';
 import {
   CLASS_IDS, CREATE_STATUSES, LEFT_REASONS, allowsSurname, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
@@ -15,7 +15,7 @@ import { findRealm } from '../realms.js';
 import { linkSignupsStatement, markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
 import { assertSenior, seniorityDeleteOk, seniorityOk } from '../seniority.js';
 import {
-  canSeeAvatars, guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
+  guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
 } from '../roster-view.js';
 
 const MAX_NOTES = 4000;
@@ -274,8 +274,8 @@ export async function getLinkable(ctx) {
         AND NOT EXISTS (SELECT 1 FROM players p WHERE p.guild_id = gc.gid AND (p.discord_user_id = u.discord_id OR p.user_id = u.id))
       ORDER BY u.username, u.id LIMIT 1000`,
   ).bind(guildId, serverId).all();
-  const showAvatar = canSeeAvatars(guildContext.can);
-  return jsonResponse({ users: result.results.map((row) => toPerson(row, { avatar: showAvatar })) });
+  const who = viewerFor(guildContext);
+  return jsonResponse({ users: result.results.map((row) => personFor(row, who)) });
 }
 
 export async function getPerson(ctx) {

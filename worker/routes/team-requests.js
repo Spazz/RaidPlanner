@@ -13,9 +13,9 @@ import { isBlocked } from '../block-check.js';
 import { newId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
-import { toPerson } from '../person.js';
+import { personFor, viewerFor } from '../redact.js';
 import { SINGLE_LINE_STRIP, nameKey } from '../roster-data.js';
-import { canSeeAvatars, loadTeamRequestFlags } from '../roster-view.js';
+import { loadTeamRequestFlags } from '../roster-view.js';
 import { placeStatement, staleStatement } from '../team-place.js';
 import { bad, constraintOf, requireTarget, teamTaken } from './roster.js';
 
@@ -80,13 +80,13 @@ export async function listTeamRequests(ctx) {
   const decide = isGranted(guildContext.can['roster.edit']);
   const mine = await ctx.db.prepare(MINE_SQL).bind(guildId, ctx.session.user.id).all();
   const pending = decide ? await ctx.db.prepare(PENDING_SQL).bind(guildId).all() : { results: [] };
-  const showAvatar = canSeeAvatars(guildContext.can);
+  const who = viewerFor(guildContext);
   return jsonResponse({
     mine: mine.results.map(view),
     pending: pending.results.filter((row) => allows(guildContext.can, 'roster.edit', row.team_id)).map((row) => ({
       ...view(row),
       person: { id: row.player_id, name: row.main_name },
-      requestedBy: row.requested_by ? toPerson(row, { avatar: showAvatar }) : null,
+      requestedBy: row.requested_by ? personFor(row, who) : null,
     })),
     can: { decide },
   });

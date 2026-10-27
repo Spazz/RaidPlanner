@@ -9,7 +9,7 @@ import { HttpError, cleanText, jsonResponse, parseCookies, serializeCookie } fro
 import { auditStatement } from '../audit.js';
 import { base64url, newId } from '../ids.js';
 import { SECTION_ACTIONS, canGrant, loadGuildContext, requireAction, resolveViewerPermissions } from '../permissions.js';
-import { toPerson } from '../person.js';
+import { personFor, viewerFor } from '../redact.js';
 import { loadRolesData } from '../roles-store.js';
 import { hashToken } from '../session.js';
 import { buildView, loadGuildRow } from '../viewer.js';
@@ -38,6 +38,7 @@ function sectionsOfRole(rolesData, roleId) {
 
 async function linksPayload(db, guildContext, nowMs) {
   const guildId = guildContext.guild.id;
+  const who = viewerFor(guildContext);
   const [linkResult, rolesData] = await Promise.all([
     db.prepare(
       `SELECT l.id, l.label, l.role_id, r.name AS role_name, l.team_id, t.name AS team_name, l.expires_at, l.revoked_at, l.uses, l.last_used_at, l.created_at,
@@ -63,7 +64,7 @@ async function linksPayload(db, guildContext, nowMs) {
       uses: row.uses,
       lastUsedAt: row.last_used_at,
       createdAt: row.created_at,
-      createdBy: row.user_id ? toPerson({ id: row.user_id, discord_id: row.discord_id, username: row.username, global_name: row.global_name, display_name: row.display_name, avatar: row.avatar }) : null,
+      createdBy: row.user_id ? personFor({ id: row.user_id, discord_id: row.discord_id, username: row.username, global_name: row.global_name, display_name: row.display_name, avatar: row.avatar }, who) : null,
     })),
     // The roles a link can grant: Guest, or one of the guild's own. Only the read actions of a role ever reach a guest.
     roles: [{ id: 'guest', name: 'Guest', sections: sectionsOfRole(rolesData, 'guest') }, ...rolesData.custom.map((role) => ({ id: role.id, name: role.name, sections: sectionsOfRole(rolesData, role.id) }))],

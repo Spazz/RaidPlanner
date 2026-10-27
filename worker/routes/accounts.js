@@ -8,7 +8,8 @@ import { isId } from '../ids.js';
 import { blockedSql, memberSql, ownPlayerSql } from '../membership.js';
 import { PROVEN_LINK_MESSAGE, ownedGuildsSql, ownerGuard, ownerSql, requireOwner } from '../owner.js';
 import { loadGuildContext, isGranted } from '../permissions.js';
-import { personFromSession, toPerson } from '../person.js';
+import { personFromSession } from '../person.js';
+import { VIEWERS, personFor } from '../redact.js';
 import { enforceRateLimit } from '../ratelimit.js';
 import { SINGLE_LINE_STRIP } from '../roster-data.js';
 import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
@@ -178,7 +179,7 @@ export async function lookupAccounts(ctx) {
   const byName = rows.filter((row) => row.matched_by === 'name').length;
   return jsonResponse({
     accounts: rows.map((row) => ({
-      ...toPerson(row, { avatar: false }), username: '', battletag: row.battletag, matchedBy: row.matched_by,
+      ...personFor(row, VIEWERS.lookup), battletag: row.battletag, matchedBy: row.matched_by,
       ambiguous: row.matched_by === 'name' && byName > 1,
     })),
   });

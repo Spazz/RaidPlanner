@@ -2,7 +2,7 @@ import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.j
 import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
-import { toPerson } from '../person.js';
+import { personFor, viewerFor } from '../redact.js';
 import { teamRosterSql } from '../team-roster.js';
 import { LIMITS, TEAM_LIMIT_MESSAGE } from '../limits.js';
 import { RAID_SIZES, defaultTeamSize, isRaidSize } from '../raid-zones.js';
@@ -27,8 +27,9 @@ export function teamView(row, leads = [], players = 0) {
   return { id: row.id, name: row.name, size: row.size, archived: row.archived === 1, trialDays: row.trial_days === undefined ? DEFAULT_TRIAL_DAYS : row.trial_days, players, leads, ...(row.launch_team === 1 ? { launchTeam: true } : {}) };
 }
 
-// Every team of the guild (archived ones included), with the unblocked Team Leads of each.
-export async function loadTeams(db, guildId) {
+// Every team of the guild (archived ones included), with the unblocked Team Leads of each. `viewer` (worker/redact.js) decides what of a lead's account the reader sees: a member
+// sees a name and initials, only whoever opens People also the avatar and the handle.
+export async function loadTeams(db, guildId, viewer) {
   const [teamResult, leadResult, countResult] = await db.batch([
     db.prepare('SELECT id, name, size, archived, launch_team, trial_days FROM teams WHERE guild_id = ? ORDER BY created_at, id').bind(guildId),
     db.prepare(
@@ -47,7 +48,7 @@ export async function loadTeams(db, guildId) {
   const counts = new Map(countResult.results.map((row) => [row.team_id, row.n]));
   return teamResult.results.map((team) => teamView(
     team,
-    leadResult.results.filter((lead) => lead.team_id === team.id).map(toPerson),
+    leadResult.results.filter((lead) => lead.team_id === team.id).map((lead) => personFor(lead, viewer)),
     counts.get(team.id) || 0,
   ));
 }
@@ -126,6 +127,6 @@ export async function patchTeam(ctx) {
       throw error;
     }
   }
-  const team = (await loadTeams(ctx.db, guildContext.guild.id)).find((entry) => entry.id === current.id);
+  const team = (await loadTeams(ctx.db, guildContext.guild.id, viewerFor(guildContext))).find((entry) => entry.id === current.id);
   return jsonResponse({ team });
 }

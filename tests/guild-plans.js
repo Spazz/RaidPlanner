@@ -38,4 +38,33 @@ function scansSince(db, from, { tables = GUARDED_TABLES } = {}) {
 
 const statementsSince = (db, from) => db.statementLog.length - from;
 
-module.exports = { GUARDED_TABLES, namesOf, scansSince, statementsSince };
+// Every statement the request ran (from `from`) whose plan walks a whole TABLE, whichever one it is: [{ detail, sql }]. SQLite prints the ALIAS of a table ("SCAN ra"), so the aliases
+// are read from the statement and from the view definitions (as namesOf does). A scan that can only be a one-row subquery (CONSTANT ROW, "SCAN c" for `(SELECT ? AS uid) c`) or the
+// result of a view (its co-routine; its tables show up in their own plan rows) is not a table scan.
+function anyScansSince(db, from) {
+  const found = [];
+  const master = db.sqlite.prepare("SELECT name, type, sql FROM sqlite_master WHERE type IN ('table', 'view')").all();
+  const tables = new Set(master.filter((row) => row.type === 'table').map((row) => row.name));
+  const views = master.filter((row) => row.type === 'view');
+  const viewSql = views.map((row) => row.sql).join('\n');
+  const pair = /(?:\b(?:FROM|JOIN)\s+|,\s*)([A-Za-z_]\w*)(?:\s+(?:AS\s+)?([A-Za-z_]\w*))?/gi;
+  const skip = /^(WHERE|JOIN|ON|LEFT|INNER|SET|GROUP|ORDER|LIMIT|USING|CROSS|AND|OR|UNION|SELECT|INDEXED|NOT|AS|VALUES)$/i;
+  const standsFor = (text, target) => {
+    const names = new Set();
+    for (const match of text.matchAll(pair)) if ((match[2] && !skip.test(match[2]) ? match[2] : match[1]) === target) names.add(match[1]);
+    return names;
+  };
+  for (const { sql, values } of db.statementLog.slice(from)) {
+    const plan = db.sqlite.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...values).map((row) => row.detail);
+    for (const detail of plan) {
+      const target = /^SCAN (?:TABLE )?(\S+)/.exec(detail);
+      if (!target || target[1] === 'CONSTANT') continue;
+      const candidates = new Set([...standsFor(sql, target[1]), ...standsFor(viewSql, target[1])]);
+      if (tables.has(target[1])) candidates.add(target[1]);
+      if ([...candidates].some((name) => tables.has(name))) found.push({ detail, sql: sql.replace(/\s+/g, ' ').slice(0, 140) });
+    }
+  }
+  return found;
+}
+
+module.exports = { GUARDED_TABLES, namesOf, scansSince, statementsSince, anyScansSince };

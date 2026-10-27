@@ -7,9 +7,9 @@ import { CLAIM_BLOCKED_TEXT, planClaims } from '../bnet-store.js';
 import { isId } from '../ids.js';
 import { applyClaimPlan, planPicks } from '../claim-apply.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
-import { toPerson } from '../person.js';
+import { personFor, viewerFor } from '../redact.js';
 import { CREATE_STATUSES } from '../roster-data.js';
-import { canSeeAvatars, guildToday, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
+import { guildToday, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
 import { bad, constraintOf, limitError, requireTarget } from './roster.js';
 
 const MAX_LIST = 200;
@@ -55,13 +55,13 @@ export async function listClaims(ctx) {
       WHERE cl.guild_id = ? AND cl.status = 'pending' ORDER BY cl.created_at, cl.id LIMIT ?`,
   ).bind(guild.id, MAX_LIST).all();
   const plans = await planClaims(ctx.db, guild, result.results);
-  const showAvatar = canSeeAvatars(guildContext.can);
+  const who = viewerFor(guildContext);
   return jsonResponse({
     claims: result.results.map((row) => ({
       id: row.id,
       character: { name: row.name, realm: row.realm, class: row.class, level: row.level },
       claimedAt: row.created_at,
-      claimant: toPerson(row, { avatar: showAvatar }),
+      claimant: personFor(row, who),
       plan: planView(guildContext, plans.get(row.id)),
     })),
   });
