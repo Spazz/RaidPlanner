@@ -1,6 +1,6 @@
 // Guild settings > Discord roles: the bot invite link, the guild's Discord roles, and which Raidsmith role each one gives.
 //   GET  /api/guild/:gid/discord        (guild.roles)  bot status, the server's roles, the mapping, and what a role can be mapped to
-//   PUT  /api/guild/:gid/discord/maps   (guild.roles)  replace the whole mapping
+//   PUT  /api/guild/:gid/discord/maps   (guild.roles)  replace the whole mapping (409 discord_roles_off once the guild has a rank source: its roles do not come from Discord)
 //   POST /api/guild/:gid/discord/sync   (guild.access) Sync everyone who signed in, 25 people per call (repeat with `next` until it is null)
 // One Raidsmith role per Discord role; a person with several mapped Discord roles gets all of them. The mapping is applied at every sign-in and by
 // Sync now (worker/discord-sync.js). The Guild Master cannot be mapped; @everyone is not offered (everyone in the server is a Member already).
@@ -8,7 +8,7 @@ import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { botConfigured, fetchServerRoles, inviteUrl } from '../discord-bot.js';
 import { requireDiscord } from '../discord-guard.js';
-import { discordProblem, syncGuildMembers } from '../discord-sync.js';
+import { discordProblem, discordRolesOffError, rankSourceOf, syncGuildMembers } from '../discord-sync.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
 import { assertMayGrant, loadRolesData } from '../roles-store.js';
 
@@ -94,6 +94,9 @@ export async function putMaps(ctx) {
   requireAction(guildContext, 'guild.roles');
   const guild = guildContext.guild;
   requireDiscord(guild);
+  // The rank-source gate (worker/discord-sync.js): the mapping gives roles only in a legacy guild, so it is not edited, and nothing it deletes is touched, in any other.
+  const rankSource = await rankSourceOf(ctx.db, guild.id);
+  if (rankSource !== null) throw discordRolesOffError(rankSource);
   const maps = readMaps(ctx.body);
   const rolesData = await loadRolesData(ctx.db, guild.id);
   const targets = new Map(targetsOf(rolesData).map((target) => [target.roleId, target]));
@@ -147,6 +150,8 @@ export async function syncEveryone(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   requireDiscord(guildContext.guild);
+  const rankSource = await rankSourceOf(ctx.db, guildContext.guild.id);
+  if (rankSource !== null) throw discordRolesOffError(rankSource);
   if (!botConfigured(ctx.env)) throw discordProblem('not_configured');
   const after = ctx.body.after === undefined || ctx.body.after === null ? '' : ctx.body.after;
   if (typeof after !== 'string' || (after !== '' && !/^u_[A-Za-z0-9_-]{22}$/.test(after))) throw bad('after must be a person id from the previous call.', 'after');

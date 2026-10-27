@@ -144,6 +144,9 @@ export const AUDIT_ACTIONS = [
   'guild.succession',
   // Lane B7b: an officer kept a block that a tombstone match wrote (the review queue): it is a block like any other from then on. Never pruned.
   'block.keep',
+  // Lane B6b part 3a: the Owner linked the guild to its in-game guild (setup pin or re-pin), and the rank source was switched (to the in-game roster or away from it, lane B9's flip and unflip). Permanent.
+  'guild.pin',
+  'guild.source_switch',
 ];
 
 // The PRUNABLE set (plan "Audit"): per-person detail of a sync run and failures. The daily job deletes these past AUDIT_PRUNE_AFTER_MS; every other row is

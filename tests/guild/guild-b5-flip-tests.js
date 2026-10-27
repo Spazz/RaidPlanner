@@ -91,10 +91,13 @@ check('the dry run lists who loses access (discord_only, no_roster_character, al
   assert.equal(body.rankSource, null);
   assert.equal(body.rosterSyncId, '');
   const { loses, gains, members } = body.access;
-  assert.deepEqual(loses.reasons, { discord_only: 1, no_roster_character: 3, all_former: 1 });
-  assert.equal(loses.count, 5);
+  // The Owner (the Guild Master, whose person only a Discord ID owns) is a member today and will be SUSPENDED after the flip (no character of theirs is proven by Battle.net on the
+  // roster): the Owner exemption ends with suspension (lane B6b part 3a), so they are in the list like anybody else.
+  assert.deepEqual(loses.reasons, { discord_only: 1, no_roster_character: 4, all_former: 1 });
+  assert.equal(loses.count, 6);
   const lost = bySample(loses);
-  assert.deepEqual(Object.keys(lost).sort(), ['Dcoffmain', 'Donlyone', 'Formermain', 'Offmain', 'Unkeyedmain']);
+  assert.deepEqual(Object.keys(lost).sort(), ['Dcoffmain', 'Donlyone', 'Formermain', 'Gmmain', 'Offmain', 'Unkeyedmain']);
+  assert.equal(lost.Gmmain.reason, 'no_roster_character');
   assert.equal(lost.Donlyone.reason, 'discord_only');
   assert.equal(lost.Donlyone.personId, null);
   assert.equal(lost.Donlyone.userId, s.uids.donly, 'an account with no person is named by its account id');
@@ -109,7 +112,7 @@ check('the dry run lists who loses access (discord_only, no_roster_character, al
   assert.equal(gains.count, 1);
   assert.deepEqual(gains.reasons, { discord_owned_person: 1 });
   assert.deepEqual(gains.samples.map((entry) => [entry.name, entry.reason, entry.personId]), [['Gainermain', 'discord_owned_person', s.persons.gainer.pid]]);
-  assert.deepEqual(members, { today: 9, afterFlip: 5 });
+  assert.deepEqual(members, { today: 9, afterFlip: 4 });
   const owned = body.discordOwned;
   assert.deepEqual([owned.count, owned.conflicts, owned.onRoster, owned.ownerIncluded], [4, 1, 2, true], 'dcown, dcoff, the Guild Master\'s person, the gainer; the twin cannot be linked');
   assert.deepEqual(owned.samples.map((entry) => [entry.name, entry.onRoster]).sort(), [['Dcoffmain', false], ['Dcownmain', true], ['Gainermain', true], ['Gmmain', false]]);
@@ -147,12 +150,11 @@ check('the lists are what the in-game rule really does: after the flip is made b
   s.exec(`UPDATE guilds SET rank_source = 'ingame', owner_user_id = '${s.uids.gm}' WHERE id = '${s.gid}'`);
   s.exec(`UPDATE OR IGNORE players SET user_id = (SELECT u.id FROM users u WHERE u.discord_id = players.discord_user_id)
            WHERE guild_id = '${s.gid}' AND user_id IS NULL AND discord_user_id IS NOT NULL`);
-  // The Owner stays in only while LIVE (suspension): their linked person's character is proven by Battle.net, as the Owner's sign-in match would do.
-  makeProven(s, 'gm', s.persons.gmPerson, { rank: 4, id: 51010 });
+  // The Owner (the Guild Master) is not live: no character of theirs is proven by Battle.net on the roster, so the exemption ended with the flip and they are listed like anybody else.
   const after = await memberNow();
   const lost = accounts.filter((key) => before[key] && !after[key]).sort();
   const gained = accounts.filter((key) => !before[key] && after[key]).sort();
-  assert.deepEqual(lost, ['dcoff', 'donly', 'former', 'offroster', 'unkeyed']);
+  assert.deepEqual(lost, ['dcoff', 'donly', 'former', 'gm', 'offroster', 'unkeyed']);
   assert.deepEqual(gained, ['gainer']);
   assert.equal(body.access.loses.count, lost.length);
   assert.equal(body.access.gains.count, gained.length);
@@ -161,26 +163,39 @@ check('the lists are what the in-game rule really does: after the flip is made b
   assert.equal(before.blocked || after.blocked, false);
 });
 
-check('the Owner exemption: an Owner who is not a member today (not in the server, linked to no one) gains access; one who is in the server stays out of both lists', async () => {
+check('the Owner exemption ends with suspension: an Owner who is not a member today (not in the server, linked to no one) gains nothing and is SUSPENDED after the flip; one in the server loses access with them; a live Owner stays in', async () => {
   const { previewFlip } = await load('worker/flip-preview.js');
   const s = await scenario();
   await s.outsider('seat', 'Seatholder');
   await s.setOwner('seat');
-  // Such an Owner cannot call the route (the legacy rule does not let them in), so the module answers for them.
+  // Such an Owner can call the route too (lane B6b part 3a closes B5 open point (c): the Owner question comes before the membership one).
+  const route = await dry(s, 'seat');
+  assert.equal(route.status, 200, route.text);
   const { payload } = await previewFlip(s.w.db, s.gid);
-  assert.deepEqual(payload.access.gains.reasons, { owner: 1 });
-  assert.deepEqual(payload.access.gains.samples.map((entry) => [entry.reason, entry.userId, entry.personId]), [['owner', s.uids.seat, null]]);
+  assert.deepEqual(payload.access.gains.reasons, {}, 'a suspended Owner is no member after the flip: the exemption ends with suspension');
+  assert.deepEqual(payload.access.gains.samples, []);
   // The Guild Master by role is a derived GM now: a member today (in the server), not after the flip (no roster character).
   assert.deepEqual(payload.access.loses.reasons, { discord_only: 1 });
   assert.equal(payload.access.loses.samples[0].userId, s.uids.gm);
-  assert.deepEqual(payload.access.members, { today: 1, afterFlip: 1 });
-  // An Owner who is in the server keeps access either way: through the route, nothing to gain.
+  assert.deepEqual(payload.access.members, { today: 1, afterFlip: 0 });
+  assert.deepEqual([payload.owner.live, payload.owner.willBeSuspended, payload.owner.reason], [false, true, 'no_roster']);
+  // An Owner who is in the server is a member today and, with no character proved by Battle.net, suspended after: they lose access with the Guild Master by role.
   await s.member('own', 'Ownerinserver');
   await s.setOwner('own');
   const res = await dry(s, 'own');
   assert.equal(res.status, 200, res.text);
   assert.equal(res.json.access.gains.count, 0);
-  assert.deepEqual(res.json.access.loses.reasons, { discord_only: 1 });
+  assert.deepEqual(res.json.access.loses.reasons, { discord_only: 2 });
+  // A LIVE Owner (linked to a person whose character is proven by Battle.net on the roster) is a member today and stays one: in neither list.
+  const live = await scenario();
+  const mine = await live.person({ name: 'Liveowner' });
+  await live.link(mine.pid, 'gm');
+  makeProven(live, 'gm', mine, { rank: 4 });
+  const ok = await dry(live);
+  assert.equal(ok.status, 200, ok.text);
+  assert.deepEqual(ok.json.access.members, { today: 1, afterFlip: 1 });
+  assert.equal(ok.json.access.loses.count + ok.json.access.gains.count, 0);
+  assert.deepEqual([ok.json.owner.live, ok.json.owner.reason], [true, 'live']);
 });
 
 check('at most 25 samples per list, the counts stay whole', async () => {
@@ -191,7 +206,7 @@ check('at most 25 samples per list, the counts stay whole', async () => {
     s.exec(`INSERT INTO user_servers (user_id, server_id, seen_at) VALUES ('${id}', '${s.serverId}', 1)`);
   }
   const { json } = await dry(s);
-  assert.equal(json.access.loses.count, 31, 'every server member but the Owner');
+  assert.equal(json.access.loses.count, 32, 'every server member, the Owner included (suspended after the flip: no character proved by Battle.net)');
   assert.equal(json.access.loses.samples.length, 25);
   assert.equal(json.discordOwned.samples.length, 0);
   assert(json.access.loses.samples.every((entry) => entry.reason === 'discord_only' && /^u_/.test(entry.userId) && /^Bulk \d+$/.test(entry.name)));
@@ -249,7 +264,9 @@ check('a guild that is already in-game answers 409 already_ingame, before the ra
   await m.member('donly', 'Donlyone');
   const person = await m.person({ name: 'Linkedmain' });
   await m.link(person.pid, 'donly');
-  await m.link((await m.person({ name: 'Gmmain' })).pid, 'gm');
+  const gmPerson = await m.person({ name: 'Gmmain' });
+  await m.link(gmPerson.pid, 'gm');
+  makeProven(m, 'gm', gmPerson, { rank: 4 }); // a LIVE Owner: the exemption holds
   await m.member('plain', 'Plainone');
   m.exec(`UPDATE guilds SET rank_source = 'manual' WHERE id = '${m.gid}'`);
   await m.setOwner('gm'); // the seat: a stored Guild Master row alone no longer counts once the rank source is chosen

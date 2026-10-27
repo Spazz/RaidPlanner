@@ -11,7 +11,7 @@ import { matchAccountAtSignIn } from '../block-tombstones.js';
 import { runGmClaim } from '../gm-claim.js';
 import { CALLBACK_STATEMENT_BUDGET, clearBnetProofStatement, loadIngameCombos, runBnetMatch } from '../bnet-match.js';
 import {
-  ALWAYS, allOf, beginIdentityChange, freshDoneRoute, freshErrorRoute, freshRequiredError, identityChangeBlocked, identityChangeStatements, isProtectedAccount, noteFreshFailure,
+  ALWAYS, allOf, beginIdentityChange, checkFreshIdentity, freshDoneRoute, freshErrorRoute, freshRequiredError, identityChangeBlocked, identityChangeStatements, isProtectedAccount, noteFreshFailure,
   protectedAccountSql, writeFreshGrant,
 } from '../fresh.js';
 import { CLAIM_BATCH_MAX, DATA_TTL_MS, loadMemberGuilds, parseSnapshot, realmDisplayName } from '../bnet-store.js';
@@ -123,6 +123,20 @@ async function buildSnapshot(ctx, accessToken, guilds, now) {
   return snapshot;
 }
 
+// The account's characters in the namespace of ONE guild, read now and written into the link's snapshot (that namespace's entry only: the other entries and snapshot_at stay, so
+// the 30-day rule still counts from their own fetch). The setup pin's decision reads the entry back (worker/pin-proof.js). -> { ok: true } | { ok: false, reason }.
+async function refreshPinCharacters(ctx, { userId, bnetAccountId, guildId, accessToken, now }) {
+  const guild = await ctx.db.prepare('SELECT game_version, region FROM guilds WHERE id = ?').bind(guildId).first();
+  if (!guild) return { ok: false, reason: 'conflict' };
+  const entries = Object.entries(await buildSnapshot(ctx, accessToken, [guild], now));
+  if (entries.length !== 1 || entries[0][1].error) return { ok: false, reason: 'provider' };
+  const [namespace, entry] = entries[0];
+  const written = await ctx.db.prepare(
+    `UPDATE bnet_links SET snapshot = json_set(CASE WHEN json_valid(snapshot) THEN snapshot ELSE '{}' END, ?, json(?)) WHERE user_id = ? AND bnet_account_id = ?`,
+  ).bind(`$."${namespace}"`, JSON.stringify(entry), userId, bnetAccountId).run();
+  return written.meta.changes === 1 ? { ok: true } : { ok: false, reason: 'mismatch' };
+}
+
 // After the token exchange and user info, before the snapshot fan-out of Blizzard calls: one Blizzard account may come back BNET_CALLBACK_LIMIT times
 // per window (false = refuse it). Then the global budget is counted; it never refuses, and the call that takes the window past it logs the one
 // ALARM line the operator watches for (a gate here would let a few accounts stop everyone).
@@ -139,7 +153,7 @@ async function callbackAllowed(ctx, bnetAccountId, now) {
 }
 
 // The fresh-auth callback for Battle.net: the Battle.net account that comes back must be the one linked to the signed-in account. It reads the account number and nothing else
-// (no snapshot, no character fan-out), counts against the same per-Blizzard-account callback limit as every Battle.net callback, never mints or rotates a session, and ends on a
+// (no snapshot, no character fan-out; the exceptions are the GM claim, which runs here, and the setup pin, which reads the account's characters in ONE namespace), counts against the same per-Blizzard-account callback limit as every Battle.net callback, never mints or rotates a session, and ends on a
 // fixed app route. Same order as the Discord one (routes/auth.js). Blizzard offers no forced re-login parameter (worker/battlenet.js authorizeUrl says what that weakens).
 async function bnetFreshCallback(ctx, { url, state, now, clear }) {
   const { env, db } = ctx;
@@ -169,6 +183,17 @@ async function bnetFreshCallback(ctx, { url, state, now, clear }) {
   if (parsed.purpose === 'gm_claim') {
     const claimed = await runGmClaim(ctx, { session, parsed, accessToken, info, now, spent: STATEMENTS_BEFORE_CLAIM });
     return claimed.ok ? redirectResponse(freshDoneRoute(parsed.purpose), [clear]) : fail(claimed.reason, parsed.purpose);
+  }
+  // The setup pin reads the account's characters in the guild's namespace afresh HERE, with the token in hand: the pin route (a later request) decides on them and on the live roster
+  // (worker/routes/bnet-pin.js). The grant below is written only when that read worked.
+  if (parsed.purpose === 'pin') {
+    const identity = await checkFreshIdentity(ctx, { session, provider: 'bnet', identityId: info.id, purpose: parsed.purpose, nowMs: now });
+    if (!identity.ok) {
+      await noteFreshFailure(ctx, { userId: session.user.id, guildId: parsed.guildId, purpose: parsed.purpose, reason: identity.reason });
+      return fail(identity.reason, parsed.purpose);
+    }
+    const refreshed = await refreshPinCharacters(ctx, { userId: session.user.id, bnetAccountId: info.id, guildId: parsed.guildId, accessToken, now });
+    if (!refreshed.ok) return fail(refreshed.reason, parsed.purpose);
   }
   const granted = await writeFreshGrant(ctx, { session, provider: 'bnet', identityId: info.id, parsed, nowMs: now });
   if (!granted.ok) {

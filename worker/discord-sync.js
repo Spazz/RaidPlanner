@@ -6,6 +6,10 @@
 //   - Failing closed means failing SAFE: when Discord cannot be read (bot not in the server, bad token, rate limit, outage) nothing changes. Only an
 //     answer from Discord ("this person has these roles", or "this person is not in the server") changes anything.
 //   - Blocked people and the Guild Master are skipped. A person who left the server loses what Discord gave them.
+//   - THE RANK-SOURCE GATE (plan "Model": Discord role sync writes NO permission roles when rank_source is not NULL; lane B6b part 3a). A guild that runs on the in-game roster or on
+//     hand-set ranks gets its roles from there; the Discord mapping is for legacy guilds only. syncMember, syncSignIn, syncGuildMembers and the mapping route (routes/discord.js putMaps)
+//     all stop at it, and the writes of syncMember carry the test themselves, so a flip between the read and the write changes nothing. This also covers B5 open point (b): the Discord
+//     server members who are NOT members of an in-game or manual guild (the Discord server grants nothing there) are never read, mapped or given a role.
 import { auditStatement } from './audit.js';
 import { HttpError } from './http.js';
 import { botConfigured, fetchMemberRoleIds } from './discord-bot.js';
@@ -30,8 +34,23 @@ export function discordProblem(reason) {
 
 const keyOf = (roleId, teamId) => `${roleId}|${teamId || ''}`;
 
+// SQL: the guild still runs on the legacy rule (rank_source NULL), the only rank source whose roles Discord may give. The guild expression is used once.
+export const discordRolesOnSql = (guildExpr) => `EXISTS (SELECT 1 FROM guilds drg WHERE drg.id = ${guildExpr} AND drg.rank_source IS NULL)`;
+
+// -> the guild's rank source (null = legacy) or undefined when the guild does not exist. For the routes that refuse (409 discord_roles_off).
+export async function rankSourceOf(db, guildId) {
+  const row = await db.prepare('SELECT rank_source FROM guilds WHERE id = ?').bind(guildId).first();
+  return row ? row.rank_source : undefined;
+}
+
+export const discordRolesOffError = (rankSource) => new HttpError(409, 'discord_roles_off',
+  rankSource === 'manual'
+    ? 'This guild sets its roles by hand, so Discord roles do not give any here.'
+    : 'This guild takes its roles from the in-game guild roster, so Discord roles do not give any here.');
+
 // One person in one guild. guild: { id, discord_server_id }. -> { status: 'changed' | 'unchanged' | 'skipped' | 'failed', reason?, added?, removed? }
-// reason (skipped): not_configured, no_mapping, blocked, guild_master, no_discord, no_discord_server (the guild has no Discord server: nothing is read or changed).
+// reason (skipped): not_configured, no_mapping, blocked, guild_master, no_discord, no_discord_server (the guild has no Discord server: nothing is read or changed),
+// rank_source (the guild's rank source is not the legacy one: Discord gives no roles there, nothing is read or changed).
 // reason (failed): bad_token, bot_missing, rate_limited, unavailable.
 export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) {
   const { db, env } = ctx;
@@ -48,7 +67,7 @@ export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) 
       "SELECT role_id, team_id FROM effective_roles_stored WHERE guild_id = ? AND user_id = ? AND source = 'discord'",
     ).bind(guild.id, userId),
     db.prepare(
-      `SELECT u.discord_id,
+      `SELECT u.discord_id, (SELECT rank_source FROM guilds WHERE id = ?1) AS rank_source,
               EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ?1 AND b.user_id = ?2) AS blocked,
               EXISTS (SELECT 1 FROM effective_roles x WHERE x.guild_id = ?1 AND x.user_id = ?2 AND x.role_id = 'guild_master') AS master,
               EXISTS (SELECT 1 FROM user_servers s WHERE s.user_id = ?2 AND s.server_id = ?3) AS in_server
@@ -57,6 +76,7 @@ export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) 
   ]);
   const standing = standingResult.results[0];
   if (!standing) return { status: 'skipped', reason: 'no_discord' };
+  if (standing.rank_source !== null) return { status: 'skipped', reason: 'rank_source' };
   if (standing.blocked === 1) return { status: 'skipped', reason: 'blocked' };
   if (standing.master === 1) return { status: 'skipped', reason: 'guild_master' };
   const maps = mapResult.results;
@@ -85,8 +105,9 @@ export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) 
   // Each INSERT re-checks, in the same statement, what it was built from: the person is not blocked and not the Guild Master, the mapping still exists
   // for a Discord role the person holds, and the team is still active.
   const guard = {
-    sql: "NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?) AND NOT EXISTS (SELECT 1 FROM effective_roles WHERE guild_id = ? AND user_id = ? AND role_id = 'guild_master')",
-    params: [guild.id, userId, guild.id, userId],
+    sql: `NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?) AND NOT EXISTS (SELECT 1 FROM effective_roles WHERE guild_id = ? AND user_id = ? AND role_id = 'guild_master')
+          AND ${discordRolesOnSql('?')}`,
+    params: [guild.id, userId, guild.id, userId, guild.id],
   };
   const addStatement = (pair) => {
     const teamCheck = pair.teamId ? ' AND EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)' : '';
@@ -105,13 +126,13 @@ export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) 
   };
   const statements = [
     ...toRemove.map((pair) => db.prepare(
-      "DELETE FROM role_assignments WHERE guild_id = ? AND user_id = ? AND source = 'discord' AND role_id = ? AND COALESCE(team_id, '') = ?",
-    ).bind(guild.id, userId, pair.roleId, pair.teamId || '')),
+      `DELETE FROM role_assignments WHERE guild_id = ? AND user_id = ? AND source = 'discord' AND role_id = ? AND COALESCE(team_id, '') = ? AND ${discordRolesOnSql('?')}`,
+    ).bind(guild.id, userId, pair.roleId, pair.teamId || '', guild.id)),
     ...toAdd.map(addStatement),
     auditStatement(ctx, {
       guildId: guild.id, actorUserId: actorId, action: 'roles.discord_sync', entityType: 'user', entityId: userId,
       before: { roles: [...have.values()] }, after: { roles: [...desired.values()] },
-    }),
+    }, { sql: discordRolesOnSql('?'), params: [guild.id] }),
   ];
   await db.batch(statements);
   return { status: 'changed', added: toAdd.length, removed: toRemove.length };
@@ -124,7 +145,7 @@ export async function syncSignIn(ctx, userId) {
     if (!botConfigured(ctx.env)) return;
     const guilds = await ctx.db.prepare(
       `SELECT g.id, g.discord_server_id FROM guilds g
-        WHERE ${serverIdIsDiscordSql('g.discord_server_id')} AND EXISTS (SELECT 1 FROM discord_role_maps m WHERE m.guild_id = g.id)
+        WHERE ${serverIdIsDiscordSql('g.discord_server_id')} AND g.rank_source IS NULL AND EXISTS (SELECT 1 FROM discord_role_maps m WHERE m.guild_id = g.id)
           AND (EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = ?1 AND us.server_id = g.discord_server_id)
                OR EXISTS (SELECT 1 FROM effective_roles_stored ra WHERE ra.guild_id = g.id AND ra.user_id = ?1 AND ra.source = 'discord'))
         ORDER BY g.id LIMIT ?2`,
@@ -146,6 +167,8 @@ export async function syncSignIn(ctx, userId) {
 // -> { processed, changed, unchanged, skipped, failed, problem, next }. problem: a failure that will repeat for everyone (bad_token, bot_missing, rate_limited): the run stops there.
 export async function syncGuildMembers(ctx, guild, { actorId, after = '' }) {
   if (!hasDiscord(guild)) return { processed: 0, changed: 0, unchanged: 0, skipped: 0, failed: 0, problem: null, next: null };
+  // The rank-source gate: nobody is read for a guild whose roles do not come from Discord (the route refuses first; this keeps any other caller from walking the server's members).
+  if ((await rankSourceOf(ctx.db, guild.id)) !== null) return { processed: 0, changed: 0, unchanged: 0, skipped: 0, failed: 0, problem: null, next: null };
   const rows = (await ctx.db.prepare(
     `SELECT u.id FROM users u
       WHERE u.id > ? AND u.discord_id IS NOT NULL

@@ -9,6 +9,7 @@ import {
 import { MAX_RANK_LABEL, RANK_COUNT, loadBnetSettings, rankLabelOf, realmDisplayName } from '../bnet-store.js';
 import { newId } from '../ids.js';
 import { isGranted, loadGuildContext, requireAction } from '../permissions.js';
+import { pinOpen } from '../pin-target.js';
 import { loadPin } from '../roster-pin.js';
 import { SINGLE_LINE_STRIP, cleanCharacterName, nameKey } from '../roster-data.js';
 import { bad, resolveRealm } from './roster.js';
@@ -24,13 +25,14 @@ export function requireBnetConfigured(env) {
 
 // What a roster read needs: the version's support, the realm slug and the in-game guild (name for display, slug for the URL).
 //   PINNED guilds (any pinned_* column set): the target is the pin and nothing else - never settings.guildName, guild.name or guild.realm_slug - and an
-//     incomplete pin is refused rather than completed from a display name (plan "Source/pin" rule 2).
+//     incomplete pin (a missing slug, namespace or Blizzard id) is refused rather than completed from a display name (plan "Source/pin" rules 2 and 5).
 //   other guilds: realm guilds use their own realm (the realms list's slug, else the realm name in slug form); ruleset guilds use the realm an officer saved.
 export function rosterTarget(guild, settings, pin = null) {
   const support = bnetSupport(guild.game_version, guild.region);
   if (!support.supported) throw new HttpError(409, 'bnet_unsupported', support.message);
   if (pin && pin.touched) {
-    if (!pin.target) throw new HttpError(409, 'bnet_pin_incomplete', "This guild's Battle.net link is incomplete. An owner has to finish setting it up.");
+    // A pin with no Blizzard guild id (a switch away from the in-game source cut it) has nothing to check the answer against: rule (5) says every fetch checks the ids, so it is refused too.
+    if (!pin.complete) throw new HttpError(409, 'bnet_pin_incomplete', "This guild's Battle.net link is incomplete. An owner has to finish setting it up.");
     if (pin.namespace !== support.namespace) throw new HttpError(409, 'bnet_pin_mismatch', "This guild's Battle.net link does not match its game version and region.");
     return { support, realmSlug: pin.realmSlug, guildName: null, guildSlug: pin.guildSlug, pinned: true };
   }
@@ -48,7 +50,7 @@ export function rosterTarget(guild, settings, pin = null) {
 // ---------------------------------------------------------------------------
 // Settings
 
-function settingsView(guildContext, settings, env) {
+function settingsView(guildContext, settings, env, pin = null) {
   const guild = guildContext.guild;
   const support = bnetSupport(guild.game_version, guild.region);
   const ruleset = guild.realm_kind === 'ruleset';
@@ -66,6 +68,12 @@ function settingsView(guildContext, settings, env) {
     rankLabels: settings.rankLabels,
     rankDefaults: Array.from({ length: RANK_COUNT }, (_, rank) => rankLabelOf([], rank)),
     canEdit: isGranted(guildContext.can['guild.teams']),
+    // The link to the in-game guild (worker/guild-pin.js): once any part of it is set the target fields above are the pin's, not these settings (PUT refuses them: 409 pinned).
+    // pinOpen: the operator's allowlist lets this guild use the setup pin (POST .../bnet/pin).
+    pin: pin ? {
+      pinned: pin.touched, complete: pin.complete, rankSource: pin.rankSource, guildSlug: pin.guildSlug, realmSlug: pin.realmSlug, namespace: pin.namespace,
+    } : null,
+    pinOpen: pinOpen(env, guild.id),
   };
 }
 
@@ -74,7 +82,8 @@ export async function getBnetSettings(ctx) {
   if (!isGranted(guildContext.can['roster.edit']) && !isGranted(guildContext.can['guild.teams'])) {
     throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
   }
-  return jsonResponse(settingsView(guildContext, await loadBnetSettings(ctx.db, guildContext.guild.id), ctx.env));
+  const [settings, pin] = await Promise.all([loadBnetSettings(ctx.db, guildContext.guild.id), loadPin(ctx.db, guildContext.guild.id)]);
+  return jsonResponse(settingsView(guildContext, settings, ctx.env, pin));
 }
 
 // Body: { guildName: text | null, realmSlug: slug | null (ruleset guilds only), rankLabels: [ten texts, '' for none] }.
@@ -108,18 +117,30 @@ export async function putBnetSettings(ctx) {
     return text;
   });
 
-  const before = await loadBnetSettings(db, guild.id);
+  const [before, pin] = await Promise.all([loadBnetSettings(db, guild.id), loadPin(db, guild.id)]);
+  // PINNED (plan "Source/pin" rule 3): the target is the pin, set by the Owner's setup pin and changed only by a re-pin to the same Blizzard guild. A target field that would change
+  // what is saved is refused (409 pinned); one left out or sent as it is changes nothing. Only the rank labels are saved then.
+  if (pin && pin.touched) {
+    if (guildName !== null && guildName !== before.guildName) throw pinnedError('guildName');
+    if (realmSlug !== null && realmSlug !== before.realmSlug) throw pinnedError('realmSlug');
+    guildName = before.guildName;
+    realmSlug = before.realmSlug;
+  }
   await db.batch([
-    db.prepare('UPDATE guilds SET bnet_guild_name = ?, bnet_realm_slug = ?, bnet_rank_labels = ? WHERE id = ?')
-      .bind(guildName, realmSlug, JSON.stringify(labels), guild.id),
+    pin && pin.touched
+      ? db.prepare('UPDATE guilds SET bnet_rank_labels = ? WHERE id = ?').bind(JSON.stringify(labels), guild.id)
+      : db.prepare('UPDATE guilds SET bnet_guild_name = ?, bnet_realm_slug = ?, bnet_rank_labels = ? WHERE id = ?').bind(guildName, realmSlug, JSON.stringify(labels), guild.id),
     auditStatement(ctx, {
       guildId: guild.id, actorUserId: ctx.session.user.id, action: 'bnet.settings', entityType: 'guild', entityId: guild.id,
       before: { guildName: !!before.guildName, realm: !!before.realmSlug, labels: before.rankLabels.filter(Boolean).length },
       after: { guildName: !!guildName, realm: !!realmSlug, labels: labels.filter(Boolean).length },
     }),
   ]);
-  return jsonResponse(settingsView(guildContext, { guildName, realmSlug, rankLabels: labels }, ctx.env));
+  return jsonResponse(settingsView(guildContext, { guildName, realmSlug, rankLabels: labels }, ctx.env, pin));
 }
+
+const pinnedError = (field) => new HttpError(409, 'pinned',
+  'This guild is linked to its in-game guild, so its name and realm cannot be changed here. The Owner can link it again to the same in-game guild.', { field });
 
 // ---------------------------------------------------------------------------
 // Roster import

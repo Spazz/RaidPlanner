@@ -840,7 +840,7 @@ check('config audit events: rank-map edits and webhook changes are audited and p
     assert(AUDIT_ACTIONS.includes(action), `${action} is audited`);
     assert(!PRUNABLE_ACTIONS.includes(action), `${action} is never pruned`);
   }
-  assert(!/guild\.(pin|flip)|owner\.(restore|identity)/.test(fs.readFileSync(path.join(ROOT, 'worker', 'audit.js'), 'utf8')), 'the events whose code paths do not exist yet are not declared early');
+  assert(!/guild\.flip|owner\.(restore|identity)/.test(fs.readFileSync(path.join(ROOT, 'worker', 'audit.js'), 'utf8')), 'the events whose code paths do not exist yet are not declared early');
   const ctx = { db: s.w.db, randomBytes: s.w.randomBytes, now: () => Date.now() - 400 * DAY };
   const { auditStatement } = await load('worker/audit.js');
   await s.w.db.batch([auditStatement(ctx, { guildId: s.gid, actorUserId: s.uids.gm, action: 'rank_map.update', entityType: 'guild', entityId: s.gid })]);

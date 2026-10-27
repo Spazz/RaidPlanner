@@ -152,6 +152,8 @@ function workerVars(workerPort, fakes, gmDiscordId, open = false) {
     TOMBSTONE_KEY: 'smoke-tombstone-key-0123456789abcdef',
     TOMBSTONE_KEY_VERSION: '1',
     TOMBSTONE_OLD_KEYS: ',',
+    // The setup pin (lane B6b): closed (a lone comma lists nobody) unless a run opens it; a local .env can never fill it in.
+    SETUP_PIN_GUILDS: ',',
   };
   return Object.entries(vars).flatMap(([key, val]) => ['--var', `${key}:${val}`]);
 }

@@ -11,9 +11,10 @@
 // refuses (503). Per session, so whoever holds a stolen cookie can only use up that session's own budget, never the real Owner's.
 // Errors: 400 bad_request (purpose, params, provider), 403 forbidden (not the Owner / not a member) or identity_too_new { provider, eligibleAt }, 404 not_found (gm_claim for a
 // guild that does not exist), 409 not_configured | identity_not_linked | wrong_origin | claim_not_available (gm_claim: the guild's rank source is not 'ingame' or its pin is
-// incomplete) | already_owner (gm_claim: the caller holds the seat and is not suspended), 429 / 503 rate_limited.
+// incomplete) | already_owner (gm_claim: the caller holds the seat and is not suspended), 429 / 503 rate_limited. The Owner purposes (handover, guild_delete, pin, source_switch) ask the Owner
+// question FIRST (worker/owner-gate.js): an Owner who is no member under the guild's rank source is not refused as a non-member. 403 pin_not_open: SETUP_PIN_GUILDS does not name the guild.
 import { HttpError, jsonResponse } from '../http.js';
-import { authorizeUrl as bnetAuthorizeUrl, canonicalOrigin as bnetOrigin, isConfigured as bnetConfigured } from '../battlenet.js';
+import { authorizeUrl as bnetAuthorizeUrl, bnetSupport, canonicalOrigin as bnetOrigin, isConfigured as bnetConfigured } from '../battlenet.js';
 import { authorizeUrl as discordAuthorizeUrl, canonicalOrigin as discordOrigin, isConfigured as discordConfigured } from '../discord.js';
 import {
   FRESH_PURPOSES, FRESH_START_ACCOUNT_LIMIT, FRESH_START_LIMIT, FRESH_START_WINDOW_MS, freshAccountKey, freshHash, freshSessionKey, identityStanding, isFreshPurpose, loadIdentityRow,
@@ -21,8 +22,8 @@ import {
 } from '../fresh.js';
 import { claimPreflight } from '../gm-claim.js';
 import { base64url } from '../ids.js';
-import { requireOwner } from '../owner.js';
-import { loadGuildContext } from '../permissions.js';
+import { requireOwnerFirst } from '../owner-gate.js';
+import { PIN_NOT_OPEN_MESSAGE, canonicalFreshParams, pinOpen } from '../pin-target.js';
 import { checkRateLimit } from '../ratelimit.js';
 import { STATE_TTL_SECONDS, bnetStateCookie, signFreshState, stateCookie } from '../session.js';
 
@@ -41,6 +42,8 @@ export async function startFresh(ctx) {
   const problem = paramsProblem(purpose, params);
   if (problem) throw bad(problem, 'params');
   if (body.provider !== undefined && body.provider !== 'bnet' && body.provider !== 'discord') throw bad('provider must be bnet or discord.', 'provider');
+  // The setup pin is behind the operator's allowlist (SETUP_PIN_GUILDS): nobody is sent to Battle.net for an act that would be refused afterwards.
+  if (purpose === 'pin' && !pinOpen(env, guildId)) throw new HttpError(403, 'pin_not_open', PIN_NOT_OPEN_MESSAGE);
 
   // Per session first, then the account's ceiling; fail closed, before any read. A session over its own budget is refused before it can count against the account's.
   for (const [key, limit] of [[freshSessionKey(session.tokenHash), FRESH_START_LIMIT], [freshAccountKey(userId), FRESH_START_ACCOUNT_LIMIT]]) {
@@ -52,8 +55,13 @@ export async function startFresh(ctx) {
 
   // Who may even ask. The act checks again inside its own batch; this only spares the others a trip to the provider.
   if (spec.owner) {
-    const guildContext = await loadGuildContext(db, userId, guildId, session.viewAs);
-    await requireOwner(db, guildContext);
+    await requireOwnerFirst(db, { userId, guildId, viewAs: session.viewAs });
+    if (purpose === 'pin') {
+      // A guild whose game version Battle.net has no data for cannot be pinned: said before the trip to Blizzard, not after it.
+      const row = await db.prepare('SELECT game_version, region FROM guilds WHERE id = ?').bind(guildId).first();
+      const support = bnetSupport(row.game_version, row.region);
+      if (!support.supported) throw new HttpError(409, 'bnet_unsupported', support.message);
+    }
   } else if (purpose === 'gm_claim') {
     // Anyone may ask (the claim's authority is live Blizzard data, decided in the callback), but not for a guild that has no in-game seat to claim or whose seat is theirs.
     await claimPreflight(db, { guildId, userId });
@@ -88,7 +96,7 @@ export async function startFresh(ctx) {
   }
 
   const state = await signFreshState(env, {
-    provider, userId, tokenHash: session.tokenHash, purpose, guildId, paramsHash: await freshHash({ purpose, guildId, params }),
+    provider, userId, tokenHash: session.tokenHash, purpose, guildId, paramsHash: await freshHash({ purpose, guildId, params: canonicalFreshParams(purpose, params) }),
     nonce: base64url(ctx.randomBytes(16)), issuedAt: ctx.now(),
   });
   const authorizeUrl = provider === 'bnet' ? bnetAuthorizeUrl(env, state, { fresh: true }) : discordAuthorizeUrl(env, state, { fresh: true });
