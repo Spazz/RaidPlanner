@@ -358,7 +358,7 @@
   function guildHeadHtml(ctx, selectId) {
     const g = ctx.guildData.guild;
     return '<div class="gs-side-head"><div class="gs-side-guild"><span class="gs-side-name">' + esc(g.name) + '</span><span class="gs-side-realm">' + esc(G.ui.realmLine(g)) + '</span></div>' +
-      '<div><span class="gs-badge">' + esc(G.ui.gameVersionLabel(g.gameVersion)) + '</span></div>' +
+      '<div><span class="gs-badge" data-version="' + esc(g.gameVersion) + '">' + esc(G.ui.gameVersionLabel(g.gameVersion)) + '</span></div>' +
       teamSelectHtml(ctx.guildData.teams, ctx.teamId, selectId) + '</div>';
   }
 
