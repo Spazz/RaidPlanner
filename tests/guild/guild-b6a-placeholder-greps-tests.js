@@ -248,6 +248,8 @@ const ALLOWED = [
   ["worker/routes/roster.js", "DELETE FROM characters WHERE id = ? AND player_id = ? AND is_main", "id"],
   ["worker/routes/roster.js", "SELECT 1 AS found FROM characters WHERE guild_id = ? AND player_id = ? AND", "key"],
   ["worker/routes/roster.js", "AND (NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND owner_proof = 'bnet') OR", "key"],
+  ["worker/routes/roster.js", "AND EXISTS (SELECT 1 FROM characters WHERE id = ?5 AND player_id = ?3 AND is_main = 1", "id"],
+  ["worker/routes/roster.js", "AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ?4 AND team_id IS ?1)", "team"],
   ["worker/routes/signups.js", "SELECT 1 FROM characters WHERE guild_id = ? AND name_key = ? LIMIT 1", "key"],
   ["worker/routes/signups.js", "(SELECT m.team_id FROM characters m WHERE m.player_id = players.id AND", "person"],
   ["worker/routes/signups.js", "AND (NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND owner_proof = 'bnet') OR", "key"],

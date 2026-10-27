@@ -3,6 +3,7 @@
  * Run: node tests/guild/guild-b2-writers-tests.js
  *
  *   - a new alt starts on NO team (U R3-Q1/R4-Q1), in every path; a new Main takes the team asked for and the previous Main steps off a team they shared;
+ *     Make Main on an alt that sits on no team carries the home team to the new Main (guild-b2-review-fixes-tests.js);
  *   - D1: an officer creates a person with no team; every writer (notes, delete, edit, make main, remove, account link, claim link) works for a person and
  *     characters on no team instead of silently matching nothing; an alt on no team is edited by whoever edits the person's home team;
  *   - the PATCH status contract: a status change writes core_rank on EVERY character (Inactive = Social); since R4 (lane B4b) the players row is never written
@@ -229,7 +230,7 @@ check('D1: an officer creates a person with no team, a Team Lead cannot; notes, 
   assert.equal(await s.w.count('players', 'id = ?', p.pid), 0, 'the person is really gone');
 });
 
-check('an alt on no team is edited and removed by whoever edits the person\'s home team (made Main only by a whole-guild editor); a person with one is deleted by the home team\'s lead too', async () => {
+check('an alt on no team is edited, made Main (the home team follows the Main) and removed by whoever edits the person\'s home team; a person with one is deleted by the home team\'s lead too', async () => {
   const s = await scenario();
   await s.lead('lead', [s.tids[0]]);
   await s.lead('lead2', [s.tids[1]]);
@@ -239,12 +240,16 @@ check('an alt on no team is edited and removed by whoever edits the person\'s ho
   // The lead of the home team reaches the teamless alt; the lead of another team does not.
   assert.equal((await s.call('lead2', 'PATCH', `/roster/${p.pid}/characters/${altId}`, { offSpec: 'Subtlety' })).status, 403);
   assert.equal((await s.call('lead', 'PATCH', `/roster/${p.pid}/characters/${altId}`, { offSpec: 'Subtlety' })).status, 200);
-  // Making it the Main would leave the person without a home team (and the lead without the person), so that is for the whole-guild editor (R2 review).
-  assert.equal((await s.call('lead', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {})).status, 403);
-  assert.equal((await s.call('gm', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {})).status, 200);
-  // The alt is the Main now and sits on no team: the person has no home team, so only the whole-guild editor reaches them (the lead of Alpha no longer does).
-  assert.equal((await s.call('lead', 'POST', `/roster/${p.pid}/characters/${p.cid}/main`, {})).status, 403);
+  // The lead of the home team makes it the Main: the home team follows the Main (the old Main steps off), so the person keeps its home team and the lead keeps the person.
+  // The lead of another team does not reach the person.
+  assert.equal((await s.call('lead2', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {})).status, 403);
+  assert.equal((await s.call('lead', 'POST', `/roster/${p.pid}/characters/${altId}/main`, {})).status, 200);
+  assert.deepEqual([await s.teamOf(altId), await s.teamOf(p.cid)], [s.tids[0], null], 'the team moved with the Main');
+  assert.equal((await s.ok('lead', 'GET', `/roster/${p.pid}`)).person.homeTeam.id, s.tids[0]);
+  // And back (an officer does it too).
+  assert.equal((await s.call('lead2', 'POST', `/roster/${p.pid}/characters/${p.cid}/main`, {})).status, 403);
   assert.equal((await s.call('gm', 'POST', `/roster/${p.pid}/characters/${p.cid}/main`, {})).status, 200, 'and back');
+  assert.deepEqual([await s.teamOf(p.cid), await s.teamOf(altId)], [s.tids[0], null], 'the team moved back');
   assert.equal((await s.call('lead2', 'DELETE', `/roster/${p.pid}/characters/${altId}`)).status, 403);
   assert.equal((await s.call('lead', 'DELETE', `/roster/${p.pid}/characters/${altId}`)).status, 200);
   const again = await s.alt(p.pid, 'Homedalttwo', {}, 'lead');

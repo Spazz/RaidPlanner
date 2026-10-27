@@ -195,8 +195,9 @@ export function makeMainStatements(db, playerId, characterId, now, { homeTeamId,
 // The team a write on this character is authorized against: its own, else the home team of its person (an alt on no team is edited by whoever edits the person).
 const editTeamOf = (row, home) => (row.team_id !== null && row.team_id !== undefined ? row.team_id : home.id);
 
-// A Main on no team leaves the person without a home team, and a Team Lead who did it could no longer open the person (403): only someone who edits every
-// team (roster.edit at guild scope) may make a character on no team the Main.
+// A NEW Main created on no team leaves the person without a home team (no existing character carries one over), and a Team Lead who did it could no longer
+// open the person (403): only someone who edits every team (roster.edit at guild scope) may add a Main with no team. Make Main on an existing character
+// does not need this: the home team follows the Main (homeTeamFollowsMainStatements), so the person keeps their home team.
 function requireGuildWideEditForTeamlessMain(guildContext) {
   if (!allows(guildContext.can, 'roster.edit', null)) {
     throw new HttpError(403, 'forbidden', 'Only someone who can edit every team can make a character with no team the Main.');
@@ -766,6 +767,28 @@ export async function patchCharacter(ctx) {
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));
 }
 
+// After makeMainStatements made a character that sat on NO team the Main: a team spot belongs to a character (characters.team_id), so the home team follows the
+// Main. The old Main (an alt from now on, and alts start teamless) steps off the home team and the new Main takes it; without this the person would stay on the
+// team through an alt that can be deleted, and R2 has no route that puts a teamless character back on a team. The old Main leaves first (one character per
+// person per team, unique index characters_team_person). Both writes act only when the swap happened (the old Main is an alt on the home team, the new Main
+// is the Main on no team yet), so a lost race changes nothing; the take also waits for the team to be free, so it can never trip the unique index.
+// Same outcome as newMainStatements, for a character that already exists. -> [stepOff, take].
+export function homeTeamFollowsMainStatements(db, { playerId, oldMainId, newMainId, homeTeamId, now }) {
+  return [
+    db.prepare(
+      `UPDATE characters SET team_id = NULL, updated_at = ?1 WHERE id = ?2 AND player_id = ?3 AND is_main = 0 AND team_id IS ?4
+         AND EXISTS (SELECT 1 FROM characters WHERE id = ?5 AND player_id = ?3 AND is_main = 1 AND team_id IS NULL)`,
+    ).bind(now, oldMainId, playerId, homeTeamId, newMainId),
+    db.prepare(
+      `UPDATE characters SET team_id = ?1, updated_at = ?2 WHERE id = ?3 AND player_id = ?4 AND is_main = 1 AND team_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ?4 AND team_id IS ?1)`,
+    ).bind(homeTeamId, now, newMainId, playerId),
+  ];
+}
+
+// Make Main: the swap, plus the home team following the Main when the new Main sits on no team (a character on another team stays where it is: nothing moves,
+// and the old Main keeps the home team). A person whose Main is on no team has no home team to carry. A Team Lead of the home team may make a teamless
+// alt the Main: the home team does not change.
 export async function makeMain(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { db } = ctx;
@@ -775,10 +798,10 @@ export async function makeMain(ctx) {
   requireEdit(guildContext, home.id);
   requireEdit(guildContext, editTeamOf(target, home));
   if (target.is_main === 1) return jsonResponse(await personReply(ctx, guildContext, data.player.id));
-  if (target.team_id === null) requireGuildWideEditForTeamlessMain(guildContext);
   // Swapping the Main re-keys the person: the Seniority guard (worker/seniority.js) applies, here and inside the swap.
   await assertSenior(db, guildContext, data.player.id);
   const previous = data.characters.find((candidate) => candidate.row.is_main === 1).row;
+  const carriesTeam = target.team_id === null && home.id !== null;
   const now = ctx.now();
   const results = await db.batch([
     ...makeMainStatements(db, data.player.id, target.id, now, {
@@ -788,6 +811,12 @@ export async function makeMain(ctx) {
       CHANGED_ONE),
     // The trial dates sit on the main character: they move with it.
     ...trialDatesFollowMainStatements(db, previous.id, target.id),
+    ...(carriesTeam
+      ? [
+        ...homeTeamFollowsMainStatements(db, { playerId: data.player.id, oldMainId: previous.id, newMainId: target.id, homeTeamId: home.id, now }),
+        // Which character holds the home team's spot changed: that team's raids (and the two names) are recalculated.
+        markRaidsStale(db, guildContext.guild.id, [nameKey(previous.name), nameKey(target.name)], null, [home.id]),
+      ] : []),
   ]);
   if (results[1].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, target.id);
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));
