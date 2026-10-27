@@ -17,7 +17,7 @@ import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from
 import { base64url, isId, newId } from '../ids.js';
 import { memberGuildsStatement, memberSql } from '../membership.js';
 import { hasOwnerSql, ownedGuildsSql, ownerSql, seatHeldBySql } from '../owner.js';
-import { liveGmSql, officerSuccessorSql, othersExistSql, ruleOf, successionStatements } from '../succession.js';
+import { liveGmSql, manualSeatKeptGuard, officerSuccessorSql, othersExistSql, ruleOf, successionStatements } from '../succession.js';
 import { LIMITS } from '../limits.js';
 import { shapeRoles } from '../permissions.js';
 import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
@@ -490,14 +490,15 @@ export async function logout(ctx) {
 // The marker guard (one bare `?`) for a statement that numbers its own placeholders: the same test with the placeholder numbered `n`.
 const numbered = (guard, n) => guard.sql.replace('?', `?${n}`);
 
+// 409 hand_over_guild_master: the account holds the Owner seat of guilds that have other members, so the seat must be handed over before the account goes. `guilds` can be empty
+// when the state moved once more since the check (the answer is the same).
+const handOverFirstError = (guilds) => new HttpError(409, 'hand_over_guild_master', 'Hand the guild over first.', { guilds });
+
 export async function deleteMe(ctx) {
   const { db, session, body } = ctx;
   const userId = session.user.id;
   const impact = await deleteImpact(db, userId);
-  if (impact.handOverFirst.length) {
-    throw new HttpError(409, 'hand_over_guild_master',
-      'Hand the Guild Master role to someone else before you delete your data.', { guilds: impact.handOverFirst });
-  }
+  if (impact.handOverFirst.length) throw handOverFirstError(impact.handOverFirst);
   const echoed = body.deleteGuildIds;
   if (!Array.isArray(echoed) || echoed.some((id) => typeof id !== 'string')) {
     throw new HttpError(400, 'bad_request', 'deleteGuildIds must be a list of guild ids.', { field: 'deleteGuildIds' });
@@ -511,8 +512,10 @@ export async function deleteMe(ctx) {
 
   const now = ctx.now();
   // A protected account (Owner seat, Officer, Team Lead) or a delete that takes a guild with it needs a fresh sign-in (purpose account_delete): 403 fresh_required without one.
-  // The grant is consumed in the batch below and EVERY statement of the batch carries the marker (worker/fresh.js beginAccountDelete), so the delete is all or nothing.
-  const act = await beginAccountDelete(ctx, { userId, deletesGuild: expected.length > 0 });
+  // The grant is consumed in the batch below and EVERY statement of the batch carries the marker (worker/fresh.js beginAccountDelete), so the delete is all or nothing. The marker is
+  // also written only while no MANUAL guild's seat would be left empty (manualSeatKeptGuard: a member who joined after the read; the read refuses the Owner of a guild with members).
+  const seatKept = manualSeatKeptGuard(userId);
+  const act = await beginAccountDelete(ctx, { userId, deletesGuild: expected.length > 0, extra: seatKept });
   const guard = act.guard;
   // A guild is deleted only while nobody else is a current member (the same test as the impact query).
   const noOthers = (guildId) => ({ sql: `EXISTS (SELECT 1 FROM guilds g WHERE g.id = ? AND NOT ${othersSql('?')})`, params: [guildId, userId] });
@@ -615,6 +618,11 @@ export async function deleteMe(ctx) {
   statements.push(db.prepare(`DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND ${guard.sql}`)
     .bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`, `rsync:${userId}`, `char:${userId}`, `open:${userId}`, `fresh:${userId}`, `users:${userId}`, `people:${userId}`, ...guard.params));
   const results = await db.batch(statements);
-  if (!act.consumed(results)) throw freshRequiredError('account_delete', {});
+  if (!act.consumed(results)) {
+    // Nothing applied. A manual guild's seat that the delete would have emptied (a member joined after the read) is not a lost grant: say so, and the grant is still good.
+    const kept = await db.prepare(`SELECT ${seatKept.sql} AS kept`).bind(...seatKept.params).first();
+    if (kept && kept.kept !== 1) throw handOverFirstError((await deleteImpact(db, userId)).handOverFirst);
+    throw freshRequiredError('account_delete', {});
+  }
   return jsonResponse({ ok: true }, 200, {}, [clearSessionCookie()]);
 }
