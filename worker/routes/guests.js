@@ -13,6 +13,7 @@ import { personFor, viewerFor } from '../redact.js';
 import { loadRolesData } from '../roles-store.js';
 import { hashToken } from '../session.js';
 import { buildView, loadGuildRow } from '../viewer.js';
+import { wrote } from '../d1-changes.js';
 
 export const GUEST_COOKIE = '__Host-rs_guest';
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -131,7 +132,7 @@ export async function createGuestLink(ctx) {
       after: { roleId, teamId, expiresAt, labelSet: label !== null },
     }, made),
   ]);
-  if (results[0].meta.changes !== 1) {
+  if (!wrote(results[0])) {
     throw new HttpError(400, 'bad_request', `A guild can have at most ${MAX_ACTIVE_LINKS} guest links that still work. Turn some off first.`, { field: 'roleId' });
   }
   return jsonResponse({ ...(await linksPayload(ctx.db, guildContext, now)), created: { id, token, path: `/#/guest/${token}` } }, 201);
@@ -188,7 +189,7 @@ export async function redeemGuestLink(ctx) {
     'UPDATE guest_links SET uses = uses + 1, last_used_at = ? WHERE id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)',
   ).bind(now, link.id, now).run();
   // Turned off between the lookup and the write: the same answer as a turned-off link.
-  if (result.meta.changes !== 1) throw new HttpError(410, 'link_revoked', 'An officer turned this guest link off. Ask them for a new one.');
+  if (!wrote(result)) throw new HttpError(410, 'link_revoked', 'An officer turned this guest link off. Ask them for a new one.');
   const maxAge = link.expires_at === null ? COOKIE_MAX_AGE_S : Math.max(1, Math.min(COOKIE_MAX_AGE_S, Math.floor((link.expires_at - now) / 1000)));
   return jsonResponse({ ok: true }, 200, {}, [serializeCookie(GUEST_COOKIE, token, { maxAge, path: '/' })]);
 }

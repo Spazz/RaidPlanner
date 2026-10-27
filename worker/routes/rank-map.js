@@ -24,6 +24,7 @@ import {
   APPLY_UPDATE_INDEX, CORE_RANK_IDS, CORE_RANK_LABELS, MAPPABLE_BUILTIN_ROLES, gapsOfMap, ingameGuard, loadRankMap, loadRosterRanks, mapChanges, mapStateHash,
   approvedTransitionsGuard, normalizeRankMap, previewMap, rankMapApplyStatements, replaceMapStatements, suggestedLabels,
 } from '../rank-map.js';
+import { directRows, directRowsStatement, wrote } from '../d1-changes.js';
 
 const BUILTIN_ROLE_NAMES = { officer: 'Officer', team_lead: 'Team Lead', guild_master: 'Guild Master' };
 
@@ -150,15 +151,17 @@ export async function putRankMap(ctx) {
       after: { ranks: proposed.length, mapChanges: mapChanges(stored, proposed).length, charactersChanged: preview.changed, becomesTrial: preview.becomesTrial, approverUserId },
     }, marker),
   ];
+  const updateAt = 2 + 2 + APPLY_UPDATE_INDEX; // consume, marker, the two map statements, then the stale marking and the rank UPDATE
+  // The characters UPDATE fires the trial-clock triggers (migration 0040): its own-row count is read with changes() right behind it, not from meta.changes.
+  statements.splice(updateAt + 1, 0, directRowsStatement(db));
   const results = await db.batch(statements);
-  if (results[0].meta.changes !== 1) {
+  if (!wrote(results[0])) {
     // Nothing was written. The token is still the Owner's live one when the state moved under the batch (a character, the roster or the map): run the dry run again.
     // A token that is used or expired, or an approver who lost the seat meanwhile, is not valid any more.
     const again = await loadApproval(db, tokenHash);
     const live = again && again.guild_id === guildId && again.approver_user_id === approverUserId && again.used_at === null && again.expires_at > now;
     throw live && (await isOwner(db, guildId, approverUserId)) ? approvalStale() : approvalInvalid();
   }
-  const updateAt = 2 + 2 + APPLY_UPDATE_INDEX; // consume, marker, the two map statements, then the stale marking and the rank UPDATE
-  const applied = { mapRows: proposed.length, characters: results[updateAt].meta.changes };
+  const applied = { mapRows: proposed.length, characters: directRows(results[updateAt + 1]) };
   return jsonResponse({ ...(await rankMapPayload(db, await loadGuildRow(db, guildId))), applied });
 }

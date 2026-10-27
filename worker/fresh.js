@@ -31,6 +31,7 @@ import { markerGuard, newMarkerId } from './dry-run.js';
 import { ownedGuildsSql } from './owner.js';
 import { pinParamsProblem, sourceSwitchParamsProblem } from './pin-target.js';
 import { hashToken } from './session.js';
+import { wrote } from './d1-changes.js';
 
 export const FRESH_TTL_MS = 15 * 60 * 1000;
 export const FOUNDING_WINDOW_MS = 60 * 1000;
@@ -163,7 +164,7 @@ export async function beginFreshAct(ctx, { required = true, purpose, guildId = n
   const hash = await freshHash({ purpose, guildId, params });
   await assertFresh(ctx, { purpose, hash, params });
   const consume = consumeFreshStatements(ctx, { purpose, hash, extra });
-  return { required: true, statements: consume.statements, guard: consume.guard, offset: 2, consumed: (results) => results[0].meta.changes === 1 };
+  return { required: true, statements: consume.statements, guard: consume.guard, offset: 2, consumed: (results) => wrote(results[0]) };
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +250,7 @@ export async function writeFreshGrant(ctx, { session, provider, identityId, pars
   const result = await ctx.db.prepare(
     `UPDATE sessions SET fresh_purpose = ?, fresh_hash = ?, fresh_at = ? WHERE token_hash = ? AND user_id = ? AND expires_at > ? AND ${holds.sql}`,
   ).bind(parsed.purpose, parsed.paramsHash, nowMs, session.tokenHash, session.user.id, nowMs, ...holds.params).run();
-  return result.meta.changes === 1 ? { ok: true } : { ok: false, reason: 'mismatch' };
+  return wrote(result) ? { ok: true } : { ok: false, reason: 'mismatch' };
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +298,7 @@ export async function beginAccountDelete(ctx, { userId, deletesGuild, extra = nu
     required: false,
     guard: markerGuard(markerId),
     offset: 1,
-    consumed: (results) => results[0].meta.changes === 1,
+    consumed: (results) => wrote(results[0]),
     statements: [ctx.db.prepare(
       `INSERT INTO fresh_act_markers (act_id, session_token_hash, purpose, at) SELECT ?, ?, 'account_delete', ? WHERE NOT ${guard.sql}${extra ? ` AND (${extra.sql})` : ''}`,
     ).bind(markerId, ctx.session.tokenHash, ctx.now(), ...guard.params, ...(extra ? extra.params : []))],

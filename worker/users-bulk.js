@@ -15,6 +15,7 @@
 // Names beyond BULK_MAX_NAMES are skipped as over_cap (the page sends them again); a request is not refused for being long. The person is told nothing beyond "access removed".
 import { HttpError, cleanText, isUniqueViolation } from './http.js';
 import { auditManyStatement } from './audit.js';
+import { directRows, directRowsStatement } from './d1-changes.js';
 import { markRaidsStale, weekFreeze } from './attendance-store.js';
 import {
   MISSING_KEY_LINE, accountBlockRef, accountKeysStatements, keysOfMany, liftGuard, madeByGuard, matchedRefsOfMany, personBlockRef, personKeysStatements, planTombstones, splitLiftableRefs,
@@ -362,7 +363,7 @@ export async function bulkBlock(ctx, guildContext, { keys, reason }) {
           SELECT ${g}, ${id}, ${a}, ${add(reason)}, ${add(now)}, ${field('m')} FROM json_each(${add(JSON.stringify(go.accounts.map((i) => ({ i, m: flagged.get(i) }))))}) j
            WHERE ${holds(add)} AND ${outranksSql(g, a, id)} AND NOT ${ownerSql(g, id)}
              AND NOT EXISTS (SELECT 1 FROM guild_blocks x WHERE x.guild_id = ${g} AND x.user_id = ${id})`;
-      }));
+      }), directRowsStatement(db));
     }
     if (go.persons.length) {
       at.persons = statements.length;
@@ -374,7 +375,7 @@ export async function bulkBlock(ctx, guildContext, { keys, reason }) {
           SELECT ${g}, ${id}, ${a}, ${add(reason)}, ${field('m')}, ${add(now)} FROM json_each(${add(JSON.stringify(go.persons.map((i) => ({ i, m: flagged.get(i) }))))}) j
            WHERE EXISTS (SELECT 1 FROM players WHERE id = ${id} AND guild_id = ${g}) AND ${accountLessSql(id, g)} AND ${holds(add)} AND ${outranksPersonSql(g, a, id)}
              AND NOT EXISTS (SELECT 1 FROM person_blocks x WHERE x.guild_id = ${g} AND x.player_id = ${id})`;
-      }));
+      }), directRowsStatement(db));
     }
     statements.push(...tombstoneStatements(db, cx, version, rowsOf));
     statements.push(...effectStatements(db, cx, { accountIds: go.accounts, personIds: go.persons, nameKeys: names, teamIds: [...teams] }));
@@ -397,7 +398,8 @@ export async function bulkBlock(ctx, guildContext, { keys, reason }) {
       if (isUniqueViolation(error)) throw conflict();
       throw error;
     }
-    const written = (at.accounts === undefined ? 0 : results[at.accounts].meta.changes) + (at.persons === undefined ? 0 : results[at.persons].meta.changes);
+    // The own-row counts (changes() right behind each INSERT): meta.changes would add cascade and trigger rows.
+    const written = (at.accounts === undefined ? 0 : directRows(results[at.accounts + 1])) + (at.persons === undefined ? 0 : directRows(results[at.persons + 1]));
     let blocked = chosen;
     if (written !== chosen.size) blocked = await blocksOf(db, cx, go);
     for (const id of chosen) {
@@ -516,14 +518,14 @@ export async function bulkUnblock(ctx, guildContext, { keys }) {
     const at = {};
     if (accountRows.length) {
       at.accounts = statements.length;
-      statements.push(prepared(db, (add) => `DELETE FROM guild_blocks WHERE guild_id = ${add(guildId)} AND user_id IN (${source(add, unblockGuards(add, cx), 'account')})`));
+      statements.push(prepared(db, (add) => `DELETE FROM guild_blocks WHERE guild_id = ${add(guildId)} AND user_id IN (${source(add, unblockGuards(add, cx), 'account')})`), directRowsStatement(db));
     }
     if (personRows.length) {
       at.persons = statements.length;
-      statements.push(prepared(db, (add) => `DELETE FROM person_blocks WHERE guild_id = ${add(guildId)} AND player_id IN (${source(add, unblockGuards(add, cx), 'person')})`));
+      statements.push(prepared(db, (add) => `DELETE FROM person_blocks WHERE guild_id = ${add(guildId)} AND player_id IN (${source(add, unblockGuards(add, cx), 'person')})`), directRowsStatement(db));
     }
     const results = await db.batch(statements);
-    const removed = (at.accounts === undefined ? 0 : results[at.accounts].meta.changes) + (at.persons === undefined ? 0 : results[at.persons].meta.changes);
+    const removed = (at.accounts === undefined ? 0 : directRows(results[at.accounts + 1])) + (at.persons === undefined ? 0 : directRows(results[at.persons + 1]));
     // Somebody else restoring first is fine; a block that is still there means this actor lost the right between the read and the write.
     let remaining = new Set();
     if (removed !== chosen.size) {

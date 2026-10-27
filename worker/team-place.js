@@ -10,6 +10,7 @@
 //   move     release + place in ONE statement (the character never sits on no team in between, so nothing else can claim it half way)
 //            authorized by roster.edit on BOTH teams: the current lead releases first (U R3-Q8); a lead of the target team alone is told to ask.
 import { markRaidsStale } from './attendance-store.js';
+import { directRows, directRowsStatement } from './d1-changes.js';
 
 // -> a statement. `from`: the team the character must be on now (null = none). `extra`: { sql, params } another guard (the Seniority guard of a move).
 const PLACE_SQL = `UPDATE characters SET team_id = ?, updated_at = ?
@@ -57,13 +58,19 @@ const DROP_STANDING_SQL = 'DELETE FROM standing_signups WHERE guild_id = ? AND t
 // The team's upcoming raids read their sign-ups: stale and re-versioned.
 const BUMP_UPCOMING_SQL = "UPDATE raids SET policy_fp = '', version = version + 1 WHERE guild_id = ? AND team_id = ? AND starts_at > ?";
 
+// -> 5 statements: the sign-up delete, its own-row count, the standing delete, its count, the bump. droppedCounts(results, first) reads the two counts.
 export function dropUpcomingSignupsStatements(db, { guildId, personId, teamId, nowMs, left }) {
   return [
     db.prepare(guarded(DROP_SIGNUPS_SQL, left)).bind(guildId, personId, guildId, teamId, nowMs, ...left.params),
+    directRowsStatement(db),
     db.prepare(guarded(DROP_STANDING_SQL, left)).bind(guildId, teamId, personId, ...left.params),
+    directRowsStatement(db),
     db.prepare(guarded(BUMP_UPCOMING_SQL, left)).bind(guildId, teamId, nowMs, ...left.params),
   ];
 }
+
+// { signups, standing }: the rows the drop deleted; `first` = the position of the first statement dropUpcomingSignupsStatements returned inside the batch.
+export const droppedCounts = (results, first) => ({ signups: directRows(results[first + 1]), standing: directRows(results[first + 3]) });
 
 // "The person has no character on the team": the guard for the statements above.
 export const personLeftTeamSql = (guildId, personId, teamId) => ({

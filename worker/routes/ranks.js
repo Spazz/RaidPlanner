@@ -13,6 +13,7 @@ import { allows, loadGuildContext } from '../permissions.js';
 import { assertSenior, seniorityOk } from '../seniority.js';
 import { DISMISS_DAYS, ladderOf } from '../rank-ladder.js';
 import { guildToday } from '../roster-view.js';
+import { wrote } from '../d1-changes.js';
 
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
 const bad = (message, field) => new HttpError(400, 'bad_request', message, { field });
@@ -76,7 +77,7 @@ export async function putPersonRank(ctx) {
       after: { rank, rankName: (rankView(ranks, rank) || {}).name || null, via, teamId: team.id },
     }, stillTheSame),
   ]);
-  if (results[0].meta.changes !== 1) {
+  if (!wrote(results[0])) {
     await assertSenior(ctx.db, guildContext, person.id); // a person promoted past the actor in between is a 403, not a conflict
     throw new HttpError(409, 'conflict', 'Someone changed this rank. Reload and look again.');
   }

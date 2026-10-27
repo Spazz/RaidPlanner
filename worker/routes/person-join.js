@@ -9,6 +9,7 @@ import { joinPersonsStatements } from '../person-join.js';
 import { personReply } from '../roster-view.js';
 import { assertSeniorAll, seniorityOk } from '../seniority.js';
 import { bad, conflict, constraintOf } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 const readVersion = (value, field) => {
   if (!Number.isInteger(value) || value < 1) throw bad('Send the version you last saw.', field);
@@ -60,7 +61,7 @@ export async function joinPerson(ctx) {
     }
     throw error;
   }
-  if (results[plan.appliedIndex].meta.changes !== 1) {
+  if (!wrote(results[plan.appliedIndex])) {
     return conflict(ctx, guildContext, personId, 'Someone changed one of these people. Reload and try again.');
   }
   const reply = await personReply(ctx, guildContext, plan.survivorId);

@@ -12,6 +12,7 @@ import { personFor, viewerFor } from '../redact.js';
 import { CREATE_STATUSES } from '../roster-data.js';
 import { guildToday, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
 import { bad, constraintOf, limitError, requireTarget } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 const MAX_LIST = 200;
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
@@ -163,7 +164,7 @@ export async function approveClaim(ctx) {
   } catch (error) {
     throw mapDecideError(error);
   }
-  if (results[results.length - 1].meta.changes !== 1) {
+  if (!wrote(results[results.length - 1])) {
     throw new HttpError(409, 'claim_decided', 'Someone already decided this claim, or the roster changed under it. Reload to see it.');
   }
   return jsonResponse({
@@ -223,7 +224,7 @@ export async function applyPendingClaims(ctx) {
       throw mapDecideError(error);
     }
     for (const key of keys) {
-      if (results[key.at].meta.changes === 1) counts[key.closed ? 'closed' : 'applied']++; else counts.left++;
+      if (wrote(results[key.at])) counts[key.closed ? 'closed' : 'applied']++; else counts.left++;
     }
   }
   return jsonResponse({ ...counts, more: result.results.length > APPLY_LIMIT, pendingClaims: await loadPendingClaims(db, guildContext) });
@@ -244,6 +245,6 @@ export async function rejectClaim(ctx) {
       `UPDATE character_claims SET status = 'rejected', decided_by = ?, decided_at = ? WHERE id = ? AND guild_id = ? AND status = 'pending'`,
     ).bind(ctx.session.user.id, now, claim.id, guildContext.guild.id),
   ]);
-  if (results[1].meta.changes !== 1) throw new HttpError(409, 'claim_decided', 'Someone already decided this claim. Reload to see it.');
+  if (!wrote(results[1])) throw new HttpError(409, 'claim_decided', 'Someone already decided this claim. Reload to see it.');
   return jsonResponse({ claim: { id: claim.id, status: 'rejected' }, pendingClaims: await loadPendingClaims(db, guildContext) });
 }

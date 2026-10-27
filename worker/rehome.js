@@ -4,7 +4,7 @@
 //
 //   rehomeStatements(db, { guildId, characterId, toPersonId, actorUserId, now, reason: 'bnet_beats_link' | 'collision' | 'gm_claim', guards?, randomBytes?, toPlanned? })
 //     -> { statements, appliedIndex, auditId, fromPersonId, toPersonId, placeholderId, wasMain }      or throws HttpError
-//   statements ... for the caller's db.batch, in order (13 to 14). results[appliedIndex].meta.changes is 1 when the re-home applied and 0 when a guard refused it,
+//   statements ... for the caller's db.batch, in order (13 to 14). wrote(results[appliedIndex]) is true when the re-home applied and false when a guard refused it,
 //                  in which case EVERY statement was a no-op. One read (a single statement) happens before; nothing is written by the function itself.
 //   toPlanned .... { version, characters } when the new person is made or linked EARLIER IN THE SAME BATCH (the GM claim: the claimant may have no person yet): the read finds no
 //                  such person (or the version it has now), so the caller says what the person will be when the opening statement runs. Left out, the read decides.
@@ -185,7 +185,7 @@ export async function rehomeStatements(db, {
 // (`~was:<id>`, still visible) and the name it carried goes to a dated alias, so the evidence it has keeps resolving to it and the name is free for the roster
 // character. The caller passes what it READ about the character; every statement is guarded by it.
 //   expected: { nameKey, realmKey, blizzardCharId: number | null }  the character as the caller saw it (the id is null for an unkeyed Former one)
-//   -> [update, alias, audit, stale marking] for the caller's batch; results[0].meta.changes === 1 when it applied.
+//   -> [update, alias, audit, stale marking] for the caller's batch; wrote(results[0]) when it applied.
 export function retireNameStatements(db, { guildId, characterId, expected, actorUserId, now, timeZone, guards = [], randomBytes = defaultRandomBytes, teamId = null }) {
   const today = guildToday({ time_zone: timeZone }, now);
   const key = `~was:${characterId}`;

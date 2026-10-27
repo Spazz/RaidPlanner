@@ -48,6 +48,7 @@ import { moveSeatStatement, ownerSql, seatHeldBySql, seatHolderSql } from './own
 import { bnetCallbackKey, refundRateLimit } from './ratelimit.js';
 import { pinOf } from './roster-pin.js';
 import { replaceStoredRoster, rosterHash } from './roster-sync.js';
+import { wrote } from './d1-changes.js';
 
 export const CLAIM_PURPOSE = 'gm_claim';
 // The head of the claim batch (seat, marker, four deletes / updates) plus its audit row: what must fit before anything else is spent.
@@ -249,7 +250,7 @@ export async function runGmClaim(ctx, { session, parsed, accessToken, info, now,
 
   const run = async (character) => {
     const results = await db.batch([...head.statements, ...character, audit]);
-    return results[0].meta.changes === 1;
+    return wrote(results[0]);
   };
   try {
     return (await run(chars)) ? { ok: true, deferred: [...deferred] } : { ok: false, reason: 'conflict' };

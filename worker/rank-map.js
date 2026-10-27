@@ -138,7 +138,7 @@ const APPLY_SQL = `WITH ${STORED_MAP_CTE}
 UPDATE characters SET core_rank = ${newCoreRankSql('characters')}, trial_start = NULL, trial_end = NULL, updated_at = ?
  WHERE guild_id = ? AND core_rank != ${newCoreRankSql('characters')}`;
 
-// Position of the characters UPDATE inside the array rankMapApplyStatements returns (its meta.changes = the characters whose rank changed).
+// Position of the characters UPDATE inside the array rankMapApplyStatements returns (its own-row count, read with changes() behind it, = the characters whose rank changed; meta.changes would add the trial-clock trigger rows).
 export const APPLY_UPDATE_INDEX = 1;
 
 const withGuards = (sql, guards) => (guards.length ? `${sql} AND ${guards.map((guard) => guard.sql).join(' AND ')}` : sql);

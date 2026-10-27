@@ -7,6 +7,7 @@
 import { auditStatement } from './audit.js';
 import { newId } from './ids.js';
 import { LOG_KEEP_DAYS, RETRY_LIMIT, classifyReply, isWebhookUrl, testBody } from './notify.js';
+import { countedRun, wrote } from './d1-changes.js';
 
 const POST_TIMEOUT_MS = 5000;
 const DAY_MS = 86400000;
@@ -39,11 +40,11 @@ async function claim(ctx, spec) {
       `INSERT OR IGNORE INTO notification_log (id, guild_id, team_id, raid_id, kind, dedupe_key, status, attempts, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?)`,
     ).bind(newId('nl', ctx.randomBytes), spec.guildId, spec.teamId, spec.raidId ?? null, spec.kind, spec.dedupeKey, now).run();
-    if (inserted.meta.changes === 1) return true;
+    if (wrote(inserted)) return true;
     const again = await db.prepare(
       "UPDATE notification_log SET status = 'pending' WHERE guild_id = ? AND dedupe_key = ? AND status = 'retry'",
     ).bind(spec.guildId, spec.dedupeKey).run();
-    return again.meta.changes === 1;
+    return wrote(again);
   } catch {
     return false; // the team or raid is gone: nothing to send
   }
@@ -127,6 +128,5 @@ export async function notifyOnce(ctx, spec) {
 
 // The daily run: rows older than LOG_KEEP_DAYS go.
 export async function pruneNotificationLog(db, nowMs) {
-  const result = await db.prepare('DELETE FROM notification_log WHERE created_at < ?').bind(nowMs - LOG_KEEP_DAYS * DAY_MS).run();
-  return result.meta.changes;
+  return countedRun(db, db.prepare('DELETE FROM notification_log WHERE created_at < ?').bind(nowMs - LOG_KEEP_DAYS * DAY_MS));
 }

@@ -28,6 +28,7 @@ import { nameKey } from '../roster-data.js';
 import { signUpClassId, signUpSpecLabel } from '../signups-data.js';
 import { guestRoom, guestsAtLimit, joinViewOf, limitSpotsOf, readGuestFields } from './join.js';
 import { bad } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 export const OPEN_SIGNUPS_PER_HOUR = 5;
 export const OPEN_SIGNUPS_PER_DAY = 10;
@@ -179,7 +180,7 @@ export async function signUpOpenRaid(ctx) {
     if (/UNIQUE constraint failed/i.test(String(error && error.message))) throw new HttpError(409, 'already_signed_up', 'You have signed up for this raid already. Withdraw first to sign up again.');
     throw error;
   });
-  if (results[0].meta.changes !== 1) await explainRefusal(ctx, row, userId, now);
+  if (!wrote(results[0])) await explainRefusal(ctx, row, userId, now);
   const spots = limitSpotsOf(row);
   return jsonResponse({ ok: true, spotsLeft: spots === null ? null : Math.max(0, spots - 1) }, 201);
 }

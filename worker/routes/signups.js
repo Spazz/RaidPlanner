@@ -23,6 +23,7 @@ import { personOnTeamRosterSql, rosterRankOnTeamSql } from '../team-roster.js';
 import { PROVEN_LINK_MESSAGE } from './accounts.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { bad, readName, readClass, readSpec } from './roster.js';
+import { directRows, directRowsStatement, wrote } from '../d1-changes.js';
 
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
@@ -296,7 +297,7 @@ export async function writeSignup(ctx, guildContext, raid, personId, input, self
     statements.push(raidAudit(ctx, guildContext, 'signup.set', raid.id, existing ? { kind: 'set' } : null, { personId, kind: input.kind }, CHANGED_ONE));
   }
   const results = await db.batch(statements);
-  if (results[0].meta.changes !== 1) {
+  if (!wrote(results[0])) {
     if (options.roster) throw new HttpError(409, 'raid_started', 'This raid has started: the roster can no longer be answered here. Ask an officer.');
     throw (await windowError(ctx, raid.id, guild.time_zone)) || closedError('locked', raid);
   }
@@ -456,7 +457,7 @@ export async function guestSignup(ctx) {
       .bind(raid.id, name, ctx.session.user.id, now, now, raid.id, body.signupId),
     raidAudit(ctx, guildContext, 'signup.guest_resolve', raid.id, null, { signupId: body.signupId, name }, CHANGED_ONE),
   ]);
-  if (!results[0].meta.changes) throw new HttpError(409, 'already_linked', 'That sign-up has changed. Refresh and try again.');
+  if (!wrote(results[0])) throw new HttpError(409, 'already_linked', 'That sign-up has changed. Refresh and try again.');
   await recomputeIfEvidence(ctx, guild, raid);
   return jsonResponse(await buildView(ctx, guildContext, raid));
 }
@@ -520,12 +521,13 @@ export async function linkSignup(ctx) {
       `UPDATE players SET discord_user_id = ?, version = version + 1, updated_at = ? WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL AND ${senior.sql}`,
     ).bind(discordId, now, person.id, guild.id, ...senior.params));
   }
+  const linkAt = statements.length;
   statements.push(
     linkSignupsStatement(db, guild.id, person.id, discordId, raid.id, body.signupId, senior),
+    directRowsStatement(db),
     markPersonRaidsStale(db, guild.id, person.id, null, weekFreeze(guild.time_zone, now)),
     db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ?").bind(raid.id, guild.id),
   );
-  const auditIndex = statements.length;
   statements.push(raidAudit(ctx, guildContext, 'signup.link', raid.id, null, { personId: person.id, nickname: row.nickname, linkedDiscord: !!discordId }, senior));
   let results;
   try {
@@ -534,7 +536,7 @@ export async function linkSignup(ctx) {
     if (/players_guild_discord|UNIQUE/i.test(String(error && error.message))) throw new HttpError(409, 'already_linked', 'Another person already has this Discord account.', { field: 'personId' });
     throw error;
   }
-  const relinked = results[auditIndex - 3].meta.changes;
+  const relinked = directRows(results[linkAt + 1]);
   // The row itself always links, so none linked means the Seniority guard (or another request) stopped the relink inside the batch.
   if (relink && relinked === 0) throw new HttpError(409, 'conflict', 'That person changed while you were linking. Reload and try again.');
   await recomputeIfEvidence(ctx, guild, raid);

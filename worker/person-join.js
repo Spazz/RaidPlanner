@@ -4,7 +4,7 @@
 //
 //   joinPersonsStatements(db, { guildId, aId, bId, actorUserId, now, reason: 'officer' | 'bnet', randomBytes?, guards?, expectedVersions?, lean? })
 //     -> { survivorId, loserId, statements, counts, journalId, appliedIndex, deletedIndex, teamlessCharacterIds }   or throws HttpError
-//   statements ... for db.batch, in order. appliedIndex = the position of the journal INSERT: its meta.changes is 1 when the batch applied and 0 when a guard
+//   statements ... for db.batch, in order. appliedIndex = the position of the journal INSERT: wrote() is true when the batch applied and false when a guard
 //                  refused it (a concurrent edit), in which case EVERY statement was a no-op. deletedIndex = the position of the DELETE of the loser.
 //   guards ....... [{ sql, params }] repeated (AND) in every statement: the officer route passes the Seniority guard of both persons, the sign-in match its own.
 //   expectedVersions { [personId]: players.version } the versions the caller saw; a difference throws 409 `conflict` before anything is built.

@@ -1347,15 +1347,18 @@ function hookBatch(db, re, interleave) {
   };
 }
 
-check('d1 fake: meta.changes counts the statement\'s own rows, not foreign-key cascades, and is 0 after a read', async () => {
+check('d1 fake: meta.changes is the total_changes delta like D1 (cascade and trigger rows count; SQL changes() is the own row) and is 0 after a read', async () => {
   const s = await scenario();
   const { db } = s.w;
-  assert(await s.w.count('teams') >= 1 && await s.w.count('role_assignments') >= 1, 'the guild has children');
-  const removal = await db.prepare('DELETE FROM guilds WHERE id = ?').bind(s.guildId).run();
-  assert.equal(removal.meta.changes, 1, 'the cascade through teams, roles and audit rows is not counted');
+  const teams = await s.w.count('teams');
+  const assignments = await s.w.count('role_assignments');
+  assert(teams >= 1 && assignments >= 1, 'the guild has children');
+  const [removal, own] = await db.batch([db.prepare('DELETE FROM guilds WHERE id = ?').bind(s.guildId), db.prepare('SELECT changes() AS n')]);
+  assert(removal.meta.changes >= 1 + teams + assignments, `the cascade through teams and roles (and the BEFORE DELETE trigger of migration 0014) is counted: ${removal.meta.changes}`);
+  assert.deepEqual(own.results, [{ n: 1 }], 'changes() inside SQLite is the guild row alone');
   assert.equal(await s.w.count('teams'), 0);
   const read = await db.prepare('SELECT 1 AS one').all();
-  assert.equal(read.meta.changes, 0, 'changes() is stale after a SELECT; the fake reports 0');
+  assert.equal(read.meta.changes, 0, 'a read changes nothing');
 });
 
 check('callback: a state the Worker did not sign is rejected before any Discord call (matching cookie or not)', async () => {

@@ -16,6 +16,7 @@
 // POST/PUT only take a JSON Content-Type (else 415) and a JSON object body (else 400), and refuse a cross-site request (403).
 import { HttpError, hasJsonContentType, isCrossSite, jsonResponse, readJsonBody } from './http.js';
 import { checkRateLimit } from './ratelimit.js';
+import { directRows, directRowsStatement, wrote } from './d1-changes.js';
 
 export const SHARE_PATH = '/api/share';
 export const TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -78,7 +79,7 @@ async function create(deps, body) {
        ON CONFLICT(id) DO UPDATE SET code = excluded.code, updated_at = excluded.updated_at, expires_at = excluded.expires_at
          WHERE share_links.expires_at <= excluded.updated_at`,
     ).bind(id, body.code, updatedAt, updatedAt + TTL_MS).run();
-    if (result.meta.changes === 1) return reply(201, { id, updatedAt });
+    if (wrote(result)) return reply(201, { id, updatedAt });
   }
   return reply(503, { error: 'Could not allocate a link ID' });
 }
@@ -91,7 +92,7 @@ async function update(deps, body) {
   const updatedAt = deps.now();
   const result = await deps.db.prepare('UPDATE share_links SET code = ?, updated_at = ?, expires_at = ? WHERE id = ? AND expires_at > ?')
     .bind(body.code, updatedAt, updatedAt + TTL_MS, body.id, updatedAt).run();
-  if (result.meta.changes !== 1) return reply(404, { error: 'Link not found or expired' });
+  if (!wrote(result)) return reply(404, { error: 'Link not found or expired' });
   return reply(200, { updatedAt });
 }
 
@@ -142,7 +143,9 @@ export function servePlannerPage(request, env) {
 export async function sweepShareLinks(db, nowMs) {
   const results = await db.batch([
     db.prepare('DELETE FROM share_links WHERE expires_at <= ?').bind(nowMs),
+    directRowsStatement(db),
     db.prepare("DELETE FROM rate_limits WHERE key LIKE 'share:%' AND window_start <= ?").bind(nowMs - RATE_SWEEP_AGE_MS),
+    directRowsStatement(db),
   ]);
-  return { links: results[0].meta.changes, limits: results[1].meta.changes };
+  return { links: directRows(results[1]), limits: directRows(results[3]) };
 }

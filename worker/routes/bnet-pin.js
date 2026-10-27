@@ -38,6 +38,7 @@ import { PIN_SQL, pinOf } from '../roster-pin.js';
 import { SYNC_INTERVAL_MS, releaseSyncLease, settleFetchedRoster } from '../roster-sync.js';
 import { requireBnetConfigured } from './bnet-import.js';
 import { bad } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 const OWNER_MESSAGE = 'Only the Owner of the guild can link it to its in-game guild.';
 // The grant's session and the account's Battle.net link in one read: when the grant was written, and the characters the pin's callback read at that time.
@@ -129,7 +130,7 @@ export async function postBnetPin(ctx) {
   }
   // Lost the race (a hand-over, a flip, another pin, a spent grant): nothing was written and the grant is as it was.
   if (!act.consumed(results)) throw freshRequiredError('pin', params);
-  if (results[act.offset].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The guild changed while it was being linked. Reload and try again.');
+  if (!wrote(results[act.offset])) throw new HttpError(409, 'conflict', 'The guild changed while it was being linked. Reload and try again.');
 
   const pinned = pinOf({
     rank_source: guild.rank_source, pinned_guild_slug: pin.guildSlug, pinned_realm_slug: pin.realmSlug, pinned_namespace: pin.namespace,

@@ -163,14 +163,7 @@ check('placing a character answers 200 when D1 counts the trigger\'s row too (mi
   await s.link(main.pid, 'm1');
   const a1 = await s.alt(main.pid, 'Askaltone');
   const a2 = await s.alt(main.pid, 'Askalttwo');
-  // The stand-in D1 reports a statement's own rows only; real D1 also counts the rows a trigger wrote (characters_team_since_move updates team_since).
-  const db = s.w.db;
-  const real = db.execute.bind(db);
-  db.execute = (statement) => {
-    const result = real(statement);
-    if (/^\s*UPDATE characters SET team_id/i.test(statement.sql) && result.meta.changes > 0) result.meta.changes += 1;
-    return result;
-  };
+  // The stand-in D1 counts the rows a trigger wrote like real D1 does (tests/d1-fake.js: characters_team_since_move updates team_since), so a placement says 2 here too.
   const made = await ask(s, 'm1', a1, bravo);
   assert.equal(made.status, 201, made.text);
   const approved = await s.call('o1', 'POST', `/team-requests/${made.json.request.id}/approve`, {});

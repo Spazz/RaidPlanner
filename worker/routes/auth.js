@@ -28,6 +28,7 @@ import {
   presentedToken, readManageable, sessionCookie, signDiscordLinkState, signState, startSessionStatements, stateCookie, verifyDiscordLinkState,
   verifyFreshState, verifyState,
 } from '../session.js';
+import { wrote } from '../d1-changes.js';
 
 // Fixed targets inside the app shell (index.html); the hash router reads them. No user input reaches a Location header.
 const HOME_REDIRECT = '/#/';
@@ -256,7 +257,7 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
     }, allOf(linked, gate))] : []),
   ]);
   if (act && !act.consumed(results)) return fail('fresh_required');
-  if (results[act ? act.offset + 2 : 0].meta.changes !== 1) return fail(await linkNotWrittenReason(db, { userId, discordId: discordUser.id, firstLink }));
+  if (!wrote(results[act ? act.offset + 2 : 0])) return fail(await linkNotWrittenReason(db, { userId, discordId: discordUser.id, firstLink }));
   // A BLOCKED account that links a NEW Discord account (a first link): the new Discord id is tombstoned for each of its blocks, the way a new Battle.net account is (worker/block-tombstones.js).
   if (firstLink) await tombstoneNewDiscordAccount(ctx, { userId, discordId: discordUser.id });
   // The Discord id just joined this account: match it (and the account's other keys) against the tombstones of the guilds it reaches (sec A9-11).

@@ -27,6 +27,7 @@ import {
   bad, constraintOf, errorText, findNameOwner, insertCharacter, LIMIT_KINDS, limitError, nameTaken, newMainStatements, requireTarget, resolveRealm,
 } from './roster.js';
 import { loadRaid, raidFetchRate, recomputeAndReply } from './raids.js';
+import { directRows, directRowsStatement, wrote } from '../d1-changes.js';
 
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const MAX_UPLOADERS = 10;
@@ -159,7 +160,7 @@ export async function putPolicy(ctx) {
     }
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw conflict();
+  if (!wrote(results[0])) throw conflict();
   return jsonResponse(publicPolicyView(await policyView(ctx, guildContext)));
 }
 
@@ -362,7 +363,7 @@ export async function postDecision(ctx) {
       after: { playerId: row.player_id, outcome: body.outcome, creditId, credit, reason },
     }, CHANGED_ONE),
   ]);
-  if (results[0].meta.changes !== 1) throw new HttpError(409, 'flags_changed', 'The flags on this row changed. Reload and decide again.', { flags });
+  if (!wrote(results[0])) throw new HttpError(409, 'flags_changed', 'The flags on this row changed. Reload and decide again.', { flags });
   return recomputeAndReply(ctx, guildContext, raid.id);
 }
 
@@ -381,7 +382,7 @@ export async function deleteDecision(ctx) {
       before: { playerId: ctx.params.pid }, after: { playerId: ctx.params.pid, reason },
     }, CHANGED_ONE),
   ]);
-  if (results[0].meta.changes !== 1) throw new HttpError(404, 'not_found', 'That person has no decision on this raid.');
+  if (!wrote(results[0])) throw new HttpError(404, 'not_found', 'That person has no decision on this raid.');
   return recomputeAndReply(ctx, guildContext, raid.id);
 }
 
@@ -419,13 +420,14 @@ export async function postUnmatched(ctx) {
   const now = ctx.now();
   const statements = [];
   let mainIndex = -1;
-  const stale = markRaidsStale(db, guild.id, [keyName], raid.id, body.action === 'guest' ? [] : [raid.team_id], null, weekFreeze(guild.time_zone, now));
+  // Index 1 of every branch below, with its own-row count right behind it (the answer says how many raids went stale).
+  const stale = [markRaidsStale(db, guild.id, [keyName], raid.id, body.action === 'guest' ? [] : [raid.team_id], null, weekFreeze(guild.time_zone, now)), directRowsStatement(db)];
 
   if (body.action === 'guest') {
     statements.push(
       db.prepare('INSERT INTO attendance_guests (guild_id, name_key, realm_key, name, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING')
         .bind(guild.id, keyName, keyRealm, presence.name, ctx.session.user.id, now),
-      stale,
+      ...stale,
       auditStatement(ctx, { guildId: guild.id, actorUserId: ctx.session.user.id, action: 'attendance.guest', entityType: 'raid', entityId: raid.id, after: { guest: true, nameKey: keyName } }),
       bumpRaidStatement(db, guild.id, raid.id),
     );
@@ -449,7 +451,7 @@ export async function postUnmatched(ctx) {
         `INSERT INTO players (id, guild_id, status, joined_on, discord_user_id, version, notes_version, created_by, created_at, updated_at)
          VALUES (?, ?, 'raider', ?, NULL, 1, 0, ?, ?, ?)`, // players.status: the inert placeholder (worker/person-legacy.js); the rank is the character's
       ).bind(playerId, guild.id, joinedOn, ctx.session.user.id, now, now),
-      stale,
+      ...stale,
       insertCharacter(db, guild.id, {
         id: characterId, playerId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: characterClass,
         mainSpec: null, offSpec: null, isMain: true, rank: characterRankColumns({ status, trialStart }),
@@ -493,7 +495,7 @@ export async function postUnmatched(ctx) {
         id: characterId, playerId: body.personId, teamId: null, name, realm: realm.realm, realmKey: realm.key, class: characterClass,
         mainSpec: null, offSpec: null, isMain: false,
       }, now),
-      stale,
+      ...stale,
       auditStatement(ctx, {
         guildId: guild.id, actorUserId: ctx.session.user.id, action: 'character.create', entityType: 'character', entityId: characterId,
         after: { personId: body.personId, teamId: team.id, class: characterClass, makeMain: false, via: 'attendance' },
@@ -530,8 +532,8 @@ export async function postUnmatched(ctx) {
     if (kind === 'team_taken') throw new HttpError(409, 'team_taken', 'That person already has a character on the raid team.', { field: 'personId' });
     throw error;
   }
-  if (mainIndex >= 0 && results[mainIndex].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The Main could not be changed. Reload and try again.');
-  const staleRaids = results[1].meta.changes;
+  if (mainIndex >= 0 && !wrote(results[mainIndex])) throw new HttpError(409, 'conflict', 'The Main could not be changed. Reload and try again.');
+  const staleRaids = directRows(results[2]);
   await recomputeRaid(ctx, guild, raid.id);
   const detail = await loadRaidDetail(ctx, guildContext, raid.id);
   return jsonResponse({ raid: detail, staleRaids, attendanceFlags: detail.attendanceFlags });

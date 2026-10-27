@@ -285,9 +285,11 @@ check('the approval re-checks the asker inside the placing statement: an account
   const s = await world();
   const id = (await ask(s, 'm1', s.alt1, s.bravo)).json.request.id;
   const row = { player_id: s.m1.pid, requested_by: s.uids.m1 };
-  const place = async () => (await s.w.db.batch([placeStatement(s.w.db, {
+  // The own rows of the placing statement (SQL changes()): meta.changes also counts the trigger rows of migration 0040 (worker/d1-changes.js).
+  const { directRows, directRowsStatement } = await import('../../worker/d1-changes.js');
+  const place = async () => directRows((await s.w.db.batch([placeStatement(s.w.db, {
     guildId: s.gid, personId: s.m1.pid, characterId: s.alt1, teamId: s.bravo, from: null, now: 1, extra: askerStillOwns(s.gid, row),
-  })]))[0].meta.changes;
+  }), directRowsStatement(s.w.db)]))[1]);
   s.exec(`INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at) VALUES ('${s.gid}', '${s.uids.m1}', '${s.uids.gm}', 'x', 1)`);
   assert.equal(await place(), 0, 'blocked');
   s.exec(`DELETE FROM guild_blocks WHERE user_id = '${s.uids.m1}'`);

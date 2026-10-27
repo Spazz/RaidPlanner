@@ -18,8 +18,9 @@ import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
 import { assertSenior, seniorityOk } from '../seniority.js';
 import { weekFreeze } from '../attendance-store.js';
 import { trialClockStatement, zoneOffsetMinutes } from '../trial-clock.js';
-import { dropUpcomingSignupsStatements, personLeftTeamSql, placeStatement, releaseStatement, staleStatement, upcomingSignupsOf } from '../team-place.js';
+import { dropUpcomingSignupsStatements, droppedCounts, personLeftTeamSql, placeStatement, releaseStatement, staleStatement, upcomingSignupsOf } from '../team-place.js';
 import { audit, bad, characterMoved, constraintOf, findCharacter, requireEdit, requireTarget, teamTaken } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 
@@ -97,9 +98,9 @@ export async function putCharacterTeam(ctx) {
   } catch (error) {
     mapPlaceError(error);
   }
-  // `< 1`, not `!== 1`: D1 reports total_changes, and the characters_team_since_move trigger (migration 0040) adds a row of its own, so a write that worked says 2.
-  if (results[0].meta.changes < 1) return characterMoved(ctx, guildContext, data.player.id, current.id);
-  const removed = moving && removeSignups ? { signups: results[3].meta.changes, standing: results[4].meta.changes } : null;
+  // wrote(), not a count of 1: D1's meta.changes also counts the row the characters_team_since_move trigger (migration 0040) writes (worker/d1-changes.js).
+  if (!wrote(results[0])) return characterMoved(ctx, guildContext, data.player.id, current.id);
+  const removed = moving && removeSignups ? droppedCounts(results, 3) : null;
   return jsonResponse({ ...(await personReply(ctx, guildContext, data.player.id)), ...(removed ? { removed } : {}) });
 }
 
@@ -128,9 +129,9 @@ export async function deleteCharacterTeam(ctx) {
     statements.push(...dropUpcomingSignupsStatements(db, { guildId: guild.id, personId: data.player.id, teamId: current.team_id, nowMs: now, left: personLeftTeamSql(guild.id, data.player.id, current.team_id) }));
   }
   const results = await db.batch(statements);
-  // `< 1`, not `!== 1`: D1 reports total_changes, and the characters_team_since_move trigger (migration 0040) adds a row of its own, so a write that worked says 2.
-  if (results[0].meta.changes < 1) return characterMoved(ctx, guildContext, data.player.id, current.id);
-  const removed = removeSignups ? { signups: results[3].meta.changes, standing: results[4].meta.changes } : null;
+  // wrote(), not a count of 1: D1's meta.changes also counts the row the characters_team_since_move trigger (migration 0040) writes (worker/d1-changes.js).
+  if (!wrote(results[0])) return characterMoved(ctx, guildContext, data.player.id, current.id);
+  const removed = removeSignups ? droppedCounts(results, 3) : null;
   return jsonResponse({ ...(await personReply(ctx, guildContext, data.player.id)), ...(removed ? { removed } : {}) });
 }
 

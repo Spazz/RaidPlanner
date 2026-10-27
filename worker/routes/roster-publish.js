@@ -11,6 +11,7 @@ import { loadTeamNotify, usable } from '../notify-store.js';
 import { buildSeats, keptSeats, planChanged, rosterCounts } from '../roster-publish.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { writeSignup } from './signups.js';
+import { wrote } from '../d1-changes.js';
 
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
 const started = () => new HttpError(409, 'raid_started', 'This raid has started: its line-up is frozen.');
@@ -113,7 +114,7 @@ export async function publishRoster(ctx) {
       .bind(now, ctx.session.user.id, now, raid.id, guild.id, now),
     raidAudit(ctx, guildContext, 'roster.publish', raid.id, null, { players: seats.length, kept }, { sql: 'changes() = 1', params: [] }),
   ]);
-  if (results[2].meta.changes !== 1) throw started();
+  if (!wrote(results[2])) throw started();
   // The team's Discord channel hears about it when an officer set that up (worker/notify-run.js; a failed post never fails the publish).
   await announceRoster(ctx, { ...raid, roster_published_at: now });
   return jsonResponse(await rosterReply(ctx, guildContext, { ...raid, roster_published_at: now, roster_published_by: ctx.session.user.id }));
@@ -168,7 +169,7 @@ export async function declineSeat(ctx) {
       .bind(now, remembered, raid.id, personId, raid.id, now),
     raidAudit(ctx, guildContext, 'roster.decline', raid.id, null, { personId }, { sql: 'changes() > 0', params: [] }),
   ]);
-  if (results[0].meta.changes < 1) throw started();
+  if (!wrote(results[0])) throw started();
   await writeSignup(ctx, guildContext, raid, personId, { kind: 'absence', hasCharacter: false, characterId: null, hasSpec: false, spec: null, hasNote: false, note: null }, true, { roster: true });
   return jsonResponse(await rosterReply(ctx, guildContext, raid));
 }
@@ -185,6 +186,6 @@ export async function confirmSeat(ctx) {
     ctx.db.prepare(`UPDATE raid_roster SET status = 'confirmed', responded_at = ?, prev_kind = NULL WHERE raid_id = ? AND player_id = ? AND EXISTS (SELECT 1 FROM raids WHERE id = ? AND starts_at > ?)`)
       .bind(now, raid.id, personId, raid.id, now),
   ]);
-  if (results[0].meta.changes < 1) throw started();
+  if (!wrote(results[0])) throw started();
   return jsonResponse(await rosterReply(ctx, guildContext, raid));
 }

@@ -20,6 +20,7 @@ import { MULTI_LINE_STRIP, SPECS, isRealDate, isSpecOf } from '../roster-data.js
 import { guildToday } from '../roster-view.js';
 import { personOnTeamRosterSql, rosterRankOnTeamSql } from '../team-roster.js';
 import { bad, readClass } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 export const INTENT_TITLE_MAX = 80;
 export const INTENT_NOTE_MAX = 120;
@@ -257,7 +258,7 @@ export async function putIntentPick(ctx) {
       after: { personId: person.id, teamId: team.id, kind, class: classId, spec, role },
     }, { sql: 'changes() = 1', params: [] }),
   ]);
-  if (results[0].meta.changes !== 1) throw new HttpError(409, 'intent_closed', 'This round is closed.');
+  if (!wrote(results[0])) throw new HttpError(409, 'intent_closed', 'This round is closed.');
   return jsonResponse(await boardPayload(ctx, guildContext, team, await loadRound(ctx.db, guild.id, round.id), own));
 }
 
@@ -283,6 +284,6 @@ export async function deleteIntentPick(ctx) {
       after: { personId: person.id, teamId: team.id, kind },
     }, { sql: 'changes() >= 1', params: [] }),
   ]);
-  if (results[0].meta.changes < 1) throw notFound('There is no such pick.');
+  if (!wrote(results[0])) throw notFound('There is no such pick.');
   return jsonResponse(await boardPayload(ctx, guildContext, team, await loadRound(ctx.db, guild.id, round.id), own));
 }

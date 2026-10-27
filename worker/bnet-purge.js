@@ -8,17 +8,21 @@
 // guild_roster (the guild's synced in-game roster, worker/roster-sync.js) is the guild's public roster data, not a member's Battle.net snapshot: it is kept
 // while the guild lives and replaced by each changed good sync, so nothing here touches it (a test pins that).
 import { DATA_TTL_MS } from './bnet-store.js';
+import { directRows, directRowsStatement } from './d1-changes.js';
 
-// -> { snapshots, pendingClaims, decidedClaims } (rows changed or deleted)
+// -> { snapshots, pendingClaims, decidedClaims } (rows changed or deleted: the statement's own rows, read with changes(), not meta.changes, which also counts cascades and triggers)
 export async function purgeExpiredBnetData(db, nowMs) {
   const cutoff = nowMs - DATA_TTL_MS;
   const results = await db.batch([
     // snapshot_at stays: it is when the characters were last loaded, which the Linked accounts page still says.
     db.prepare("UPDATE bnet_links SET snapshot = '{}' WHERE snapshot_at <= ? AND snapshot != '{}'").bind(cutoff),
+    directRowsStatement(db),
     db.prepare("DELETE FROM character_claims WHERE status = 'pending' AND created_at <= ?").bind(cutoff),
+    directRowsStatement(db),
     db.prepare("DELETE FROM character_claims WHERE status != 'pending' AND decided_at <= ?").bind(cutoff),
+    directRowsStatement(db),
   ]);
-  return { snapshots: results[0].meta.changes, pendingClaims: results[1].meta.changes, decidedClaims: results[2].meta.changes };
+  return { snapshots: directRows(results[1]), pendingClaims: directRows(results[3]), decidedClaims: directRows(results[5]) };
 }
 
 // The Worker's `scheduled` handler body. Never throws (a failed run is logged and the next day's run tries again).

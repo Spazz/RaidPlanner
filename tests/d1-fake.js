@@ -10,6 +10,41 @@
  *   - foreign keys ON; the real migration files run in order
  *   - triggers (RAISE(ABORT) rolls a batch back whole), composite foreign keys, partial unique indexes and json_each run
  *     natively; guild-roster-worker-tests.js pins each of them ('schema' and 'd1 fake parity' checks)
+ *   - meta.changes is SQLite's total_changes() delta, NOT changes() (next paragraph); tests/guild/guild-d1-changes-tests.js pins every case
+ *
+ * meta.changes on real D1 (measured 2026-10-27 on local D1, wrangler 4.146.0, through a Worker binding, one statement per call):
+ *   It is the delta of total_changes(): the statement's own rows PLUS every row a trigger or a foreign-key action wrote. The SQL function
+ *   changes() read in the same batch counts the statement's own rows only, so a guard like `... WHERE changes() = 1` is exact.
+ *     case                                                                       meta.changes   SQL changes() after it
+ *     UPDATE 1 row, no trigger                                                        1              1
+ *     UPDATE 1 row, AFTER UPDATE trigger updating 3 other rows                        4              1
+ *     UPDATE 1 row, BEFORE UPDATE trigger updating 2 other rows                       3              1
+ *     UPDATE 0 rows (nothing matches), so the trigger never fires                     0              0
+ *     UPDATE 1 row, trigger WHEN false / a trigger that fires and writes nothing     1 / 1          1
+ *     UPDATE 1 row, nested triggers (table 1 trigger updates table 2, whose inserts)  3              1
+ *     UPDATE 3 rows, a trigger inserting 1 row per row                                6              3
+ *     UPDATE 1 parent row, ON UPDATE CASCADE to 2 child rows                          3              1
+ *     INSERT 1 row, no trigger                                                        1              1
+ *     INSERT 1 row, AFTER INSERT trigger inserting 1 row / 3 rows                     2 / 4          1
+ *     INSERT 1 row, BEFORE INSERT trigger inserting 2 rows                            3              1
+ *     INSERT ... SELECT 3 rows, no trigger / an AFTER INSERT trigger per row          3 / 6          3 / not measured
+ *     INSERT ... ON CONFLICT DO UPDATE with AFTER INSERT + AFTER UPDATE triggers      2 (both paths) 1
+ *     INSERT ... ON CONFLICT DO NOTHING (conflict)                                    0              0
+ *     INSERT OR REPLACE over 1 existing row, no trigger (replaced row not counted)    1              1
+ *     INSERT OR REPLACE over 1 existing row, AFTER INSERT trigger                     2              not measured
+ *     INSERT / UPDATE ... RETURNING, a 3-row trigger (RETURNING gives 1 row)          4 / 4          1
+ *     DELETE 1 row, no trigger                                                        1              1
+ *     DELETE 1 row, AFTER DELETE trigger deleting 2 rows                              3              1
+ *     DELETE 1 row, BEFORE DELETE trigger inserting 1 row                             2              1
+ *     DELETE 1 parent row with 3 ON DELETE CASCADE children                           4              1
+ *     DELETE 1 parent row with 2 ON DELETE SET NULL children                          3              1
+ *     DELETE 1 parent row, 2 cascade children that have an AFTER DELETE trigger       5              1
+ *     DELETE FROM t (no WHERE, 3 rows, no trigger)                                    3              3
+ *     SELECT                                                                          0              (unchanged inside a batch)
+ *   The earlier belief "D1 does not count foreign-key cascades" was wrong: it counts ON DELETE CASCADE, ON DELETE SET NULL and ON UPDATE
+ *   CASCADE rows, BEFORE and AFTER trigger rows and nested trigger rows. rows_written is a different number on D1 (it also counts index and
+ *   sqlite_sequence writes) and is not mirrored here. Production D1 is assumed to report the same; worker/ does not depend on it
+ *   (worker/d1-changes.js reads only "at least one direct row", or an exact count taken from RETURNING / SQL changes()).
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -144,10 +179,9 @@ class D1Fake {
       const rows = prepared.all(...values).map((row) => ({ ...row }));
       logged.rowsRead = rows.length;
       const after = this.sqlite.prepare('SELECT total_changes() AS n').get().n;
-      // changes() counts the statement's own rows only. total_changes() also counts foreign-key
-      // cascades, which D1 does not report in meta.changes. changes() is stale after a SELECT, so a
-      // statement that wrote nothing at all reports 0.
-      const changes = after === before ? 0 : Number(this.sqlite.prepare('SELECT changes() AS n').get().n);
+      // D1 reports the total_changes() delta: the statement's own rows plus the rows its triggers and its foreign-key actions wrote
+      // (measured, see the header). SQLite's changes() leaves those out. A statement that wrote nothing reports 0.
+      const changes = after - before;
       const lastRowId = this.sqlite.prepare('SELECT last_insert_rowid() AS id').get().id;
       return {
         results: rows,

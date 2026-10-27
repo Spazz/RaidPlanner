@@ -15,6 +15,7 @@ import { SINGLE_LINE_STRIP } from '../roster-data.js';
 import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
 import { assertSenior, seniorityOk } from '../seniority.js';
 import { bad, constraintOf, requireEdit } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 export const MAX_DISPLAY_NAME = 32;
 const MIN_LOOKUP = 3;
@@ -125,7 +126,7 @@ export async function unlinkDiscord(ctx) {
     auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'discord.unlink', entityType: 'user', entityId: userId }, cleared),
   ]);
   if (!act.consumed(results)) throw freshRequiredError('identity_change', { change: 'unlink_discord' });
-  if (results[act.offset + 2].meta.changes !== 1) throw conflict();
+  if (!wrote(results[act.offset + 2])) throw conflict();
   return jsonResponse({ ok: true, removed: true });
 }
 
@@ -256,7 +257,7 @@ export async function setPersonAccount(ctx) {
         before: { userId: player.user_id }, after: { userId: null },
       }, { sql: 'changes() = 1', params: [] }),
     ]);
-    if (results[0].meta.changes !== 1) throw conflict();
+    if (!wrote(results[0])) throw conflict();
     return jsonResponse(await personReply(ctx, guildContext, player.id));
   }
 
@@ -313,6 +314,6 @@ export async function setPersonAccount(ctx) {
     }
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw conflict();
+  if (!wrote(results[0])) throw conflict();
   return jsonResponse(await personReply(ctx, guildContext, player.id));
 }

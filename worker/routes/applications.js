@@ -31,6 +31,7 @@ import { placeStatement } from '../team-place.js';
 import {
   LIMIT_KINDS, bad, constraintOf, findNameOwner, insertCharacter, limitError, nameTaken, readClass, readName, requireEdit, requireTarget, resolveRealm, teamTaken,
 } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 export const APPLY_COOKIE = '__Host-rs_apply';
 export const APPLY_COOKIE_TTL = 30 * 24 * 60 * 60;
@@ -361,7 +362,7 @@ async function placeOwnCharacter(ctx, guildContext, row, team, owner) {
     if (constraintOf(error) === 'team_taken') throw teamTaken();
     throw error;
   });
-  if (results[0].meta.changes !== 1) throw new HttpError(409, 'conflict', 'The character or the application changed while you were deciding. Reload and try again.');
+  if (!wrote(results[0])) throw new HttpError(409, 'conflict', 'The character or the application changed while you were deciding. Reload and try again.');
   return jsonResponse({
     application: applicationView(await loadApplication(db, guild.id, row.id)),
     person: { id: own.id, name: row.char_name, teamId: team.id, trialEnd: null },

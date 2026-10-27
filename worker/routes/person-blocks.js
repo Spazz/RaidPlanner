@@ -18,6 +18,7 @@ import { isId } from '../ids.js';
 import { isOwner, ownerSql } from '../owner.js';
 import { ROLE_RANK, loadGuildContext, requireAction } from '../permissions.js';
 import { actorHolds, and } from './people.js';
+import { wrote } from '../d1-changes.js';
 
 const MAX_REASON = 200;
 
@@ -120,7 +121,7 @@ export async function blockRosterPerson(ctx) {
     if (!isUniqueViolation(error)) throw error;
     return answer(target.pid, true, false);
   }
-  if (results[0].meta.changes !== 1) throw conflict();
+  if (!wrote(results[0])) throw conflict();
   return answer(target.pid, true, plan.missing);
 }
 
@@ -150,7 +151,7 @@ export async function unblockRosterPerson(ctx) {
     ...liftTombstoneStatements(ctx.db, { guildId, actorId, split, guard }),
     ctx.db.prepare(`DELETE FROM person_blocks WHERE guild_id = ? AND player_id = ? AND ${guard.sql}`).bind(guildId, target.pid, ...guard.params),
   ]);
-  if (results[results.length - 1].meta.changes !== 1) {
+  if (!wrote(results[results.length - 1])) {
     // Someone lifting it first is fine; if the marker is still there, the actor lost the right.
     const still = await ctx.db.prepare('SELECT 1 AS found FROM person_blocks WHERE guild_id = ? AND player_id = ?').bind(guildId, target.pid).first();
     if (still) throw conflict();

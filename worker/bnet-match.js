@@ -64,6 +64,7 @@ import { rehomeStatements, retireNameStatements } from './rehome.js';
 import { CLASS_IDS, nameKey, realmKey } from './roster-data.js';
 import { guildToday } from './roster-view.js';
 import { resolveRealm } from './routes/roster.js';
+import { wrote } from './d1-changes.js';
 
 // D1 statements one Battle.net callback may run in all (a Worker invocation has a subrequest limit; the plan's invocation budget is 45, batch members counted
 // one by one). worker/routes/bnet.js passes in what the callback has used before the match; tests/guild/guild-b6a-match-tests.js pins that the totals stay inside.
@@ -401,7 +402,7 @@ const hasNoPerson = (guildId, userId) => ({
 });
 
 // -> { statements, personAt }: the write batch of one guild (the caller puts the tombstone statements in front of it). personAt = the position in `statements` of the
-// statement that makes the account's person (create / link), whose meta.changes is 1 when it happened; null for an existing person.
+// statement that makes the account's person (create / link), which wrote() says happened; null for an existing person.
 // EVERY statement carries notBlocked: a tombstone hit written at the head of the same batch (a pending-review block) leaves the account's person untouched.
 // `gate` ({ sql, params }, default none): a condition ANDed into every statement, the way the GM claim ties them to its marker (worker/gm-claim.js).
 function guildStatements(ctx, plan, { userId, bnetAccountId, now, gate = NO_GATE }) {
@@ -540,7 +541,7 @@ async function rehomeBatch(ctx, candidate, { userId, bnetAccountId, now, byKey, 
     return 1;
   }
   const results = await writeBatch(ctx, parts.statements);
-  if (!results || results[parts.rehome.appliedIndex].meta.changes !== 1) deferred.add('rehome');
+  if (!results || !wrote(results[parts.rehome.appliedIndex])) deferred.add('rehome');
   return 1 + parts.statements.length;
 }
 
@@ -706,7 +707,7 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
     used += statements.length;
     const results = statements.length ? await writeBatch(ctx, statements) : [];
     if (!results) continue;
-    if (personAt !== null && results[personAt].meta.changes !== 1) continue;
+    if (personAt !== null && !wrote(results[personAt])) continue;
     if (!plan.person) continue;
     if (plan.joinCandidates.length) ready.push({ plan, personId: plan.person.id });
     for (const candidate of plan.rehomes) rehomeReady.push({ plan, personId: plan.person.id, ...candidate });
@@ -774,7 +775,7 @@ export async function runBnetMatch(ctx, { userId, bnetAccountId, snapshot, now, 
         } else {
           used += statements.length;
           const results = await writeBatch(ctx, statements);
-          if (results && results[join.appliedIndex].meta.changes === 1) joined = true;
+          if (results && wrote(results[join.appliedIndex])) joined = true;
           else if (results) deferred.add('join');
         }
       }

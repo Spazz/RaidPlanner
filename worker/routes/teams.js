@@ -6,6 +6,7 @@ import { personFor, viewerFor } from '../redact.js';
 import { teamRosterSql } from '../team-roster.js';
 import { LIMITS, TEAM_LIMIT_MESSAGE } from '../limits.js';
 import { RAID_SIZES, defaultTeamSize, isRaidSize } from '../raid-zones.js';
+import { wrote } from '../d1-changes.js';
 
 const MAX_TEAM_NAME = 40;
 export const MAX_ACTIVE_TEAMS = LIMITS.teams;
@@ -76,7 +77,7 @@ export async function createTeam(ctx) {
     if (isUniqueViolation(error)) throw new HttpError(409, 'team_name_taken', TEAM_NAME_TAKEN, { field: 'name' });
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw new HttpError(409, 'team_limit', TEAM_CAP_MESSAGE, { field: 'name' });
+  if (!wrote(results[0])) throw new HttpError(409, 'team_limit', TEAM_CAP_MESSAGE, { field: 'name' });
   return jsonResponse({ team: teamView({ id, name, size, archived: 0 }) }, 201);
 }
 

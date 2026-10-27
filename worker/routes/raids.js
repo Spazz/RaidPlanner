@@ -29,6 +29,7 @@ import {
   fetchRaidHelperEvent, fetchWclPulls, parseRaidHelperSource, parseWclSource, requireWclConfigured,
 } from '../sources.js';
 import { bad, errorText } from './roster.js';
+import { wrote } from '../d1-changes.js';
 
 const FAR_MS = 18 * 60 * 60 * 1000;
 const MAX_PLAN_PLAYERS = 80;
@@ -556,7 +557,7 @@ export async function createRaid(ctx) {
     if (kind) throw await conflictFor(ctx, guild, kind, { teamId, raidOn, eventId, code: kind === 'report' ? await firstTakenCode(db, guild.id, fetched) : null });
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw bad('That team does not exist in this guild.', 'teamId');
+  if (!wrote(results[0])) throw bad('That team does not exist in this guild.', 'teamId');
   // An upcoming raid starts with the standing sign-ups of its team's weekday (people with a Raid-Helper row from the event keep that).
   if (startsAt > now) await reconcileStanding(ctx, guild, { raidIds: [raidId] });
   if (!event && !reportCount) return raidReply(ctx, guildContext, raidId, 201);
@@ -1076,7 +1077,7 @@ export async function saveManual(ctx, guildContext, raid, { ids, reason, names =
     { sql: "EXISTS (SELECT 1 FROM raids WHERE id = ? AND log_mode = 'manual' AND manual_at = ?)", params: [raid.id, now] },
   ));
   const results = await db.batch(statements);
-  if (results[0].meta.changes !== 1) throw new HttpError(409, 'raid_has_log', 'This raid has a report. Remove it before entering attendance by hand.');
+  if (!wrote(results[0])) throw new HttpError(409, 'raid_has_log', 'This raid has a report. Remove it before entering attendance by hand.');
 }
 
 export async function deleteManual(ctx) {
