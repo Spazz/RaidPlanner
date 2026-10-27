@@ -15,7 +15,7 @@
 // Names beyond BULK_MAX_NAMES are skipped as over_cap (the page sends them again); a request is not refused for being long. The person is told nothing beyond "access removed".
 import { HttpError, cleanText, isUniqueViolation } from './http.js';
 import { auditManyStatement } from './audit.js';
-import { markRaidsStale } from './attendance-store.js';
+import { markRaidsStale, weekFreeze } from './attendance-store.js';
 import {
   MISSING_KEY_LINE, accountBlockRef, accountKeysStatements, keysOfMany, liftGuard, madeByGuard, matchedRefsOfMany, personBlockRef, personKeysStatements, planTombstones, splitLiftableRefs,
 } from './block-tombstones.js';
@@ -280,7 +280,7 @@ function effectStatements(db, cx, { accountIds, personIds, nameKeys, teamIds }) 
           AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ${g} AND starts_at > ${add(cx.now)})`;
     }),
     prepared(db, (add) => `DELETE FROM standing_signups WHERE guild_id = ${add(cx.guildId)} AND player_id IN (${personsReachedSql(add, cx, accountIds, personIds)})`),
-    markRaidsStale(db, cx.guildId, nameKeys, null, teamIds, anyWrittenGuard(cx, accountIds, personIds)),
+    markRaidsStale(db, cx.guildId, nameKeys, null, teamIds, anyWrittenGuard(cx, accountIds, personIds), weekFreeze(cx.timeZone, cx.now)),
   ];
   if (accountIds.length) {
     statements.push(prepared(db, (add) => `DELETE FROM team_requests WHERE guild_id = ${add(cx.guildId)} AND status = 'pending' AND requested_by IN (${writtenAccountsSql(add, cx, accountIds)})`));
@@ -329,7 +329,7 @@ export async function bulkBlock(ctx, guildContext, { keys, reason }) {
   const chosen = new Set([...go.accounts, ...go.persons]);
   if (chosen.size) {
     const now = ctx.now();
-    const cx = { guildId, actorId, now, reason };
+    const cx = { guildId, actorId, now, reason, timeZone: guildContext.guild.time_zone };
     // The tombstones of the keys each name proved: they outlive the block row (worker/block-tombstones.js). No usable TOMBSTONE_KEY: the blocks still apply, flagged for the daily repair.
     const rowsOf = [];
     let version = null;

@@ -11,7 +11,7 @@
 // roster.edit; the guild is still not in-game; the Seniority guard of worker/seniority.js on the person; the person exists), so a lost race writes nothing.
 import { HttpError } from './http.js';
 import { auditStatement } from './audit.js';
-import { markRaidsStale } from './attendance-store.js';
+import { markRaidsStale, weekFreeze } from './attendance-store.js';
 import { visibleCharacterSql } from './character-visibility.js';
 import { newId } from './ids.js';
 import { LIMITS } from './limits.js';
@@ -153,7 +153,7 @@ export async function addToPerson(ctx, guildContext, { person, names }) {
             FROM json_each(${add(JSON.stringify(additions.map((one) => ({ id: one.id, playerId: one.playerId, name: one.name, nameKey: one.nameKey, realm: one.realm, realmKey: one.realmKey, class: one.class }))))}) j
            WHERE ${guard(add)}`),
       // The raids whose log names these characters now belong to a person: their results are out of date.
-      markRaidsStale(db, guild.id, additions.map((one) => one.nameKey), null, [], { sql: 'EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ?)', params: [additions[0].id, target.id] }),
+      markRaidsStale(db, guild.id, additions.map((one) => one.nameKey), null, [], { sql: 'EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ?)', params: [additions[0].id, target.id] }, weekFreeze(guild.time_zone, now)),
       ...additions.map((one) => auditStatement(ctx, {
         guildId: guild.id, actorUserId: actorId, action: 'character.create', entityType: 'character', entityId: one.id,
         after: { personId: target.id, teamId: null, class: one.class, mainSpec: null, offSpec: null, makeMain: false, via: 'users' },
