@@ -7,6 +7,7 @@
 //   (settings: the bare address opens the first page on a wide screen and the list of pages on a phone; 'accounts' is read as 'people', the page's new name)
 //   #/guest/<token>  (a guest link: the page redeems it and moves to #/view)  #/view  (the guest view)  #/public/:gid  (a guild's public page)
 //   #/apply/:gid  (a guild's application form)  #/join/<token>  (a raid's guest sign-up link: sign up as a Guest, no account)
+//   #/open/:gid/:rid  (a raid that is open to guests: a signed-in account signs up as a Guest, no link; the route is { name: 'join', open: true, gid, rid } so the shell treats it as the join page)
 //   These four work signed out; the first three show a read-only view and never ask for a sign-in, the form lets a signed-in applicant's account come along.
 //   #/g/:gid/away  (my away notices)
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
@@ -93,6 +94,7 @@
     // Dev "View as" previews (the Guild Master on a local run): #/dev/viewer/:gid/guest|public
     if (head === 'dev' && parts.length === 4 && parts[1] === 'viewer' && ID.test(parts[2]) && (parts[3] === 'guest' || parts[3] === 'public')) return { name: 'devview', gid: parts[2], role: parts[3] };
     if (head === 'join' && parts.length === 2) return GUEST_TOKEN.test(parts[1]) ? { name: 'join', token: parts[1] } : { name: 'notfound' };
+    if (head === 'open' && parts.length === 3) return ID.test(parts[1]) && ID.test(parts[2]) ? { name: 'join', open: true, gid: parts[1], rid: parts[2] } : { name: 'notfound' };
     if (head === 'apply' && parts.length === 2) return ID.test(parts[1]) ? { name: 'apply', gid: parts[1] } : { name: 'notfound' };
     if (head !== 'g' || !ID.test(parts[1])) return { name: 'notfound' };
     const gid = parts[1];
@@ -149,7 +151,9 @@
       case 'public': return isId(r.gid) ? '#/public/' + encodeURIComponent(r.gid) : '#/';
       case 'devview': return isId(r.gid) && (r.role === 'guest' || r.role === 'public') ? '#/dev/viewer/' + encodeURIComponent(r.gid) + '/' + r.role : '#/';
       case 'apply': return isId(r.gid) ? '#/apply/' + encodeURIComponent(r.gid) : '#/';
-      case 'join': return typeof r.token === 'string' && GUEST_TOKEN.test(r.token) ? '#/join/' + r.token : '#/';
+      case 'join':
+        if (r.open) return isId(r.gid) && isId(r.rid) ? '#/open/' + encodeURIComponent(r.gid) + '/' + encodeURIComponent(r.rid) : '#/';
+        return typeof r.token === 'string' && GUEST_TOKEN.test(r.token) ? '#/join/' + r.token : '#/';
       case 'intent': case 'recruiting': case 'applications': case 'launch': return '#/g/' + encodeURIComponent(r.gid) + '/roster/' + r.name;
       case 'planner': return '#/planner' + (isId(r.gid) && isId(r.rid) ? '?raid=' + r.gid + '.' + r.rid : '');
       case 'section': {

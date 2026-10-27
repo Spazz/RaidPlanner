@@ -1,7 +1,8 @@
 // Open raids (user-hierarchy build, lane B3; U R8-Q3, sec A9-07): a raid with the "Open to guests" check lets a signed-in NON-member sign up as a guest without a
 // join link. Two session routes beside the join routes, keyed by guild id + raid id (no token), and the member's way out:
-//   GET    /api/open/:gid/raids/:rid   the join-link view: guild, raid, spotsLeft, rosterOptions, noteMax (nothing of the roster) + member, mine
-//   POST   /api/open/:gid/raids/:rid   { name, class, spec, note?, website }   sign up as a guest -> 201 { ok, spotsLeft }
+//   GET    /api/open/:gid/raids/:rid   the join-link view: guild, raid, spotsLeft, rosterOptions, noteMax (nothing of the roster) + member, mine, signUp
+//   POST   /api/open/:gid/raids/:rid   { name, class, spec, note?, website } (typed guild) or { character: { name, realmSlug }, spec, note?, website } (in-game guild)
+//                                      sign up as a guest -> 201 { ok, spotsLeft }
 //   DELETE /api/open/:gid/raids/:rid   withdraw your own sign-up
 // A raid that is not open (the check is off, it has started, its team is archived, it does not exist, another guild's) answers 404 on all three: nothing says
 // that it exists. The sign-up is the guest sign-up of a join link (raid_signups guest = 1, source 'raidsmith', no person, never in the attendance) attached to
@@ -11,14 +12,22 @@
 //   - the raid's optional guest limit (raids.guest_limit, set by an officer; none = no cap) counts link guests and open guests together inside the INSERT,
 //     409 raid_full; spotsLeft is the places left under it and null when the raid has no limit; per account 5 an hour and 10 a day;
 //   - a blocked account is refused on all three (403 access_removed, worker/block-check.js); Delete my data removes the account's open sign-ups;
-//   - a filled hidden "website" field stores nothing and says it worked, as on the other public forms.
+//   - a filled hidden "website" field stores nothing and says it worked, as on the other public forms;
+//   - HOW the guest names the character depends on the guild's rank source (user decision 2026-10-26, B3 minimal UI): in an IN-GAME guild (rank_source 'ingame') the guest
+//     must have Battle.net linked and picks one of the characters on THEIR Battle.net list for the guild's game version ({ character: { name, realmSlug }, spec, note? });
+//     a typed name and class is refused (409 battlenet_only) and a character that is not on the list is refused (400, field character). The view then carries
+//     signUp = { mode: 'bnet', status, battletag, characters } for the page to draw; every other guild gets signUp = { mode: 'typed' } and the name + class fields of a join link.
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { assertNotBlocked, isBlocked } from '../block-check.js';
+import { bnetSupport } from '../battlenet.js';
+import { DATA_TTL_MS, parseSnapshot } from '../bnet-store.js';
 import { memberSql } from '../membership.js';
 import { checkRateLimit } from '../ratelimit.js';
 import { nameKey } from '../roster-data.js';
+import { signUpClassId, signUpSpecLabel } from '../signups-data.js';
 import { guestRoom, guestsAtLimit, joinViewOf, limitSpotsOf, readGuestFields } from './join.js';
+import { bad } from './roster.js';
 
 export const OPEN_SIGNUPS_PER_HOUR = 5;
 export const OPEN_SIGNUPS_PER_DAY = 10;
@@ -31,7 +40,7 @@ const notOpen = () => new HttpError(404, 'not_found', 'That raid is not open to 
 async function loadOpenRaid(ctx) {
   const row = await ctx.db.prepare(
     `SELECT r.id, r.guild_id, r.raid_on, r.starts_at, r.time_known, r.zone, COALESCE(r.title, r.event_title) AS title, t.name AS team_name,
-            g.name AS guild_name, g.game_version, g.realm_kind, g.time_zone, r.guest_limit,
+            g.name AS guild_name, g.game_version, g.realm_kind, g.time_zone, g.region, g.rank_source, r.guest_limit,
             (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND s.source = 'raidsmith' AND s.guest = 1) AS guests
        FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id JOIN guilds g ON g.id = r.guild_id
       WHERE r.id = ? AND r.guild_id = ? AND r.guests_open = 1 AND r.starts_at > ? AND t.archived = 0`,
@@ -54,16 +63,65 @@ async function ownSignup(db, raidId, userId) {
     .bind(raidId, userId).first();
 }
 
+const isIngame = (row) => row.rank_source === 'ingame';
+const byLevelThenName = (a, b) => (b.level || 0) - (a.level || 0) || a.name.localeCompare(b.name);
+
+// The account's Battle.net characters for the guild's game version, from the link's stored snapshot (no Blizzard call; worker/routes/bnet.js writes it):
+// { status, battletag, characters: [{ name, realm, realmSlug, class, level }] }, highest level first. status: ok | not_linked | expired (past Blizzard's 30 days) |
+// needs_refresh (the snapshot has nothing for this game yet) | unavailable (Blizzard failed when it was loaded) | unsupported (no character data for this game).
+async function bnetListOf(db, row, userId, now) {
+  const support = bnetSupport(row.game_version, row.region);
+  const link = await db.prepare('SELECT battletag, snapshot, snapshot_at FROM bnet_links WHERE user_id = ?').bind(userId).first();
+  const answer = (status, characters = []) => ({ status, battletag: link ? link.battletag : null, characters });
+  if (!support.supported) return answer('unsupported');
+  if (!link) return answer('not_linked');
+  if (link.snapshot_at + DATA_TTL_MS <= now) return answer('expired');
+  const entry = parseSnapshot(link.snapshot)[support.namespace];
+  if (!entry) return answer('needs_refresh');
+  if (entry.error || !Array.isArray(entry.characters)) return answer('unavailable');
+  return answer('ok', entry.characters
+    .filter((character) => character && typeof character.name === 'string' && typeof character.realmSlug === 'string' && typeof character.class === 'string')
+    .map((character) => ({ name: character.name, realm: character.realm || null, realmSlug: character.realmSlug, class: character.class, level: character.level || null }))
+    .sort(byLevelThenName));
+}
+
+// How this guest signs up: typed name and class in every guild but an in-game one, where they pick from their own Battle.net list.
+async function signUpOf(db, row, userId, now) {
+  return isIngame(row) ? { mode: 'bnet', ...(await bnetListOf(db, row, userId, now)) } : { mode: 'typed' };
+}
+
+// An in-game guild's sign-up body: the character is one of the account's own Battle.net characters (never typed), and its name and class come from that list, not
+// from the request. Returns the body with name and class set; refuses a typed character (409 battlenet_only), no link (409 bnet_not_linked), a list that is gone or
+// stale (409 bnet_refresh) and a character that is not on the list (400, field character).
+async function bnetBodyOf(db, row, userId, body, now) {
+  const wanted = body.character;
+  if (wanted === undefined || wanted === null) {
+    throw new HttpError(409, 'battlenet_only', `${row.guild_name} takes guests through Battle.net: connect it and pick your character.`);
+  }
+  if (typeof wanted !== 'object' || Array.isArray(wanted) || typeof wanted.name !== 'string' || typeof wanted.realmSlug !== 'string') {
+    throw bad('Pick a character from your list.', 'character');
+  }
+  const list = await bnetListOf(db, row, userId, now);
+  if (list.status === 'not_linked') throw new HttpError(409, 'bnet_not_linked', 'Connect your Battle.net account first.');
+  if (list.status !== 'ok') throw new HttpError(409, 'bnet_refresh', 'Connect Battle.net again to load your characters for this guild.');
+  const found = list.characters.find((character) => nameKey(character.name) === nameKey(wanted.name) && character.realmSlug === wanted.realmSlug);
+  if (!found) throw bad('That character is not on your Battle.net list for this guild.', 'character');
+  return { ...body, name: found.name, class: found.class };
+}
+
 export async function viewOpenRaid(ctx) {
   const row = await loadOpenRaid(ctx);
   const userId = ctx.session.user.id;
   await assertNotBlocked(ctx.db, row.guild_id, userId);
   const [member, mine] = await Promise.all([isMember(ctx.db, row.guild_id, userId), ownSignup(ctx.db, row.id, userId)]);
+  // A member signs up from the raid page and never reads their Battle.net list here: only the mode is said, nothing of the account's Battle.net data.
+  const signUp = member ? { mode: isIngame(row) ? 'bnet' : 'typed' } : await signUpOf(ctx.db, row, userId, ctx.now());
   return jsonResponse({
     ...joinViewOf(row, limitSpotsOf(row)),
     // A member signs up from the raid page; the page sends them there. mine: the account's own sign-up here (to withdraw it), else null.
     member,
-    mine: mine ? { name: mine.nickname, className: mine.class_name, specName: mine.spec_name, note: mine.note } : null,
+    mine: mine ? { name: mine.nickname, className: mine.class_name, specName: mine.spec_name, note: mine.note, classId: signUpClassId(mine), spec: signUpSpecLabel(mine) } : null,
+    signUp,
   });
 }
 
@@ -77,8 +135,8 @@ export async function signUpOpenRaid(ctx) {
   }
   // The hidden field only a script fills in: say it worked and store nothing.
   if (typeof body.website === 'string' && body.website.trim() !== '') return jsonResponse({ ok: true }, 201);
-  const { name, classId, className, specKey, note } = readGuestFields(body, row.game_version);
   const now = ctx.now();
+  const { name, classId, className, specKey, note } = readGuestFields(isIngame(row) ? await bnetBodyOf(db, row, userId, body, now) : body, row.game_version);
 
   const limit = await checkRateLimit(db, null, now, { key: `open:${userId}`, limit: OPEN_SIGNUPS_PER_HOUR, windowMs: HOUR_MS, failClosed: true });
   if (limit.limited) {
@@ -93,7 +151,9 @@ export async function signUpOpenRaid(ctx) {
     db.prepare("SELECT 1 AS x FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1 AND guest_user_id = ?").bind(row.id, userId),
   ]);
   if (own.results.length) throw new HttpError(409, 'already_signed_up', 'You have signed up for this raid already. Withdraw first to sign up again.');
-  if (onRoster.results.length) throw new HttpError(409, 'on_roster', 'That character is on the guild\'s roster. Sign in with Discord to sign up.', { field: 'name' });
+  if (onRoster.results.length) {
+    throw new HttpError(409, 'on_roster', isIngame(row) ? 'That character is on the guild\'s roster. Sign in with the account that has it.' : 'That character is on the guild\'s roster. Sign in with Discord to sign up.', { field: 'name' });
+  }
   if (listed.results.some((entry) => nameKey(entry.nickname || '') === key)) throw new HttpError(409, 'already_joined', 'That character is already signed up for this raid.', { field: 'name' });
   if (guestsAtLimit(row)) throw new HttpError(409, 'raid_full', 'This raid has no guest places left.');
 

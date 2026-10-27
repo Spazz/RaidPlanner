@@ -62,7 +62,7 @@
     rolesList: {},     // gid -> GET /api/guild/:gid/roles, for the People page's "Other roles" (loaded with the People tab for people who can manage roles)
     view: null,        // the read-only guest / public page: { kind, gid, data, error } (see pages-view.js); null while it loads
     apply: null,       // the application form: { gid, status, data, draft, busy, error, done } (see pages-apply.js); null until it is opened
-    join: null,        // a raid's guest sign-up page: { token, status, data, draft, busy, error, done } (see pages-join.js); null until it is opened
+    join: null,        // a raid's guest sign-up page: { token, status, data, draft, busy, error, done } (see pages-join.js); an open raid's has open: true, gid, rid instead of a token (pages-open-raid.js); null until it is opened
     settingsSaved: null, // { gid, tab, ms }: the Guild settings page last saved, for its head's "Saved at" (app.markSettingsSaved)
   };
   const app = G.app = { state: state, started: false };
@@ -517,7 +517,7 @@
     render();
     ensureSession(true).then(function () { if (token === routeToken) render(); });
     // The application form is for people with and without an account; the account only travels with the application.
-    const loading = r.name === 'apply' ? G.pages.apply.load(r) : (r.name === 'join' ? G.pages.join.load(r) : G.pages.view.load(r));
+    const loading = r.name === 'apply' ? G.pages.apply.load(r) : (r.name === 'join' ? (r.open ? G.pages.openRaid.load(r) : G.pages.join.load(r)) : G.pages.view.load(r));
     return loading.then(function () {
       if (token !== routeToken) return;
       // A redeemed guest link moved the address to #/view without a navigation: it is the current address now.
@@ -530,6 +530,16 @@
   function resolveSignedIn(r, token) {
     const me = state.me;
     const guilds = Array.isArray(me.guilds) ? me.guilds : [];
+
+    // Back to the open raid a visitor left to sign in or to connect Battle.net (pages-open-raid.js sets the marker): the sign-in lands on the start page, the
+    // Battle.net link on My characters. A refused or cancelled round trip (#/linked) only clears the marker.
+    if (r.name === 'home' || r.name === 'signin' || r.name === 'characters' || r.name === 'linked') {
+      const back = G.pages.openRaid.takeReturn();
+      if (back && r.name !== 'linked') {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search + back);
+        return routeAll({ force: true });
+      }
+    }
 
     if (r.name === 'home' || r.name === 'signin') {
       if (!guilds.length) return null;
@@ -921,8 +931,12 @@
         const form = state.apply && state.apply.gid === r.gid ? state.apply : null;
         return { html: G.pages.apply.applyHtml({ state: form }), center: !!(form && (form.status === 'closed' || form.status === 'error')), title: titleFor(r, null) };
       }
+      if (r.name === 'join' && r.open) {
+        const open = state.join && state.join.open && state.join.gid === r.gid && state.join.rid === r.rid ? state.join : null;
+        return { html: G.pages.openRaid.openHtml({ state: open }), center: !!(open && (open.status === 'gone' || open.status === 'error' || open.status === 'blocked')), title: titleFor(r, null) };
+      }
       if (r.name === 'join') {
-        const form = state.join && state.join.token === r.token ? state.join : null;
+        const form = state.join && !state.join.open && state.join.token === r.token ? state.join : null;
         return { html: G.pages.join.joinHtml({ state: form }), center: !!(form && (form.status === 'gone' || form.status === 'error')), title: titleFor(r, null) };
       }
       const v = state.view;

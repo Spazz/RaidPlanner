@@ -89,19 +89,32 @@
     }), 'people');
   }
 
-  function raidRows(raids) {
+  // A raid that is open to guests carries open + raidId (the Worker sends them for no other raid): its row gets a Sign up link to the sign-up page (pages-open-raid.js).
+  // Only where the guild is known (the public page); a guest link's view does not carry the guild's id.
+  function signUpLinkHtml(r, entry, gid) {
+    if (!gid || !r.open || !r.raidId) return '';
+    return G.ui.buttonHtml({ label: 'Sign up', size: 'sm', href: G.router.format({ name: 'join', open: true, gid: gid, rid: r.raidId }), ariaLabel: 'Sign up for ' + teamName(entry) + ' on ' + G.ui.weekdayDay(r.raidOn) });
+  }
+
+  function raidRows(raids, entry, gid) {
     return raids.map(function (r) {
-      return { sort: { date: r.raidOn }, cells: { date: esc(G.ui.weekdayDay(r.raidOn)), zone: esc(r.zone), title: r.title ? esc(r.title) : '<span class="gs-muted gs-dash">-</span>' } };
+      const cells = { date: esc(G.ui.weekdayDay(r.raidOn)), zone: esc(r.zone), title: r.title ? esc(r.title) : '<span class="gs-muted gs-dash">-</span>' };
+      if (entry) cells.signup = signUpLinkHtml(r, entry, gid);
+      return { sort: { date: r.raidOn }, cells: cells };
     });
   }
 
-  function raidsBlock(entry) {
+  function raidsBlock(entry, zone, gameVersion, gid) {
     const upcoming = listOf(entry.upcoming);
     const recent = listOf(entry.recent);
     const columns = [{ key: 'date', label: 'Date', primary: true }, { key: 'zone', label: 'Zone' }, { key: 'title', label: 'Title' }];
+    // The action column exists only in an Upcoming table that has a raid to sign up for.
+    const withSignUp = upcoming.some(function (r) { return signUpLinkHtml(r, entry, gid); });
+    const upcomingColumns = withSignUp ? columns.concat([{ key: 'signup', label: 'Sign up', srLabel: true, hideLabel: true }]) : columns;
     const part = function (heading, raids, none) {
+      const up = heading === 'Upcoming';
       return '<h4 class="gs-view-sub">' + esc(heading) + '</h4>' +
-        (raids.length ? tableHtml(heading + ' raids of ' + teamName(entry), columns, raidRows(raids), 'raids') : '<p class="gs-empty">' + esc(none) + '</p>');
+        (raids.length ? tableHtml(heading + ' raids of ' + teamName(entry), up ? upcomingColumns : columns, raidRows(raids, up && withSignUp ? entry : null, gid), 'raids') : '<p class="gs-empty">' + esc(none) + '</p>');
     };
     return part('Upcoming', upcoming, 'No upcoming raids.') + part('Recent', recent, 'No recent raids.');
   }
@@ -139,10 +152,10 @@
 
   const BLOCKS = { roster: rosterBlock, raids: raidsBlock, progress: progressBlock, attendance: attendanceBlock, loot: lootBlock };
 
-  function sectionOf(key, entries, zone, gameVersion) {
+  function sectionOf(key, entries, zone, gameVersion, gid) {
     const list = listOf(entries);
     return { id: 'view-' + key, title: SECTION_TITLES[key], bodyHtml: list.length
-      ? list.map(function (entry) { return '<div class="gs-view-team"><h3 class="gs-h3">' + esc(teamName(entry)) + '</h3>' + BLOCKS[key](entry, zone, gameVersion) + '</div>'; }).join('')
+      ? list.map(function (entry) { return '<div class="gs-view-team"><h3 class="gs-h3">' + esc(teamName(entry)) + '</h3>' + BLOCKS[key](entry, zone, gameVersion, gid) + '</div>'; }).join('')
       : '<p class="gs-empty">Nothing to show here yet.</p>' };
   }
 
@@ -164,7 +177,7 @@
       pageClass: 'gs-view',
       head: headOf(data, kind),
       noticesHtml: viewer.preview ? previewNoticeHtml(viewer, data, o.gid) : guest ? guestMetaHtml(viewer) + '<p class="gs-alert" id="view-alert" role="alert" hidden></p>' : '',
-      bodyHtml: shown.length ? shown.map(function (k) { return G.ui.objectSectionHtml(sectionOf(k, sections[k], zone, gameVersion)); }).join('') : '<p class="gs-empty" id="view-empty">' + esc(NOTHING) + '</p>',
+      bodyHtml: shown.length ? shown.map(function (k) { return G.ui.objectSectionHtml(sectionOf(k, sections[k], zone, gameVersion, o.gid)); }).join('') : '<p class="gs-empty" id="view-empty">' + esc(NOTHING) + '</p>',
       footHtml: 'A read-only copy: nothing on this page can be changed.' + (zone ? ' Times are in ' + esc(G.ui.zoneLabel(zone)) + ', the guild\'s zone.' : ''),
     });
   }

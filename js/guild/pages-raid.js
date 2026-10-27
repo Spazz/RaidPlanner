@@ -102,7 +102,8 @@
     return 'In effect: members can change their sign-up until ' + hoursText(r.closeHours) + ' before the start' + (when ? ' (' + when + ')' : '') + source;
   }
 
-  // The "Raid settings" form dialog (More > Raid settings): the raid's own size and, until it starts, its sign-up deadline. Same fields, same PATCH as the card it replaced.
+  // The "Raid settings" form dialog (More > Raid settings): the raid's own size and, until it starts, its sign-up deadline, "Open to guests" and its optional guest limit
+  // (pages-raids.js guestFieldsHtml; empty = no limit). Same PATCH as the card it replaced.
   function settingsDialogHtml(gd, data) {
     const r = data.raid;
     const own = r.closeHoursOverride != null;
@@ -117,8 +118,10 @@
       '<div class="gs-field" id="rs-hours-field"' + (own ? '' : ' hidden') + '><label class="gs-label" for="rs-hours">Hours before the start (0 = when the raid starts)</label>' +
       '<input class="gs-input" type="number" id="rs-hours" name="hours" data-key="rs-hours" min="0" max="' + MAX_CLOSE_HOURS + '" step="1" inputmode="numeric" autocomplete="off" value="' + (own ? esc(r.closeHoursOverride) : '') + '"></div>' +
       '<p class="gs-fine" id="rs-hours-help">' + esc(deadlineInEffectText(r, gd)) + '</p><p class="gs-field-error" id="rs-err-hours" role="alert" hidden></p></div>';
+    // Guests only sign up before the start, so a raid that has started offers neither field.
+    const guestFields = isUpcoming(data) ? G.pages.raidNew.guestFieldsHtml({ prefix: 'rs', open: !!r.guestsOpen, limit: r.guestLimit }) : '';
     return '<form class="gs-dialog-form gs-forge gs-rs" data-submit="raid-settings-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Raid settings</h2>' +
-      '<div class="gs-su-fields">' + sizeField + hoursField + '</div>' +
+      '<div class="gs-su-fields">' + sizeField + hoursField + '</div>' + guestFields +
       '<p class="gs-alert" id="rs-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten" data-key="rs-save">Save settings</button></div></form>';
   }
@@ -690,7 +693,7 @@
     const c = cur();
     if (!c) return;
     const r = c.data.raid;
-    ['rs-err-size', 'rs-err-hours', 'rs-error'].forEach(function (id) { G.ui.setText(id, ''); });
+    ['rs-err-size', 'rs-err-hours', 'rs-guests-limit-err', 'rs-error'].forEach(function (id) { G.ui.setText(id, ''); });
     const body = {};
     const size = form.elements.size.value === '' ? null : Number(form.elements.size.value);
     if (size !== null && G.ui.RAID_SIZES.indexOf(size) < 0) { G.ui.setText('rs-err-size', 'Choose Automatic or one of the sizes.'); form.elements.size.focus(); return; }
@@ -704,6 +707,16 @@
       }
       if (hours !== (r.closeHoursOverride == null ? null : r.closeHoursOverride)) body.signupCloseHours = hours;
     }
+    if (form.elements.guestsOpen) {
+      const open = !!form.elements.guestsOpen.checked;
+      const limitText = String(form.elements.guestLimit && form.elements.guestLimit.value != null ? form.elements.guestLimit.value : '').trim();
+      const problem = open ? G.pages.raidNew.guestLimitProblem(limitText) : '';
+      if (problem) { G.ui.setFieldError(form, 'rs-guests-limit', problem); form.elements.guestLimit.focus(); return; }
+      if (open !== !!r.guestsOpen) body.guestsOpen = open;
+      // The limit follows the check: with the check off the stored limit stays as it is (the field is hidden); empty with the check on clears it.
+      const limit = limitText ? Number(limitText) : null;
+      if (open && limit !== (r.guestLimit == null ? null : r.guestLimit)) body.guestLimit = limit;
+    }
     if (!Object.keys(body).length) { G.ui.setText('rs-error', 'Nothing to save: the settings are already as shown.'); return; }
     G.ui.setBusy(form, true);
     G.api.patch(raidBase(c.gid, c.rid), body).then(function (res) {
@@ -715,9 +728,9 @@
       if (cl.view === 'signin') { G.app.requireSignin(); return; }
       if (cl.view === 'message') { G.app.showFailure(cl.title, cl.text); return; }
       if (err && err.code === 'conflict') { G.app.handleError(err); return; }
-      const sink = err && err.field === 'size' ? 'rs-err-size' : err && err.field === 'signupCloseHours' ? 'rs-err-hours' : 'rs-error';
+      const sink = err && err.field === 'size' ? 'rs-err-size' : err && err.field === 'signupCloseHours' ? 'rs-err-hours' : err && err.field === 'guestLimit' ? 'rs-guests-limit-err' : 'rs-error';
       G.ui.setText(sink, cl.text);
-      const input = sink === 'rs-err-size' ? form.elements.size : sink === 'rs-err-hours' ? (form.elements.hours || form.elements.hoursMode) : null;
+      const input = sink === 'rs-err-size' ? form.elements.size : sink === 'rs-err-hours' ? (form.elements.hours || form.elements.hoursMode) : sink === 'rs-guests-limit-err' ? form.elements.guestLimit : null;
       if (input && input.focus) input.focus();
     });
   };

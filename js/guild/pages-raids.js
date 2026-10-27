@@ -614,7 +614,7 @@
   function newState() { return a().nr || null; }
 
   function freshForm(gd) {
-    return { teamId: G.app.teamFor(gd) || '', event: '', reports: [''], plan: '', mode: 'log', date: '', time: DEFAULT_START, zone: '', title: '', size: '' };
+    return { teamId: G.app.teamFor(gd) || '', event: '', reports: [''], plan: '', mode: 'log', date: '', time: DEFAULT_START, zone: '', title: '', size: '', guestsOpen: false, guestLimit: '' };
   }
 
   function editableTeams(gd) {
@@ -632,6 +632,36 @@
     const raids = rules && rules.raids ? rules.raids : {};
     return Object.keys(raids).filter(function (k) { return raids[k].tier !== 'Planning templates'; }).map(function (k) { return raids[k].name; });
   }
+
+  // "Open to guests" and its optional guest limit (New raid: prefix 'nr'; the Raid settings dialog: prefix 'rs'). The limit field shows once the check is ticked (G.handlers.change['guests-open']
+  // toggles it in place); empty = no limit. The Worker takes whole numbers from 1 to 100 (guestLimit, null = none).
+  const MAX_GUEST_LIMIT = 100;
+  function guestFieldsHtml(o) {
+    const p = o.prefix;
+    const limit = o.limit == null ? '' : o.limit;
+    return '<div class="gs-field gs-guests"><div class="gs-check"><input type="checkbox" id="' + p + '-guests" name="guestsOpen"' + (o.open ? ' checked' : '') + ' aria-describedby="' + p + '-guests-help" data-change="guests-open">' +
+      '<label for="' + p + '-guests">Open to guests</label></div><p class="gs-fine" id="' + p + '-guests-help">Anyone signed in can sign up as a guest. No link needed.</p></div>' +
+      '<div class="gs-guest-limit" id="' + p + '-guests-limit-field"' + (o.open ? '' : ' hidden') + '><div class="gs-field"><label class="gs-label" for="' + p + '-guests-limit">Guest limit (optional)</label>' +
+      '<input class="gs-input" type="number" id="' + p + '-guests-limit" name="guestLimit" aria-describedby="' + p + '-guests-limit-help ' + p + '-guests-limit-err" min="1" max="' + MAX_GUEST_LIMIT + '" step="1" inputmode="numeric" value="' + esc(limit) + '" placeholder="No limit">' +
+      '<p class="gs-fine" id="' + p + '-guests-limit-help">Leave empty for no limit. With a limit, the sign-up page shows how many spots are left.</p>' +
+      '<p class="gs-field-error" id="' + p + '-guests-limit-err" role="alert" hidden></p></div></div>';
+  }
+
+  // The words for a guest limit that is not a whole number from 1 to 100 ('' = fine). An empty box is fine: no limit.
+  function guestLimitProblem(value) {
+    const text = String(value == null ? '' : value).trim();
+    if (!text) return '';
+    return /^[0-9]{1,3}$/.test(text) && Number(text) >= 1 && Number(text) <= MAX_GUEST_LIMIT ? '' : 'Enter a whole number from 1 to ' + MAX_GUEST_LIMIT + ', or leave it empty for no limit.';
+  }
+
+  // The check shows or hides the limit field in place (a re-render could swallow the click on Create raid or Save).
+  G.handlers.change['guests-open'] = function (box) {
+    if (typeof document === 'undefined' || !box || !box.id) return;
+    const field = document.getElementById(box.id + '-limit-field');
+    if (field) field.hidden = !box.checked;
+    if (box.checked) { const input = document.getElementById(box.id + '-limit'); if (input && input.focus) input.focus(); }
+    if (box.id === 'nr-guests') syncForm();
+  };
 
   // What the New raid form shows for its date: a date from today on adds Start time, Zone and Title; a date after today is a raid
   // that has not happened, so the attendance source and report rows go.
@@ -719,7 +749,7 @@
       '<div class="gs-check"><input type="radio" id="nr-mode-log" name="nr-mode" value="log"' + (manual ? '' : ' checked') + ' data-change="nr-mode"><label for="nr-mode-log">Warcraft Logs report</label></div>' +
       '<div class="gs-check"><input type="radio" id="nr-mode-manual" name="nr-mode" value="manual"' + (manual ? ' checked' : '') + ' data-change="nr-mode"><label for="nr-mode-manual">No log - enter attendance by hand</label></div></div></fieldset>' +
       '<div class="gs-field"><label class="gs-label" for="nr-date">Raid date' + (f.event.trim() || (!manual && f.reports.some(function (v) { return v.trim(); })) ? ' (optional)' : '') + '</label><input class="gs-input" type="date" id="nr-date" data-key="nr-date" data-input="nr-when" value="' + esc(f.date) + '" aria-describedby="nr-date-help">' +
-      '<p class="gs-fine" id="nr-date-help">Needed unless a Raid-Helper event or a Warcraft Logs report gives the date. The guild\'s calendar date. A date from today on can be a raid that has not happened yet.</p></div>' + whenFields + sizeField +
+      '<p class="gs-fine" id="nr-date-help">Needed unless a Raid-Helper event or a Warcraft Logs report gives the date. The guild\'s calendar date. A date from today on can be a raid that has not happened yet.</p></div>' + whenFields + sizeField + guestFieldsHtml({ prefix: 'nr', open: f.guestsOpen, limit: f.guestLimit }) +
       (manual ? '<p class="gs-fine" data-future-hide' + hideFuture + '>After the raid is created you tick who was present and give a reason.</p>'
         : '<fieldset class="gs-fieldset" id="nr-reports" data-future-hide' + hideFuture + '><legend class="gs-legend">Warcraft Logs reports (optional)</legend>' + f.reports.map(function (v, i) { return reportRowHtml(v, i, f.reports.length); }).join('') +
           '<div><button type="button" class="gs-btn gs-btn-sm" data-action="nr-add-report" data-key="nr-add-report">Add another report</button></div></fieldset>') +
@@ -767,6 +797,9 @@
     if (val('nr-zone') != null) f.zone = val('nr-zone');
     if (val('nr-title') != null) f.title = val('nr-title');
     if (val('nr-size') != null) f.size = val('nr-size');
+    const guests = document.getElementById('nr-guests');
+    if (guests) f.guestsOpen = !!guests.checked;
+    if (val('nr-guests-limit') != null) f.guestLimit = val('nr-guests-limit');
     const reports = document.querySelectorAll('.nr-report');
     if (reports.length) f.reports = Array.prototype.map.call(reports, function (el) { return el.value; });
     const mode = document.querySelector('input[name="nr-mode"]:checked');
@@ -894,6 +927,10 @@
       if (String(f.title || '').trim()) body.title = String(f.title).trim();
     }
     if (f.size !== '' && f.size != null) body.size = Number(f.size); // Automatic sends nothing: the Worker picks the zone's size, else the team's
+    if (f.guestsOpen) {
+      body.guestsOpen = true;
+      if (String(f.guestLimit || '').trim()) body.guestLimit = Number(String(f.guestLimit).trim()); // empty = no limit: sends nothing
+    }
     if (acceptOtherServer) body.acceptOtherServer = true;
     return body;
   }
@@ -922,6 +959,12 @@
     else if (f.date && !RAID_DATE.test(f.date)) nr.error = 'Enter the raid date as a calendar date.';
     else if (flags.showTime && !RAID_TIME.test(f.time || '')) nr.error = 'Enter the start time of the raid.';
     else if (!f.event.trim() && !f.date && !reportSourcesOf(f).length) nr.error = 'Enter the raid date, a Raid-Helper event, or a Warcraft Logs report that gives it.';
+    else if (f.guestsOpen && guestLimitProblem(f.guestLimit)) {
+      G.app.render();
+      const limitInput = G.ui.setFieldError(document, 'nr-guests-limit', guestLimitProblem(f.guestLimit));
+      if (limitInput && limitInput.focus) limitInput.focus();
+      return;
+    }
     if (nr.error) { G.app.render(); G.ui.focusByKey(/start time/.test(nr.error) ? 'nr-time' : 'nr-date'); return; }
     nr.run = { gid: gd.guild.id, form: JSON.parse(JSON.stringify(f)), lines: buildLines(f), raidId: null, running: true, acceptOtherServer: false, today: today };
     G.app.render();
@@ -944,5 +987,5 @@
     raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, timeNotSetHtml: timeNotSetHtml, momentText: momentText, deadlineHtml: deadlineHtml, closeNoteText: closeNoteText, zoneSizeText: zoneSizeText, signupsText: signupsText, planPillHtml: planPillHtml,
     planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, statusChipHtml: statusChipHtml, cardHtml: cardHtml, fillText: fillText, applySignupView: applySignupView, reloadList: reloadList, load: loadList, main: mainList,
   };
-  G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
+  G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, guestFieldsHtml: guestFieldsHtml, guestLimitProblem: guestLimitProblem, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));
