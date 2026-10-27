@@ -46,7 +46,8 @@ export const askerStillOwns = (guildId, row) => ({
 });
 
 const REQUEST_COLUMNS = `q.id, q.status, q.note, q.created_at, q.decided_at, q.team_id, t.name AS team_name, t.archived AS team_archived,
-       q.character_id, c.name AS character_name, c.class AS character_class, c.player_id, c.team_id AS character_team_id, q.requested_by`;
+       q.character_id, c.name AS character_name, c.class AS character_class, c.main_spec AS character_spec, c.core_rank AS character_rank, c.trial_end AS character_trial_end,
+       c.player_id, c.team_id AS character_team_id, q.requested_by`;
 const REQUEST_FROM = `team_requests q JOIN teams t ON t.id = q.team_id AND t.guild_id = q.guild_id
        JOIN characters c ON c.id = q.character_id AND c.guild_id = q.guild_id`;
 const MINE_SQL = `SELECT ${REQUEST_COLUMNS} FROM ${REQUEST_FROM} WHERE q.guild_id = ? AND q.requested_by = ? ORDER BY q.created_at DESC, q.id LIMIT ${MINE_LIMIT}`;
@@ -59,7 +60,11 @@ const ONE_SQL = `SELECT ${REQUEST_COLUMNS} FROM ${REQUEST_FROM} WHERE q.id = ? A
 const view = (row) => ({
   id: row.id, status: row.status, note: row.note, createdAt: row.created_at, decidedAt: row.decided_at,
   team: { id: row.team_id, name: row.team_name, archived: row.team_archived === 1 },
-  character: { id: row.character_id, name: row.character_name, class: row.character_class },
+  // startsTrial: approving places a Trial character whose clock has not started, so the approval starts its trial (worker/trial-clock.js); the page says so to the Team Lead.
+  character: {
+    id: row.character_id, name: row.character_name, class: row.character_class, mainSpec: row.character_spec || null,
+    startsTrial: row.character_rank === 'trial' && row.character_trial_end === null,
+  },
 });
 
 async function loadRequest(db, guildId, requestId) {
@@ -204,12 +209,22 @@ export async function approveTeamRequest(ctx) {
       staleStatement(db, guild.id, [nameKey(row.character_name)], [row.team_id], weekFreeze(guild.time_zone, now)),
       // A Trial placed by the approval starts its clock at the placement (worker/trial-clock.js).
       trialClockStatement(db, guild.id, { offsetMinutes: zoneOffsetMinutes(guild.time_zone, now), characterId: row.character_id }),
+      // One character per person per team: the person's other open requests for this team can never be approved now, so they close themselves (withdrawn, decided by
+      // nobody). The requester's page then shows those characters on no team again, with nothing to withdraw.
+      db.prepare(
+        `UPDATE team_requests SET status = 'withdrawn', decided_at = ?
+          WHERE guild_id = ? AND team_id = ? AND status = 'pending' AND id != ?
+            AND character_id IN (SELECT id FROM characters WHERE guild_id = ? AND player_id = ?)
+            AND EXISTS (SELECT 1 FROM team_requests WHERE id = ? AND status = 'approved')`,
+      ).bind(now, guild.id, row.team_id, row.id, guild.id, row.player_id, row.id),
     ]);
   } catch (error) {
     if (constraintOf(error) === 'team_taken') throw teamTaken();
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw changed();
+  // D1 reports total_changes for a statement: the characters_team_since_move trigger (migration 0040) adds its own row, so a placement that worked says 2 here (the in-memory
+  // test D1 says 1). The guards inside the batch use SQLite's changes(), which leaves trigger rows out; this check only asks whether the placement wrote at all.
+  if (results[0].meta.changes < 1) throw changed();
   return jsonResponse({
     request: { id: row.id, status: 'approved' }, personId: row.player_id, teamRequestFlags: await loadTeamRequestFlags(db, guildContext),
   });

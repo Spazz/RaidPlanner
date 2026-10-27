@@ -20,6 +20,9 @@ export const INFO_KINDS = ['unlocked'];  // listed with severity 'info'
 export const READINESS_KINDS = ['low_signups', 'roster_declined', 'roster_pending', 'unlocked'];
 // `watch` and `rank` are no Home to-dos any more (they live on the Attendance and Ranks pages): never in `items`, only counted in `counts`.
 export const OFF_HOME_KINDS = ['watch', 'rank'];
+// One item stands for many asks (an item of `claims` is every pending character claim of the guild, one of `team_requests` every pending request of a team), and
+// each ask is a to-do on Home (Approve / Reject on its own row), so `total` counts the asks, not the items.
+export const COUNT_EACH_KINDS = ['claims', 'team_requests'];
 export const ATTENTION_VIEW_ACTIONS = ['attendance.review', 'roster.edit', 'raids.edit', 'loot.edit'];
 export const TRIAL_DAYS = 7;
 export const LOOT_LOOKBACK_DAYS = 14;
@@ -114,7 +117,7 @@ function daysBetween(from, to) {
 // -> {
 //   items:  the open, unhidden Home items (never `watch` or `rank`): { kind, severity, teamId, teamName, id, link, raidId?, ..., readiness?: true },
 //   more:   { kind: n }   open items the per-kind cap leaves out of `items`,
-//   total:  open, unhidden to-dos only (readiness facts are not counted; items beyond the cap are),
+//   total:  open, unhidden to-dos only (readiness facts are not counted; items beyond the cap are; an item of COUNT_EACH_KINDS counts every ask in it),
 //   hidden: [{ item, mode: 'dismiss' | 'snooze', until: ms | null, by: { name }, at: ms }]   (what a dismissal hides now: the Hidden list with Restore; newest first),
 //   counts: { [teamId]: { watchOpen, rankOpen } }   (watch entries still open after "Reviewed", and rank suggestions, per team the viewer may review),
 //   week:   { offset, start, end, resetDay, autoAdvanced, raids }
@@ -158,7 +161,7 @@ export function buildAttention(input) {
     if (open.length > KIND_CAP) more[kind] = open.length - KIND_CAP;
     for (const entry of open.slice(0, KIND_CAP)) items.push(entry.item);
     if (READINESS_KINDS.includes(kind)) continue;
-    total += open.length;
+    total += COUNT_EACH_KINDS.includes(kind) ? open.reduce((sum, entry) => sum + Math.max(1, Math.floor(Number(entry.item.count) || 1)), 0) : open.length;
     for (const entry of open) if (entry.item.raidId) openTodoRaids.add(entry.item.raidId); // uncapped: the cap must not turn a raid "done"
   }
   hidden.sort((a, b) => b.at - a.at || byText(a.item.id, b.item.id));

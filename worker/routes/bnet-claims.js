@@ -4,6 +4,7 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { CLAIM_BLOCKED_TEXT, planClaims } from '../bnet-store.js';
+import { visibleCharacterSql } from '../character-visibility.js';
 import { isId } from '../ids.js';
 import { applyClaimPlan, planPicks } from '../claim-apply.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
@@ -24,14 +25,29 @@ function canDecide(guildContext, plan) {
   return isGranted(can['roster.edit']);
 }
 
-const planView = (guildContext, plan) => ({
+// record: the roster character a link_person / already plan points at ({ mainSpec, status, team }), so Home can say what approving links without opening the claim.
+const planView = (guildContext, plan, record = null) => ({
   kind: plan.kind,
   reason: plan.reason,
   message: plan.reason ? CLAIM_BLOCKED_TEXT[plan.reason] : null,
   person: plan.person,
   defaultTeamId: plan.defaultTeamId,
   canDecide: canDecide(guildContext, plan),
+  ...(record ? { record } : {}),
 });
+
+// The spec, rank and team (the character's own, else its Main's) of the characters the plans point at -> Map(character id -> record).
+async function loadRecords(db, guildId, plans) {
+  const ids = [...new Set([...plans.values()].map((plan) => plan.characterId).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const result = await db.prepare(
+    `SELECT c.id, c.main_spec, c.core_rank, t.id AS team_id, t.name AS team_name
+       FROM characters c LEFT JOIN characters m ON m.player_id = c.player_id AND m.guild_id = c.guild_id AND m.is_main = 1
+       LEFT JOIN teams t ON t.guild_id = c.guild_id AND t.id = COALESCE(c.team_id, m.team_id)
+      WHERE c.guild_id = ? AND c.id IN (SELECT value FROM json_each(?)) AND ${visibleCharacterSql('c')}`,
+  ).bind(guildId, JSON.stringify(ids)).all();
+  return new Map(result.results.map((row) => [row.id, { mainSpec: row.main_spec || null, status: row.core_rank, team: row.team_id ? { id: row.team_id, name: row.team_name } : null }]));
+}
 
 async function loadPendingClaim(db, guildId, claimId) {
   if (!isId('cl', claimId)) throw new HttpError(404, 'not_found', 'That claim was not found.');
@@ -55,6 +71,7 @@ export async function listClaims(ctx) {
       WHERE cl.guild_id = ? AND cl.status = 'pending' ORDER BY cl.created_at, cl.id LIMIT ?`,
   ).bind(guild.id, MAX_LIST).all();
   const plans = await planClaims(ctx.db, guild, result.results);
+  const records = await loadRecords(ctx.db, guild.id, plans);
   const who = viewerFor(guildContext);
   return jsonResponse({
     claims: result.results.map((row) => ({
@@ -62,7 +79,7 @@ export async function listClaims(ctx) {
       character: { name: row.name, realm: row.realm, class: row.class, level: row.level },
       claimedAt: row.created_at,
       claimant: personFor(row, who),
-      plan: planView(guildContext, plans.get(row.id)),
+      plan: planView(guildContext, plans.get(row.id), records.get(plans.get(row.id).characterId) || null),
     })),
   });
 }

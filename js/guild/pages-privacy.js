@@ -94,7 +94,7 @@
       ])) +
       section('privacy-guild-keeps', 'What your guild keeps', bullets([
         'Your roster entry: status, join and trial dates, characters, specs and team.',
-        'Which Raidsmith account is yours: an officer can link your account to your roster entry (for example when you sign in with Battle.net only and are not in the guild\'s Discord server), or an approved character claim does. Unlinking it, or deleting your data, removes the link; the roster entry stays.',
+        'Which Raidsmith account is yours: your account becomes the owner of a roster entry when Battle.net proves one of its characters, when your application is accepted, or when an officer approves your This is me claim (links an officer made earlier stay). Unlinking it, or deleting your data, removes the link; the roster entry stays.',
         'Officer notes: only officers and team leads see them.',
         'Your attendance for each raid.',
         'The sign-ups you make in Raidsmith: the raid, your status, the character and spec you chose, and an optional note.',
@@ -110,7 +110,7 @@
         'Raid-Helper sign-ups on a raid store each Discord ID and nickname until the person signs in and deletes their data. Warcraft Logs reports are read once; only who was present in each boss pull is kept, never the report.',
       ])) +
       section('privacy-who-sees', 'Who can see it', paragraphs([
-        'Members see the guild\'s roster and raids, and the attendance of the teams they have a character on. A member is someone in the guild\'s Discord server or whose account an officer has linked to a roster entry. Officers and team leads also see officer notes. Nobody outside the guild sees any of it, except what a Guild Master chooses to show on the guild\'s public page (roster names and classes, raids, attendance percentages, loot awards; never notes, Discord names or accounts) and what an officer shares through a guest link, which can only be read, never changed. An officer can look an account up only by typing its whole BattleTag or display name, or from the character claims sent to their guild; there is no list of accounts.',
+        'Members see the guild\'s roster and raids, and the attendance of the teams they have a character on. A member is someone in the guild\'s Discord server or whose account owns a roster entry of the guild (a guild that uses its in-game roster needs a character on that roster). Officers and team leads also see officer notes. Nobody outside the guild sees any of it, except what a Guild Master chooses to show on the guild\'s public page (roster names and classes, raids, attendance percentages, loot awards; never notes, Discord names or accounts) and what an officer shares through a guest link, which can only be read, never changed. An officer can look an account up only by typing its whole BattleTag or display name, or from the character claims sent to their guild; there is no list of accounts.',
       ])) +
       section('privacy-cookies', 'Cookies', paragraphs([
         'Two cookies: one keeps you signed in for 30 days, and a second lasts 10 minutes while you sign in. Connecting Battle.net sets one more for 10 minutes while you connect or sign in with it. A visitor who opens a guest link, which needs no account, gets one more cookie that lasts as long as the link works (30 days at most) and only lets them read what the link allows. No ads, no tracking.',

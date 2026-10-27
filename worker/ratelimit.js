@@ -28,6 +28,10 @@ export const RANK_MAP_WINDOW_MS = 10 * 60 * 1000;
 export const PIN_LIMIT = 6;
 export const PIN_WINDOW_MS = 10 * 60 * 1000;
 export const pinKey = (userId) => `pin:${userId}`;
+// "This is me" look-ups of unlinked roster records by name (GET /api/guild/:gid/roster/unlinked, per user): a person types a name and the page asks after a pause, so a few tries
+// are a handful of requests; a script that walks the alphabet is not.
+export const FIND_LIMIT = 60;
+export const FIND_WINDOW_MS = 10 * 60 * 1000;
 // Flip dry runs (per Owner): each one reads every account and person of the guild and writes an approval token.
 export const FLIP_DRY_RUN_LIMIT = 10;
 export const FLIP_DRY_RUN_WINDOW_MS = 10 * 60 * 1000;
@@ -121,6 +125,7 @@ export function rateLimitMessage(key) {
   if (/^flip:/.test(key)) return 'Too many flip dry runs. Try again in a few minutes.';
   if (/^pin:/.test(key)) return 'Too many tries to link the guild to its in-game guild. Try again in a few minutes.';
   if (/^char:/.test(key)) return 'You have added a lot of characters this hour. Try again a little later.';
+  if (/^find:/.test(key)) return 'You have looked up a lot of names. Wait a few minutes and try again.';
   if (/^open:/.test(key)) return 'You have signed up for a lot of open raids this hour. Try again a little later.';
   if (/^api:/.test(key)) return 'This key has reached its limit of 60 requests an hour. Try again later.';
   return /^(?:imp|wcl|wclraid):/.test(key)

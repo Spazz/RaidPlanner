@@ -59,15 +59,16 @@ export function membershipOf({ blocked, ...facts }) {
 }
 
 // The 403 not_member message for a guild of this rank source. Only a legacy guild talks about its Discord server: in a 'manual' or 'ingame' guild the server grants
-// nothing, so naming it would send the person to the wrong place.
+// nothing, so naming it would send the person to the wrong place. No message sends anyone to an officer to be linked: since the identity split an officer cannot
+// link an account to give it access, so the person proves a character themselves (Battle.net, or "This is me" on the roster).
 export function notMemberMessage(source) {
   if (source === 'ingame') {
-    return "Your account has no character on this guild's in-game roster. Connect Battle.net with a character that is in the guild, or ask an officer to link your account to a roster entry whose character is on the in-game roster.";
+    return "Your account has no character on this guild's in-game roster. Connect Battle.net with a character that is in the guild.";
   }
   if (source === 'manual') {
-    return 'No roster entry is linked to your account. Ask an officer to link your account to your roster entry in this guild.';
+    return 'No roster entry is yours yet. Apply to the guild, or claim your roster entry.';
   }
-  return "You are not in this guild's Discord server, and no roster entry is linked to your account. Sign in again if you just joined the server, or ask an officer to link your account to your roster entry.";
+  return "You are not in this guild's Discord server, and no roster entry is yours yet. Join the Discord server and sign in again, or claim your roster entry.";
 }
 
 // A guild_blocks row blocks, EXCEPT on the Owner who is not suspended (plan "Owner": an unsuspended Owner cannot be blocked; a block row written while they were suspended,
@@ -199,3 +200,8 @@ export function personStanding(player, viewer) {
   if (player.discord_user_id && player.discord_user_id !== (viewer && viewer.discordId)) return 'taken';
   return 'open';
 }
+
+// The SQL form of personStanding() === 'open' (the roster records "This is me" may name): the person (a players alias) has no owner and records no Discord ID but the
+// viewer's. The viewer's Discord ID is an expression used once (a bare `?` is fine; bind null for an account without Discord).
+export const openPersonSql = (playerAlias, discordExpr) =>
+  `(${playerAlias}.user_id IS NULL AND (${playerAlias}.discord_user_id IS NULL OR ${playerAlias}.discord_user_id = ${discordExpr}))`;

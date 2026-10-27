@@ -548,7 +548,9 @@
     }
     if (r.name === 'linked' || r.name === 'characters') {
       // Battle.net (Phase 5): no guild of its own, so the nav is the last guild's. The page reads GET /auth/bnet fresh on every visit.
-      return Promise.all([G.pages.bnet.load(), r.name === 'linked' ? loadMe() : null]).then(function () { return ensureChromeGuild(); }).then(function () { return null; }).catch(function (err) {
+      // My characters also reads, per guild that takes a typed name, the viewer's own waiting "This is me" claims (never fails the page).
+      const bnetRead = G.pages.bnet.load().then(function (data) { return r.name === 'characters' ? G.pages.thisIsMe.loadFor(data) : null; });
+      return Promise.all([bnetRead, r.name === 'linked' ? loadMe() : null]).then(function () { return ensureChromeGuild(); }).then(function () { return null; }).catch(function (err) {
         if (token !== routeToken) return null;
         handleLoadError(err);
         return null;
@@ -646,10 +648,12 @@
     if (state.roster && state.roster.teamId !== teamId) {
       state.rosterUi.status = 'active'; state.rosterUi.query = '';
     }
+    // The team requests waiting for this team (Needs you, the badge) are read beside the list, for whoever may decide them (it never fails the page).
+    const requests = G.shell.hasAction(gd.me && gd.me.can, 'roster.edit') ? G.pages.teamRequests.read(gid) : Promise.resolve(null);
     return fetchRoster(gid, teamId).then(function (data) {
       // The officers' team shape is read beside the list and drawn when it answers.
       if (data && data.can && data.can.edit) G.pages.roster.loadShape(gd, teamId, token, function (t) { return t === routeToken; });
-      return null;
+      return requests.then(function () { return null; });
     }).catch(function (err) {
       if (token !== routeToken) return null;
       const c = G.api.classify(err);
@@ -665,7 +669,9 @@
     return G.api.get(rosterUrl(gid, '/' + encodeURIComponent(r.pid))).then(function (record) {
       if (token !== routeToken) return null;
       state.person = { gid: gid, pid: r.pid, record: record };
-      const card = Promise.all([G.pages.personAtt.loadCard(gid, r.pid, gd), G.pages.personLoot.loadCard(gid, r.pid), G.pages.personTrial.loadCard(gid, r.pid, gd, record)]);
+      // On their own record a person also sees their team requests (Request team, the rows that wait); the read never fails the page.
+      const mine = record && record.person && record.person.isMe ? G.pages.teamRequests.read(gid) : null;
+      const card = Promise.all([G.pages.personAtt.loadCard(gid, r.pid, gd), G.pages.personLoot.loadCard(gid, r.pid), G.pages.personTrial.loadCard(gid, r.pid, gd, record), mine]);
       if (!(record.can && record.can.edit)) return card.then(function () { return null; });
       return Promise.all([card, G.pages.roster.loadLinkable(gid)]).then(function () { return null; });
     }).catch(function (err) {
@@ -758,7 +764,7 @@
     if (!rs.data) return P.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
     const shape = state.rosterShape && state.rosterShape.gid === gd.guild.id && state.rosterShape.teamId === rs.teamId ? state.rosterShape : null;
     const apps = state.rosterApps && state.rosterApps.gid === gd.guild.id && state.rosterApps.teamId === rs.teamId ? state.rosterApps : null;
-    return P.roster.rosterHtml({ guildData: gd, data: rs.data, view: state.rosterUi, notice: state.rosterNotice, alert: state.pageAlert, shape: shape, apps: apps });
+    return P.roster.rosterHtml({ guildData: gd, data: rs.data, view: state.rosterUi, notice: state.rosterNotice, alert: state.pageAlert, shape: shape, apps: apps, requests: P.teamRequests.pendingOf(gd.guild.id, rs.teamId) });
   }
 
   function mainFor(r, gd, ctx) {
@@ -791,7 +797,7 @@
         return P[attPageKey(r)].main(r, gd, ctx);
       case 'person': {
         if (!gd || !state.person || state.person.gid !== gd.guild.id || state.person.pid !== r.pid) return P.signin.loadingHtml();
-        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid), trial: P.personTrial.cardState(gd.guild.id, r.pid), away: P.away.personSectionOf({ guildData: gd, record: state.person.record, state: P.attendance.attState().awayPerson }), saved: state.personSaved && state.personSaved.gid === gd.guild.id && state.personSaved.pid === r.pid ? state.personSaved : null });
+        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid), trial: P.personTrial.cardState(gd.guild.id, r.pid), away: P.away.personSectionOf({ guildData: gd, record: state.person.record, state: P.attendance.attState().awayPerson }), saved: state.personSaved && state.personSaved.gid === gd.guild.id && state.personSaved.pid === r.pid ? state.personSaved : null, requests: P.teamRequests.bucketOf(gd.guild.id) });
       }
       case 'import': {
         if (!gd) return P.signin.loadingHtml();
@@ -1095,11 +1101,12 @@
   app.plannerGuildVersion = plannerGuildVersion;
   app.renderPlannerLead = renderPlannerLead;
 
-  // Every mutation reply that carries `rosterFlags`, `attendanceFlags` or `pendingClaims` refreshes the nav badge without a refetch.
+  // Every mutation reply that carries `rosterFlags`, `teamRequestFlags`, `attendanceFlags` or `pendingClaims` refreshes the nav badge without a refetch.
   app.applyFlags = function (gid, res) {
     const gd = state.guilds[gid];
     if (gd && res && typeof res.pendingClaims === 'number') gd.pendingClaims = res.pendingClaims;
     if (gd && res && res.rosterFlags && typeof res.rosterFlags === 'object') gd.rosterFlags = res.rosterFlags;
+    if (gd && res && res.teamRequestFlags && typeof res.teamRequestFlags === 'object') gd.teamRequestFlags = res.teamRequestFlags;
     if (gd && res && res.attendanceFlags && typeof res.attendanceFlags === 'object') gd.attendanceFlags = res.attendanceFlags;
   };
 
@@ -1147,6 +1154,10 @@
   app.fetchGuild = fetchGuild;
   app.refreshGuild = function (gid) {
     return fetchGuild(gid).then(function () { render(); }, function () { /* the mutation already worked; keep the old copy */ });
+  };
+  // The Roster list read again after something changed who is on the team (a team request was approved), and drawn.
+  app.refreshRoster = function (gid, teamId) {
+    return fetchRoster(gid, teamId).then(function () { render(); }, function () { /* the decision already worked; keep the list on screen */ });
   };
 
   app.afterGuildCreated = function (res, noticeText) {

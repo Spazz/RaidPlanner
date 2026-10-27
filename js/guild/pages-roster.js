@@ -185,7 +185,7 @@
     const phoneRows = m.status === 'applicants' ? [] : filteredOf(m, m.status);
     const desk = deskRows.length ? columnsHtml(deskRows, m) : noMatchHtml(m);
     const phone = m.status === 'applicants' ? phoneListHtml([], m) : (phoneRows.length ? '<section class="gs-hd-panel gs-rs-plist" aria-label="People">' + phoneListHtml(phoneRows, m) + '</section>' : noMatchHtml(m));
-    return '<div class="gs-rs-desk">' + desk + '</div><div class="gs-rs-phone">' + phone + '</div>';
+    return '<div class="gs-rs-desk">' + desk + '</div><div class="gs-rs-phone">' + phoneRequestsHtml(m) + phone + '</div>';
   }
 
   // ── toolbar ──
@@ -228,7 +228,8 @@
       '<p class="gs-fg-mut">' + esc(m.shape.missing) + ' <a class="gs-fg-u" href="' + esc(recruitingHref(m.gid)) + '">See coverage</a></p></section>';
   }
 
-  // "Fangrin's trial ended 3 days ago", "Hexen's trial ends in 4 days", "3 new applications": hidden when there is nothing to decide.
+  // "Fangrin's trial ended 3 days ago", "Hexen's trial ends in 4 days", "3 new applications": hidden when there is nothing to decide. The team requests waiting for
+  // this team are rows above them (the same row as on Home: who asks, from whom, Approve / Reject); on a phone they are the first block of the list instead (phoneRequestsHtml).
   function needsHtml(m) {
     if (!m.canEdit || m.archived) return '';
     const flagged = G.rosterSort.trialsToDecide(m.people, m.teamId).slice().sort(function (a, b) {
@@ -240,8 +241,18 @@
       return '<span class="gs-rs-need"><a class="gs-fg-u" href="' + esc(personHref(m.gid, p.id)) + '">' + esc(nameOf(p)) + '</a>\'s trial ' + esc(G.ui.trialCopy(p.trialFlag).toLowerCase()) + '</span>';
     });
     if (m.applicationCount > 0) items.push('<a class="gs-fg-u gs-rs-need" href="' + esc(recruitingHref(m.gid)) + '">' + esc(plural(m.applicationCount, 'new application', 'new applications')) + '</a>');
-    if (!items.length) return '';
-    return '<section class="gs-hd-panel gs-rs-needs" aria-label="Needs you"><h2 class="gs-fg-lbl">Needs you</h2><div class="gs-rs-needlist">' + items.join('<span class="gs-rs-vsep" aria-hidden="true"></span>') + '</div></section>';
+    if (!items.length && !m.requests.length) return '';
+    const list = items.length ? '<div class="gs-rs-needlist">' + items.join('<span class="gs-rs-vsep" aria-hidden="true"></span>') + '</div>' : '';
+    const body = m.requests.length
+      ? '<div class="gs-rs-needcol">' + G.pages.teamRequests.listHtml(m.requests, { gd: m.gd, ctx: 'roster', withTeam: false, prefix: 'd' }) + list + '</div>' : list;
+    return '<section class="gs-hd-panel gs-rs-needs' + (m.requests.length ? ' has-requests' : '') + '" aria-label="Needs you"><h2 class="gs-fg-lbl">Needs you</h2>' + body + '</section>';
+  }
+
+  // Phone: the team requests lead the list (the Needs you panel is hidden below 600 px).
+  function phoneRequestsHtml(m) {
+    if (!m.canEdit || m.archived || !m.requests.length || m.status === 'applicants') return '';
+    return '<section class="gs-hd-panel gs-rs-preq" aria-label="Team requests"><h2 class="gs-hd-sl gs-rs-pgroup">Team requests <span class="gs-fg-cnt">' + m.requests.length + '</span></h2>' +
+      G.pages.teamRequests.listHtml(m.requests, { gd: m.gd, ctx: 'roster', withTeam: false, prefix: 'p' }) + '</section>';
   }
 
   // A member's own line above the list: their character and the two places they act (their record, their away notices).
@@ -314,6 +325,7 @@
       status: view.status, query: String(view.query || ''), counts: countsOf(people),
       shape: canEdit && shapeRead ? shapeOf(shapeRead.data, shapeRead.cov) : null, shapeState: opts.shape ? opts.shape.status : 'loading',
       applicationCount: canEdit && isFinite(flags) && flags > 0 ? Math.floor(flags) : 0, apps: opts.apps || null,
+      requests: canEdit && Array.isArray(opts.requests) ? opts.requests : [],
     };
   }
 
@@ -327,9 +339,9 @@
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span><button type="button" class="gs-linkbtn" data-action="dismiss-roster-notice" data-key="dismiss-roster-notice">Dismiss</button></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert');
     if (!m.people.length) {
-      return '<div class="gs-page gs-list-page gs-forge gs-roster-page">' + G.ui.pageHeadHtml(headOpts(gd, m.data, m)) + notices + emptyHtml(gd, m.data) + '</div>';
+      return '<div class="gs-page gs-list-page gs-forge gs-roster-page">' + G.ui.pageHeadHtml(headOpts(gd, m.data, m)) + notices + (m.requests.length ? needsHtml(m) : '') + emptyHtml(gd, m.data) + '</div>';
     }
-    return '<div class="gs-page gs-list-page gs-forge gs-roster-page">' + G.ui.pageHeadHtml(headOpts(gd, m.data, m)) + notices + tilesHtml(m) + needsHtml(m) + youHtml(m) +
+    return '<div class="gs-page gs-list-page gs-forge gs-roster-page">' + G.ui.pageHeadHtml(headOpts(gd, m.data, m)) + notices + '<p class="gs-sr" id="roster-status" role="status"></p>' + tilesHtml(m) + needsHtml(m) + youHtml(m) +
       '<section class="gs-rs-people" aria-label="People"><div class="gs-rs-bar">' + searchHtml(m) + deskSegsHtml(m) + phoneSegsHtml(m) + '</div>' +
       '<div id="roster-results" class="gs-rs-results" aria-live="off">' + resultsHtml(m) + '</div>' + footHtml(m) + '</section></div>';
   }
@@ -432,7 +444,7 @@
     const teamId = s.roster.teamId;
     const shape = s.rosterShape && s.rosterShape.gid === gd.guild.id && s.rosterShape.teamId === teamId ? s.rosterShape : null;
     const apps = s.rosterApps && s.rosterApps.gid === gd.guild.id && s.rosterApps.teamId === teamId ? s.rosterApps : null;
-    return { guildData: gd, data: s.roster.data, view: rosterUi(), shape: shape, apps: apps };
+    return { guildData: gd, data: s.roster.data, view: rosterUi(), shape: shape, apps: apps, requests: G.pages.teamRequests.pendingOf(gd.guild.id, teamId) };
   }
 
   function refreshResults() {
@@ -622,6 +634,25 @@
       }
     });
   };
+
+  // Approve / Reject on a team request in Needs you (run by pages-team-requests.js; the row is gone from the kept list already). An approval puts the character on the
+  // team, so the list is read again; a refusal (decided meanwhile, the character moved) is the page alert.
+  G.pages.teamRequests.setHooks('roster', {
+    done: function (gid, verb, request) {
+      const s = st();
+      const name = request && request.character ? request.character.name : 'The request';
+      const said = verb === 'approve' ? 'Approved ' + name + (request && request.team ? ' for ' + request.team.name : '') + '.' : 'Rejected ' + name + '.';
+      s.pageAlert = '';
+      G.app.render();
+      if (verb === 'approve' && s.roster && s.roster.gid === gid && s.roster.teamId) {
+        return G.app.refreshRoster(gid, s.roster.teamId).then(function () { G.ui.announce('roster-status', said); G.pages.teamRequests.focusAfterDecision(); });
+      }
+      G.ui.announce('roster-status', said);
+      G.pages.teamRequests.focusAfterDecision();
+      return null;
+    },
+    fail: function (gid, text) { st().pageAlert = text; G.app.render(); },
+  });
 
   Object.assign(G.pages.roster, {
     DEFAULT_TRIAL_DAYS: DEFAULT_TRIAL_DAYS,

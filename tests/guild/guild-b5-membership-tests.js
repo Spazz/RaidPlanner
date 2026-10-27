@@ -251,7 +251,7 @@ check("'manual': the Discord server grants nothing, a link to a person does; the
   const refused = await guildGet(s, 'discordonly');
   assert.deepEqual([refused.status, refused.json.error], [403, 'not_member']);
   assert(!mention(refused.json.message), refused.json.message);
-  assert(/linked to your account|link your account/i.test(refused.json.message), refused.json.message);
+  assert(/apply to the guild|claim your roster entry/i.test(refused.json.message) && !/officer/i.test(refused.json.message), refused.json.message);
   assert.deepEqual(await memberGuildIds(s, 'discordonly'), []);
   assert.deepEqual(await memberGuildIds(s, 'seated'), [s.gid]);
   const { loadMemberGuilds } = await load('worker/bnet-store.js');
@@ -601,6 +601,7 @@ const PLAYERS_USER_ID_ALLOWED = {
   'worker/routes/loot.js': { count: 1, reason: 'select list: the person columns of a loot award' },
   'worker/routes/people.js': { count: 1, reason: 'People and roles: the roster entry shown next to each account' },
   'worker/routes/roster.js': { count: 2, reason: 'the "already another person\'s" check of a Discord link and the list of members with no person yet (memberSql decides who is a member)' },
+  'worker/routes/roster-unlinked.js': { count: 1, reason: 'read-only "This is me" look-up: the roster records nobody owns (openPersonSql) minus the characters the viewer has a pending claim on; who is a member is loadGuildContext\'s' },
   'worker/routes/team-requests.js': { count: 1, reason: 'ownership: the asker\'s account still owns the character\'s person' },
   'worker/seniority.js': { count: 1, reason: 'the account of a person (players.user_id, else the Discord ID match): the Seniority guard' },
   'worker/users-bulk.js': { count: 3, reason: 'bulk Block / Unblock of the Users page: the persons of the accounts being blocked (their effects, the same persons worker/block-effects.js reaches through ownPlayerSql: linked, or carrying the account\'s Discord ID) and the persons whose block is read; who is a member is never decided here' },

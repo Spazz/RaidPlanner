@@ -215,9 +215,9 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     const row = name => rows.find(r => r.includes('>' + name + '</span>'));
     assert(row('Aldric').includes('On your record') && !row('Aldric').includes('<button'));
     assert(row('Brindle').includes('On the roster, not linked to anyone') && row('Brindle').includes('data-action="bnet-claim"'));
-    assert(row('Cassia').includes('data-action="bnet-claim"') && row('Cassia').includes('data-realm="nightslayer"') && row('Cassia').includes('Nightslayer'));
+    assert(row('Cassia').includes('aria-label="Add Cassia"') && row('Cassia').includes('<span>Add</span>') && row('Cassia').includes('data-action="bnet-claim"') && row('Cassia').includes('data-realm="nightslayer"') && row('Cassia').includes('Nightslayer'));
     assert(row('Dunmar').includes('On someone else&#39;s record') && !row('Dunmar').includes('<button'));
-    assert(row('Eliora').includes('Waiting for officers') && row('Eliora').includes('data-action="bnet-withdraw"') && row('Eliora').includes('data-claim="cl_1"') && !row('Eliora').includes('bnet-claim"'));
+    assert(row('Eliora').includes('Needs an officer') && row('Eliora').includes('aria-label="Withdraw the request for Eliora"') && row('Eliora').includes('data-action="bnet-withdraw"') && row('Eliora').includes('data-claim="cl_1"') && !row('Eliora').includes('bnet-claim"'));
     assert(row('Fenwick').includes('An officer turned this down before') && row('Fenwick').includes('data-action="bnet-claim"'));
     assert(row('Stranger').includes('Another realm') && !row('Stranger').includes('<button'));
     assert(row('Aldric').includes('gs-class-warrior') && row('Brindle').includes('gs-class-mage'));
@@ -259,7 +259,7 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert(text(G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [] }) })).includes('You are not in a Raidsmith guild yet'));
     assert(G.pages.bnet.charactersHtml({ data: null }).includes('Loading'));
     const intro = G.pages.bnet.charactersHtml({ data: bnetData() });
-    assert(text(intro).includes('Your officers approve each claim') && text(intro).includes('deleted on Nov 16, 2026'));
+    assert(text(intro).includes('Add the characters that are yours. They go on your profile at once.') && !text(intro).includes('officers approve each claim') && text(intro).includes('deleted on Nov 16, 2026'));
     assert(G.pages.bnet.charactersHtml({ data: bnetData(), notice: 'Claim sent: Eliora.' }).includes('Claim sent: Eliora.'));
   });
 
@@ -289,7 +289,7 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert.deepEqual(calls[0], ['POST', '/api/guild/g1/claims', { characters: [{ name: 'Cassia', realmSlug: 'nightslayer' }] }]);
     assert.deepEqual(calls[1], ['GET', '/auth/bnet']);
     assert.deepEqual(calls[2], ['DELETE', '/api/guild/g1/claims/cl_1', {}]);
-    assert.equal(G.app.state.bnet.notice, 'Claim on Eliora withdrawn.');
+    assert.equal(G.app.state.bnet.notice, 'Request for Eliora withdrawn.');
   });
 
   await check('claim: a refused claim shows the server message on the page and turns the button back on', async () => {

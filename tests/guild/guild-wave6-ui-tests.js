@@ -83,28 +83,23 @@ class ApiErr extends Error {
 
 (async () => {
   // ═══ The Attendance badge ═══════════════════════════════════════
-  await check('nav: pending character claims add to the Attendance badge (the Review queue is under it) for people who can decide them; the label says both', () => {
+  await check('nav: pending character claims are NOT on the Attendance badge (they count on Home only, user decision 2026-10-26, board 9b); the badge and its label are the flags to review', () => {
     const base = gd(OFFICER_CAN, { attendanceFlags: { t1: 2 }, pendingClaims: 3 });
     const item = attendanceItem(G.shell.sidebarItems(navCtx(base)));
-    assert.equal(item.badge, 5);
-    assert.equal(item.ariaLabel, 'Attendance, 2 flags and 3 character claims to review');
-    assert.equal(attendanceItem(G.shell.tabItems(navCtx(base))).badge, 5, 'also on the phone tabs');
-    // Claims only.
+    assert.equal(item.badge, 2);
+    assert.equal(item.ariaLabel, 'Attendance, 2 flags to review');
+    assert.equal(attendanceItem(G.shell.tabItems(navCtx(base))).badge, 2, 'also on the phone tabs');
+    // Claims only: nothing on Attendance.
     const claims = attendanceItem(G.shell.sidebarItems(navCtx(gd(OFFICER_CAN, { pendingClaims: 1 }))));
-    assert.deepEqual([claims.badge, claims.ariaLabel], [1, 'Attendance, 1 character claim to review']);
+    assert.deepEqual([claims.badge, claims.ariaLabel], [0, 'Attendance']);
     // Raids only: the label is as it was.
     const raids = attendanceItem(G.shell.sidebarItems(navCtx(gd(OFFICER_CAN, { attendanceFlags: { t1: 1 } }))));
     assert.deepEqual([raids.badge, raids.ariaLabel], [1, 'Attendance, 1 flag to review']);
     assert.deepEqual([attendanceItem(G.shell.sidebarItems(navCtx(gd(OFFICER_CAN)))).badge, attendanceItem(G.shell.sidebarItems(navCtx(gd(OFFICER_CAN)))).ariaLabel], [0, 'Attendance']);
-    // Without roster.edit (can not decide a claim) or attendance.review (can not open the queue) the claims add nothing.
-    for (const drop of ['roster.edit', 'attendance.review']) {
-      const can = Object.assign({}, OFFICER_CAN); delete can[drop];
-      assert.equal(attendanceItem(G.shell.sidebarItems(navCtx(gd(can, { attendanceFlags: { t1: 2 }, pendingClaims: 3 })))).badge, drop === 'roster.edit' ? 2 : 0, drop);
-    }
-    // Rubbish counts are ignored.
-    for (const junk of [undefined, null, -1, 'x', NaN, 0]) assert.equal(G.shell.claimsBadge(gd(OFFICER_CAN, { pendingClaims: junk }), 't1'), 0, String(junk));
-    assert.equal(G.shell.claimsBadge(gd(OFFICER_CAN, { pendingClaims: 2.9 }), 't1'), 2);
-    assert.equal(G.shell.claimsBadge(gd(OFFICER_CAN, { pendingClaims: 3 }), null), 0, 'no team, no badge');
+    // Without attendance.review the flags add nothing either.
+    const can = Object.assign({}, OFFICER_CAN); delete can['attendance.review'];
+    assert.equal(attendanceItem(G.shell.sidebarItems(navCtx(gd(can, { attendanceFlags: { t1: 2 }, pendingClaims: 3 })))).badge, 0);
+    assert.equal(G.shell.claimsBadge, undefined, 'the claims badge is gone');
   });
 
   await check('nav: a reply with pendingClaims refreshes the badge without a refetch, and opening the Review queue sets it from the claims it listed', withState(async (S) => {

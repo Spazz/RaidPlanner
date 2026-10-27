@@ -1894,6 +1894,65 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
   .gs-pr .gs-back-link { min-height: 44px; }
 }
 
+/* ── Team requests and "This is me" (B3 UI; boards 1, 2, 4, 4b, 8a, 9, 9b, 8c of the 2026-10-26 mockup) ───────────────────────────────────────────────
+   Tokens only, no colour literal. Orange stays on the one primary of a screen (Send request); gold only on the count badges; class colour on character names only;
+   account names stay neutral. The 600 px phone query is written without a space on purpose (the suites slice the file at the last spaced one). */
+/* The Request team dialog: a radio pick row per character and per team */
+.gs-tr-group { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.gs-tr-pick { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-tr-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px; border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--bg-panel); cursor: pointer; }
+.gs-tr-row:has(.gs-tr-radio:checked) { border-color: var(--border-field); background: var(--seg-on-bg); }
+.gs-tr-row:has(.gs-tr-radio:focus-visible) { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-tr-row .gs-spec-icon { flex: none; border-radius: 3px; }
+.gs-tr-radio { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--text-primary); }
+.gs-tr-id { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px; }
+.gs-tr-sub { font-size: 13px; font-weight: 400; color: var(--text-muted); }
+.gs-tr-now { color: var(--text-primary); }
+/* A request (Home's Guild panel and To do list, the Roster's Needs you panel) and a "This is me" ask are the same to-do row */
+.gs-tr-hsl { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.gs-tr-ask .gs-tr-t { display: flex; align-items: flex-start; gap: 10px; }
+.gs-tr-ask .gs-spec-icon { flex: none; border-radius: 3px; margin-top: 2px; }
+.gs-tr-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gs-tr-lead { font-weight: 600; }
+.gs-tr-line { font-size: 13px; color: var(--text-muted); }
+.gs-tim-acct { font-weight: 600; color: var(--hd-white); }
+.gs-rs-needs.has-requests { align-items: flex-start; padding: 12px 20px; }
+.gs-rs-needs.has-requests > .gs-fg-lbl { margin-top: 14px; }
+.gs-rs-needcol { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.gs-rs-needcol .gs-rs-needlist { border-top: 1px solid var(--hd-hair); }
+.gs-rs-needcol .gs-tr-ask .gs-hd-todo-title { flex: 1 1 360px; }
+.gs-rs-preq { padding: 12px 16px 4px; margin-bottom: 16px; }
+.gs-rs-preq .gs-rs-pgroup { display: flex; align-items: center; gap: 8px; margin-top: 0; }
+/* My characters: "Find your character on the roster" and the reason under a Needs an officer chip */
+.gs-tim { display: flex; flex-direction: column; gap: 12px; }
+.gs-tim:not(:last-child) { margin-bottom: 20px; }
+.gs-tim-h { margin: 0; font: 600 12px/1.3 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.gs-tim .gs-field { max-width: 420px; }
+.gs-tim-form, .gs-tim-status { margin: 0; }
+.gs-tim-results { display: flex; flex-direction: column; gap: 12px; }
+.gs-tim-results:empty { display: none; }
+.gs-tim-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-tim-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 52px; padding: 6px 12px; border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--bg-panel); }
+.gs-tim-row .gs-spec-icon { flex: none; border-radius: 3px; }
+.gs-tim-id { display: flex; flex-direction: column; flex: 1 1 200px; min-width: 0; font-weight: 600; font-size: 14px; }
+.gs-tim-sub { font-size: 13px; font-weight: 400; color: var(--text-muted); }
+.gs-tim-end { display: flex; align-items: center; gap: 8px; flex: none; }
+.gs-tim-nomatch { margin: 0; color: var(--text-secondary); }
+.gs-tim-addnew { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.gs-tim-addnew .gs-field { flex: 0 1 240px; }
+.gs-tim-addnew-act { padding-bottom: 2px; }
+.gs-tim-ingame { margin: 0 0 12px; }
+.gs-bnet-why { display: block; margin-top: 2px; font-size: 13px; color: var(--text-muted); }
+@media (max-width:600px) {
+  .gs-tr-row, .gs-tim-row { min-height: 56px; }
+  .gs-tim-end { flex: 1 1 100%; justify-content: flex-start; }
+  .gs-tr-line .gs-fg-u { display: inline-block; padding: 14px 0; margin: -14px 0; }
+  .gs-rs-preq .gs-hd-todo { flex-direction: column; align-items: stretch; flex-wrap: nowrap; padding: 12px 0; }
+  .gs-rs-preq .gs-hd-todo-title { flex: none; font-size: 16px; }
+  .gs-rs-preq .gs-hd-todo-meta { order: 0; flex: none; }
+  .gs-rs-preq .gs-hd-todo-acts > .gs-btn:first-child { flex: 1; }
+}
+
 /* ── Raids list on Forge (T1 + rail): Upcoming cards, Past table, the right rail ──────────────────────────────────────────────────────────────────────
    Gold only on the card dates (design spec 2.2, third date exception) and the tab count badges; molten only on New raid; class colour only on the away names.
    The 600 px query is written without a space on purpose (the suites slice the file at the last spaced phone query). */

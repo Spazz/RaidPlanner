@@ -459,7 +459,7 @@ function withApi(stubs, fn) {
       'Your Raidsmith account is made the first time you sign in, with Discord or with Battle.net', 'Raidsmith never merges two accounts', 'up to 32 characters',
       'They are how you sign in, so they stay while Battle.net is connected, and are refreshed every time you sign in with it',
       'it is deleted 30 days after you load it unless you load it again; your BattleTag stays until you disconnect',
-      'an officer can link your account to your roster entry', 'there is no list of accounts', 'whose account an officer has linked to a roster entry',
+      'when an officer approves your This is me claim', 'there is no list of accounts', 'whose account owns a roster entry of the guild',
       'Deletes your account, the name you chose and every sign-in linked to it', 'Disconnecting Discord deletes the Discord ID and nickname on roster entries and Raid-Helper sign-ups',
     ]) assert(t.toLowerCase().includes(s.toLowerCase()), s);
     assert(!t.includes('Sign in with Discord'));

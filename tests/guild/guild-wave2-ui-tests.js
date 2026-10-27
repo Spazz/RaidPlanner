@@ -854,9 +854,9 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert(/gs-banner-success[\s\S]*Notice saved\./.test(minePage(null, { note: 'Notice saved.' })), 'the result is an inline banner');
   });
 
-  await check('away page: empty states - no roster entry says who to ask; no notices says so; thirty is the most (Add is disabled and says why)', () => {
+  await check('away page: empty states - no roster entry says where to find it; no notices says so; thirty is the most (Add is disabled and says why)', () => {
     const none = minePage({ personId: null, notices: [] });
-    assert(none.includes('No roster entry yet') && none.includes('Ask an officer to link your account to your roster entry.') && !none.includes('away-add'));
+    assert(none.includes('No roster entry yet') && none.includes('find your roster entry there and say This is me.') && !none.includes('away-add'));
     const empty = minePage({ notices: [] });
     assert(empty.includes('You have no away notices') && empty.includes('away-add'));
     assert(minePage({ notices: [N_PAST] }).includes('No current or upcoming notices'));

@@ -47,6 +47,7 @@ const ALLOWED = [
 // GET routes that answer nothing but errors to every principal of the fixture: why each one is not walked to its payload.
 const UNREACHED = {
   'GET /api/guild/:gid/attendance/backfill/reports': 'asks Warcraft Logs, which the fixture cannot reach (502 wcl_unavailable by design); its payload is report titles',
+  'GET /api/guild/:gid/roster/unlinked': 'the fixture guild is an in-game guild, which refuses it (409 battlenet_only); its reply is roster names, class, spec and team plus the caller\'s own waiting claims (checked in guild-b3ui-lookup-worker-tests.js)',
   'GET /api/dev/guild/:gid/viewer': 'dev-only View-as: 404 unless DEV_VIEW_AS=1 on 127.0.0.1 (pinned closed in the isolation suite); the tier of a stand-in is checked in the helper tests below',
 };
 
