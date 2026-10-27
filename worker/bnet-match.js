@@ -52,7 +52,7 @@
 // Every statement of the guild's batch, the re-home and the join carries notBlocked, so a hit written at the head of the batch leaves the account's person untouched.
 import { TOMBSTONE_MATCH_STATEMENTS, planTombstoneMatch } from './block-tombstones.js';
 import { auditStatement } from './audit.js';
-import { markPersonRaidsStale, markRaidsStale } from './attendance-store.js';
+import { markPersonRaidsStale, markRaidsStale, weekFreeze } from './attendance-store.js';
 import { bnetSupport } from './battlenet.js';
 import { placeholderCharacterSql, visibleCharacterSql } from './character-visibility.js';
 import { isUniqueViolation } from './http.js';
@@ -456,8 +456,9 @@ function guildStatements(ctx, plan, { userId, bnetAccountId, now, gate = NO_GATE
     }
     statements.push(db.prepare(INSERT_CHARACTERS_SQL + mine.sql).bind(guildId, P, now, now, userId, bnetAccountId, JSON.stringify(items), guildId, ...mine.params));
   }
-  if (plan.person.kind !== 'existing') statements.push(markPersonRaidsStale(db, guildId, P, mine));
-  else if (plan.inserts.length) statements.push(markRaidsStale(db, guildId, plan.inserts.map((entry) => entry.row.name_key), null, [], mine));
+  const freeze = weekFreeze(plan.guild.time_zone, now);
+  if (plan.person.kind !== 'existing') statements.push(markPersonRaidsStale(db, guildId, P, mine, freeze));
+  else if (plan.inserts.length) statements.push(markRaidsStale(db, guildId, plan.inserts.map((entry) => entry.row.name_key), null, [], mine, freeze));
 
   if (plan.stamp) {
     statements.push(...proofStatements(db, {

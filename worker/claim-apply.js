@@ -16,7 +16,7 @@
 // owns it: a Battle.net claim on a name closes a pending TYPED claim on it (level NULL), and a Battle.net claim on a character somebody else typed in
 // (owner_proof 'hand' on another person) waits for an officer instead of being refused. Re-homing such a character is lane B6a ("Battle.net wins").
 import { auditStatement } from './audit.js';
-import { markPersonRaidsStale, markRaidsStale } from './attendance-store.js';
+import { markPersonRaidsStale, markRaidsStale, weekFreeze } from './attendance-store.js';
 import { planClaims } from './bnet-store.js';
 import { HttpError } from './http.js';
 import { newId } from './ids.js';
@@ -64,6 +64,7 @@ export function applyClaimPlan(ctx, { guild, plan, claimant, character, source, 
   const proof = source === 'hand' ? 'hand' : 'officer';
   const key = nameKey(character.name);
   const characterId = newId('c', ctx.randomBytes);
+  const freeze = weekFreeze(guild.time_zone, now);
   const insert = (playerId, isMain, rank, teamId, extra) => {
     const g = and(guard, extra);
     return db.prepare(INSERT_CHARACTER_SQL + g.sql).bind(
@@ -74,7 +75,7 @@ export function applyClaimPlan(ctx, { guild, plan, claimant, character, source, 
   if (plan.kind === 'add_alt') {
     return {
       writes: [insert(plan.person.id, false, null, null, ownsPerson(guild.id, plan.person.id, claimant.userId))],
-      stale: [markRaidsStale(db, guild.id, [key], null, [])], personId: plan.person.id, characterId,
+      stale: [markRaidsStale(db, guild.id, [key], null, [], null, freeze)], personId: plan.person.id, characterId,
     };
   }
   if (plan.kind === 'new_person') {
@@ -87,14 +88,14 @@ export function applyClaimPlan(ctx, { guild, plan, claimant, character, source, 
         db.prepare(INSERT_PLAYER_SQL + g.sql).bind(created, guild.id, today, claimant.discordId || null, claimant.userId, actorId, now, now, ...g.params),
         insert(created, true, characterRankColumns({ status, trialStart }), team ? team.id : null, personIsTheirs(created, claimant.userId)),
       ],
-      stale: [markRaidsStale(db, guild.id, [key], null, team ? [team.id] : [])], personId: created, characterId,
+      stale: [markRaidsStale(db, guild.id, [key], null, team ? [team.id] : [], null, freeze)], personId: created, characterId,
     };
   }
   if (plan.kind === 'link_person') {
     const g = and(guard, hasNoPerson(guild.id, claimant.userId));
     return {
       writes: [db.prepare(LINK_PERSON_SQL + g.sql).bind(claimant.discordId || null, claimant.userId, now, plan.person.id, guild.id, plan.homeTeamId, ...g.params)],
-      stale: [markPersonRaidsStale(db, guild.id, plan.person.id)], personId: plan.person.id, characterId: plan.characterId,
+      stale: [markPersonRaidsStale(db, guild.id, plan.person.id, null, freeze)], personId: plan.person.id, characterId: plan.characterId,
     };
   }
   throw new Error(`applyClaimPlan: no outcome for ${plan.kind}`);

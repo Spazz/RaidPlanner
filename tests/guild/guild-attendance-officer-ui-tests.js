@@ -367,6 +367,77 @@ const sliceFrom = (out, startMarker, endMarker) => { const i = out.indexOf(start
     S.att = {};
   });
 
+  await check('auto-recalc (user decision 2026-10-26): opening the page runs the banner\'s loop over the raids the Worker marks autoRecalc, only for the team\'s raids.edit, with the page\'s own data as the hint, at most one run a minute, nothing new drawn', async () => {
+    const S = G.app.state;
+    const saveGet = G.api.get, savePost = G.api.post, saveRender = G.app.render, saveRoute = G.app.routeAll;
+    const calls = [];
+    const shown = [];
+    let routed = 0;
+    const raids = [
+      { id: 'r_new', raidOn: '2026-10-20', stale: true, autoRecalc: true },
+      { id: 'r_held', raidOn: '2026-09-01', stale: true, autoRecalc: false },
+      { id: 'r_old_named', raidOn: '2026-08-04', stale: true, autoRecalc: true },
+      { id: 'r_fine', raidOn: '2026-10-13', stale: false },
+    ];
+    const reads = (team) => (url) => {
+      calls.push('GET ' + url);
+      if (/\/raids\?/.test(url)) return Promise.resolve({ raids, hasMore: false });
+      if (/attendance\/review/.test(url)) return Promise.resolve(reviewData());
+      return Promise.resolve(team);
+    };
+    G.api.post = (url) => { calls.push('POST ' + url); return Promise.resolve({}); };
+    G.app.render = () => { if (S.att.recalc && S.att.recalc.running) shown.push(S.att.recalc.done + '/' + S.att.recalc.total); };
+    G.app.routeAll = () => { routed++; return Promise.resolve(); };
+    const posts = () => calls.filter(c => c.startsWith('POST'));
+    const fresh = () => { S.att = { policy: { g1: {} } }; S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1'; G.app.teamFor = () => 't1'; calls.length = 0; shown.length = 0; routed = 0; };
+    try {
+      // The officer opens the page: the held raid and the fine one are left, the other two are recalculated through the existing loop and notice.
+      fresh();
+      G.api.get = reads(teamData({ staleRaids: 3, staleAuto: 2 }));
+      await A.load({}, gd(OFFICER_CAN));
+      await S.att.autoRun;
+      assert.deepEqual(posts(), ['POST /api/guild/g1/raids/r_new/recompute', 'POST /api/guild/g1/raids/r_old_named/recompute']);
+      assert(shown.includes('0/2'), 'the existing "Recalculating n of 2" notice');
+      assert.equal(routed, 1, 'the route is read again, like after the button');
+      assert.equal(S.att.recalc, null);
+      // The same page again, as the load after that run: inside the minute nothing starts.
+      calls.length = 0;
+      await A.load({}, gd(OFFICER_CAN));
+      await S.att.autoRun;
+      assert.deepEqual(posts(), [], 'one run a minute per tab');
+      // A minute later the next open runs again.
+      await A.autoRecalc(gd(OFFICER_CAN), 't1', true, Date.now() + 61000);
+      assert.equal(posts().length, 2);
+      // No hint (the team data shows no raid for it): not even the list is read.
+      fresh();
+      G.api.get = reads(teamData({ staleRaids: 2, staleAuto: 0 }));
+      await A.load({}, gd(OFFICER_CAN));
+      await S.att.autoRun;
+      assert(!calls.some(c => /\/raids\?/.test(c)) && posts().length === 0);
+      // No raids.edit on the team: no run, no list read.
+      fresh();
+      G.api.get = reads(teamData({ staleRaids: 3, staleAuto: 2 }));
+      const reviewerOnly = Object.assign({}, OFFICER_CAN);
+      delete reviewerOnly['raids.edit'];
+      await A.load({}, gd(reviewerOnly));
+      assert.equal(S.att.autoRun, undefined);
+      await A.load({}, gd(Object.assign({}, reviewerOnly, { 'raids.edit': ['t2'] })));
+      assert.equal(S.att.autoRun, undefined, 'raids.edit on another team is not raids.edit here');
+      assert(!calls.some(c => /\/raids\?/.test(c)) && posts().length === 0);
+      // A loop of this tab (the button's) is running: an open does not start a second.
+      fresh();
+      S.att.recalc = { running: true, done: 0, total: 1, failed: 0 };
+      await A.autoRecalc(gd(OFFICER_CAN), 't1', true, Date.now());
+      assert.deepEqual(calls, [], 'no request at all');
+      // Nothing new is drawn: the banner is the existing one.
+      const banner = A.staleBannerHtml(3, true, null);
+      assert(banner.includes('data-action="att-recalc"') && !/auto/i.test(banner));
+    } finally {
+      G.api.get = saveGet; G.api.post = savePost; G.app.render = saveRender; G.app.routeAll = saveRoute;
+      S.att = {};
+    }
+  });
+
   await check('Decide: the button opens the existing dialog from the Attendance page\'s own flags (where=attendance); a saved decision reads the page again', async () => {
     const S = G.app.state;
     S.att = { policy: { g1: { resolved: {}, defaults: {} } }, team: { gid: 'g1', teamId: 't1', data: teamData(), review: reviewData(), denied: false } };

@@ -16,6 +16,7 @@ import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { personFor, viewerFor } from '../redact.js';
 import { SINGLE_LINE_STRIP, nameKey } from '../roster-data.js';
 import { loadTeamRequestFlags } from '../roster-view.js';
+import { weekFreeze } from '../attendance-store.js';
 import { placeStatement, staleStatement } from '../team-place.js';
 import { bad, constraintOf, requireTarget, teamTaken } from './roster.js';
 
@@ -199,7 +200,7 @@ export async function approveTeamRequest(ctx) {
         guildId: guild.id, actorUserId: ctx.session.user.id, action: 'character.place', entityType: 'character', entityId: row.character_id,
         before: { teamId: null, personId: row.player_id }, after: { teamId: row.team_id, personId: row.player_id, via: 'request' },
       }, CHANGED_ONE),
-      staleStatement(db, guild.id, [nameKey(row.character_name)], [row.team_id]),
+      staleStatement(db, guild.id, [nameKey(row.character_name)], [row.team_id], weekFreeze(guild.time_zone, now)),
     ]);
   } catch (error) {
     if (constraintOf(error) === 'team_taken') throw teamTaken();

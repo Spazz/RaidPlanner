@@ -14,7 +14,7 @@
 // is free, the Seniority guard), so a lost race changes nothing at all: 409 conflict with the current record.
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
-import { markRaidsStale } from '../attendance-store.js';
+import { markRaidsStale, weekFreeze } from '../attendance-store.js';
 import { isId } from '../ids.js';
 import { loadGuildContext } from '../permissions.js';
 import { ingameGuard, rankMapApplyStatements } from '../rank-map.js';
@@ -101,7 +101,7 @@ export async function matchToRoster(ctx) {
   });
   const guarded = (sql, params) => db.prepare(sql + ' AND ' + guard.sql).bind(...params, ...guard.params);
 
-  const statements = [markRaidsStale(db, guild.id, [old.name_key, row.name_key], null, current.team_id ? [current.team_id] : [], guard)];
+  const statements = [markRaidsStale(db, guild.id, [old.name_key, row.name_key], null, current.team_id ? [current.team_id] : [], guard, weekFreeze(guild.time_zone, now))];
   if (renamed) {
     statements.push(db.prepare(
       `INSERT INTO character_name_aliases (id, guild_id, character_id, name_key, realm_key, renamed_at)

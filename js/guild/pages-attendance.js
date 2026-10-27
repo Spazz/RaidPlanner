@@ -399,6 +399,7 @@
     const reviewData = G.api.get(apiBase(gid) + '/attendance/review?team=' + encodeURIComponent(teamId)).catch(function () { return null; });
     return Promise.all([teamData, loadPolicy(gid), reviewData]).then(function (res) {
       a.team = { gid: gid, teamId: teamId, data: res[0], denied: false, review: res[2] };
+      autoRecalc(gd, teamId, !!(res[0] && res[0].staleAuto > 0));
       return null;
     }, function (err) {
       // A sign-in or permission problem is the app's to handle; any other failure is this page's error region with Try again.
@@ -426,15 +427,16 @@
   }
 
   // ── recalculate stale raids (a request per raid, looped here) ──
-  // Raid ids of one team whose stored results are older than the rules, newest first, walking the list's cursor.
-  function staleIdsOf(gid, teamId) {
+  // Raid ids of one team whose stored results are older than the rules, newest first, walking the list's cursor. onlyAuto: leave out the raids that wait for the
+  // button (a finished week the rules changed under; the Worker says so with autoRecalc: false), the ones the page recalculates by itself.
+  function staleIdsOf(gid, teamId, onlyAuto) {
     const ids = [];
     function page(before, n) {
       if (n >= RAID_PAGE_GUARD) return Promise.resolve(ids);
       const q = '?team=' + encodeURIComponent(teamId) + (before ? '&before=' + encodeURIComponent(before) : '');
       return G.api.get(apiBase(gid) + '/raids' + q).then(function (res) {
         const list = res && Array.isArray(res.raids) ? res.raids : [];
-        list.forEach(function (x) { if (x.stale) ids.push(x.id); });
+        list.forEach(function (x) { if (x.stale && (!onlyAuto || x.autoRecalc === true)) ids.push(x.id); });
         if (!res || !res.hasMore || !list.length) return ids;
         return page(list[list.length - 1].raidOn, n + 1);
       });
@@ -458,23 +460,53 @@
     }, Promise.resolve()).then(function () { report(false); return { done: done, failed: failed }; });
   }
 
-  // Recalculate every stale raid of the given teams, then reload the route. Used by the banners.
+  // The loop's progress notice, and what happens when it ends: the route is read again. The banner's button and the automatic run share them.
+  function recalcProgress(p) { attState().recalc = p; if (p.running) G.app.render(); }
+  function recalcDone(res) {
+    attState().recalc = null;
+    st().pageAlert = res && res.failed ? 'Could not recalculate ' + plural(res.failed, 'raid', 'raids') + '. Try again.' : '';
+    G.app.routeAll({ force: true });
+  }
+  function recalcFailed(err) {
+    attState().recalc = null;
+    G.app.handleError(err, { pageAlert: true });
+  }
+
+  // Recalculate every stale raid of the given teams, then reload the route. Used by the banners: the deliberate action, frozen raids included.
   function recalcTeams(gid, teamIds) {
     const a = attState();
     if (a.recalc && a.recalc.running) return Promise.resolve();
     a.recalc = { running: true, done: 0, total: 0, failed: 0 };
     G.app.render();
     return Promise.all(teamIds.map(function (t) { return staleIdsOf(gid, t); })).then(function (lists) {
-      const ids = [].concat.apply([], lists);
-      return recalcAll(gid, ids, function (p) { a.recalc = p; if (p.running) G.app.render(); });
-    }).then(function (res) {
-      a.recalc = null;
-      st().pageAlert = res && res.failed ? 'Could not recalculate ' + plural(res.failed, 'raid', 'raids') + '. Try again.' : '';
-      G.app.routeAll({ force: true });
-    }, function (err) {
-      a.recalc = null;
-      G.app.handleError(err, { pageAlert: true });
-    });
+      return recalcAll(gid, [].concat.apply([], lists), recalcProgress);
+    }).then(recalcDone, recalcFailed);
+  }
+
+  // ── automatic recalculation ──
+  // Opening Attendance or Raids as someone who may edit the team's raids recalculates the team's stale raids without a click: the banner's loop, its progress notice and
+  // its reload, nothing new on the page. Left for the button: the raids it holds back (staleIdsOf onlyAuto). Limits: `hint` (the page's own data shows a raid for it) or
+  // no request at all; at most AUTO_RECALC_MAX raids in a run, newest first (each is one write, and the Worker allows 60 writes a minute per person); one run a minute per
+  // tab; never beside another loop of this tab (the button's, an earlier run's or a probe still reading the list).
+  const AUTO_RECALC_MAX = 30;
+  const AUTO_RECALC_GAP_MS = 60000;
+  function autoRecalc(gd, teamId, hint, nowMs) {
+    const a = attState();
+    const idle = Promise.resolve(null);
+    if (!hint || !gd || !teamId) return idle;
+    if (!G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', teamId)) return idle;
+    if (a.autoProbing || (a.recalc && a.recalc.running)) return idle;
+    const now = typeof nowMs === 'number' ? nowMs : Date.now();
+    if (a.autoAt && now - a.autoAt < AUTO_RECALC_GAP_MS) return idle;
+    const gid = gd.guild.id;
+    a.autoProbing = true;
+    a.autoRun = staleIdsOf(gid, teamId, true).then(function (ids) {
+      a.autoProbing = false;
+      if (!ids.length || (a.recalc && a.recalc.running)) return null;
+      a.autoAt = now;
+      return recalcAll(gid, ids.slice(0, AUTO_RECALC_MAX), recalcProgress).then(recalcDone, recalcFailed);
+    }, function () { a.autoProbing = false; return null; });
+    return a.autoRun;
   }
 
   G.handlers.click['att-recalc'] = function () {
@@ -589,6 +621,7 @@
     staleIdsOf: staleIdsOf,
     recalcAll: recalcAll,
     recalcTeams: recalcTeams,
+    autoRecalc: autoRecalc,
     load: load,
     main: main,
     RELIABLE_AT: RELIABLE_AT,

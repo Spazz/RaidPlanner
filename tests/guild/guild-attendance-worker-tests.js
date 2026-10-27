@@ -1393,13 +1393,14 @@ check('E: recompute links sign-ups whose Discord ID had no person at ingest; per
   const patch = await s.call('bob', 'PATCH', `/roster/${s.p.dunmar}`, { expectedVersion: 1, status: 'reserve' });
   assert.equal(patch.status, 200, JSON.stringify(patch.json));
   assert.equal(await fpOf(s, id), '');
-  // A raid with sign-ups only (no log, no presence) is reached too, and a person added to the team marks it.
+  // A raid with sign-ups only (no log, no presence) is reached too, and a person added to the team marks it. (The clock is Saturday 2027-01-16: these raids are in
+  // the running week, which started Tuesday 2027-01-12; a finished week is frozen, tests/guild/guild-recalc-freeze-tests.js.)
   const other = '222222222222222222';
-  s.w.sources.events.set(other, rhEvent(other, SERVER_A, eventSignUps(), { startTime: RH_START - 7 * 86400 }));
+  s.w.sources.events.set(other, rhEvent(other, SERVER_A, eventSignUps(), { startTime: RH_START - 2 * 86400 }));
   const awaiting = (await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: other })).json.raid.id;
-  const manual = (await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-02' })).json.raid.id;
+  const manual = (await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-13' })).json.raid.id;
   assert.equal((await s.call('bob', 'PUT', s.raid(manual, '/manual'), { reason: 'Logger was off', presentPlayerIds: [s.p.aldric] })).status, 200);
-  const bRaid = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-02' })).json.raid.id;
+  const bRaid = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-13' })).json.raid.id;
   assert.equal((await s.call('bob', 'PUT', s.raid(bRaid, '/manual'), { reason: 'Logger was off', presentPlayerIds: [] })).status, 200);
   await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
   for (const raidId of [id, awaiting, manual, bRaid]) assert.match(await fpOf(s, raidId), /^[0-9a-f]{8}$/, raidId);

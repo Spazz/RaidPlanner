@@ -14,7 +14,7 @@ import {
   CREATE_STATUSES, RAID_HELPER_CLASS, RAID_HELPER_SPEC, WCL_CLASS, cleanCharacterName, cleanNickname, isSpecOf, nameKey,
   nicknameTokens, ownValue, realmKey, SINGLE_LINE_STRIP,
 } from '../roster-data.js';
-import { markRaidsStale } from '../attendance-store.js';
+import { markRaidsStale, weekFreeze } from '../attendance-store.js';
 import { guildToday, loadRosterFlags } from '../roster-view.js';
 import {
   fetchRaidHelperEvent, fetchWclReport, isEventId, isWclCode, isWclFlavour, parseRaidHelperSource, parseWclSource,
@@ -339,7 +339,7 @@ export async function writeImport(ctx, guildContext, team, plan) {
   // Raids whose logs name a new character show "Recalculate".
   if (plan.characters.length) {
     const teamIds = [team.id, ...plan.characters.map((character) => character.teamId).filter(Boolean)];
-    statements.push(markRaidsStale(db, guild.id, plan.characters.map((character) => nameKey(character.name)), null, teamIds));
+    statements.push(markRaidsStale(db, guild.id, plan.characters.map((character) => nameKey(character.name)), null, teamIds, null, weekFreeze(guild.time_zone, now)));
   }
   statements.push(auditStatement(ctx, {
     guildId: guild.id, actorUserId: ctx.session.user.id, action: 'roster.import', entityType: 'team', entityId: team.id,

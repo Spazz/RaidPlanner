@@ -3,7 +3,8 @@ import { guestIdentityStatement, guestKeysFor } from './guest-identity.js';
 // The pure modules (attendance-calendar / -policy / -consolidate / -metrics) never see the database.
 import { consolidateRaid, resolveFillIns } from './attendance-consolidate.js';
 import { attendanceAwaySignups, noticeOfRow } from './away.js';
-import { REGION_RESET_DAY, consolidationFingerprint, resolvePolicy } from './attendance-policy.js';
+import { localDate, weekStartsByResetDay } from './attendance-calendar.js';
+import { REGION_RESET_DAY, consolidationFingerprint, regionResetDay, resolvePolicy } from './attendance-policy.js';
 import { resolvedNameKeySql } from './name-alias.js';
 import { allows } from './permissions.js';
 import { characterOfRow } from './person-rank.js';
@@ -107,38 +108,64 @@ const storedNamesOf = (liveKeysSql) => `${liveKeysSql} UNION SELECT nal.name_key
 const loggedUnder = (keysSql) => `SELECT rp.raid_id FROM raid_presence rp
           WHERE rp.guild_id = ?1 AND rp.name_key IN (${storedNamesOf(keysSql)}) AND (rp.name_key IN (${keysSql}) OR ${MARKED_KEY} IN (${keysSql}))`;
 
-// One UPDATE for a db.batch: every raid whose log names one of these characters, and every raid of these teams that holds evidence
+// THE FREEZE (user decision 2026-10-26): a raid whose attendance week is over keeps its result when the roster changes. A roster edit marks a raid stale when its week is
+// still running (this week's and later raids) or when its log names one of the changed characters (the first clause of both statements below, whatever the age). The
+// team-wide clause, "every raid of the team that holds evidence", is the one the freeze limits. The rules are different: a policy edit stales every raid by fingerprint
+// (worker/attendance-view.js), and the "Recalculate" action (POST .../recompute) works on any raid, frozen or not.
+// The week is the guild's reset week (worker/attendance-calendar.js weekStart): its first day depends on the reset day, which lives in the guild's policy row (else the
+// region's day), so the JS side hands over the first day of the current week for each of the seven reset days and the statement picks the guild's own.
+export const NO_FREEZE = Object.freeze({ starts: JSON.stringify(new Array(7).fill('0000-00-00')) }); // every raid is "still running": the unfrozen marking
+
+// { starts } for a guild-local clock: the freeze line of a statement. timeZone: the guild's IANA zone, nowMs: the request's clock (ctx.now()).
+export function weekFreeze(timeZone, nowMs) {
+  return { starts: JSON.stringify(weekStartsByResetDay(localDate(nowMs, timeZone))) };
+}
+
+// SQL: the guild's reset day, from rows only (mirrors makePolicyResolver().resetDay()): its guild policy row's resetDay, else the region's day. `guildSql` is the guild id
+// (a placeholder). A value that is not a whole number from 0 to 6 reads as "from the region" (a policy row is always valid JSON: the table checks it).
+const REGION_DAY_CASE = `CASE g.region ${Object.entries(REGION_RESET_DAY).map(([region, day]) => `WHEN '${region}' THEN ${day}`).join(' ')} ELSE ${regionResetDay('')} END`;
+export const resetDaySql = (guildSql) => `(SELECT COALESCE(
+      (SELECT CASE WHEN json_type(p.policy, '$.resetDay') = 'integer' AND json_extract(p.policy, '$.resetDay') BETWEEN 0 AND 6 THEN json_extract(p.policy, '$.resetDay') END
+         FROM attendance_policies p WHERE p.guild_id = g.id AND p.team_id IS NULL),
+      ${REGION_DAY_CASE})
+    FROM guilds g WHERE g.id = ${guildSql})`;
+
+// SQL: the raid's attendance week is still running. `startsSql` is the placeholder of weekFreeze().starts, `guildSql` the placeholder of the guild id.
+export const weekRunningSql = (startsSql, guildSql) => `raids.raid_on >= json_extract(${startsSql}, '$[' || ${resetDaySql(guildSql)} || ']')`;
+
+// One UPDATE for a db.batch: every raid whose log names one of these characters, and every raid of these teams that holds evidence and whose week is still running
 // (a roster change moves "expected" and the team's rows without any presence), keeps its results but is marked for recalculation.
 // The version bump makes a recompute that read the old roster discard its write. Callers skip it when there is nothing to mark.
 const MARK_STALE_SQL = `UPDATE raids SET policy_fp = '', version = version + 1
       WHERE guild_id = ?1 AND id != ?2
         AND (id IN (${loggedUnder('SELECT value FROM json_each(?3)')})
-             OR (team_id IN (SELECT value FROM json_each(?4)) AND ${HAS_EVIDENCE}))`;
+             OR (team_id IN (SELECT value FROM json_each(?4)) AND ${HAS_EVIDENCE} AND ${weekRunningSql('?5', '?1')}))`;
 // (The person's characters are read through characters_player: given only "guild_id = ? AND player_id = ?" the planner walks the whole guild by characters_guild_id.)
 const MARK_PERSON_STALE_SQL = `UPDATE raids SET policy_fp = '', version = version + 1
       WHERE guild_id = ?1
         AND (id IN (${loggedUnder('SELECT name_key FROM characters INDEXED BY characters_player WHERE guild_id = ?1 AND player_id = ?2')})
-             OR (team_id IN (SELECT team_id FROM characters INDEXED BY characters_player WHERE guild_id = ?1 AND player_id = ?2) AND ${HAS_EVIDENCE}))`;
+             OR (team_id IN (SELECT team_id FROM characters INDEXED BY characters_player WHERE guild_id = ?1 AND player_id = ?2) AND ${HAS_EVIDENCE} AND ${weekRunningSql('?3', '?1')}))`;
 
 // `guard` ({ sql, params }, optional) is another condition of the write: a batch whose statements all carry one marks nothing when it fails. The two statements number
-// their placeholders (?1-?4 and ?1-?2), so the guard's anonymous ones are numbered on after them (D1 does not mix the two forms).
+// their placeholders (?1-?5 and ?1-?3), so the guard's anonymous ones are numbered on after them (D1 does not mix the two forms).
+// `freeze` (weekFreeze(guild.time_zone, ctx.now())) limits the team-wide clause to the raids whose week is still running; left out, nothing is frozen.
 const guardedAfter = (guard, last) => {
   let next = last;
   return { sql: guard.sql.replace(/[?]/g, () => `?${++next}`), params: guard.params };
 };
 
-export function markRaidsStale(db, guildId, nameKeys, exceptRaidId = null, teamIds = [], guard = null) {
-  const values = [guildId, exceptRaidId || '', JSON.stringify([...new Set(nameKeys)]), JSON.stringify([...new Set(teamIds)])];
+export function markRaidsStale(db, guildId, nameKeys, exceptRaidId = null, teamIds = [], guard = null, freeze = NO_FREEZE) {
+  const values = [guildId, exceptRaidId || '', JSON.stringify([...new Set(nameKeys)]), JSON.stringify([...new Set(teamIds)]), freeze.starts];
   if (!guard) return db.prepare(MARK_STALE_SQL).bind(...values);
-  const numbered = guardedAfter(guard, 4);
+  const numbered = guardedAfter(guard, 5);
   return db.prepare(MARK_STALE_SQL + ' AND ' + numbered.sql).bind(...values, ...numbered.params);
 }
 
-// A person's status, join date or Discord link changed: every raid of every team they have a character on, plus the raids naming them.
-export function markPersonRaidsStale(db, guildId, playerId, guard = null) {
-  if (!guard) return db.prepare(MARK_PERSON_STALE_SQL).bind(guildId, playerId);
-  const numbered = guardedAfter(guard, 2);
-  return db.prepare(MARK_PERSON_STALE_SQL + ' AND ' + numbered.sql).bind(guildId, playerId, ...numbered.params);
+// A person's status, join date or Discord link changed: every raid of every team they have a character on whose week is still running (the freeze), plus the raids naming them.
+export function markPersonRaidsStale(db, guildId, playerId, guard = null, freeze = NO_FREEZE) {
+  if (!guard) return db.prepare(MARK_PERSON_STALE_SQL).bind(guildId, playerId, freeze.starts);
+  const numbered = guardedAfter(guard, 3);
+  return db.prepare(MARK_PERSON_STALE_SQL + ' AND ' + numbered.sql).bind(guildId, playerId, freeze.starts, ...numbered.params);
 }
 
 // Raid-Helper sign-ups nobody is linked to take this person: every row of the guild with the Discord ID, or (a sign-up without one) just that one row.

@@ -238,6 +238,44 @@ const cardOf = (out, id) => out.split('<li class="gs-up">').filter(c => c.includ
     assert.deepEqual(calls, [{ slots: [{ weekday: 5, kind: 'late', characterId: 'c_mir' }, { weekday: 6, kind: 'signed' }] }]);
   });
 
+  await check('auto-recalc: opening the list hands the Worker\'s autoRecalc flags to the loop (an officer only); a list with none starts nothing and draws nothing new', async () => {
+    const S2 = G.app.state;
+    const A2 = G.pages.attendance;
+    const saveGet = G.api.get, savePost = G.api.post, saveRender = G.app.render, saveRoute = G.app.routeAll, saveTeam = G.app.teamFor;
+    const calls = [];
+    let routed = 0;
+    const stale = (id, auto) => PAST(id, { stale: true, state: 'stale', autoRecalc: auto });
+    let answer = LIST({ can: { edit: true, signup: true }, raids: [stale('r_a', true), stale('r_held', false), PAST('r_fine')] });
+    G.api.get = (url) => { calls.push('GET ' + url); return Promise.resolve(answer); };
+    G.api.post = (url) => { calls.push('POST ' + url); return Promise.resolve({}); };
+    G.app.render = () => {};
+    G.app.routeAll = () => { routed++; return Promise.resolve(); };
+    G.app.teamFor = () => 't1';
+    const open = async (can, gid = 'g1') => {
+      S2.att = {};
+      S2.currentGid = gid;
+      S2.guilds = { [gid]: gd(can) };
+      calls.length = 0;
+      await G.pages.raids.load({ name: 'section', gid, section: 'raids' }, gd(can));
+      await S2.att.autoRun;
+    };
+    try {
+      await open(OFFICER_CAN);
+      assert.deepEqual(calls.filter(c => c.startsWith('POST')), ['POST /api/guild/g1/raids/r_a/recompute'], 'the flagged raid only; the held one waits for the button');
+      assert.equal(routed, 1);
+      await open(MEMBER_CAN);
+      assert.deepEqual(calls.filter(c => c.startsWith('POST')), [], 'a member sees the flags and starts nothing');
+      answer = LIST({ can: { edit: true, signup: true }, raids: [stale('r_held', false), PAST('r_fine')] });
+      await open(OFFICER_CAN);
+      assert.deepEqual(calls.filter(c => c.startsWith('POST')), []);
+      assert(!calls.some(c => /before=/.test(c)), 'and no list walk');
+      assert(A2.staleBannerHtml(1, true, null).includes('data-action="att-recalc"'), 'the banner and its button are the existing ones');
+    } finally {
+      G.api.get = saveGet; G.api.post = savePost; G.app.render = saveRender; G.app.routeAll = saveRoute; G.app.teamFor = saveTeam;
+      S2.att = {};
+    }
+  });
+
   await check('copy: the rail and cards are ASCII, never say "raid night"; the 600 px rules keep 44 px targets', () => {
     const o = withRail(OFFICER_CAN, { can: { edit: true, signup: true }, schedule: { slots: 2, weeks: 2, auto: false } }, () => { S.att.awayTeam = { gid: 'g1', teamId: 't1', status: 'ok', data: AWAY, message: '', forList: null }; return mainOf(); });
     assert(!/[^\x00-\x7f]/.test(o.replace(/&[a-z#0-9]+;/g, '')) && !/raid night/i.test(o));

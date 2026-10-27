@@ -403,7 +403,7 @@ check('an injected failure in ANY statement of the batch leaves the roster, the 
   }
   assert.equal((await s.sync()).status, 'applied');
   s.sql("UPDATE raids SET policy_fp = 'fp'");
-  s.sql("INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, log_mode, manual_reason, policy_fp, version, created_at, updated_at) VALUES ('ra_manual', ?, ?, '2027-01-02', ?, 'manual', 'no log', 'fp', 5, 1, 1)", s.gid, s.tids[0], T0);
+  s.sql("INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, log_mode, manual_reason, policy_fp, version, created_at, updated_at) VALUES ('ra_manual', ?, ?, '2027-01-13', ?, 'manual', 'no log', 'fp', 5, 1, 1)", s.gid, s.tids[0], T0);
   s.advance(6 * HOUR);
   s.net.roster = rosterBody(12, { edit: (b) => { b.members[1].character.name = 'Rrenamed'; b.members.splice(2, 1); } });
   const spy = spyDb(s.w.db, { refuse: true });
@@ -695,8 +695,10 @@ check('stale marking: a sync-applied rename / Former / return marks the same rai
     // Raids: A1 (team A, manual log = evidence), A2 (team A, no evidence), B1 (team B, its log names the old name), B2 (team B, nothing).
     const raid = (id, team, on, mode) => s.sql('INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, log_mode, manual_reason, policy_fp, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 5, 1, 1)',
       id, s.gid, s.tids[team], on, T0, mode, mode === 'manual' ? 'no log' : null, 'fp');
-    raid('ra_A1', 0, '2027-01-01', 'manual');
-    raid('ra_A2', 0, '2027-01-02', 'log');
+    // (The clock is Friday 2027-01-15; the running week started Tuesday 01-12. ra_A0 is team A's evidence in a finished week: frozen. ra_B1's log names the character, so it is marked at any age.)
+    raid('ra_A0', 0, '2027-01-05', 'manual');
+    raid('ra_A1', 0, '2027-01-13', 'manual');
+    raid('ra_A2', 0, '2027-01-14', 'log');
     raid('ra_B1', 1, '2027-01-01', 'log');
     raid('ra_B2', 1, '2027-01-02', 'log');
     s.sql("INSERT INTO raid_reports (raid_id, guild_id, code, flavour, started_at, synced_at) VALUES ('ra_B1', ?, 'ABCDEFGHIJKLMNOP', 'fresh', 1, 1)", s.gid);
@@ -719,7 +721,7 @@ check('stale marking: a sync-applied rename / Former / return marks the same rai
   // The manual path on an identical world: roster.js's rename marks the old and new name keys and the character's team.
   const { s: t } = await seed();
   const { attendance } = { attendance: await load('worker/attendance-store.js') };
-  await t.w.db.batch([attendance.markRaidsStale(t.w.db, t.gid, [nameOf(1).toLowerCase(), 'rrenamed'], null, [t.tids[0]])]);
+  await t.w.db.batch([attendance.markRaidsStale(t.w.db, t.gid, [nameOf(1).toLowerCase(), 'rrenamed'], null, [t.tids[0]], null, attendance.weekFreeze(TZ, t.w.clock.now))]);
   assert.deepEqual(bySync, await marked(t), 'the same raids');
   assert.deepEqual(bySync, ['ra_A1', 'ra_B1']);
   assert.deepEqual(versionsBySync, await versions(t), 'and the same version bumps');

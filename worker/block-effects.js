@@ -9,7 +9,7 @@
 // "The person(s)": an account's persons are the roster people linked to it (players.user_id, or the Discord id it carries: worker/membership.js ownPlayerSql); an
 // account-less block names the one person. Every statement carries `guard` ({ sql, params }): the block row this very call wrote is there, so a lost race writes
 // nothing. A pending-review block (a tombstone match) does NOT run these: the match only enforces, an officer's Keep decides (lane B7b).
-import { markRaidsStale } from './attendance-store.js';
+import { markRaidsStale, weekFreeze } from './attendance-store.js';
 import { ownPlayerSql } from './membership.js';
 import { nameKey } from './roster-data.js';
 
@@ -19,8 +19,9 @@ const personsOfAccount = (guildId, userId) => ({
 });
 const onePerson = (guildId, playerId) => ({ sql: 'SELECT players.id FROM players WHERE players.id = ? AND players.guild_id = ?', params: [playerId, guildId] });
 
-// target: { userId } for an account, { playerId } for an account-less person. -> Promise<statement[]> (run them AFTER the block insert, in its batch).
-export async function blockEffectStatements(db, { guildId, target, nowMs, guard }) {
+// target: { userId } for an account, { playerId } for an account-less person. timeZone: the guild's zone (the freeze of the stale marking, worker/attendance-store.js).
+// -> Promise<statement[]> (run them AFTER the block insert, in its batch).
+export async function blockEffectStatements(db, { guildId, target, nowMs, guard, timeZone }) {
   const persons = target.userId ? personsOfAccount(guildId, target.userId) : onePerson(guildId, target.playerId);
   // The characters that sit on a team now (the release below empties it): which teams' raids and attendance change.
   const placed = await db.prepare(
@@ -51,7 +52,7 @@ export async function blockEffectStatements(db, { guildId, target, nowMs, guard 
     // 4. The standing sign-ups.
     db.prepare(`DELETE FROM standing_signups WHERE guild_id = ? AND ${inPersons} AND ${guard.sql}`).bind(guildId, ...persons.params, ...guard.params),
     // 5. Raids that depend on the rosters of the teams the person left.
-    markRaidsStale(db, guildId, nameKeys, null, teamIds, guard),
+    markRaidsStale(db, guildId, nameKeys, null, teamIds, guard, weekFreeze(timeZone, nowMs)),
   ];
   if (target.userId) {
     statements.push(db.prepare("DELETE FROM team_requests WHERE guild_id = ? AND requested_by = ? AND status = 'pending' AND " + guard.sql).bind(guildId, target.userId, ...guard.params));

@@ -44,7 +44,7 @@
 //   version +1, updated_at ............................ the survivor's, set
 // The audit log is never rewritten: audit rows that name the loser keep its id and the Activity view resolves it through person_joins (worker/routes/audit.js).
 import { auditStatement } from './audit.js';
-import { markPersonRaidsStale } from './attendance-store.js';
+import { markPersonRaidsStale, weekFreeze } from './attendance-store.js';
 import { HttpError } from './http.js';
 import { defaultRandomBytes, newId } from './ids.js';
 import { LIMITS } from './limits.js';
@@ -98,6 +98,7 @@ const BY_PERSON = 'INDEXED BY characters_player';
 const PERSONS_SQL = `SELECT p.id, p.version, p.notes_version, p.created_at, p.user_id, p.discord_user_id, p.discord_nickname, p.joined_on, p.notes,
        (SELECT u.id FROM users u WHERE u.discord_id = p.discord_user_id) AS discord_account_id,
        (SELECT u.discord_id FROM users u WHERE u.id = p.user_id) AS user_discord_id,
+       (SELECT g.time_zone FROM guilds g WHERE g.id = p.guild_id) AS time_zone,
        (SELECT json_group_array(json_object('id', c.id, 'player_id', c.player_id, 'team_id', c.team_id, 'is_main', c.is_main, 'name_key', c.name_key))
           FROM characters c ${BY_PERSON} WHERE c.guild_id = p.guild_id AND c.player_id = p.id) AS characters
   FROM players p WHERE p.guild_id = ? AND p.id IN (?, ?)`;
@@ -400,7 +401,7 @@ export async function joinPersonsStatements(db, {
   }
 
   // 9. The survivor now holds every character: its raids (every raid of its teams with evidence, and the raids naming its characters) are stale.
-  statements.push(markPersonRaidsStale(db, guildId, S, guard));
+  statements.push(markPersonRaidsStale(db, guildId, S, guard, weekFreeze(survivor.time_zone, now)));
 
   // 10. The loser's unique fields go, so the survivor can take the Discord pair.
   if (transferDiscord) {

@@ -7,7 +7,7 @@ import { localDate, localTimeToMs } from '../attendance-calendar.js';
 import {
   PLAN_NAME_KEY, bumpDayStatement, loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid,
 } from '../attendance-store.js';
-import { displayCharacter, loadRaidDetail, raidState, isStale } from '../attendance-view.js';
+import { recalcsAutomatically, displayCharacter, loadRaidDetail, raidState, isStale } from '../attendance-view.js';
 import { hasDiscord, requireDiscord } from '../discord-guard.js';
 import { isId, newId } from '../ids.js';
 import { loadSurnameIndex, resolveName } from '../name-resolve.js';
@@ -378,6 +378,8 @@ export async function listRaids(ctx) {
         openFlags: row.open_flags,
         state,
         stale: isStale(state),
+        // A stale raid the page recalculates by itself; false = it waits for the Recalculate button (a finished week the rules changed under).
+        ...(isStale(state) ? { autoRecalc: recalcsAutomatically(row, state, today, resolver.resetDay()) } : {}),
       };
     }),
   });

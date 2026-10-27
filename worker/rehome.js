@@ -28,7 +28,7 @@
 //      already had follow the placeholder (older names of the old person's evidence);
 //   7. both persons' versions move on.
 // The old person is NEVER deleted (its attendance, decisions, away notices, intent picks, duties, loot stay on it). The new person's cap counts visible characters.
-import { markRaidsStale } from './attendance-store.js';
+import { markRaidsStale, weekFreeze } from './attendance-store.js';
 import { auditStatement } from './audit.js';
 import { isPlaceholderKey, placeholderCharacterSql, placeholderKey, visibleCharacterSql } from './character-visibility.js';
 import { HttpError } from './http.js';
@@ -129,7 +129,7 @@ export async function rehomeStatements(db, {
     "UPDATE team_requests SET status = 'withdrawn', decided_by = ?, decided_at = ? WHERE guild_id = ? AND character_id = ? AND status = 'pending'",
     [actorUserId ?? null, now, guildId, characterId],
   ));
-  statements.push(markRaidsStale(db, guildId, [row.name_key], null, row.team_id ? [row.team_id] : [], marker));
+  statements.push(markRaidsStale(db, guildId, [row.name_key], null, row.team_id ? [row.team_id] : [], marker, weekFreeze(row.time_zone, now)));
 
   // 3. The move. A retired placeholder that is the new person's Main steps down first (the unique Main index refuses two, and the person needs a Main the lists can
   // see): the triggers of migration 0036 act on INSERT only, a move is an UPDATE. Then the moved character is the Main exactly when the person has no VISIBLE Main.
@@ -210,6 +210,6 @@ export function retireNameStatements(db, { guildId, characterId, expected, actor
     auditStatement(ctx, {
       guildId, actorUserId, action: 'character.name_retire', entityType: 'character', entityId: characterId, before: { teamId }, after: { retired: true },
     }, moved),
-    markRaidsStale(db, guildId, [expected.nameKey], null, teamId ? [teamId] : [], moved),
+    markRaidsStale(db, guildId, [expected.nameKey], null, teamId ? [teamId] : [], moved, weekFreeze(timeZone, now)),
   ];
 }
