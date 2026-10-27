@@ -316,7 +316,8 @@ check('PATCH status: every character of the person takes the rank (Inactive = So
   await s.playersInert('break to kicked');
   await patch({ status: 'trial', trialStart: '2027-01-02', trialEnd: '2027-01-30' });
   got = await ranks();
-  assert.deepEqual([got.Statusmain, got.Statusplaced, got.Statusless].map((r) => [r.core_rank, r.trial_start, r.trial_end]), [['trial', '2027-01-02', '2027-01-30'], ['trial', null, null], ['trial', null, null]]);
+  assert.deepEqual([got.Statusmain, got.Statusplaced, got.Statusless].map((r) => [r.core_rank, r.trial_start, r.trial_end]), [['trial', '2027-01-02', '2027-01-30'], ['trial', '2027-01-15', '2027-01-29'], ['trial', null, null]],
+    'the typed dates sit on the Main; the placed alt is a Trial on its team, so the officer edit starts its clock today; the teamless alt has no clock');
   await patch({ status: 'raider' });
   assert.deepEqual(Object.values(await ranks()).map((r) => [r.core_rank, r.trial_start, r.trial_end]), [['raider', null, null], ['raider', null, null], ['raider', null, null]]);
   await s.playersInert('raider');

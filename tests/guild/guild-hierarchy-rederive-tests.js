@@ -113,8 +113,8 @@ check('rederive.sql: all five counts reach 0, only the five columns change, and 
   const after = allColumns(db);
   assert.equal(after.length, before.length);
   for (let i = 0; i < before.length; i++) {
-    const { core_rank: _a, left_on: _b, left_reason: _c, trial_start: _d, trial_end: _e, ...rest } = before[i];
-    const { core_rank: _f, left_on: _g, left_reason: _h, trial_start: _i, trial_end: _j, ...restAfter } = after[i];
+    const { core_rank: _a, left_on: _b, left_reason: _c, trial_start: _d, trial_end: _e, trial_since: _k, ...rest } = before[i];
+    const { core_rank: _f, left_on: _g, left_reason: _h, trial_start: _i, trial_end: _j, trial_since: _l, ...restAfter } = after[i];
     assert.deepEqual(restAfter, rest, `only the five columns change (${before[i].id})`);
   }
   const once = fiveFields(db);

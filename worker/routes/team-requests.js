@@ -18,6 +18,7 @@ import { SINGLE_LINE_STRIP, nameKey } from '../roster-data.js';
 import { loadTeamRequestFlags } from '../roster-view.js';
 import { weekFreeze } from '../attendance-store.js';
 import { placeStatement, staleStatement } from '../team-place.js';
+import { trialClockStatement, zoneOffsetMinutes } from '../trial-clock.js';
 import { bad, constraintOf, requireTarget, teamTaken } from './roster.js';
 
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
@@ -201,6 +202,8 @@ export async function approveTeamRequest(ctx) {
         before: { teamId: null, personId: row.player_id }, after: { teamId: row.team_id, personId: row.player_id, via: 'request' },
       }, CHANGED_ONE),
       staleStatement(db, guild.id, [nameKey(row.character_name)], [row.team_id], weekFreeze(guild.time_zone, now)),
+      // A Trial placed by the approval starts its clock at the placement (worker/trial-clock.js).
+      trialClockStatement(db, guild.id, { offsetMinutes: zoneOffsetMinutes(guild.time_zone, now), characterId: row.character_id }),
     ]);
   } catch (error) {
     if (constraintOf(error) === 'team_taken') throw teamTaken();

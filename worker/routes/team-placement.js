@@ -17,6 +17,7 @@ import { visibleCharacterSql } from '../character-visibility.js';
 import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
 import { assertSenior, seniorityOk } from '../seniority.js';
 import { weekFreeze } from '../attendance-store.js';
+import { trialClockStatement, zoneOffsetMinutes } from '../trial-clock.js';
 import { dropUpcomingSignupsStatements, personLeftTeamSql, placeStatement, releaseStatement, staleStatement, upcomingSignupsOf } from '../team-place.js';
 import { audit, bad, characterMoved, constraintOf, findCharacter, requireEdit, requireTarget, teamTaken } from './roster.js';
 
@@ -88,6 +89,8 @@ export async function putCharacterTeam(ctx) {
   if (moving && removeSignups) {
     statements.push(...dropUpcomingSignupsStatements(db, { guildId: guild.id, personId: data.player.id, teamId: current.team_id, nowMs: now, left: personLeftTeamSql(guild.id, data.player.id, current.team_id) }));
   }
+  // A Trial placed on (or moved to) a team starts its clock at the placement (worker/trial-clock.js). Last, so the result indexes above stay.
+  statements.push(trialClockStatement(db, guild.id, { offsetMinutes: zoneOffsetMinutes(guild.time_zone, now), characterId: current.id }));
   let results;
   try {
     results = await db.batch(statements);

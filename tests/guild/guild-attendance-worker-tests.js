@@ -773,7 +773,7 @@ check('unmatched: add as a new person (Main on the raid\'s team, status and join
   const trial = await post('bob', { key: 'nomad|nightslayer', action: 'person', status: 'trial', joinedOn: '2026-12-20' });
   assert.equal(trial.status, 200, JSON.stringify(trial.json));
   const nomad = (await s.w.rows("SELECT c.core_rank AS status, p.joined_on, c.trial_start, c.trial_end FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name = 'Nomad'"))[0];
-  assert.deepEqual([nomad.status, nomad.joined_on, nomad.trial_start, nomad.trial_end], ['trial', '2026-12-20', '2026-12-20', null]);
+  assert.deepEqual([nomad.status, nomad.joined_on, nomad.trial_start, nomad.trial_end], ['trial', '2026-12-20', '2026-12-20', '2027-01-03'], 'the typed start stays and the recompute clock fills the end');
   assert.equal(await s.w.count('audit_log', "action = 'person.create' AND entity_type = 'person' AND after LIKE '%attendance%'"), 2);
   // The name was taken after the log was read: 409 name_taken, nothing written.
   await addPerson(s, 'bob', s.B, 'Drifter');

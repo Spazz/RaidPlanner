@@ -60,7 +60,7 @@ export const IMPORTED_RANK_COLUMNS_SQL = `COALESCE(json_extract(j.value, '$.core
 
 // One statement for a db.batch: every character of the person takes the rank, left date and reason of `columns` (characterRankColumns), the trial dates
 // only on the main. guard: { sql, params } makes it conditional (the person writer repeats its own optimistic checks here, so a lost race changes nothing).
-// updated_at = now (required) is the Trial clock's floor (worker/trial-clock.js): the day a rank was last written. guard: null for none.
+// updated_at = now (required) is the instant trigger characters_trial_since_rank (migration 0040) stamps as trial_since when the rank becomes Trial. guard: null for none.
 export function setCharacterRanksStatement(db, guildId, personId, columns, guard, now) {
   return db.prepare(
     `UPDATE characters SET core_rank = ?, left_on = ?, left_reason = ?,
