@@ -46,6 +46,12 @@
       text: 'The officers of ' + data.guild.name + ' can see you for ' + whenText(data.raid, data.guild.timeZone) + '. You do not need to do anything else.' });
   }
 
+  // The places left, as a sentence that follows the intro; nothing when the number is missing (an open raid with no guest limit has none to show).
+  function spotsText(left) {
+    if (typeof left !== 'number') return '';
+    return left === 1 ? ' One spot is left on the link.' : ' ' + left + ' spots are left on the link.';
+  }
+
   // opts: { state } (st().join) -> the page.
   function joinHtml(opts) {
     const x = opts.state;
@@ -56,7 +62,7 @@
     return G.ui.formPageHtml({
       pageClass: 'gs-apply',
       head: { title: 'Sign up for ' + data.guild.name, context: raidLine(data) },
-      bodyHtml: x.done ? doneHtml(data) : '<p class="gs-lead gs-lead-sm" id="jn-intro">An officer shared this link so you can join this raid as a guest. ' + esc(data.spotsLeft === 1 ? 'One spot is left on the link.' : data.spotsLeft + ' spots are left on the link.') + '</p>' + formHtml(x),
+      bodyHtml: x.done ? doneHtml(data) : '<p class="gs-lead gs-lead-sm" id="jn-intro">An officer shared this link so you can join this raid as a guest.' + esc(spotsText(data.spotsLeft)) + '</p>' + formHtml(x),
     });
   }
 

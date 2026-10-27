@@ -692,7 +692,7 @@ check('guest link: it stops at the raid start, when turned off, after its uses, 
   void made; void visitor;
 });
 
-check('guest link: a browser signs up three times an hour at most; a raid takes 15 guests and an officer\'s links cap at five that work', async () => {
+check('guest link: a browser signs up three times an hour at most; a raid takes as many guests as its guest limit (15 here) and an officer\'s links cap at five that work', async () => {
   const { s, rid, token, send, body, visitor } = await joinScenario();
   const links = await s.ok('gm', 'POST', `/raids/${rid}/join-links`, { maxUses: 50 }, 201);
   const wide = links.created.token;
@@ -705,7 +705,8 @@ check('guest link: a browser signs up three times an hour at most; a raid takes 
   assert(limited.json.retryAfter > 0);
   s.w.advance(61 * 60 * 1000);
   assert.equal((await send(body({ token: wide, name: 'Guestfff' }))).status, 201, 'an hour later');
-  // 15 guests per raid, whatever the links say: fill the raid with rows, then try once more.
+  // The raid's guest limit (15 here), whatever the links say: fill the raid with rows, then try once more.
+  await s.ok('gm', 'PATCH', `/raids/${rid}`, { guestLimit: 15 }, 200);
   for (let i = 0; i < 11; i++) {
     await s.exec("INSERT INTO raid_signups (raid_id, source, signup_id, nickname, kind, class_name, spec_name, position, guild_id, guest) VALUES (?, 'raidsmith', ?, ?, 'signed', 'Mage', 'Fire', ?, ?, 1)", rid, 100 + i, `Fill${String.fromCharCode(97 + i)}${String.fromCharCode(97 + i)}`, 100 + i, s.gid);
   }
