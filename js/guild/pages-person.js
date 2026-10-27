@@ -362,7 +362,8 @@
 
   function accountLinkDialogHtml(record, accounts) {
     const name = (mainOf(record) || {}).name;
-    const body = '<p class="gs-fine" id="dlg-help">Pick someone who sent a character claim, or type their whole BattleTag (like Name#1234) or the name their account shows. Raidsmith never lists accounts.</p>' +
+    const body = '<p class="gs-fine" id="dlg-help">This records the account\'s Discord ID on this person, so their Discord sign-ups, logs and loot are matched to them. It does not give the account access to the guild or make this record theirs: they claim it themselves. ' +
+      'Pick someone who sent a character claim, or type their whole BattleTag (like Name#1234) or the name their account shows. Raidsmith never lists accounts.</p>' +
       '<div class="gs-field"><label class="gs-label" for="dlg-acct-q">BattleTag or name</label><input class="gs-input" type="text" id="dlg-acct-q" name="q" data-field="q" maxlength="64" autocomplete="off" aria-describedby="dlg-help">' +
       '<p class="gs-field-error" id="dlg-err-q" role="alert" hidden></p></div>' +
       '<div id="dlg-acct-results" aria-live="polite">' + accountResultsHtml(accounts, '') + '</div>';

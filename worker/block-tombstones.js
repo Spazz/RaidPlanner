@@ -223,14 +223,18 @@ export function tombstoneDeleteStatement(db, { guildId, blockRefs, guard }) {
   ).bind(guildId, JSON.stringify(blockRefs), ...guard.params);
 }
 
-// A BLOCKED account links a NEW Battle.net account (routes/bnet.js, a first link): that Battle.net account id is a key of the account like the ones it had when the block was made, so
-// it gets a tombstone under the account's own block ref in every guild that blocks the account (pending-review blocks wait for an officer's Keep, which writes the account's keys
-// itself). Without it the block would end when the account is deleted and the person comes back through the new Battle.net account. Unblock deletes it with the others (same ref).
-// ctx: { db, env, now, log }. At most NEW_KEY_GUILD_LIMIT guilds are written here (a statement each, inside the Battle.net callback's budget); the rest, and every guild when there is
-// no usable TOMBSTONE_KEY, are flagged tombstone_missing = 1, which the daily repair answers from the account's CURRENT keys (the new Battle.net id is one of them).
-// Best effort, never throws. -> the D1 statements it ran (the callback counts them against its budget): 1 for an account that blocks nowhere.
+// A BLOCKED account links a NEW Battle.net account (routes/bnet.js, a first link) or a NEW Discord account (routes/auth.js finishLink, a first link): that id is a key of the account like
+// the ones it had when the block was made, so it gets a tombstone under the account's own block ref in every guild that blocks the account (pending-review blocks wait for an
+// officer's Keep, which writes the account's keys itself). Without it the block would end when the account is deleted and the person comes back through the new Battle.net or
+// Discord account. Unblock deletes it with the others (same ref).
+// ctx: { db, env, now, log }. At most NEW_KEY_GUILD_LIMIT guilds are written here (a statement each, inside the callback's budget); the rest, and every guild when there is
+// no usable TOMBSTONE_KEY, are flagged tombstone_missing = 1, which the daily repair answers from the account's CURRENT keys (the new id is one of them).
+// Best effort, never throws. -> the D1 statements it ran (the Battle.net callback counts them against its budget): 1 for an account that blocks nowhere.
 export const NEW_KEY_GUILD_LIMIT = 10;
-export async function tombstoneNewBnetAccount(ctx, { userId, bnetAccountId }) {
+export const tombstoneNewBnetAccount = (ctx, { userId, bnetAccountId }) => tombstoneNewKey(ctx, userId, { bnetAccountId }, 'Battle.net account');
+export const tombstoneNewDiscordAccount = (ctx, { userId, discordId }) => tombstoneNewKey(ctx, userId, { discordId }, 'Discord account');
+
+async function tombstoneNewKey(ctx, userId, keys, what) {
   const { db, env } = ctx;
   let used = 0;
   try {
@@ -242,7 +246,7 @@ export async function tombstoneNewBnetAccount(ctx, { userId, bnetAccountId }) {
     const statements = [];
     let missing = false;
     for (const guildId of guildIds.slice(0, NEW_KEY_GUILD_LIMIT)) {
-      const plan = await planTombstones(env, guildId, { bnetAccountId });
+      const plan = await planTombstones(env, guildId, keys);
       if (plan.missing) { missing = true; break; }
       statements.push(...tombstoneInsertStatements(db, {
         guildId, blockRef: accountBlockRef(userId), plan, now: nowMs,
@@ -261,7 +265,7 @@ export async function tombstoneNewBnetAccount(ctx, { userId, bnetAccountId }) {
       used += statements.length;
     }
   } catch (error) {
-    try { ctx.log(`tombstone for a new Battle.net account failed: ${error && error.message}`); } catch { /* logging must not throw */ }
+    try { ctx.log(`tombstone for a new ${what} failed: ${error && error.message}`); } catch { /* logging must not throw */ }
   }
   return used;
 }

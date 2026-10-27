@@ -172,6 +172,12 @@ export async function runGmClaim(ctx, { session, parsed, accessToken, info, now,
     ]);
   } catch (error) {
     ctx.log(`gm claim: Blizzard step failed: ${error instanceof BnetError ? error.kind : ''} ${error && error.message}`);
+    // A Blizzard OUTAGE (a 5xx, a timeout, a dropped connection, an answer that is not JSON) says nothing about the claimant, exactly like a malformed roster below: the attempt limits
+    // this attempt spent are given back, so retrying while Blizzard is down never locks out a real Guild Master. A definite answer (401/403 'denied', 404 'not_found') is not an outage and
+    // stays counted. The platform-wide callback tripwire (bnetcb:global) is nobody's and stays counted.
+    if (!(error instanceof BnetError) || error.kind === 'unavailable') {
+      await refundRateLimit(db, [freshSessionKey(session.tokenHash), freshAccountKey(userId), bnetCallbackKey(info.id)]);
+    }
     return { ok: false, reason: 'provider' };
   }
   const verdict = claimVerdict({ roster, characters, pin });

@@ -1,6 +1,6 @@
 import { HttpError, isUniqueViolation, jsonResponse, redirectResponse, safeEqual, parseCookies } from '../http.js';
 import { auditStatement } from '../audit.js';
-import { matchAccountAtSignIn } from '../block-tombstones.js';
+import { matchAccountAtSignIn, tombstoneNewDiscordAccount } from '../block-tombstones.js';
 import { isConfigured as bnetConfigured } from '../battlenet.js';
 import {
   authorizeUrl, canonicalOrigin, exchangeCode, fetchDiscordGuilds, fetchDiscordUser,
@@ -257,6 +257,8 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
   ]);
   if (act && !act.consumed(results)) return fail('fresh_required');
   if (results[act ? act.offset + 2 : 0].meta.changes !== 1) return fail(await linkNotWrittenReason(db, { userId, discordId: discordUser.id, firstLink }));
+  // A BLOCKED account that links a NEW Discord account (a first link): the new Discord id is tombstoned for each of its blocks, the way a new Battle.net account is (worker/block-tombstones.js).
+  if (firstLink) await tombstoneNewDiscordAccount(ctx, { userId, discordId: discordUser.id });
   // The Discord id just joined this account: match it (and the account's other keys) against the tombstones of the guilds it reaches (sec A9-11).
   await matchAccountAtSignIn(ctx, userId);
   await syncSignIn(ctx, userId);

@@ -5,6 +5,8 @@
 //   member of a guild = NOT blocked there AND ( the guild's rank source lets the account in )      guilds.rank_source, read INSIDE the SQL
 //
 //   rank_source NULL      legacy (every guild before the flip, and any value this file does not know): in the guild's Discord server  OR  linked to a roster person
+//                         by a CONFIRMED link. A link the 0039 backfill wrote from a Discord ID match alone (players.user_id_backfilled = 1) is the account's person ("my
+//                         person") and no membership: leaving the server still ends a Discord member's access. A proof or a change of owner clears the flag (0039).
 //   rank_source 'manual'  no Battle.net data (U R3-Q7), today's rule minus Discord: the Owner  OR  linked to a roster person. The Owner is always a member, the same exemption
 //                         an in-game guild has: a creator with no person of their own, or an Owner who marked all their characters as left, is never locked out of the
 //                         guild. A manual guild never suspends its Owner (worker/owner.js), so "the Owner" here is the seat holder.
@@ -14,9 +16,9 @@
 //                         ones, is not a member, and the roles stored for them grant nothing while that holds (loadGuildContext).
 //
 //   in the Discord server   a user_servers row for the guild's server (written at each Discord sign-in or link; Discord accounts only)
-//   linked to a person      players.user_id = the account, set by an officer ("Link account" on the person page), by an approved Battle.net character claim, or
-//                           (in-game guilds) by the sign-in match. A Discord ID match alone (players.discord_user_id) does NOT make someone a member: leaving the
-//                           Discord server still ends a Discord member's access, exactly as before accounts existed.
+//   linked to a person      players.user_id = the account, set by Battle.net proof (also the sign-in match of in-game guilds), the account holder's own accepted
+//                           application or an approved "This is me" claim; older links an officer made stay. A Discord ID match alone (players.discord_user_id) does NOT
+//                           make someone a member: leaving the Discord server still ends a Discord member's access, exactly as before accounts existed.
 //   blocked                 a guild_blocks row; it wins over every source, except on the unsuspended Owner (they cannot be blocked: a row on them is ignored)
 //
 //   my person = players.user_id is the account, and NOTHING else  (ownPlayerSql / isOwnPlayer; user decision 2026-10-26). A person's Discord ID
@@ -32,7 +34,7 @@
 // rely on the order of placeholders inside a fragment; the bound forms (boundMember, boundReaches) exist for guards that carry their own values. The server
 // expression is used once (the legacy branch); the user and guild expressions several times: pass columns, or numbered parameters (?1) for those.
 // (ownPlayerSql uses its user once, so a bare `?` for the user is fine there: bind the user once.) The aliases inside the fragments (mb, ms, ml, mx_*) are
-// fixed: a caller must not use them for its own tables.
+// fixed: a caller must not use them for its own tables (mb, ms, ml, mc, mx_*).
 
 import { serverIdIsDiscordSql } from './discord-guard.js';
 import { ownedGuildsSql, ownerCandidatesSql, ownerSql, seatHeldBySql } from './owner.js';
@@ -40,13 +42,14 @@ import { ownedGuildsSql, ownerCandidatesSql, ownerSql, seatHeldBySql } from './o
 // Pure form of the rule, for the places that already hold the facts. `source` is guilds.rank_source (null = legacy; a value this file does not know is legacy too).
 //   inServer         a user_servers row for the guild's Discord server
 //   linked           players.user_id = the account on a person of the guild
+//   backfilled       that link is one the 0039 backfill wrote from a Discord ID match alone (players.user_id_backfilled = 1): ownership, not membership, in a legacy guild
 //   owner            the unsuspended Owner (unsuspendedOwnerSql): lets an 'ingame' and a 'manual' guild's Owner in
 //   rosterCharacter  linked to a person with a character on the in-game roster that is not Former (rosterCharacterSql)
 // -> true when the guild's source lets the account in (the block test is separate).
-export function reachesOf({ source = null, inServer = false, linked = false, owner = false, rosterCharacter = false }) {
+export function reachesOf({ source = null, inServer = false, linked = false, backfilled = false, owner = false, rosterCharacter = false }) {
   if (source === 'ingame') return !!(owner || rosterCharacter);
   if (source === 'manual') return !!(owner || linked);
-  return !!(inServer || linked);
+  return !!(inServer || (linked && !backfilled));
 }
 
 // -> 'blocked' | 'member' | 'none'. A block does not apply to the unsuspended Owner (facts.owner): see blockedSql.
@@ -81,6 +84,11 @@ export const inServerSql = (userExpr, serverExpr) =>
 export const rosterLinkSql = (userExpr, guildExpr) =>
   `EXISTS (SELECT 1 FROM players ml WHERE ml.guild_id = ${guildExpr} AND ml.user_id = ${userExpr})`;
 
+// The legacy rule's link: the account is linked to a person of the guild by a link that is not a backfilled one (players.user_id_backfilled = 0, migration 0039). A backfilled
+// link still makes the person the account's (ownPlayerSql) and still ties the account to the guild (rosterLinkSql); it just is not a membership.
+export const confirmedLinkSql = (userExpr, guildExpr) =>
+  `EXISTS (SELECT 1 FROM players mc WHERE mc.guild_id = ${guildExpr} AND mc.user_id = ${userExpr} AND mc.user_id_backfilled = 0)`;
+
 // The guild's rank source as the SQL reads it: 'ingame', 'manual', or '' (legacy: NULL, or a value this file does not know). One primary-key lookup.
 export const rankSourceSql = (guildExpr) => `COALESCE((SELECT mx_rs.rank_source FROM guilds mx_rs WHERE mx_rs.id = ${guildExpr}), '')`;
 
@@ -106,7 +114,7 @@ export const reachesGuildSql = (userExpr, guildExpr, serverExpr) =>
   `CASE ${rankSourceSql(guildExpr)}
      WHEN 'ingame' THEN (${unsuspendedOwnerSql(userExpr, guildExpr)} OR ${rosterCharacterSql(userExpr, guildExpr)})
      WHEN 'manual' THEN (${unsuspendedOwnerSql(userExpr, guildExpr)} OR ${rosterLinkSql(userExpr, guildExpr)})
-     ELSE (${inServerSql(userExpr, serverExpr)} OR ${rosterLinkSql(userExpr, guildExpr)})
+     ELSE (${inServerSql(userExpr, serverExpr)} OR ${confirmedLinkSql(userExpr, guildExpr)})
    END`;
 
 // The rule itself: a current, unblocked member.

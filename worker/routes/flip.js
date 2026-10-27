@@ -2,7 +2,7 @@
 // the flip itself (lane B9) consumes the token inside its own batch. What the dry run computes is worker/flip-preview.js (sections lanes B6b and B9 extend); the token is
 // worker/dry-run.js, bound to this Owner, the previewed lists (state hash 'flip:...'), the stored roster's sync id and 10 minutes.
 //
-//   POST /api/guild/:gid/flip/dry-run   no body -> { token, expiresAt, rankSource, rosterSyncId, access: { members, loses, gains }, discordOwned, permissions, owner }
+//   POST /api/guild/:gid/flip/dry-run   no body -> { token, expiresAt, rankSource, rosterSyncId, access: { members, loses, gains }, needsClaim, permissions, owner }
 //                                       (permissions and owner: lane B6b part 3a, worker/flip-preview.js)
 //                                       403 forbidden (not the Owner) | 409 already_ingame | 429 (10 dry runs per 10 minutes)
 // A guild whose rank_source is already 'ingame' has nothing to preview.
