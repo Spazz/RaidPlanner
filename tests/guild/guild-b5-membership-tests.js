@@ -3,7 +3,7 @@
  * (worker/flip-preview.js, worker/routes/flip.js)
  * Run: node tests/guild/guild-b5-membership-tests.js
  *
- *   rank_source NULL (legacy)   NOT blocked AND (in the guild's Discord server OR linked by players.user_id)          unchanged
+ *   rank_source NULL (legacy)   NOT blocked AND (in the guild's Discord server OR linked by players.user_id, a link the 0039 backfill wrote (user_id_backfilled) not counted)
  *   rank_source 'manual'        NOT blocked AND linked by players.user_id                                             (today's rule minus Discord)
  *   rank_source 'ingame'        NOT blocked AND (the Owner OR linked to a person with a character on the in-game roster that is not Former)
  * Checked here:
@@ -90,6 +90,7 @@ check('reachesOf / membershipOf mirror memberSql / reachesGuildSql on every sour
     for (const ownerMode of ['none', 'seat', 'gmrow']) {
       for (const inServer of [false, true]) {
         for (const linked of [false, true]) {
+         for (const backfilled of linked ? [false, true] : [false]) {
           for (const state of linked ? CHAR_STATES : ['none']) {
             for (const blocked of [false, true]) {
               n++;
@@ -107,15 +108,18 @@ check('reachesOf / membershipOf mirror memberSql / reachesGuildSql on every sour
                   if (state === 'provenOnRoster') raw.prove(`c_m${n}`, uid, 800000 + n);
                   if (state === 'offRoster') raw.rosterRow(gid, 500000 + n);
                 }
+                // Set after the proof: a Battle.net proof of the account clears the flag (0039), the SQL rule is checked on every combination anyway.
+                if (backfilled) raw.run('UPDATE players SET user_id_backfilled = 1 WHERE id = ?', `p_m${n}`);
               }
               if (blocked) raw.block(gid, uid);
               // The Owner of the in-game rule is the UNSUSPENDED one (worker/owner.js): the seat holder with a valid proven character on the roster; a stored Guild Master row is
               // the Owner only while the guild has neither a seat nor a rank source.
               const owner = ownerOf({ userId: uid, ownerUserId: ownerMode === 'seat' ? uid : null, rankSource: source, storedMasterUserId: ownerMode === 'gmrow' ? uid : null,
                 hasValidProvenCharacter: linked && state === 'provenOnRoster' });
-              cases.push({ gid, uid, source, owner, inServer, linked, state, blocked });
+              cases.push({ gid, uid, source, owner, inServer, linked, backfilled, state, blocked });
             }
           }
+         }
         }
       }
     }
@@ -125,7 +129,7 @@ check('reachesOf / membershipOf mirror memberSql / reachesGuildSql on every sour
     const row = await one(s.w.db,
       `SELECT ${m.memberSql('u.id', 'g.id', 'g.discord_server_id')} AS member, ${m.reachesGuildSql('u.id', 'g.id', 'g.discord_server_id')} AS reaches, ${m.blockedSql('u.id', 'g.id')} AS blocked
          FROM users u, guilds g WHERE u.id = ? AND g.id = ?`, c.uid, c.gid);
-    const facts = { source: c.source, inServer: c.inServer, linked: c.linked, owner: c.owner, rosterCharacter: c.linked && (c.state === 'onRoster' || c.state === 'provenOnRoster') };
+    const facts = { source: c.source, inServer: c.inServer, linked: c.linked, backfilled: c.backfilled, owner: c.owner, rosterCharacter: c.linked && (c.state === 'onRoster' || c.state === 'provenOnRoster') };
     const where = JSON.stringify(c);
     // A block row on the unsuspended Owner is ignored (lane B6b part 2a: an Owner who is not suspended cannot be blocked).
     const effectivelyBlocked = c.blocked && !c.owner;
@@ -142,6 +146,11 @@ check('reachesOf / membershipOf mirror memberSql / reachesGuildSql on every sour
   assert.equal(m.reachesOf({ source: 'manual', inServer: true }), false);
   assert.equal(m.reachesOf({ source: 'ingame', inServer: true, linked: true }), false, 'linked with no roster character');
   assert.equal(m.reachesOf({ source: 'ingame', owner: true }), true);
+  assert.equal(m.reachesOf({ source: null, linked: true }), true, 'a legacy link is a membership');
+  assert.equal(m.reachesOf({ source: null, linked: true, backfilled: true }), false, 'a backfilled legacy link is ownership only');
+  assert.equal(m.reachesOf({ source: null, linked: true, backfilled: true, inServer: true }), true, 'in the server it is a member either way');
+  assert.equal(m.reachesOf({ source: 'manual', linked: true, backfilled: true }), true, 'manual and in-game read no flag');
+  assert.equal(m.reachesOf({ source: 'ingame', linked: true, backfilled: true, rosterCharacter: true }), true);
   assert.equal(m.membershipOf({ blocked: true, source: 'ingame', owner: true }), 'member', 'a block row on the unsuspended Owner is ignored');
   assert.equal(m.membershipOf({ blocked: true, source: 'ingame', owner: false, linked: true, rosterCharacter: true }), 'blocked', 'and blocks everyone else');
 });

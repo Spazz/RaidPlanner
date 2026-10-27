@@ -5,9 +5,10 @@
  *
  *   - Owner only (a Guild Master by role who does not hold the seat, an Officer: 403, no token written), rate limited like the rank-map dry run (10 per 10 minutes, 429),
  *     409 already_ingame once the guild is in-game;
- *   - it lists every account that would lose access (Discord-server-only members, linked persons with no roster character, all-Former persons), every account that would
- *     gain it (the Owner exemption, a Discord-owned person the flip links), and the persons owned only by a Discord ID that the flip would link (whether the Owner's own
- *     person is one of them), and the lists agree with what the 'ingame' rule really does once the flip has been made by hand;
+ *   - it lists every account that would lose access (Discord-server-only members, members whose recorded person they must claim, linked persons with no roster character,
+ *     all-Former persons), every account that would gain it (the Owner exemption, a person linked by the 0039 backfill whose account left the server), and the persons that
+ *     only record an account's Discord ID (they need a claim: the flip links nobody; whether the Owner's own person is one of them), and the lists agree with what the 'ingame'
+ *     rule really does once the flip has been made by hand;
  *   - counts plus at most 25 samples per list; no Discord ID and no BattleTag anywhere in the answer;
  *   - the token is a single-use 'flip:' approval bound to the Owner, the previewed lists and the roster sync id; it is no rank-map token, and a rank-map token is no flip token.
  */
@@ -39,6 +40,7 @@ async function world() {
   };
   for (const [key, name] of Object.entries(names)) await s.member(key, name);
   await s.outsider('gainer', 'Gainerone');
+  await s.outsider('leaver', 'Leaverone');
   // linked, on the roster: stays
   await seatOnRoster({ call: s.call, sqlite: s.w.db.sqlite, guildId: s.gid, teamId: s.tids[0], userId: s.uids.keep }, { name: 'Keepmain', id: 51000 });
   // linked, character keyed but off the roster: no_roster_character
@@ -53,7 +55,8 @@ async function world() {
   // linked, no identity key at all: no_roster_character (and an unkeyed character to report)
   const unkeyed = await s.person({ name: 'Unkeyedmain' });
   await s.link(unkeyed.pid, 'unkeyed');
-  // persons only a Discord ID owns: dcown (on the roster: keeps access), dcoff (off the roster: loses), the Guild Master (the Owner's own person), the gainer (not in the server)
+  // persons that only record a Discord ID (nobody owns them; the flip links nobody): dcown (on the roster), dcoff (off the roster), the Guild Master (the Owner's own person), the
+  // gainer (not in the server, so no member today and none after)
   const dcown = await s.person({ name: 'Dcownmain' });
   keyCharacter(s, dcown.cid, 51003);
   rosterRow(s, 51003);
@@ -67,21 +70,27 @@ async function world() {
   keyCharacter(s, gainer.cid, 51005);
   rosterRow(s, 51005);
   await carryDiscord(s, gainer.pid, 'gainer');
-  // an account that has a linked person (on the roster) AND a second person carrying its Discord ID: the second cannot be linked (one person per account)
+  // an account that has a linked person (on the roster) AND a second person carrying its Discord ID: the account has its person, the second needs no claim
   await seatOnRoster({ call: s.call, sqlite: s.w.db.sqlite, guildId: s.gid, teamId: s.tids[0], userId: s.uids.conflict }, { name: 'Conflictmain', id: 51006 });
   const twin = await s.person({ name: 'Twinmain' });
   await carryDiscord(s, twin.pid, 'conflict');
   // linked and on the roster, but blocked: in no list
   await seatOnRoster({ call: s.call, sqlite: s.w.db.sqlite, guildId: s.gid, teamId: s.tids[0], userId: s.uids.blocked }, { name: 'Blockedmain', id: 51007 });
   s.exec(`INSERT INTO guild_blocks (guild_id, user_id, created_at) VALUES ('${s.gid}', '${s.uids.blocked}', 1)`);
-  s.persons = { off, former, unkeyed, dcown, dcoff, gmPerson, gainer, twin };
+  // a person the 0039 backfill linked (user_id_backfilled = 1) whose account left the Discord server: not a member today (the flag), a member after the flip (on the roster)
+  const leaver = await s.person({ name: 'Leavermain' });
+  keyCharacter(s, leaver.cid, 51008);
+  rosterRow(s, 51008);
+  await s.link(leaver.pid, 'leaver');
+  s.exec(`UPDATE players SET user_id_backfilled = 1 WHERE id = '${leaver.pid}'`);
+  s.persons = { off, former, unkeyed, dcown, dcoff, gmPerson, gainer, twin, leaver };
   return s;
 }
 
 const dry = (s, who = 'gm') => s.call(who, 'POST', FLIP, {});
 const bySample = (list) => Object.fromEntries(list.samples.map((entry) => [entry.name, entry]));
 
-check('the dry run lists who loses access (discord_only, no_roster_character, all_former), who gains it, and the persons only a Discord ID owns, with counts and no Discord ID or BattleTag', async () => {
+check('the dry run lists who loses access (discord_only, needs_claim, no_roster_character, all_former), who gains it, and the persons that only record a Discord ID, with counts and no Discord ID or BattleTag', async () => {
   const s = await world();
   const res = await dry(s);
   assert.equal(res.status, 200, res.text);
@@ -93,11 +102,16 @@ check('the dry run lists who loses access (discord_only, no_roster_character, al
   const { loses, gains, members } = body.access;
   // The Owner (the Guild Master, whose person only a Discord ID owns) is a member today and will be SUSPENDED after the flip (no character of theirs is proven by Battle.net on the
   // roster): the Owner exemption ends with suspension (lane B6b part 3a), so they are in the list like anybody else.
-  assert.deepEqual(loses.reasons, { discord_only: 1, no_roster_character: 4, all_former: 1 });
-  assert.equal(loses.count, 6);
+  assert.deepEqual(loses.reasons, { discord_only: 1, needs_claim: 3, no_roster_character: 2, all_former: 1 });
+  assert.equal(loses.count, 7);
   const lost = bySample(loses);
-  assert.deepEqual(Object.keys(lost).sort(), ['Dcoffmain', 'Donlyone', 'Formermain', 'Gmmain', 'Offmain', 'Unkeyedmain']);
-  assert.equal(lost.Gmmain.reason, 'no_roster_character');
+  assert.deepEqual(Object.keys(lost).sort(), ['Dcoffmain', 'Dcownmain', 'Donlyone', 'Formermain', 'Gmmain', 'Offmain', 'Unkeyedmain']);
+  // A Discord ID on a person is not an owner: these members keep nothing through it, and the sample names the person they would claim.
+  for (const [name, key] of [['Dcownmain', 'dcown'], ['Dcoffmain', 'dcoff'], ['Gmmain', 'gmPerson']]) {
+    assert.equal(lost[name].reason, 'needs_claim', name);
+    assert.equal(lost[name].personId, s.persons[key].pid, name);
+    assert.equal(lost[name].userId, undefined, name);
+  }
   assert.equal(lost.Donlyone.reason, 'discord_only');
   assert.equal(lost.Donlyone.personId, null);
   assert.equal(lost.Donlyone.userId, s.uids.donly, 'an account with no person is named by its account id');
@@ -108,14 +122,16 @@ check('the dry run lists who loses access (discord_only, no_roster_character, al
   assert.equal(lost.Unkeyedmain.reason, 'no_roster_character');
   assert.equal(lost.Unkeyedmain.unkeyedCharacters, 1, 'the character with no identity key is counted for the name binding');
   assert.equal(lost.Offmain.unkeyedCharacters, 0);
-  assert.equal(lost.Dcoffmain.reason, 'no_roster_character', 'the person the flip links is judged as the account\'s own');
+  // Only the account behind a person the backfill linked gains, and by the link, not by a Discord ID: the recorded person of an account outside the server gains nothing.
   assert.equal(gains.count, 1);
-  assert.deepEqual(gains.reasons, { discord_owned_person: 1 });
-  assert.deepEqual(gains.samples.map((entry) => [entry.name, entry.reason, entry.personId]), [['Gainermain', 'discord_owned_person', s.persons.gainer.pid]]);
-  assert.deepEqual(members, { today: 9, afterFlip: 4 });
-  const owned = body.discordOwned;
-  assert.deepEqual([owned.count, owned.conflicts, owned.onRoster, owned.ownerIncluded], [4, 1, 2, true], 'dcown, dcoff, the Guild Master\'s person, the gainer; the twin cannot be linked');
-  assert.deepEqual(owned.samples.map((entry) => [entry.name, entry.onRoster]).sort(), [['Dcoffmain', false], ['Dcownmain', true], ['Gainermain', true], ['Gmmain', false]]);
+  assert.deepEqual(gains.reasons, { linked_person: 1 });
+  assert.deepEqual(gains.samples.map((entry) => [entry.name, entry.reason, entry.personId]), [['Leavermain', 'linked_person', s.persons.leaver.pid]]);
+  assert(!JSON.stringify(gains).includes('Gainermain'));
+  assert.deepEqual(members, { today: 9, afterFlip: 3 }, 'keep, conflict and the backfilled leaver');
+  assert.equal(body.discordOwned, undefined, 'the flip links nobody: the section that listed the persons it would link is gone');
+  const claims = body.needsClaim;
+  assert.deepEqual([claims.count, claims.onRoster, claims.ownerIncluded], [4, 2, true], 'dcown, dcoff, the Guild Master\'s person, the gainer; the twin\'s account has its own person');
+  assert.deepEqual(claims.samples.map((entry) => [entry.name, entry.onRoster]).sort(), [['Dcoffmain', false], ['Dcownmain', true], ['Gainermain', true], ['Gmmain', false]]);
   // The blocked account is in no list; the account that keeps access is in none either.
   assert(!JSON.stringify(body).includes('Blockedone') && !JSON.stringify(body).includes('Keepmain') && !JSON.stringify(body).includes('Conflictmain'));
   // No Discord ID, no BattleTag, no Discord handle of anyone.
@@ -133,10 +149,10 @@ check('the dry run lists who loses access (discord_only, no_roster_character, al
   assert.equal((await s.rows('SELECT token_hash FROM dry_run_approvals WHERE token_hash = ?', body.token)).length, 0);
 });
 
-check('the lists are what the in-game rule really does: after the flip is made by hand (the source, the Discord-owned persons linked) the accounts that lose and gain access are exactly the listed ones', async () => {
+check('the lists are what the in-game rule really does: after the flip is made by hand (the source alone: nobody is linked) the accounts that lose and gain access are exactly the listed ones', async () => {
   const s = await world();
   const m = await load('worker/membership.js');
-  const accounts = ['gm', 'keep', 'offroster', 'former', 'unkeyed', 'dcown', 'dcoff', 'donly', 'conflict', 'blocked', 'gainer'];
+  const accounts = ['gm', 'keep', 'offroster', 'former', 'unkeyed', 'dcown', 'dcoff', 'donly', 'conflict', 'blocked', 'gainer', 'leaver'];
   const memberNow = async () => {
     const out = {};
     for (const key of accounts) {
@@ -146,16 +162,14 @@ check('the lists are what the in-game rule really does: after the flip is made b
   };
   const before = await memberNow();
   const body = (await dry(s)).json;
-  // The flip, by hand: the source, and the link of every Discord-owned person whose account has no other person.
+  // The flip, by hand: the source. It links nobody; a Discord ID recorded on a person is bookkeeping.
   s.exec(`UPDATE guilds SET rank_source = 'ingame', owner_user_id = '${s.uids.gm}' WHERE id = '${s.gid}'`);
-  s.exec(`UPDATE OR IGNORE players SET user_id = (SELECT u.id FROM users u WHERE u.discord_id = players.discord_user_id)
-           WHERE guild_id = '${s.gid}' AND user_id IS NULL AND discord_user_id IS NOT NULL`);
   // The Owner (the Guild Master) is not live: no character of theirs is proven by Battle.net on the roster, so the exemption ended with the flip and they are listed like anybody else.
   const after = await memberNow();
   const lost = accounts.filter((key) => before[key] && !after[key]).sort();
   const gained = accounts.filter((key) => !before[key] && after[key]).sort();
-  assert.deepEqual(lost, ['dcoff', 'donly', 'former', 'gm', 'offroster', 'unkeyed']);
-  assert.deepEqual(gained, ['gainer']);
+  assert.deepEqual(lost, ['dcoff', 'dcown', 'donly', 'former', 'gm', 'offroster', 'unkeyed']);
+  assert.deepEqual(gained, ['leaver']);
   assert.equal(body.access.loses.count, lost.length);
   assert.equal(body.access.gains.count, gained.length);
   assert.equal(body.access.members.today, accounts.filter((key) => before[key]).length);
@@ -208,7 +222,7 @@ check('at most 25 samples per list, the counts stay whole', async () => {
   const { json } = await dry(s);
   assert.equal(json.access.loses.count, 32, 'every server member, the Owner included (suspended after the flip: no character proved by Battle.net)');
   assert.equal(json.access.loses.samples.length, 25);
-  assert.equal(json.discordOwned.samples.length, 0);
+  assert.equal(json.needsClaim.samples.length, 0);
   assert(json.access.loses.samples.every((entry) => entry.reason === 'discord_only' && /^u_/.test(entry.userId) && /^Bulk \d+$/.test(entry.name)));
 });
 
@@ -303,7 +317,7 @@ check("the token is a 'flip:' approval bound to the Owner, the previewed lists a
   s.exec(`DELETE FROM user_servers WHERE user_id = '${s.uids.late}'`);
   assert.equal(await fits(), null, 'and back');
   s.exec(`UPDATE guild_roster SET blizzard_char_id = blizzard_char_id + 100000 WHERE blizzard_char_id = 51003`);
-  assert.equal(await fits(), 'stale', 'a roster that no longer holds a Discord-owned person');
+  assert.equal(await fits(), 'stale', 'a roster that no longer holds a person that needs a claim');
   s.exec(`UPDATE guild_roster SET blizzard_char_id = 51003 WHERE blizzard_char_id = 151003`);
   assert.equal(await fits(), null);
   // A flip token is no rank-map token: the PUT refuses it as stale and does not burn it.

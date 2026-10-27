@@ -327,6 +327,8 @@ function withApi(stubs, fn) {
     const dialog = G.pages.person.accountLinkDialogHtml(rec, claimants);
     const t = text(dialog);
     assert(dialog.includes('data-submit="account-find-form"') && t.includes('Link an account to Aldric') && t.includes('whole BattleTag (like Name#1234)') && t.includes('Raidsmith never lists accounts'));
+    // The copy says what Link account does now: it records the Discord ID (sign-ups, logs, loot), it gives no access and does not make the record theirs.
+    assert(t.includes("records the account's Discord ID on this person") && t.includes('Discord sign-ups, logs and loot') && t.includes('does not give the account access to the guild or make this record theirs') && t.includes('they claim it themselves'), t);
     assert(dialog.includes('id="dlg-acct-q"') && dialog.includes('maxlength="64"') && dialog.includes('id="dlg-err-q"') && dialog.includes('id="dlg-error"') && dialog.includes('id="dlg-acct-results"'));
     assert(t.includes('Erin E') && t.includes('Sent a character claim') && dialog.includes('data-action="account-pick" data-uid="u5"') && dialog.includes('aria-label="Link Erin E"'));
     const found = G.pages.person.accountResultsHtml([

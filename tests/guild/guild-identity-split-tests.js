@@ -356,6 +356,11 @@ const MIGRATIONS = path.join(ROOT, 'migrations');
 const FILE = '0039_identity_backfill.sql';
 const MIGRATION = fs.readFileSync(path.join(MIGRATIONS, FILE), 'utf8').split(/\r?\n/).join('\n');
 const exec = (db, sql) => db.sqlite.exec(sql);
+// The file adds the flag column first; the test of the membership rule adds it to the 0038 database itself (every row 0, as for the previous release's links), so the rule can be
+// read before and after, and then runs the rest of the file.
+const ALTER = 'ALTER TABLE players ADD COLUMN user_id_backfilled INTEGER NOT NULL DEFAULT 0;\n';
+assert(MIGRATION.includes(ALTER), 'the file adds the user_id_backfilled column');
+const MIGRATION_AFTER_ALTER = MIGRATION.replace(ALTER, '');
 const rows = (db, sql, ...values) => db.sqlite.prepare(sql).all(...values).map((row) => ({ ...row }));
 
 // The database the previous release runs on: every migration before 0039.
@@ -476,6 +481,7 @@ const schemaOf = (db) => JSON.stringify(rows(db, "SELECT type, name, tbl_name, s
 check('migration 0039: every person gets exactly the owner the JS oracle says, nothing else changes, and nobody\'s membership moves', async () => {
   const db = worldAt0038();
   const persons = seed(db);
+  exec(db, ALTER); // every existing link has the flag 0: the rule the previous release ran
   const expected = await expectedOwners(db);
   const membersBefore = await memberships(db);
   const schemaBefore = schemaOf(db);
@@ -483,7 +489,7 @@ check('migration 0039: every person gets exactly the owner the JS oracle says, n
   const oldMine = (await Promise.all(membersBefore.filter((m) => m.member === 1).map(async (m) => ({
     uid: m.uid, gid: m.gid, mine: rows(db, `SELECT p.id FROM players p, users u WHERE u.id = ? AND p.guild_id = ? AND ${OLD_MINE} ORDER BY p.id`, m.uid, m.gid).map((r) => r.id),
   }))));
-  exec(db, MIGRATION);
+  exec(db, MIGRATION_AFTER_ALTER);
   const after = rows(db, 'SELECT * FROM players ORDER BY id');
   // The oracle, row by row.
   assert.deepEqual(Object.fromEntries(after.map((p) => [p.id, p.user_id])), expected);
@@ -493,9 +499,14 @@ check('migration 0039: every person gets exactly the owner the JS oracle says, n
     ['A', 'B', 'C', 'D0', 'D1', 'E', 'F1', 'F2', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'O'].map((k) => [k, owner(k)]),
     [['A', 'uA'], ['B', null], ['C', null], ['D0', 'uD'], ['D1', null], ['E', null], ['F1', 'uF'], ['F2', 'uF'], ['G', 'uG'], ['H', 'uH'], ['I', 'uJ'], ['K', null], ['L', null], ['M', null], ['N', 'uN'], ['O', null]],
   );
-  // Only user_id moved: every other column of every person is what it was (version and updated_at on purpose).
-  assert.deepEqual(after.map(({ user_id, ...rest }) => rest), before.map(({ user_id, ...rest }) => rest));
-  // Membership: the same answer for every account in every guild.
+  // Only user_id and its flag moved: every other column of every person is what it was (version and updated_at on purpose).
+  assert.deepEqual(after.map(({ user_id, user_id_backfilled, ...rest }) => rest), before.map(({ user_id, user_id_backfilled, ...rest }) => rest));
+  // The flag marks exactly the links the file wrote.
+  assert.deepEqual(after.filter((p) => p.user_id_backfilled === 1).map((p) => p.id),
+    after.filter((p) => p.user_id !== before.find((b) => b.id === p.id).user_id).map((p) => p.id), 'the flag is 1 on every backfilled person and nowhere else');
+  assert(after.some((p) => p.user_id_backfilled === 1) && before.every((p) => p.user_id_backfilled === 0));
+  // Membership: the same answer for every account in every guild. A backfilled link is the person's owner and no membership, so an account that left the Discord server of
+  // a legacy guild is as out as it was.
   assert.deepEqual(await memberships(db), membersBefore, 'a backfilled link lets nobody in and keeps nobody out');
   // Ownership of the members is kept: the person the previous rule gave them is theirs now. An account with two persons keeps the one it owned by user_id, and a person
   // another account already owns (user_id set) is not taken from it by a Discord ID.
@@ -509,7 +520,13 @@ check('migration 0039: every person gets exactly the owner the JS oracle says, n
   // No account has two persons in one guild.
   assert.deepEqual(rows(db, 'SELECT guild_id, user_id, COUNT(*) AS n FROM players WHERE user_id IS NOT NULL GROUP BY guild_id, user_id HAVING n > 1'), []);
   assert.deepEqual(rows(db, 'PRAGMA foreign_key_check'), []);
-  assert.equal(schemaOf(db), schemaBefore, 'no table, column, index, view or trigger changed: the trigger is back with its 0031 text');
+  // Schema: only the three triggers are new (the flag column was added above); the proof trigger is back with its 0031 text.
+  const objects = (json) => Object.fromEntries(JSON.parse(json).map((row) => [row.name, row]));
+  const was = objects(schemaBefore);
+  const now = objects(schemaOf(db));
+  assert.deepEqual(Object.keys(now).filter((name) => !was[name]).sort(),
+    ['characters_bnet_proof_confirms_link', 'characters_bnet_proof_update_confirms_link', 'players_user_change_clears_backfill']);
+  for (const name of Object.keys(was)) assert.deepEqual(now[name], was[name], name + ' is as it was');
 });
 
 check('migration 0039: the attestations on a linked person\'s characters survive; the proof-clearing trigger is back and still clears them on a real change of owner; a rerun changes nothing', async () => {
@@ -520,9 +537,9 @@ check('migration 0039: the attestations on a linked person\'s characters survive
   assert.deepEqual(before, { c_g_hand: 'hand', c_g_main: null, c_g_off: 'officer' });
   exec(db, MIGRATION);
   assert.deepEqual(proofs(), before, 'linking the account that was already behind the person is not a change of owner');
-  const once = rows(db, 'SELECT id, user_id, version, updated_at FROM players ORDER BY id');
-  exec(db, MIGRATION);
-  assert.deepEqual(rows(db, 'SELECT id, user_id, version, updated_at FROM players ORDER BY id'), once, 'the file is rerunnable');
+  const once = rows(db, 'SELECT id, user_id, user_id_backfilled, version, updated_at FROM players ORDER BY id');
+  exec(db, MIGRATION_AFTER_ALTER);
+  assert.deepEqual(rows(db, 'SELECT id, user_id, user_id_backfilled, version, updated_at FROM players ORDER BY id'), once, 'the backfill and the triggers rerun to the same state (the ALTER is applied once)');
   assert.equal(rows(db, "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'players_user_change_clears_proof'").length, 1);
   exec(db, "UPDATE players SET user_id = 'uZ' WHERE id = 'p_G'");
   assert.deepEqual(proofs(), { c_g_hand: null, c_g_main: null, c_g_off: null }, 'a real change of owner still clears the attestations');

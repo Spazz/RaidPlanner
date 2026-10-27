@@ -925,7 +925,7 @@ check('dry run, permissions: who gains and loses a role at the flip - derived Of
   const res = await dryRun(s);
   assert.equal(res.status, 200, res.text);
   const { permissions, owner } = res.json;
-  assert.deepEqual(Object.keys(res.json).sort(), ['access', 'discordOwned', 'expiresAt', 'owner', 'permissions', 'rankSource', 'rosterSyncId', 'token'], 'additive: the older sections are still there');
+  assert.deepEqual(Object.keys(res.json).sort(), ['access', 'expiresAt', 'needsClaim', 'owner', 'permissions', 'rankSource', 'rosterSyncId', 'token'], 'additive: the older sections are still there');
   const byName = (a, b) => a[0].localeCompare(b[0]);
   assert.deepEqual(sampleKeys(permissions.gains).sort(byName), [
     ['Derivedgm', 'guild_master', null],
@@ -1053,7 +1053,7 @@ check('dry run, the Owner line follows the seat, and B5 open point (c): an Owner
 check('dry run: the new lines read the guild by index (no scan of players, characters, guild_roster, role_assignments or guilds) in 4 statements of the one snapshot', async () => {
   const s = await permissionWorld();
   const { FLIP_SECTIONS } = await load('worker/flip-preview.js');
-  assert.deepEqual(FLIP_SECTIONS.map((section) => section.key), ['access', 'discordOwned', 'permissions', 'owner']);
+  assert.deepEqual(FLIP_SECTIONS.map((section) => section.key), ['access', 'needsClaim', 'permissions', 'owner']);
   const statements = FLIP_SECTIONS.filter((section) => ['permissions', 'owner'].includes(section.key)).flatMap((section) => section.statements(s.w.db, s.gid));
   assert.equal(statements.length, 4);
   const mark = s.w.db.statementLog.length;

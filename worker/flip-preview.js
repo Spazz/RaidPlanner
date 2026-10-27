@@ -12,16 +12,18 @@
 //   ('flip:' + hash of every hashPart: the purpose prefix keeps a rank-map token from ever approving a flip, worker/dry-run.js) and the roster sync id the token binds to.
 //
 // The ACCESS section compares, per account, today's rule (the one memberSql applies now: the guild's current rank_source) with the 'ingame' rule as the flip would leave it.
-// The flip first LINKS the persons that only a Discord ID owns (players.user_id NULL, the account whose users.discord_id equals players.discord_user_id; "Account of a
-// person", todo.md), so the 'ingame' side is judged on the person each account would have after that link. An account that is blocked here is out of every list (a block wins
-// in every source).
+// The flip links NOBODY: a Discord ID recorded on a person is bookkeeping and never makes the account the owner (user decision 2026-10-26, migration 0039), so the 'ingame' side is
+// judged on the person each account owns now (players.user_id). An account that is blocked here is out of every list (a block wins in every source).
 //   loses   today a member, not one after the flip. Reasons: discord_only (a member only through the Discord server: no person of the guild is theirs),
+//           needs_claim (the same, and a person of the guild records the account's Discord ID: that person is not theirs until they claim it, "This is me"; the sample names it),
 //           owner_exemption (the Owner of a 'manual' guild, a member only through the Owner exemption membership.js gives that source: no person of the guild is theirs; after
 //           the flip they are a member only while the Owner is live),
 //           no_roster_character (their person has no character on the in-game roster; unkeyedCharacters counts the characters with no identity key yet, the ones
 //           the flip's name binding could still match), all_former (every character of their person is Former)
-//   gains   not a member today, one after the flip. Reasons: owner (the Owner exemption), discord_owned_person (their person is the one the flip links, and it is on the roster)
-// The DISCORD-OWNED section lists the persons the flip would link, and whether the Owner's own person is one of them.
+//   gains   not a member today, one after the flip. Reasons: owner (the Owner exemption), linked_person (their person is linked to them and on the roster, and they are no member
+//           today: a link the 0039 backfill wrote from a Discord ID does not count in a legacy guild, but it counts in the in-game rule)
+// The NEEDS-CLAIM section lists the persons that record an account's Discord ID with nobody owning them and the account owning no person of the guild: the flip does not link them,
+// their players claim them. It says how many are on the roster and whether the Owner's own person is one of them.
 // The PERMISSIONS section (lane B6b part 3a) lists who gains and who loses a permission role at the flip: the roles the proposed rank map derives from each account's Battle.net-proven
 // characters on the stored roster, set against what the accounts hold today (stored hand and Discord rows, the Owner row); the stored Discord-given rows, which the flip makes
 // hand-set rows ('manual'), are listed apart. The OWNER section says who becomes the Owner (the Owner row today: the stored Guild Master of a legacy guild, the seat holder otherwise)
@@ -42,17 +44,15 @@ const GUILD = '?1';
 const SERVER = '(SELECT fg.discord_server_id FROM guilds fg WHERE fg.id = ?1)';
 const MAIN_NAME = (personExpr) => `(SELECT fm.name FROM characters fm WHERE fm.player_id = ${personExpr} AND fm.is_main = 1)`;
 
-// The accounts that matter to the flip, whatever the current source: the Discord server's members, everyone linked to a person, the accounts a Discord ID alone owns a
-// person for, and the Owner candidates. Four terms (D1 allows five).
+// The accounts that matter to the flip, whatever the current source: the Discord server's members, everyone linked to a person, and the Owner candidates. Three terms (D1 allows five).
 const UNIVERSE_SQL = `SELECT us.user_id FROM user_servers us WHERE us.server_id = ${SERVER} AND ${serverIdIsDiscordSql('us.server_id')}
    UNION SELECT lp.user_id FROM players lp WHERE lp.guild_id = ${GUILD} AND lp.user_id IS NOT NULL
-   UNION SELECT du.id FROM players dp JOIN users du ON du.discord_id = dp.discord_user_id WHERE dp.guild_id = ${GUILD} AND dp.user_id IS NULL
    UNION SELECT user_id FROM (${ownerCandidatesSql(GUILD)})`;
 
 // The valid Battle.net-proven characters of the guild's linked accounts as the 'ingame' rule will see them once the guild is flipped: the view ingame_proven_characters (migration
 // 0035) WITHOUT its rank_source test (the guild is not in-game yet). owner_proof 'bnet', the proof belongs to the account that holds the person NOW, the identity key is a
 // guild_roster row, and the account's CURRENT Battle.net link is the one that proved it. Same joins in the same forced order as the view; tests/guild/guild-b6b-p3a-tests.js
-// runs both against a guild flipped by hand and finds the same roles and the same Owner liveness. A person only a Discord ID owns has no proof to count.
+// runs both against a guild flipped by hand and finds the same roles and the same Owner liveness. A person nobody has linked has no proof to count.
 const PROVEN_AFTER = `SELECT pp.user_id AS user_id, pc.id AS character_id, pc.name AS name, pc.team_id AS team_id, pr.rank AS roster_rank, pc.left_on AS left_on
   FROM players pp
   CROSS JOIN characters pc ON pc.player_id = pp.id AND pc.guild_id = pp.guild_id
@@ -69,20 +69,19 @@ const NAME_OF = (userExpr) => `COALESCE((SELECT fm.name FROM players fp JOIN cha
 const PERSON_OF = (userExpr) => `(SELECT lp.id FROM players lp WHERE lp.guild_id = ${GUILD} AND lp.user_id = ${userExpr})`;
 
 // One row per account of the universe that is not blocked: what it is today, and what it would be after the flip.
-const PERSON = 'COALESCE(b.linked_person, b.discord_person)';
 const ACCOUNTS_CTE = `WITH proven AS (${PROVEN_AFTER}), base AS (
   SELECT u.id AS user_id, u.discord_id, u.display_name, u.global_name, u.username,
          ${memberSql('u.id', GUILD, SERVER)} AS today,
          ${unsuspendedOwnerSql('u.id', GUILD)} AS is_owner,
          CASE WHEN ${unsuspendedOwnerSql('u.id', GUILD)} THEN EXISTS (SELECT 1 FROM proven pv WHERE pv.user_id = u.id) ELSE 0 END AS owner_live,
          (SELECT lp.id FROM players lp WHERE lp.guild_id = ${GUILD} AND lp.user_id = u.id) AS linked_person,
-         (SELECT dp.id FROM players dp WHERE dp.guild_id = ${GUILD} AND dp.user_id IS NULL AND u.discord_id IS NOT NULL AND dp.discord_user_id = u.discord_id) AS discord_person
+         (SELECT dp.id FROM players dp WHERE dp.guild_id = ${GUILD} AND dp.user_id IS NULL AND u.discord_id IS NOT NULL AND dp.discord_user_id = u.discord_id) AS claim_person
     FROM users u
    WHERE u.id IN (${UNIVERSE_SQL}) AND NOT ${blockedSql('u.id', GUILD)}
 ), acc AS (
-  SELECT b.*, ${PERSON} AS person_id,
+  SELECT b.*, b.linked_person AS person_id,
          CASE WHEN b.owner_live = 1 THEN 1
-              WHEN ${PERSON} IS NOT NULL AND ${personOnRosterSql(PERSON, GUILD)} THEN 1
+              WHEN b.linked_person IS NOT NULL AND ${personOnRosterSql('b.linked_person', GUILD)} THEN 1
               ELSE 0 END AS after_member
     FROM base b
 )`;
@@ -91,13 +90,14 @@ const ACCOUNTS_CTE = `WITH proven AS (${PROVEN_AFTER}), base AS (
 const ACCESS_ROWS_SQL = `${ACCOUNTS_CTE}
 SELECT CASE WHEN a.today = 1 THEN 'loses' ELSE 'gains' END AS kind,
        CASE WHEN a.today = 1 THEN
-              CASE WHEN a.person_id IS NULL THEN (CASE WHEN a.is_owner = 1 AND ${rankSourceSql(GUILD)} = 'manual' THEN 'owner_exemption' ELSE 'discord_only' END)
+              CASE WHEN a.person_id IS NULL THEN (CASE WHEN a.is_owner = 1 AND ${rankSourceSql(GUILD)} = 'manual' THEN 'owner_exemption'
+                                                       WHEN a.claim_person IS NOT NULL THEN 'needs_claim' ELSE 'discord_only' END)
                    WHEN EXISTS (SELECT 1 FROM characters fc WHERE fc.player_id = a.person_id AND ${visibleCharacterSql('fc')})
                         AND NOT EXISTS (SELECT 1 FROM characters fc WHERE fc.player_id = a.person_id AND fc.left_on IS NULL AND ${visibleCharacterSql('fc')}) THEN 'all_former'
                    ELSE 'no_roster_character' END
             WHEN a.owner_live = 1 THEN 'owner'
-            ELSE 'discord_owned_person' END AS reason,
-       a.user_id, a.person_id,
+            ELSE 'linked_person' END AS reason,
+       a.user_id, a.person_id, a.claim_person, ${MAIN_NAME('a.claim_person')} AS claim_name,
        COALESCE(${MAIN_NAME('a.person_id')}, a.display_name, CASE WHEN a.discord_id IS NOT NULL THEN COALESCE(a.global_name, a.username) END) AS name,
        (SELECT COUNT(*) FROM characters fu WHERE fu.player_id = a.person_id AND fu.left_on IS NULL AND fu.blizzard_char_id IS NULL AND ${visibleCharacterSql('fu')}) AS unkeyed
   FROM acc a
@@ -107,14 +107,14 @@ SELECT CASE WHEN a.today = 1 THEN 'loses' ELSE 'gains' END AS kind,
 const ACCESS_TOTALS_SQL = `${ACCOUNTS_CTE}
 SELECT COALESCE(SUM(a.today), 0) AS today_members, COALESCE(SUM(a.after_member), 0) AS after_members FROM acc a`;
 
-// The persons that only a Discord ID owns, and the account that ID belongs to. An account that already has another person of the guild cannot be linked to this one
-// (players_guild_user is unique): it is counted as a conflict, not as a link.
-const DISCORD_OWNED_SQL = `SELECT dp.id AS person_id, du.id AS user_id, ${personOnRosterSql('dp.id', GUILD)} AS on_roster,
+// The persons that record an account's Discord ID with nobody owning them, for an account that owns no person of the guild: the account claims the person ("This is me"), the
+// flip does not link it. (An account that owns another person of the guild already has its person; the Discord ID on this one is bookkeeping and needs no claim.)
+const NEEDS_CLAIM_SQL = `SELECT dp.id AS person_id, du.id AS user_id, ${personOnRosterSql('dp.id', GUILD)} AS on_roster,
        ${unsuspendedOwnerSql('du.id', GUILD)} AS is_owner,
-       EXISTS (SELECT 1 FROM players xp WHERE xp.guild_id = ${GUILD} AND xp.user_id = du.id) AS conflict,
        ${MAIN_NAME('dp.id')} AS name
   FROM players dp JOIN users du ON du.discord_id = dp.discord_user_id
  WHERE dp.guild_id = ${GUILD} AND dp.user_id IS NULL AND NOT ${blockedSql('du.id', GUILD)}
+   AND NOT EXISTS (SELECT 1 FROM players xp WHERE xp.guild_id = ${GUILD} AND xp.user_id = du.id)
  ORDER BY dp.id`;
 
 const tally = (rows, key) => rows.reduce((counts, row) => ({ ...counts, [row[key]]: (counts[row[key]] || 0) + 1 }), {});
@@ -129,10 +129,15 @@ const accessSection = {
       return {
         count: own.length,
         reasons: tally(own, 'reason'),
-        samples: own.slice(0, FLIP_SAMPLES).map((row) => ({
-          reason: row.reason, userId: row.person_id ? undefined : row.user_id, personId: row.person_id, name: row.name,
-          ...(kind === 'loses' ? { unkeyedCharacters: row.unkeyed } : {}),
-        })),
+        samples: own.slice(0, FLIP_SAMPLES).map((row) => {
+          // needs_claim names the person the account must claim; every other reason names the account's own person, or the account when it has none.
+          const claim = row.reason === 'needs_claim';
+          const personId = claim ? row.claim_person : row.person_id;
+          return {
+            reason: row.reason, userId: personId ? undefined : row.user_id, personId, name: claim && row.claim_name ? row.claim_name : row.name,
+            ...(kind === 'loses' ? { unkeyedCharacters: row.unkeyed } : {}),
+          };
+        }),
         label,
       };
     };
@@ -142,7 +147,7 @@ const accessSection = {
     // `label` was only a helper for the readers of this function; the payload does not carry it.
     delete loses.label;
     delete gains.label;
-    const hash = (kind) => rows.filter((row) => row.kind === kind).map((row) => [row.user_id, row.person_id, row.reason]);
+    const hash = (kind) => rows.filter((row) => row.kind === kind).map((row) => [row.user_id, row.person_id, row.reason, ...(row.reason === 'needs_claim' ? [row.claim_person] : [])]);
     return {
       payload: { members: { today: totals.today_members, afterFlip: totals.after_members }, loses, gains },
       hashPart: { loses: hash('loses'), gains: hash('gains') },
@@ -150,22 +155,20 @@ const accessSection = {
   },
 };
 
-const discordOwnedSection = {
-  key: 'discordOwned',
-  statements: (db, guildId) => [db.prepare(DISCORD_OWNED_SQL).bind(guildId)],
+const needsClaimSection = {
+  key: 'needsClaim',
+  statements: (db, guildId) => [db.prepare(NEEDS_CLAIM_SQL).bind(guildId)],
   build([result]) {
     const rows = result.results;
-    const linkable = rows.filter((row) => row.conflict !== 1);
     return {
       payload: {
-        count: linkable.length,
-        // The Owner's own person is one of them: the flip links it too (and the Owner then holds it by account, not by Discord ID).
-        ownerIncluded: linkable.some((row) => row.is_owner === 1),
-        conflicts: rows.length - linkable.length,
-        onRoster: linkable.filter((row) => row.on_roster === 1).length,
-        samples: linkable.slice(0, FLIP_SAMPLES).map((row) => ({ personId: row.person_id, name: row.name, onRoster: row.on_roster === 1 })),
+        count: rows.length,
+        // The Owner's own person is one of them: the flip does not link it, the Owner claims it like everybody else (the Owner seat itself needs no person).
+        ownerIncluded: rows.some((row) => row.is_owner === 1),
+        onRoster: rows.filter((row) => row.on_roster === 1).length,
+        samples: rows.slice(0, FLIP_SAMPLES).map((row) => ({ personId: row.person_id, name: row.name, onRoster: row.on_roster === 1 })),
       },
-      hashPart: linkable.map((row) => [row.person_id, row.user_id]),
+      hashPart: rows.map((row) => [row.person_id, row.user_id, row.on_roster]),
     };
   },
 };
@@ -305,7 +308,7 @@ const ownerSection = {
 };
 
 // The sections, in order. Lane B9 pushes its own (the name-binding confirmations).
-export const FLIP_SECTIONS = [accessSection, discordOwnedSection, permissionsSection, ownerSection];
+export const FLIP_SECTIONS = [accessSection, needsClaimSection, permissionsSection, ownerSection];
 
 // 'flip:' + the hash of the parts. The prefix is the purpose (worker/dry-run.js): a token minted here is never valid for a rank-map change, and the other way round.
 export async function flipStateHash(hashParts) {

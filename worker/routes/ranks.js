@@ -1,6 +1,8 @@
 // Rank progression (PM wave 7), the writes: an officer sets a person's rank (by hand, or by accepting the ladder's suggestion) or dismisses a suggestion for
 // 30 days. A rank is a label on the person (players.rank, the id of a rank of the guild's ladder in the attendance policy, worker/rank-ladder.js); it is
 // separate from the roster status. Needs attendance.review for the team the page was opened on (the person must have a character there).
+// Setting a rank runs the Seniority guard (worker/seniority.js): a person whose account ranks the same as the actor or above is not ranked by them, before and inside the write.
+// Dismissing a suggestion changes nobody's rank or standing, so it stays open to whoever may review the team.
 //   PUT  /api/guild/:gid/roster/:pid/rank          { teamId, rank: <rank id> | null, via?: 'accept' | 'manual', expectedRank?: <the rank id the page showed> | null }
 //   POST /api/guild/:gid/roster/:pid/rank/dismiss  { teamId, kind: 'promote' | 'review', to: <rank id> }
 import { HttpError, jsonResponse } from '../http.js';
@@ -8,6 +10,7 @@ import { auditStatement } from '../audit.js';
 import { makePolicyResolver, policyRowsStatement } from '../attendance-store.js';
 import { isId } from '../ids.js';
 import { allows, loadGuildContext } from '../permissions.js';
+import { assertSenior, seniorityOk } from '../seniority.js';
 import { DISMISS_DAYS, ladderOf } from '../rank-ladder.js';
 import { guildToday } from '../roster-view.js';
 
@@ -43,6 +46,8 @@ const rankView = (ranks, id) => {
 
 export async function putPersonRank(ctx) {
   const { guildContext, guild, person, team, ranks } = await loadTarget(ctx);
+  // First, so a junior learns nothing about a senior's rank (the 409 below carries it).
+  await assertSenior(ctx.db, guildContext, person.id);
   const { body } = ctx;
   const rank = body.rank === undefined ? undefined : body.rank;
   if (rank === undefined || (rank !== null && typeof rank !== 'string')) throw bad('Send the rank id, or null to clear it.', 'rank');
@@ -58,17 +63,23 @@ export async function putPersonRank(ctx) {
   if (rank === person.rank) return jsonResponse({ ok: true, changed: false, rank: rankView(ranks, rank), rankOn: person.rank_on });
   const rankOn = rank === null ? null : today;
   const stillTheSame = { sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND rank IS ?)', params: [person.id, guild.id, rank] };
+  // The Seniority guard again inside the write: an actor demoted, or a person promoted, between the read above and this batch changes nothing.
+  const senior = seniorityOk(guild.id, ctx.session.user.id, person.id);
   const results = await ctx.db.batch([
-    ctx.db.prepare('UPDATE players SET rank = ?, rank_on = ?, updated_at = ? WHERE id = ? AND guild_id = ? AND rank IS ?')
-      .bind(rank, rankOn, now, person.id, guild.id, person.rank),
-    ctx.db.prepare('DELETE FROM rank_dismissals WHERE guild_id = ? AND player_id = ?').bind(guild.id, person.id),
+    ctx.db.prepare(`UPDATE players SET rank = ?, rank_on = ?, updated_at = ? WHERE id = ? AND guild_id = ? AND rank IS ? AND ${senior.sql}`)
+      .bind(rank, rankOn, now, person.id, guild.id, person.rank, ...senior.params),
+    // Only after the rank really changed: a refused or lost write keeps the dismissal.
+    ctx.db.prepare('DELETE FROM rank_dismissals WHERE guild_id = ? AND player_id = ? AND changes() = 1').bind(guild.id, person.id),
     auditStatement(ctx, {
       guildId: guild.id, actorUserId: guildContext.userId, action: 'person.rank', entityType: 'person', entityId: person.id,
       before: { rank: person.rank, rankName: (rankView(ranks, person.rank) || {}).name || null },
       after: { rank, rankName: (rankView(ranks, rank) || {}).name || null, via, teamId: team.id },
     }, stillTheSame),
   ]);
-  if (results[0].meta.changes !== 1) throw new HttpError(409, 'conflict', 'Someone changed this rank. Reload and look again.');
+  if (results[0].meta.changes !== 1) {
+    await assertSenior(ctx.db, guildContext, person.id); // a person promoted past the actor in between is a 403, not a conflict
+    throw new HttpError(409, 'conflict', 'Someone changed this rank. Reload and look again.');
+  }
   return jsonResponse({ ok: true, changed: true, rank: rankView(ranks, rank), rankOn });
 }
 
