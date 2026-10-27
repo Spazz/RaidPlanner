@@ -25,27 +25,32 @@ const notFound = () => new HttpError(404, 'not_found', 'That person was not foun
 const forbidden = () => new HttpError(403, 'forbidden', 'You cannot remove that person\'s access.');
 const conflict = () => new HttpError(409, 'conflict', 'That changed while you were working on it. Reload and try again.');
 
-// SQL: the rank the person would have (placeholders: person, guild). 0 Guild Master, 1 Officer, 2 Team Lead, 3 Member.
-const PROSPECTIVE_RANK_SQL = `COALESCE((
+// SQL: the rank the person would have (person, guild: SQL expressions; the bare form below takes placeholders in that order). 0 Guild Master, 1 Officer, 2 Team Lead, 3 Member.
+// Exported with accountLessSql for worker/users-bulk.js, which asks the same question for many persons in one statement.
+export const prospectiveRankSql = (personExpr, guildExpr) => `COALESCE((
     SELECT MIN(CASE m.role_id WHEN 'guild_master' THEN 0 WHEN 'officer' THEN 1 WHEN 'team_lead' THEN 2 ELSE 3 END)
       FROM characters c
       JOIN guild_roster gr ON gr.guild_id = c.guild_id AND gr.namespace = c.namespace AND gr.blizzard_realm_id = c.blizzard_realm_id AND gr.blizzard_char_id = c.blizzard_char_id
       JOIN source_rank_maps m ON m.guild_id = gr.guild_id AND m.source = 'ingame' AND m.source_key = CAST(gr.rank AS TEXT) AND m.team_id IS NULL
-     WHERE c.player_id = ? AND c.guild_id = ? AND c.left_on IS NULL
+     WHERE c.player_id = ${personExpr} AND c.guild_id = ${guildExpr} AND c.left_on IS NULL
        AND EXISTS (SELECT 1 FROM guilds x WHERE x.id = c.guild_id AND x.rank_source = 'ingame')), ${ROLE_RANK.member})`;
+const PROSPECTIVE_RANK_SQL = prospectiveRankSql('?', '?');
 
 // The person has no account: no players.user_id and no user holds its Discord id (worker/seniority.js ACCOUNT_OF_PERSON, the one definition).
-const ACCOUNT_LESS_SQL = `NOT EXISTS (SELECT 1 FROM players x WHERE x.id = ? AND x.guild_id = ?
+export const accountLessSql = (personExpr, guildExpr) => `NOT EXISTS (SELECT 1 FROM players x WHERE x.id = ${personExpr} AND x.guild_id = ${guildExpr}
     AND (x.user_id IS NOT NULL OR EXISTS (SELECT 1 FROM users du WHERE du.discord_id = x.discord_user_id)))`;
+const ACCOUNT_LESS_SQL = accountLessSql('?', '?');
 
 // { sql, params }: true while the actor is the Owner or strictly senior to the person's prospective rank.
 function actorOutranksPerson(guildId, actorId, playerId) {
-  const actorRank = `COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ? AND ra.user_id = ?), ${ROLE_RANK.member})`;
-  return {
-    sql: `(${ownerSql('?', '?')} OR ${actorRank} < ${PROSPECTIVE_RANK_SQL})`,
-    params: [guildId, actorId, actorId, guildId, actorId, playerId, guildId],
-  };
+  return { sql: outranksPersonSql('?', '?', '?'), params: [guildId, actorId, actorId, guildId, actorId, playerId, guildId] };
 }
+
+// The same over SQL expressions (guild, actor, person), for a statement that asks it of many persons. Bare placeholders come out in the order guild, actor, actor, guild, actor, person, guild.
+export const outranksPersonSql = (guildExpr, actorExpr, personExpr) => {
+  const actorRank = `COALESCE((SELECT MIN(r.rank) FROM effective_roles ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ${guildExpr} AND ra.user_id = ${actorExpr}), ${ROLE_RANK.member})`;
+  return `(${ownerSql(guildExpr, actorExpr)} OR ${actorRank} < ${prospectiveRankSql(personExpr, guildExpr)})`;
+};
 
 async function loadTarget(ctx, guildContext) {
   const { pid } = ctx.params;

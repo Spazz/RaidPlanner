@@ -37,6 +37,11 @@ export const FLIP_DRY_RUN_WINDOW_MS = 10 * 60 * 1000;
 export const USERS_LIMIT = 30;
 export const USERS_WINDOW_MS = 60 * 1000;
 export const usersKey = (userId) => `users:${userId}`;
+// The writes of the Users page (bulk Block / Unblock, Add to a person, per user): one request changes up to 25 users, so a stolen officer session cannot empty a guild in a minute.
+// The global write limit (60 a minute) still applies on top.
+export const USERS_WRITE_LIMIT = 10;
+export const USERS_WRITE_WINDOW_MS = 60 * 1000;
+export const usersWriteKey = (userId) => `usersw:${userId}`;
 // The People list (GET /api/guild/:gid/people, per user): the page reads every person of the guild once; the writes of that page answer with the same list, they are not counted.
 export const PEOPLE_LIMIT = 60;
 export const PEOPLE_WINDOW_MS = 60 * 1000;
@@ -111,6 +116,7 @@ export function rateLimitMessage(key) {
   if (/^rsync:/.test(key)) return 'Too many roster syncs. Try again in a little while.';
   if (/^rmap:/.test(key)) return 'Too many rank map dry runs. Try again in a few minutes.';
   if (/^users:/.test(key)) return 'Too many look-ups of the users list. Wait a moment and try again.';
+  if (/^usersw:/.test(key)) return 'Too many changes to users in a minute. Wait a moment and try again.';
   if (/^people:/.test(key)) return 'Too many look-ups of the people list. Wait a moment and try again.';
   if (/^flip:/.test(key)) return 'Too many flip dry runs. Try again in a few minutes.';
   if (/^pin:/.test(key)) return 'Too many tries to link the guild to its in-game guild. Try again in a few minutes.';

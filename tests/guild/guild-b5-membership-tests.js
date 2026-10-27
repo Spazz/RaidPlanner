@@ -594,6 +594,7 @@ const PLAYERS_USER_ID_ALLOWED = {
   'worker/routes/roster.js': { count: 2, reason: 'the "already another person\'s" check of a Discord link and the list of members with no person yet (memberSql decides who is a member)' },
   'worker/routes/team-requests.js': { count: 1, reason: 'ownership: the asker\'s account still owns the character\'s person' },
   'worker/seniority.js': { count: 1, reason: 'the account of a person (players.user_id, else the Discord ID match): the Seniority guard' },
+  'worker/users-bulk.js': { count: 3, reason: 'bulk Block / Unblock of the Users page: the persons of the accounts being blocked (their effects, the same persons worker/block-effects.js reaches through ownPlayerSql: linked, or carrying the account\'s Discord ID) and the persons whose block is read; who is a member is never decided here' },
   'worker/users-list.js': { count: 3, reason: 'the Users list: the accounts linked to a person are candidates of the list, the person an account is shown with (its Main), and the account-less persons (no players.user_id) are listed apart; the member test itself is the reachesGuildSql fragment' },
 };
 

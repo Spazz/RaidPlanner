@@ -31,6 +31,7 @@ const ALLOWED_CORE_RANK_WRITERS = {
   'worker/rank-map.js': 'applyRankMap: the in-game roster and the rank map decide the rank of every character (roster sync batch, rank-map edit)',
   'worker/bnet-match.js': 'the Battle.net sign-in match: a roster character of the account is created with the core rank of its roster row (newCoreRankSql, the rank map of the guild); an unkeyed character that takes the key of a name collision takes its roster rank too',
   'worker/rehome.js': 'the retired placeholder a re-home leaves behind: Former and Social (no rank map applies: it has no identity key)',
+  'worker/users-add-to-person.js': 'Add to a person (Users page): a name seen in a log, loot or a sign-up becomes an alt of a person and takes the core rank and left date of the person\'s Main (IMPORTED_RANK_COLUMNS_SQL)',
 };
 
 const FIELDS = ['status', 'trial_start', 'trial_end', 'left_on', 'left_reason'];
@@ -348,7 +349,7 @@ check('every INSERT INTO characters in worker/ names core_rank', () => {
     const inComments = raw.split(/\r?\n/).filter((l) => /^\s*\/\//.test(l) && /INTO\s+characters\b/i.test(l)).length;
     assert.equal(mentions - inComments, literal, `${rel}: an INSERT INTO characters outside a plain SQL literal`);
   }
-  assert.equal(seen, 5, 'the five character inserts today: roster.js insertCharacter, claim-apply.js, roster-import.js writeImport, bnet-match.js (the sign-in match), rehome.js (the retired placeholder)');
+  assert.equal(seen, 6, 'the six character inserts today: roster.js insertCharacter, claim-apply.js, roster-import.js writeImport, bnet-match.js (the sign-in match), rehome.js (the retired placeholder), users-add-to-person.js (Add to a person)');
 });
 
 check('core_rank is written only by the allowed paths', () => {

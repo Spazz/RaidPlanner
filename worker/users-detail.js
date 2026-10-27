@@ -38,6 +38,9 @@ export function parseUserKey(key) {
 }
 
 const bound = (db, sc, text) => db.prepare(text).bind(...sc.values);
+// The sightings a sign-up gives: dated by the raid, and a sign-up on a raid to come is no sighting (users-list.js namesCtes), so the page takes those dates from `held_signup`.
+const SIGNUP_SOURCES = ['raid_helper', 'guest_signup'];
+const newestOf = (dates) => dates.filter(Boolean).reduce((best, date) => (best === null || date > best ? date : best), null);
 const nameKeyOf = (nameKey) => `n_${[...new TextEncoder().encode(nameKey)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 
 // The characters of a person (a retired placeholder is hidden), the Main first. Rank facts only: no Blizzard id leaves the Worker.
@@ -240,6 +243,7 @@ async function namePage(ctx, scope, nameKey) {
   const check = scope();
   const g = check.g();
   const key = check.add(nameKey);
+  // held_signup: the newest sign-up on a raid already held, which is how the list dates a name by its sign-ups (a sign-up on a raid to come is no sighting); the capped sightings below could miss it.
   // The name as it was written (the first source that has it), and whether it is a name nobody on the roster carries.
   const resolved = bound(db, check, `SELECT ${unresolvedSql(check, key)} AS unresolved,
             COALESCE((SELECT la.winner_name FROM loot_awards la WHERE la.guild_id = ${g} AND la.winner_name_key = ${key} LIMIT 1),
@@ -248,7 +252,10 @@ async function namePage(ctx, scope, nameKey) {
                      (SELECT ag.name FROM attendance_guests ag WHERE ag.guild_id = ${g} AND ag.name_key = ${key} LIMIT 1),
                      (SELECT ap.char_name FROM applications ap WHERE ap.guild_id = ${g} AND ap.user_id IS NULL AND ap.name_key = ${key} LIMIT 1),
                      (SELECT sn.nickname FROM raid_signups sn WHERE sn.guild_id = ${g} AND sn.player_id IS NULL AND sn.guest_user_id IS NULL AND sn.nickname IS NOT NULL
-                         AND sn.source IN ('raid_helper', 'raidsmith') AND lower(sn.nickname) = ${key} LIMIT 1)) AS shown`);
+                         AND sn.source IN ('raid_helper', 'raidsmith') AND lower(sn.nickname) = ${key} LIMIT 1)) AS shown,
+            (SELECT MAX(hr.raid_on) FROM raid_signups hs JOIN raids hr ON hr.id = hs.raid_id
+              WHERE hs.guild_id = ${g} AND ${flag(check.viewer.raids)} AND hs.player_id IS NULL AND hs.guest_user_id IS NULL AND hs.nickname IS NOT NULL
+                AND hs.source IN ('raid_helper', 'raidsmith') AND lower(hs.nickname) = ${key} AND hr.raid_on <= ${check.today()}) AS held_signup`);
   const lists = nameSightingStatements(db, scope, nameKey);
   const results = await db.batch([resolved, ...lists.map((entry) => entry.statement)]);
   if (results[0].results[0].unresolved !== 1) throw notFound();
@@ -273,7 +280,7 @@ async function namePage(ctx, scope, nameKey) {
     characters: [],
     permission: null,
     permissions: [],
-    lastSeen: (sightings.find((sighting) => sighting.date) || {}).date || null,
+    lastSeen: newestOf([...sightings.filter((sighting) => !SIGNUP_SOURCES.includes(sighting.source)).map((sighting) => sighting.date), results[0].results[0].held_signup]),
     block: { blocked: false, pendingReview: false, blockedOn: null },
     flags: {},
     tags: sortedTags([...new Set(sightings.map((sighting) => sighting.source))]),

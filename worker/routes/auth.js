@@ -615,8 +615,8 @@ export async function deleteMe(ctx) {
     // Raid sign-ups keep the person link (outcomes recompute the same) but lose the Discord ID and nickname.
     statements.push(db.prepare(`UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ? AND ${guard.sql}`).bind(session.user.discordId, ...guard.params));
   }
-  statements.push(db.prepare(`DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND ${guard.sql}`)
-    .bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`, `rsync:${userId}`, `char:${userId}`, `open:${userId}`, `fresh:${userId}`, `users:${userId}`, `people:${userId}`, ...guard.params));
+  statements.push(db.prepare(`DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND ${guard.sql}`)
+    .bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`, `rsync:${userId}`, `char:${userId}`, `open:${userId}`, `fresh:${userId}`, `users:${userId}`, `usersw:${userId}`, `people:${userId}`, ...guard.params));
   const results = await db.batch(statements);
   if (!act.consumed(results)) {
     // Nothing applied. A manual guild's seat that the delete would have emptied (a member joined after the read) is not a lost grant: say so, and the grant is still good.

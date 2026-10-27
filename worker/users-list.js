@@ -41,9 +41,10 @@ export const USERS_MAX_LIMIT = 100;
 export const USERS_MAX_OFFSET = 5000;
 export const USERS_MAX_QUERY = 40;
 
-// Last seen: plan v9 (tasks/todo.md, "Users API/UI") counts the latest raid-level guild fact (attendance, sign-up, loot, application), never the account-wide sign-in; the
-// user's H-Q36 (2026-10-25) says newest activity anywhere INCLUDING sign-in. The sign-in is ONE isolated term, off until the user decides. A test pins both settings.
-export const LAST_SEEN_INCLUDES_SIGN_IN = false;
+// Last seen = the newest of the account's sign-in (users.last_seen_at, account-wide: it is not about this guild) and the raid-level facts of this guild (attendance, a sign-up on a
+// raid already held, loot, an application). User decision 2026-10-26 (H-Q36 over plan v9, which had left the sign-in out). The sign-in is ONE isolated term of lastSeenSql, used by
+// the list, its sort and the page of a user alike (accounts only: a person without an account and a name have no sign-in). A test pins both settings.
+export const LAST_SEEN_INCLUDES_SIGN_IN = true;
 
 export const ROLE_LABELS = Object.freeze({ guild_master: 'Guild Master', officer: 'Officer', team_lead: 'Team Lead' });
 
@@ -139,16 +140,18 @@ function candidateAccountsSql(sc) {
 export const personOfAccountSql = (g, userExpr, discordExpr) => `COALESCE((SELECT pl.id FROM players pl WHERE pl.guild_id = ${g} AND pl.user_id = ${userExpr}),
     (SELECT pd.id FROM players pd WHERE pd.guild_id = ${g} AND pd.discord_user_id = ${discordExpr}))`;
 
-// CTE `a`: the candidate accounts with the columns the tests and the name need, and their person (computed once per account). `only`: one account's id (a user's page).
+// CTE `a`: the candidate accounts with the columns the tests and the name need, and their person (computed once per account). `only`: one account's id (a user's page), or a list
+// of ids (bound as ONE JSON parameter: the bulk Block and Unblock of worker/users-bulk.js ask about many accounts in one statement).
+const onlyIn = (sc, column, only) => (Array.isArray(only) ? ` AND ${column} IN (SELECT value FROM json_each(${sc.add(JSON.stringify(only))}))` : ` AND ${column} = ${sc.add(only)}`);
 export const accountsCte = (sc, only = null) => `a AS MATERIALIZED (
   SELECT u.id AS id, u.discord_id AS discord_id, u.username AS username, u.global_name AS global_name, u.display_name AS display_name, u.last_seen_at AS last_seen_at,
          ${personOfAccountSql(sc.g(), 'u.id', 'u.discord_id')} AS pid
-    FROM users u WHERE u.id IN (${candidateAccountsSql(sc)})${only ? ` AND u.id = ${sc.add(only)}` : ''})`;
+    FROM users u WHERE u.id IN (${candidateAccountsSql(sc)})${only ? onlyIn(sc, 'u.id', only) : ''})`;
 
-// CTE `solo`: the account-less persons (no players.user_id and no account holding the Discord id they carry). `only`: one person's id.
+// CTE `solo`: the account-less persons (no players.user_id and no account holding the Discord id they carry). `only`: one person's id, or a list of ids.
 export const personsCte = (sc, only = null) => `solo AS MATERIALIZED (
   SELECT p.id AS id, p.discord_nickname AS nick FROM players p
-   WHERE p.guild_id = ${sc.g()} AND p.user_id IS NULL AND NOT EXISTS (SELECT 1 FROM users du WHERE du.discord_id = p.discord_user_id)${only ? ` AND p.id = ${sc.add(only)}` : ''})`;
+   WHERE p.guild_id = ${sc.g()} AND p.user_id IS NULL AND NOT EXISTS (SELECT 1 FROM users du WHERE du.discord_id = p.discord_user_id)${only ? onlyIn(sc, 'p.id', only) : ''})`;
 
 // The person has characters and every one of them is Former (worker/person-rank.js leftOn): read through characters_player only.
 const formerSql = (pid) => `(EXISTS (SELECT 1 FROM characters fv WHERE fv.player_id = ${pid} AND ${visibleCharacterSql('fv')})
@@ -255,7 +258,7 @@ const looseScan = (name, table, column, sc, allowed) => `${name}(k) AS (
   UNION ALL SELECT (SELECT MIN(${column}) FROM ${table} WHERE guild_id = ${sc.g()} AND ${column} > ${name}.k) FROM ${name} WHERE ${name}.k IS NOT NULL)`;
 
 // The CTEs the names need and the CTE `nm` itself: (nk, nm, rlm, cls, seen, tags). Six sources; D1 allows five terms in one compound, so five sit in a FROM-subquery.
-function namesCtes(sc) {
+export function namesCtes(sc) {
   const g = sc.g();
   const loot = `SELECT ln.k AS nk,
       (SELECT la.winner_name FROM loot_awards la WHERE la.guild_id = ${g} AND la.winner_name_key = ln.k LIMIT 1) AS nm,
