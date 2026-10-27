@@ -69,6 +69,8 @@ export const ACTION_GROUP = Object.freeze({
   'identity.change': 'settings',
   // Lane B6b part 2b: the Owner seat passed on when its holder's account was deleted.
   'guild.succession': 'settings',
+  // Lane B6b part 3a: the setup pin / re-pin sits with the Battle.net settings; a switch of the rank source is a guild setting.
+  'guild.pin': 'bnet', 'guild.source_switch': 'settings',
 });
 
 // Actions the Worker writes itself (no actor): the Activity log names "Raidsmith" for them instead of a former member.
@@ -228,6 +230,11 @@ export function describeRow(row, names = {}) {
       return after.guildMasterUserId
         ? `The Owner seat passed from ${user(before.guildMasterUserId)} to ${user(after.guildMasterUserId)}${how ? ` (${how})` : ''}`
         : `The Owner seat of ${user(before.guildMasterUserId)} is vacant until the Guild Master in game claims it`;
+    }
+    case 'guild.pin': return after.rePin ? 'Linked the guild again to its in-game guild (it was renamed or moved)' : 'Linked the guild to its in-game guild';
+    case 'guild.source_switch': {
+      const name = (source) => ({ ingame: 'the in-game guild roster', manual: 'hand-set ranks' }[source] || 'the Discord server');
+      return `Moved the guild from ${name(before.rankSource)} to ${name(after.rankSource)}${after.unpinned ? ' and cut its link to the in-game guild' : ''}`;
     }
     case 'guild_master.auto_promote': return after.guildMasterUserId ? `Guild Master passed to ${user(after.guildMasterUserId)}` : 'The guild has no Guild Master';
     case 'access.remove': return `Removed the access of ${user(ent)}`;

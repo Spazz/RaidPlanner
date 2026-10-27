@@ -258,33 +258,21 @@ export async function replaceStoredRoster(deps, { guildId, guild, pin, roster, h
 
 const rosterCounts = (roster) => ({ entries: roster.entries, members: roster.members.length, nonTbc: roster.nonTbc, truncated: roster.truncated, problems: roster.problems });
 
-// deps: { db, env, fetch, now, randomBytes, log }. Syncs one pinned guild whose lease the caller holds. Never throws.
-// -> { status: 'applied' | 'unchanged' | 'failed' | 'superseded' | 'skipped', syncId | null, reason | null, members | null }
-export async function syncGuild(deps, guildId) {
-  const { db } = deps;
-  const startedAt = deps.now();
-  const syncId = newId('rs', deps.randomBytes);
-  const attempt = async (good, fields) => {
-    await recordAttempt(deps, { id: syncId, guildId, startedAt, good, ...fields });
-    const status = good ? fields.status : (fields.reason === 'superseded' ? 'superseded' : 'failed');
-    return { status, syncId, reason: fields.reason || null, members: fields.members ?? null };
-  };
-  try {
-    const guild = await db.prepare(PIN_SQL).bind(guildId).first();
-    const pin = pinOf(guild);
-    if (!pin || !pin.complete) return { status: 'skipped', syncId: null, reason: 'not_pinned', members: null };
-    const support = bnetSupport(guild.game_version, guild.region);
-    if (!support.supported || support.namespace !== pin.namespace) return await attempt(false, { reason: 'pin_namespace_mismatch' });
-    if (!deps.env || !deps.env.BNET_CLIENT_ID || !deps.env.BNET_CLIENT_SECRET) return await attempt(false, { reason: 'not_configured' });
+// The recorder of ONE attempt: a roster_syncs row for a refusal, the answer shape for every outcome. deps: { db, now, log, randomBytes }.
+const attemptRecorder = (deps, guildId, startedAt, syncId) => async (good, fields) => {
+  await recordAttempt(deps, { id: syncId, guildId, startedAt, good, ...fields });
+  const status = good ? fields.status : (fields.reason === 'superseded' ? 'superseded' : 'failed');
+  return { status, syncId, reason: fields.reason || null, members: fields.members ?? null };
+};
 
-    let roster;
-    try {
-      roster = await fetchGuildRosterBySlug(deps, guild.region, pin.namespace, pin.realmSlug, pin.guildSlug);
-    } catch (error) {
-      if (!(error instanceof BnetError)) throw error;
-      deps.log(`roster sync: ${guildId}: ${error.kind}: ${error.message}`);
-      return await attempt(false, { reason: `bnet_${error.kind}`, httpStatus: error.status });
-    }
+// What a roster that was just FETCHED for a pinned guild does: assessRoster decides GOOD against the pin, an unchanged hash only advances the monotonic guard, a changed one replaces
+// the stored roster in ONE batch. The part of a sync after the fetch, shared by syncGuild and the setup pin (worker/routes/bnet-pin.js, which fetched the roster itself to decide
+// the pin and must not fetch and parse it twice in one invocation). guild: the PIN_SQL row (roster_hash, time_zone), pin: pinOf(guild) and complete, startedAt: when the fetch began.
+// Never throws. -> the same answer as syncGuild.
+export async function settleFetchedRoster(deps, { guildId, guild, pin, roster, startedAt, syncId }) {
+  const { db } = deps;
+  const attempt = attemptRecorder(deps, guildId, startedAt, syncId);
+  try {
     const verdict = assessRoster(roster, { guildId: pin.blizzardGuildId, realmId: pin.blizzardRealmId });
     if (!verdict.good) {
       deps.log(`roster sync: ${guildId}: not good: ${verdict.reason}`);
@@ -307,6 +295,36 @@ export async function syncGuild(deps, guildId) {
     // 'superseded': the guard refused every statement, a newer roster is already stored (or the pin changed). Nothing was written.
     if (outcome !== 'applied') return await attempt(false, { reason: outcome === 'failed' ? 'batch_failed' : 'superseded', httpStatus: 200, counts: rosterCounts(roster) });
     return { status: 'applied', syncId, reason: null, members: roster.members.length };
+  } catch (error) {
+    try { deps.log(`roster sync: ${guildId}: failed: ${error && error.message}`); } catch { /* logging must not throw */ }
+    return await attempt(false, { reason: 'sync_error' });
+  }
+}
+
+// deps: { db, env, fetch, now, randomBytes, log }. Syncs one pinned guild whose lease the caller holds. Never throws.
+// -> { status: 'applied' | 'unchanged' | 'failed' | 'superseded' | 'skipped', syncId | null, reason | null, members | null }
+export async function syncGuild(deps, guildId) {
+  const { db } = deps;
+  const startedAt = deps.now();
+  const syncId = newId('rs', deps.randomBytes);
+  const attempt = attemptRecorder(deps, guildId, startedAt, syncId);
+  try {
+    const guild = await db.prepare(PIN_SQL).bind(guildId).first();
+    const pin = pinOf(guild);
+    if (!pin || !pin.complete) return { status: 'skipped', syncId: null, reason: 'not_pinned', members: null };
+    const support = bnetSupport(guild.game_version, guild.region);
+    if (!support.supported || support.namespace !== pin.namespace) return await attempt(false, { reason: 'pin_namespace_mismatch' });
+    if (!deps.env || !deps.env.BNET_CLIENT_ID || !deps.env.BNET_CLIENT_SECRET) return await attempt(false, { reason: 'not_configured' });
+
+    let roster;
+    try {
+      roster = await fetchGuildRosterBySlug(deps, guild.region, pin.namespace, pin.realmSlug, pin.guildSlug);
+    } catch (error) {
+      if (!(error instanceof BnetError)) throw error;
+      deps.log(`roster sync: ${guildId}: ${error.kind}: ${error.message}`);
+      return await attempt(false, { reason: `bnet_${error.kind}`, httpStatus: error.status });
+    }
+    return await settleFetchedRoster(deps, { guildId, guild, pin, roster, startedAt, syncId });
   } catch (error) {
     try { deps.log(`roster sync: ${guildId}: failed: ${error && error.message}`); } catch { /* logging must not throw */ }
     return await attempt(false, { reason: 'sync_error' });

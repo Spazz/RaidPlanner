@@ -34,8 +34,12 @@ const BNET = {
   mem: { id: '740000004', battletag: 'Mem#0004' }, off: { id: '740000005', battletag: 'Off#0005' }, other: { id: '740000009', battletag: 'Other#0009' },
 };
 
-async function world(options) {
-  const s = await freshScenario(options);
+// The setup pin (lane B6b part 3a) is behind the operator's allowlist and takes the in-game guild it names as its params; these suites use it as a plain Battle.net Owner act.
+const PIN = { guildName: 'Writers B3', realmSlug: 'nightslayer' };
+const SWITCH = { from: null, to: 'manual' };
+
+async function world(options = {}) {
+  const s = await freshScenario({ ...options, env: { SETUP_PIN_GUILDS: '*', ...(options.env || {}) } });
   globalThis.__identityWorlds.push(s);
   // The accounts of the scenario were made a moment ago; an identity linked now is "founding" for 60 s. A day on, a link made by a test is a young one.
   s.w.advance(DAY);
@@ -188,7 +192,7 @@ check('the plan\'s scenario: a Discord-first Owner links Battle.net in the sessi
   assert.equal(link.first_linked_at, s.w.clock.now, 'the new Battle.net identity starts its 7 days now');
   await s.nothing('gm');
   // The new identity cannot confirm an Owner act.
-  for (const [purpose, params] of [['handover', { targetUserId: s.uids.mem }], ['guild_delete', {}], ['pin', {}], ['source_switch', {}]]) {
+  for (const [purpose, params] of [['handover', { targetUserId: s.uids.mem }], ['guild_delete', {}], ['pin', PIN], ['source_switch', SWITCH]]) {
     const start = await s.call('gm', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose, params, provider: 'bnet' });
     assert.equal(start.status, 403, `${purpose}: ${start.text}`);
     assert.equal(start.json.error, 'identity_too_new');
@@ -212,16 +216,16 @@ check('the plan\'s scenario: a Discord-first Owner links Battle.net in the sessi
   // After 7 days the Battle.net identity confirms an Owner act (pin and source switch are Battle.net acts). A request advances the test clock by 2 s first.
   const eligible = link.first_linked_at + 7 * DAY;
   s.w.clock.now = eligible - 2000 - 1;
-  assert.equal((await s.call('gm', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: {}, provider: 'bnet' })).status, 403, 'one millisecond short');
+  assert.equal((await s.call('gm', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: PIN, provider: 'bnet' })).status, 403, 'one millisecond short');
   s.w.clock.now = eligible - 2000;
-  const pin = await s.fresh('gm', { purpose: 'pin', guildId: s.gid, params: {}, provider: 'bnet', account: BNET.gm });
+  const pin = await s.fresh('gm', { purpose: 'pin', guildId: s.gid, params: PIN, provider: 'bnet', account: BNET.gm });
   assert.equal(pin.location, '/#/fresh?done=pin');
 });
 
 check('the callback checks the rule again: an identity that became "new" between the start and the callback gets no grant and is counted as fresh.failed', async () => {
   const s = await world();
   s.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES ('${s.uids.gm}', '${BNET.gm.id}', 'Gm#1', 1, '{}', 1, 1)`);
-  const start = await s.call('gm', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: {}, provider: 'bnet' });
+  const start = await s.call('gm', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: PIN, provider: 'bnet' });
   assert.equal(start.status, 200, start.text);
   s.at('gm', s.w.clock.now); // the link was swapped for a young one after the start
   const state = new URL(start.json.authorizeUrl).searchParams.get('state');
@@ -243,7 +247,7 @@ check('a Battle.net refresh then pin passes; unlink + relink then pin is refused
     s.exec(`UPDATE players SET user_id = '${s.uids.ivy}' WHERE id = '${made.pid}'`);
   await s.setOwner('ivy');
   s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'guild_master'`);
-  const pin = (key, account) => s.fresh(key, { purpose: 'pin', guildId: s.gid, params: {}, provider: 'bnet', account });
+  const pin = (key, account) => s.fresh(key, { purpose: 'pin', guildId: s.gid, params: PIN, provider: 'bnet', account });
   assert.equal((await pin('ivy', BNET.ivy)).location, '/#/fresh?done=pin', 'founding: at once');
   // A refresh weeks later moves linked_at, not first_linked_at, and the pin still passes.
   s.w.advance(10 * DAY);
@@ -263,10 +267,10 @@ check('a Battle.net refresh then pin passes; unlink + relink then pin is refused
   assert.equal(await s.linkBnet('kai', BNET.kai), '/#/characters');
   const relinked = (await s.bnetOf('kai')).first_linked_at;
   assert.equal(relinked, s.w.clock.now);
-  const refused = await s.call('kai', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: {}, provider: 'bnet' });
+  const refused = await s.call('kai', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: PIN, provider: 'bnet' });
   assert.deepEqual([refused.status, refused.json.error, refused.json.eligibleAt], [403, 'identity_too_new', relinked + 7 * DAY]);
   s.w.clock.now = relinked + 7 * DAY - 2000 - 1;
-  assert.equal((await s.call('kai', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: {}, provider: 'bnet' })).status, 403, '7 days minus a millisecond');
+  assert.equal((await s.call('kai', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: PIN, provider: 'bnet' })).status, 403, '7 days minus a millisecond');
   s.w.clock.now = relinked + 7 * DAY - 2000;
   assert.equal((await pin('kai', BNET.kai)).location, '/#/fresh?done=pin', 'exactly 7 days after the first link');
 });

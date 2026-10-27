@@ -13,7 +13,7 @@
 //                  const act = await beginFreshAct(ctx, { required, purpose, guildId, params });
 //                  const results = await db.batch([...act.statements, firstWrite.bind(..., act.guard), ...]);
 //                  if (!act.consumed(results)) throw freshRequiredError(purpose, params);
-//              Later acts (the flip in lane B9, in-game creation in B10, pin and source switch in part 3) do the same. The GM claim (lane B6b part 2b) is the exception: it
+//              Later acts (the flip in lane B9, in-game creation in B10, the setup pin in part 3a, the source switch in B9) do the same. The GM claim (lane B6b part 2b) is the exception: it
 //              runs INSIDE the Battle.net callback that holds the user token and writes no grant (worker/gm-claim.js; checkFreshIdentity below is its identity check).
 //
 // IDENTITY RULE (a): for the purposes marked identityRule, an identity is accepted only if it is the account's FOUNDING identity (first linked within 60 s of users.created_at)
@@ -29,6 +29,7 @@ import { isId } from './ids.js';
 import { hasGuildTie } from './membership.js';
 import { markerGuard, newMarkerId } from './dry-run.js';
 import { ownedGuildsSql } from './owner.js';
+import { pinParamsProblem, sourceSwitchParamsProblem } from './pin-target.js';
 import { hashToken } from './session.js';
 
 export const FRESH_TTL_MS = 15 * 60 * 1000;
@@ -96,6 +97,9 @@ export function paramsProblem(purpose, params) {
     case 'guild_delete':
     case 'account_delete':
     case 'gm_claim': return entries.length === 0 ? null : 'This act takes no params.';
+    // The setup pin (worker/guild-pin.js, routes/bnet-pin.js) is bound to the in-game guild it names; the source switch (lane B9) to the two sources it moves between.
+    case 'pin': return pinParamsProblem(params);
+    case 'source_switch': return sourceSwitchParamsProblem(params);
     default: return null;
   }
 }

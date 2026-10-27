@@ -11,6 +11,7 @@ import { bnetCallback, bnetLogin, createClaims, disconnectBnet, getBnet, withdra
 import { applyPendingClaims, approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
 import { addMyCharacter } from './routes/me-characters.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
+import { postBnetPin } from './routes/bnet-pin.js';
 import { getRosterSyncStatus, postRosterSync } from './routes/roster-sync.js';
 import { dryRunFlip } from './routes/flip.js';
 import { dryRunRankMap, getRankMap, putRankMap } from './routes/rank-map.js';
@@ -286,6 +287,8 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/flip/dry-run', auth: true, handler: dryRunFlip },
   { method: 'GET', path: '/api/guild/:gid/bnet', auth: true, handler: getBnetSettings },
   { method: 'PUT', path: '/api/guild/:gid/bnet', auth: true, handler: putBnetSettings },
+  // The setup pin (lane B6b part 3a): the Owner links the guild to its in-game guild (fresh grant `pin`, behind SETUP_PIN_GUILDS). worker/routes/bnet-pin.js.
+  { method: 'POST', path: '/api/guild/:gid/bnet/pin', auth: true, handler: postBnetPin },
   // PM wave 1 (officer tools): the Activity log, the Needs attention home and the calendar feed. The feed file itself needs no session:
   // the unguessable token in its address is the credential (worker/routes/calendar.js).
   { method: 'GET', path: '/api/guild/:gid/audit', auth: true, handler: getAudit },

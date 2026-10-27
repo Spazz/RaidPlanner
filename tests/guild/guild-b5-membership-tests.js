@@ -579,7 +579,7 @@ const PLAYERS_USER_ID_ALLOWED = {
   'worker/block-tombstones.js': { count: 1, reason: 'the tombstone match: the guilds where the account has a person, to run the match there (the block itself is judged by guild_blocks and memberSql)' },
   'worker/bnet-store.js': { count: 2, reason: 'claim planning: which person is the claimant\'s own (ownership of a person; the member test is memberSql)' },
   'worker/claim-apply.js': { count: 3, reason: 'writes and guards of an applied claim: the person is still the claimant\'s' },
-  'worker/flip-preview.js': { count: 3, reason: 'the flip dry run: the person each account has today and would have after the flip links the Discord-owned ones' },
+  'worker/flip-preview.js': { count: 6, reason: 'the flip dry run: the person each account has today and would have after the flip links the Discord-owned ones; lane B6b part 3a adds the proven characters of the linked accounts as the in-game rule will see them (the roles and the Owner\'s liveness after the flip) and the name and person shown in those lines' },
   'worker/person-join.js': { count: 2, reason: 'the person join: whose person each one is (the refusal when two accounts own them, the survivor) and the account a carried block lands on; not a membership decision' },
   'worker/roster-view.js': { count: 4, reason: 'person pages and roster rows: the accounts linked to a person and the signed-in marker (memberSql decides who counts)' },
   'worker/routes/accounts.js': { count: 3, reason: 'an officer links or unlinks an account (writes) and the "already another person\'s" check' },

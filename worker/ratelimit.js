@@ -24,6 +24,10 @@ export const ROSTER_SYNC_WINDOW_MS = 60 * 60 * 1000;
 // Rank-map dry runs (per Owner): each one reads every character of the guild and writes an approval token.
 export const RANK_MAP_LIMIT = 10;
 export const RANK_MAP_WINDOW_MS = 10 * 60 * 1000;
+// The setup pin (per Owner, fail closed): every try fetches a guild roster from Blizzard, so it is counted like every endpoint that triggers an outbound Blizzard fetch.
+export const PIN_LIMIT = 6;
+export const PIN_WINDOW_MS = 10 * 60 * 1000;
+export const pinKey = (userId) => `pin:${userId}`;
 // Flip dry runs (per Owner): each one reads every account and person of the guild and writes an approval token.
 export const FLIP_DRY_RUN_LIMIT = 10;
 export const FLIP_DRY_RUN_WINDOW_MS = 10 * 60 * 1000;
@@ -100,6 +104,7 @@ export function rateLimitMessage(key) {
   if (/^users:/.test(key)) return 'Too many look-ups of the users list. Wait a moment and try again.';
   if (/^people:/.test(key)) return 'Too many look-ups of the people list. Wait a moment and try again.';
   if (/^flip:/.test(key)) return 'Too many flip dry runs. Try again in a few minutes.';
+  if (/^pin:/.test(key)) return 'Too many tries to link the guild to its in-game guild. Try again in a few minutes.';
   if (/^char:/.test(key)) return 'You have added a lot of characters this hour. Try again a little later.';
   if (/^open:/.test(key)) return 'You have signed up for a lot of open raids this hour. Try again a little later.';
   if (/^api:/.test(key)) return 'This key has reached its limit of 60 requests an hour. Try again later.';

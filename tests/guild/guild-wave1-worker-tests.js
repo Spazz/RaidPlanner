@@ -461,6 +461,10 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('identity.change', 'user', 'u_erin', null, { provider: 'bnet', change: 'link' }), 'Connected the Battle.net sign-in of Erin E'],
     [row('identity.change', 'user', 'u_erin', null, { provider: 'discord', change: 'unlink' }), 'Disconnected the Discord sign-in of Erin E'],
     [row('guild.succession', 'guild', 'g_1', { guildMasterUserId: 'u_bob' }, { guildMasterUserId: 'u_erin', rule: 'ingame_gm' }), 'The Owner seat passed from bob to Erin E (the Guild Master in game)'],
+    [row('guild.pin', 'guild', 'g_1', { pinned: false }, { guildSlug: 'ember', realmSlug: 'dreamscythe', namespace: 'profile-classicann-us', rePin: false }), 'Linked the guild to its in-game guild'],
+    [row('guild.pin', 'guild', 'g_1', { pinned: true }, { guildSlug: 'ember', realmSlug: 'thunderstrike', namespace: 'profile-classicann-eu', rePin: true }), 'Linked the guild again to its in-game guild (it was renamed or moved)'],
+    [row('guild.source_switch', 'guild', 'g_1', { rankSource: null }, { rankSource: 'ingame', unpinned: false }), 'Moved the guild from the Discord server to the in-game guild roster'],
+    [row('guild.source_switch', 'guild', 'g_1', { rankSource: 'ingame' }, { rankSource: 'manual', unpinned: true }), 'Moved the guild from the in-game guild roster to hand-set ranks and cut its link to the in-game guild'],
     [row('guild.claim', 'guild', 'g_1', { guildMasterUserId: 'u_bob', suspended: true }, { guildMasterUserId: 'u_erin', via: 'gm_claim' }), 'Claimed the Owner seat from bob, who was suspended'],
   ];
   const seen = new Set();

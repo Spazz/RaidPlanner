@@ -10,6 +10,7 @@ import { loadGuildContext } from '../permissions.js';
 import { defaultTeamSize } from '../raid-zones.js';
 import { readManageable } from '../session.js';
 import { FOREVER_RULESETS, REGIONS, findRealm, isVersion } from '../realms.js';
+import { loadPin } from '../roster-pin.js';
 import { rosterOptions } from '../roster-data.js';
 import { guildToday, loadApplicationFlags, loadPendingClaims, loadRosterFlags, loadTeamRequestFlags } from '../roster-view.js';
 import { loadAttendanceFlags } from '../attendance-store.js';
@@ -196,7 +197,7 @@ export async function createGuild(ctx) {
   return jsonResponse(await guildPayload(db, guildContext, ctx.now()), 201);
 }
 
-// PATCH /api/guild/:gid: the Guild Master edits the guild's name, its realm (a realm guild) and its time zone. Everything else about the guild is fixed
+// PATCH /api/guild/:gid: the Guild Master edits the guild's name, its realm (a realm guild; 409 pinned once the guild is linked to its in-game guild) and its time zone. Everything else about the guild is fixed
 // when it is created (game version, region, Discord server, and the ruleset of a Forever guild), because the buff and comp rules, the Battle.net
 // lookups and the sign-in all hang on it. Validation is the create route's. One audit row ('guild.update') carries only the values that changed.
 const FIXED_FIELDS = Object.freeze({
@@ -227,6 +228,11 @@ export async function patchGuild(ctx) {
     const read = readRealm({ realm: body.realm, region: guild.region }, guild.game_version);
     realm = read.realm;
     realmSlug = read.realmSlug;
+    // PINNED (plan "Source/pin" rule 3): once the guild is linked to its in-game guild its Blizzard target is the pin; the realm the guild lives on is not changed here (the name and the
+    // time zone are; a re-link after a realm move is the Owner's setup pin, worker/routes/bnet-pin.js).
+    if ((realm !== guild.realm || realmSlug !== guild.realm_slug) && (await loadPin(db, guild.id)).touched) {
+      throw new HttpError(409, 'pinned', 'This guild is linked to its in-game guild, so its realm cannot be changed here. The Owner can link it again to the same in-game guild.', { field: 'realm' });
+    }
   }
   let timeZone = guild.time_zone;
   if (body.timeZone !== undefined) {

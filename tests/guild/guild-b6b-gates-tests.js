@@ -312,7 +312,7 @@ check('role counts, the teams\' Team Lead lists, the setup checklist, My guilds 
   assert.deepEqual([suspended.handOverFirst, suspended.succession.map((entry) => entry.guild.id)], [[], [s.gid]], 'the seat is theirs while suspended and passes on');
 });
 
-check('the Discord role sync skips a Guild Master of any kind (the Owner, a derived one) and a stored discord row still counts as Discord\'s', async () => {
+check('the Discord role sync gives nothing in a guild with a rank source (lane B6b part 3a: not to a Guild Master of any kind, not to anybody) and still skips the Guild Master of a legacy guild', async () => {
   const s = await world();
   const { syncMember } = await load('worker/discord-sync.js');
   const guild = (await s.rows('SELECT * FROM guilds WHERE id = ?', s.gid))[0];
@@ -321,9 +321,16 @@ check('the Discord role sync skips a Guild Master of any kind (the Owner, a deri
     const result = await syncMember({ db: s.w.db, env: s.w.env, fetch: s.w.fetch, now: () => s.w.clock.now, randomBytes: s.w.randomBytes }, guild, s.uids[key]);
     skipped[key] = [result.status, result.reason || null];
   }
-  assert.deepEqual(skipped.own, ['skipped', 'guild_master']);
-  assert.deepEqual(skipped.dgm, ['skipped', 'guild_master']);
-  assert.notDeepEqual(skipped.dof, ['skipped', 'guild_master']);
+  // This guild runs on the in-game roster: the rank-source gate answers before the Guild Master test does, for everybody.
+  for (const key of ['own', 'dgm', 'dof']) assert.deepEqual(skipped[key], ['skipped', 'rank_source'], key);
+  // Before the flip (the legacy rule) the Guild Master skip is what keeps Discord from touching the Owner.
+  s.exec(`UPDATE guilds SET rank_source = NULL WHERE id = '${s.gid}'`);
+  const legacyGuild = (await s.rows('SELECT * FROM guilds WHERE id = ?', s.gid))[0];
+  const ctx = { db: s.w.db, env: s.w.env, fetch: s.w.fetch, now: () => s.w.clock.now, randomBytes: s.w.randomBytes };
+  const own = await syncMember(ctx, legacyGuild, s.uids.own);
+  assert.deepEqual([own.status, own.reason], ['skipped', 'guild_master']);
+  const dof = await syncMember(ctx, legacyGuild, s.uids.dof);
+  assert.notEqual(dof.reason, 'guild_master');
 });
 
 runChecks(checks);

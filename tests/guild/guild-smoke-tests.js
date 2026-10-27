@@ -131,7 +131,7 @@ check('Worker variables: placeholders only, loopback only, the redirect URIs fol
   assert.equal(vars.GUILD_CREATOR_ALLOWLIST, '110000000000000001');
   for (const [key, value] of Object.entries(vars)) {
     if (/_API_BASE$|_REDIRECT_URI$/.test(key)) assert(value.startsWith('http://127.0.0.1:'), `${key} stays on loopback`);
-    else if (!['GUILD_CREATOR_ALLOWLIST', 'DEV_VIEW_AS', 'TOMBSTONE_KEY_VERSION', 'TOMBSTONE_OLD_KEYS'].includes(key)) assert(/^(smoke-|fake-)/.test(value), `${key} is a placeholder`);
+    else if (!['GUILD_CREATOR_ALLOWLIST', 'DEV_VIEW_AS', 'TOMBSTONE_KEY_VERSION', 'TOMBSTONE_OLD_KEYS', 'SETUP_PIN_GUILDS'].includes(key)) assert(/^(smoke-|fake-)/.test(value), `${key} is a placeholder`);
   }
   assert(!args.join(' ').includes(':8787'), 'never the live port');
   assert.equal(smoke.workerVars(8793, ['discord', 'sources', 'bnet'], '1').includes('BNET_API_BASE:http://127.0.0.1:20793'), true);

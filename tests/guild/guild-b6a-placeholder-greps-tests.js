@@ -158,6 +158,8 @@ const ALLOWED = [
   ["worker/claim-apply.js", "AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main =", "person"],
   ["worker/duties.js", "(SELECT c.name FROM characters c WHERE c.player_id = d.player_id ORDER BY", "display"],
   ["worker/flip-preview.js", "(SELECT fm.name FROM characters fm WHERE fm.player_id = ? AND fm.is_main =", "display"],
+  ["worker/flip-preview.js", "COALESCE((SELECT fm.name FROM players fp JOIN characters fm ON fm.player_id = fp.id AND fm.is_main = 1", "display"],
+  ["worker/flip-preview.js", "SELECT pp.user_id AS user_id, pc.id AS character_id, pc.name AS name", "key"],
   ["worker/loot-store.js", "id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT value", "evidence"],
   ["worker/loot-store.js", "id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT ? FROM", "evidence"],
   ["worker/membership.js", "EXISTS (SELECT 1 FROM characters mx_ch JOIN guild_roster mx_gr ON", "key"],

@@ -29,8 +29,12 @@ function check(name, fn) {
 const MINUTE = 60 * 1000;
 const BNET = { ivy: { id: '710000001', battletag: 'Ivy#1001' }, jon: { id: '710000002', battletag: 'Jon#1002' }, kai: { id: '710000003', battletag: 'Kai#1003' } };
 
-async function world(options) {
-  const s = await freshScenario(options);
+// The setup pin (lane B6b part 3a) is behind the operator's allowlist and takes the in-game guild it names as its params; these suites use it as a plain Battle.net Owner act.
+const PIN = { guildName: 'Writers B3', realmSlug: 'nightslayer' };
+const SWITCH = { from: null, to: 'manual' };
+
+async function world(options = {}) {
+  const s = await freshScenario({ ...options, env: { SETUP_PIN_GUILDS: '*', ...(options.env || {}) } });
   globalThis.__freshWorlds.push(s);
   return s;
 }
@@ -100,7 +104,10 @@ check('start: purposes, parameters and providers are validated before anything e
   await bad(startPath(s), { purpose: 'guild_delete', params: { x: { nested: true } } }, 'params');
   await bad(startPath(s), { purpose: 'guild_delete', params: { 'bad key': 1 } }, 'params');
   await bad(startPath(s), { purpose: 'guild_delete', provider: 'github' }, 'provider');
-  await bad(startPath(s), { purpose: 'pin', provider: 'discord' }, 'provider');
+  await bad(startPath(s), { purpose: 'pin', params: PIN, provider: 'discord' }, 'provider');
+  await bad(startPath(s), { purpose: 'pin', params: {}, provider: 'bnet' }, 'params');
+  await bad(startPath(s), { purpose: 'pin', params: { ...PIN, extra: 1 }, provider: 'bnet' }, 'params');
+  await bad(startPath(s), { purpose: 'source_switch', params: { from: 'ingame', to: 'ingame' }, provider: 'bnet' }, 'params');
   await bad(startPath(s), { purpose: 'identity_change', params: { change: 'link_bnet' } }, 'purpose');
   await bad('/api/fresh/start', { purpose: 'guild_delete' }, 'purpose');
   await bad('/api/fresh/start', { purpose: 'identity_change', params: { change: 'swap' } }, 'params');
@@ -113,7 +120,7 @@ check('start: an Owner act is asked for by the Owner only (an Officer, a member 
   await s.officer('off', 'Officerone');
   for (const who of ['mem', 'off']) {
     for (const purpose of ['handover', 'guild_delete', 'pin', 'source_switch']) {
-      const params = purpose === 'handover' ? { targetUserId: s.uids.mem } : {};
+      const params = purpose === 'handover' ? { targetUserId: s.uids.mem } : (purpose === 'pin' ? PIN : (purpose === 'source_switch' ? SWITCH : {}));
       const provider = ['pin', 'source_switch'].includes(purpose) ? 'bnet' : 'discord';
       await s.fail(who, 'POST', startPath(s), { purpose, params, provider }, 403, 'forbidden');
     }
@@ -135,15 +142,15 @@ check('start: an Owner act is asked for by the Owner only (an Officer, a member 
 
 check('start: the identity has to be linked (409 identity_not_linked) and configured (409 not_configured); only the account\'s own identity can be asked for', async () => {
   const s = await world();
-  const noBnet = await s.fail('gm', 'POST', startPath(s), { purpose: 'pin', provider: 'bnet' }, 409, 'identity_not_linked');
+  const noBnet = await s.fail('gm', 'POST', startPath(s), { purpose: 'pin', params: PIN, provider: 'bnet' }, 409, 'identity_not_linked');
   assert.equal(noBnet.provider, 'bnet');
-  await s.fail('gm', 'POST', startPath(s), { purpose: 'pin' }, 409, 'identity_not_linked');
+  await s.fail('gm', 'POST', startPath(s), { purpose: 'pin', params: PIN }, 409, 'identity_not_linked');
   await s.bnetSignUp('ivy', BNET.ivy);
   await s.fail('ivy', 'POST', '/api/fresh/start', { purpose: 'identity_change', params: { change: 'link_discord' }, provider: 'discord' }, 409, 'identity_not_linked');
   const unconfigured = await world({ env: { BNET_CLIENT_SECRET: '' } });
   unconfigured.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES ('${unconfigured.uids.gm}', '710000008', 'Gm#8', 1, '{}', 1, 1)`);
   assert.equal((await unconfigured.call('gm', 'POST', startPath(unconfigured), { purpose: 'guild_delete', provider: 'discord' })).status, 200);
-  const pin = await unconfigured.fail('gm', 'POST', startPath(unconfigured), { purpose: 'pin', provider: 'bnet' }, 409, 'not_configured');
+  const pin = await unconfigured.fail('gm', 'POST', startPath(unconfigured), { purpose: 'pin', params: PIN, provider: 'bnet' }, 409, 'not_configured');
   assert.equal(pin.provider, 'bnet');
 });
 
