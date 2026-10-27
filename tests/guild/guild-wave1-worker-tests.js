@@ -819,7 +819,7 @@ check('buildAttention: scoping by team right, archived teams, kind order, trial 
   assert.equal(byId['watch:t_a:p_w'], undefined, 'the watch list left Home: it lives on the Attendance page');
   assert.deepEqual(findAttentionItem({ ...base, watch: [{ teamId: 't_a', entries: [{ playerId: 'p_w', name: 'Kaelith', class: 'ROGUE', pct: 62, reasons: ['below'] }] }] }, 'watch:t_a:p_w').entry.item.link, { name: 'personatt', pid: 'p_w' });
   assert.equal(byId['loot_unmatched:r1'].title, 'Event', 'a Raid-Helper title stands in when the raid has none');
-  assert.equal(everything.total, 8, 'eight open to-dos; the readiness facts (low sign-ups, unlocked) and the watch list are not counted');
+  assert.equal(everything.total, 10, 'ten open to-dos (the claims item stands for its 3 claims, one each); the readiness facts (low sign-ups, unlocked) and the watch list are not counted');
   assert.equal(byId['low_signups:u1'].readiness, true);
 
   // Rights are per kind: a viewer without roster.edit gets no claims, trials or unmatched sign-ups, but the rest.

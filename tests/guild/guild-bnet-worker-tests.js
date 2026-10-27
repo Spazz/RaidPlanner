@@ -825,7 +825,9 @@ check('claims list: the plan covers linking an unlinked person, a claim already 
   await link(s, 'erin');
   assert.equal((await pend(s, 'gina', 'Brindle')).status, 201);
   const plans = async () => Object.fromEntries((await s.call('bob', 'GET', '/claims')).json.claims.map((c) => [c.character.name, c.plan]));
-  assert.deepEqual((await plans()).Brindle, { kind: 'link_person', reason: null, message: null, person: { id: ids.brindle, name: 'Brindle' }, defaultTeamId: null, canDecide: true });
+  const { record: brindleRecord, ...brindlePlan } = (await plans()).Brindle;
+  assert.deepEqual(brindlePlan, { kind: 'link_person', reason: null, message: null, person: { id: ids.brindle, name: 'Brindle' }, defaultTeamId: null, canDecide: true });
+  assert.deepEqual(Object.keys(brindleRecord).sort(), ['mainSpec', 'status', 'team'], 'a link_person plan says which roster record approving links (spec, rank, team)');
   // A claim made, then the roster changes under it: the character lands on the claimant's own person by hand ("already").
   assert.equal((await pend(s, 'erin', 'Eliora')).status, 201);
   assert.equal((await s.call('bob', 'POST', `/roster/${ids.aldric}/characters`, { name: 'Eliora', class: 'PALADIN', mainSpec: 'Holy', offSpec: null, teamId: s.A, makeMain: false })).status, 201);

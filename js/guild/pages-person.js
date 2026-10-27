@@ -4,7 +4,9 @@
 // decide leads with the decision panel (pages-person-trial.js). Below: two columns from 1024 px (2fr / 1fr): left Attendance (pages-person-attendance.js),
 // Loot (pages-person-loot.js), Characters; right Details, Officer notes, Away notices. Details and the notes are read-only until Edit (the Save bar holds
 // the changes); the trial dates show only while the status is Trial. Account is ONE row: who the person is on Raidsmith, with one action (Link account or
-// Unlink). On the viewer's own page the You line leads (with a "Who can see this page" disclosure). A member gets the read-only record.
+// Unlink). On the viewer's own page the You line leads (with a "Who can see this page" disclosure) and the head holds ONE secondary Request team button while a
+// character on no team and a team to ask for both exist (pages-team-requests.js: a character on no team says "No team" or "Requested Team KJ" with Withdraw).
+// A member gets the read-only record.
 // The dialogs (Add / Edit character, Extend trial, Delete) live here too. Every mutation answers with the whole person record, which replaces the page's
 // copy; a 409 conflict re-renders from ApiError.body.current.
 (function (G) {
@@ -109,12 +111,12 @@
   }
 
   // The head options of the record itself.
-  //   opts: { name, status, isMe, trialFlag (editors), contextHtml, back: { href, label }, more, mainChar ({ class, mainSpec }: the icon and the colour) }
+  //   opts: { name, status, isMe, trialFlag (editors), contextHtml, back: { href, label }, more, actionHtml (Request team), mainChar ({ class, mainSpec }: the icon and the colour) }
   function recordHeadOpts(opts) {
     const o = opts || {};
     const chip = headChipHtml(o);
     const m = o.mainChar || null;
-    return { title: o.name || 'Person', back: o.back, chipsHtml: chip, contextHtml: o.contextHtml, more: o.more || null,
+    return { title: o.name || 'Person', back: o.back, chipsHtml: chip, contextHtml: o.contextHtml, more: o.more || null, actionHtml: o.actionHtml || '',
       iconHtml: m ? G.ui.specIconHtml(m.class, m.mainSpec, 28) : '', titleClass: m ? G.ui.classClass(m.class) : '' };
   }
 
@@ -131,13 +133,16 @@
     return items.length ? { id: 'person-more', key: 'person-more', items: items.filter(Boolean) } : null;
   }
 
-  function headOf(gd, record, can) {
+  // ask: the viewer's own team requests ({ mine }) on their own record, else null. The one secondary Request team button sits in the head while a character
+  // that can ask and a team to ask for both exist (G.pages.teamRequests.canRequest); the rows say the rest.
+  function headOf(gd, record, can, ask) {
     const main = mainOf(record) || {};
     const p = record.person;
+    const request = ask && G.pages.teamRequests.canRequest(gd, record, ask.mine);
     return recordHeadOpts({
       name: main.name, status: p.status, isMe: p.isMe, trialFlag: can.edit && p.status === 'trial' ? p.trialFlag : null, mainChar: main,
       contextHtml: contextHtml(record, can), back: { href: G.router.format({ name: 'section', gid: gd.guild.id, section: 'roster' }), label: 'Roster' },
-      more: moreOf(gd, record, can),
+      more: moreOf(gd, record, can), actionHtml: request ? G.pages.teamRequests.headButtonHtml() : '',
     });
   }
 
@@ -165,21 +170,26 @@
     return edit + more;
   }
 
-  function characterRowHtml(c, can, showTeam) {
+  // ask: { record, mine } on the viewer's own record (their team requests): a character on no team then says "No team" or "Requested Team KJ" with Withdraw.
+  function characterRowHtml(c, can, showTeam, ask) {
     const team = showTeam && c.team && c.team.id ? ' &middot; ' + esc(c.team.name) + (c.team.archived ? ' (archived)' : '') : '';
+    const teamless = !(c.team && c.team.id);
+    const request = ask && teamless ? G.pages.teamRequests.requestFor(ask.record, ask.mine, c.id) : null;
+    const status = ask && teamless ? ' &middot; ' + G.pages.teamRequests.rowStatusHtml(request) : '';
+    const end = (request ? G.pages.teamRequests.withdrawHtml(request, c) : '') + (can.edit ? charActionsHtml(c, can) : '');
     return '<div class="gs-pr-row gs-pr-char" data-cid="' + esc(c.id) + '">' + G.ui.specIconHtml(c.class, c.mainSpec, 20) + '<span class="gs-pr-cname">' + G.ui.classNameHtml(c.name, c.class) + '</span>' +
-      '<span class="gs-pr-what">' + G.ui.specLineHtml(c.class, c.mainSpec, c.offSpec) + team + (c.realm ? ' &middot; ' + esc(c.realm) : '') + '</span>' +
-      '<span class="gs-hd-chip is-grey">' + (c.isMain ? 'Main' : 'Alt') + '</span>' + (can.edit ? '<span class="gs-pr-end">' + charActionsHtml(c, can) + '</span>' : '') + '</div>';
+      '<span class="gs-pr-what">' + G.ui.specLineHtml(c.class, c.mainSpec, c.offSpec) + team + (c.realm ? ' &middot; ' + esc(c.realm) : '') + status + '</span>' +
+      '<span class="gs-hd-chip is-grey">' + (c.isMain ? 'Main' : 'Alt') + '</span>' + (end ? '<span class="gs-pr-end">' + end + '</span>' : '') + '</div>';
   }
 
-  function charactersBodyHtml(record, can, showTeam) {
+  function charactersBodyHtml(record, can, showTeam, ask) {
     const list = Array.isArray(record.characters) ? record.characters : [];
-    return list.map(function (c) { return characterRowHtml(c, can, showTeam); }).join('');
+    return list.map(function (c) { return characterRowHtml(c, can, showTeam, ask); }).join('');
   }
 
-  function charactersSection(record, can, showTeam) {
+  function charactersSection(record, can, showTeam, ask) {
     const add = can.addCharacter ? G.ui.buttonHtml({ label: 'Add character', variant: 'ghost', attrs: { 'data-action': 'char-add', 'data-key': 'char-add' } }) : '';
-    return { id: 'characters', title: 'Characters', flush: true, actionsHtml: add, bodyHtml: charactersBodyHtml(record, can, showTeam) };
+    return { id: 'characters', title: 'Characters', flush: true, actionsHtml: add, bodyHtml: charactersBodyHtml(record, can, showTeam, ask) };
   }
 
   // The Attendance card (pages-person-attendance.js): figures and the last raids, a link to the full history.
@@ -263,7 +273,7 @@
   }
 
   // opts: { guildData, record (GET /roster/p_...), alert, attendance (card state), trial (Trial review state), away (the officers' Away notices section: { id, title, ... } or ''),
-  //         saved ({ ms }: the details were just saved) }
+  //         saved ({ ms }: the details were just saved), requests (G.pages.teamRequests.bucketOf: the viewer's team requests; used on their own record only) }
   function personHtml(opts) {
     const record = opts.record;
     const gd = opts.guildData;
@@ -272,13 +282,15 @@
     if (editing && (editing.gid !== gid || editing.pid !== record.person.id)) editing = null; // another person: back to read-only
     const attendance = attendanceSection(record, gid, opts.attendance);
     const loot = G.pages.personLoot.sectionFor(gd, record, record.person.id);
-    const characters = charactersSection(record, can, severalTeams(gd, record));
+    // Team requests are the owner's: only on their own record, and only once the read answered (a failed read leaves the page as it was).
+    const ask = record.person.isMe && opts.requests && Array.isArray(opts.requests.mine) ? { record: record, mine: opts.requests.mine } : null;
+    const characters = charactersSection(record, can, severalTeams(gd, record), ask);
     const away = opts.away && typeof opts.away === 'object' ? opts.away : null;
     const left = [attendance, loot, characters].filter(Boolean).map(panelHtml).join('');
     const right = [detailsSection(record, can, gd, opts.saved), notesSection(record, can, gd), away].filter(Boolean).map(panelHtml).join('');
     const cols = '<div class="gs-pr-cols"><div class="gs-pr-left">' + left + '</div><div class="gs-pr-right">' + right + '</div></div>';
     return G.ui.objectPageHtml({
-      head: headOf(gd, record, can),
+      head: headOf(gd, record, can, ask),
       noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + panelHtml(trialSection(opts)),
       youHtml: youOf(gd, record, can),
       pageClass: 'gs-person-page gs-forge gs-pr' + (record.person.isMe ? ' is-own' : ''),

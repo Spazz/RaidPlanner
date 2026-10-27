@@ -457,6 +457,8 @@ export async function getBnet(ctx) {
       supportLabel: support.label, status: 'ok', message: null, characters: [],
       // Is the viewer on this guild's roster already? My characters then says what Battle.net adds instead of asking them to connect it to see their own roster entry.
       onRoster: !!(await ownPersonStatement(db, guild.id, session.user.id).first()),
+      // An in-game guild takes characters from Battle.net only (POST /me/characters answers 409 battlenet_only), so My characters offers no "This is me" there.
+      battlenetOnly: (await db.prepare('SELECT rank_source FROM guilds WHERE id = ?').bind(guild.id).first() || {}).rank_source === 'ingame',
     };
     guilds.push(view);
     if (!support.supported) { view.status = 'unsupported'; view.message = support.message; continue; }

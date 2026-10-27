@@ -111,11 +111,23 @@
   // A guest link, the guest view and a public page are standalone read-only pages: no guild rail, whoever is looking.
   function viewerPage(ctx) { return !!(ctx && G.router.isViewerRoute(ctx.route)); }
 
-  // Flagged trials for the selected team, for officers and team leads only (a member's guild payload carries none).
-  function rosterBadge(gd, teamId) {
-    if (!gd || !teamId || !hasAction(gd.me && gd.me.can, 'roster.edit')) return 0;
-    const n = gd.rosterFlags && Object.prototype.hasOwnProperty.call(gd.rosterFlags, teamId) ? Number(gd.rosterFlags[teamId]) : 0;
+  // One flag count of a team out of a { teamId: n } map (rosterFlags, teamRequestFlags): a whole number, 0 when there is none.
+  function flagOf(map, teamId) {
+    const n = map && Object.prototype.hasOwnProperty.call(map, teamId) ? Number(map[teamId]) : 0;
     return isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  // The Roster's two kinds of work for the selected team, for officers and team leads only (a member's guild payload carries none): trials to decide
+  // (gd.rosterFlags) and team requests waiting (gd.teamRequestFlags).
+  function rosterWork(gd, teamId) {
+    if (!gd || !teamId || !hasAction(gd.me && gd.me.can, 'roster.edit')) return { trials: 0, requests: 0 };
+    return { trials: flagOf(gd.rosterFlags, teamId), requests: flagOf(gd.teamRequestFlags, teamId) };
+  }
+
+  // The Roster badge is ONE number: the trials to decide and the team requests waiting (user 2026-10-26, decision 5).
+  function rosterBadge(gd, teamId) {
+    const w = rosterWork(gd, teamId);
+    return w.trials + w.requests;
   }
 
   // Open attendance flags for the selected team (the same count the Review queue's header and the Attendance page's Review queue link show), for people
@@ -126,15 +138,12 @@
     return isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }
 
-  // Pending character claims (gd.pendingClaims: the Worker counts them for people who can decide them). They wait in the Review queue, which is under
-  // Attendance, so they add to its badge for the people who can open that queue for this team.
-  function claimsBadge(gd, teamId) {
-    if (!gd || !teamId || !hasAction(gd.me && gd.me.can, 'roster.edit') || !hasAction(gd.me && gd.me.can, 'attendance.review')) return 0;
-    const n = Number(gd.pendingClaims);
-    return isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  // Pending character claims ("This is me" asks) are counted on Home only (user 2026-10-26, board 9b): they are Home to-dos with Approve / Reject, and the Review
+  // queue under Attendance still lists them, but the Attendance badge is the flags to review and nothing else.
+  function badgesOf(gd, teamId) {
+    const w = rosterWork(gd, teamId);
+    return { roster: w.trials + w.requests, trials: w.trials, requests: w.requests, attendance: attendanceBadge(gd, teamId) };
   }
-
-  function badgesOf(gd, teamId) { return { roster: rosterBadge(gd, teamId), attendance: attendanceBadge(gd, teamId), claims: claimsBadge(gd, teamId) }; }
 
   // The Home count: open work across the viewer's teams (ctx.attentionCount, set from GET /attention), for attention viewers only.
   function homeBadge(ctx) {
@@ -163,30 +172,35 @@
     return { key: 'planner', label: 'Planner', short: 'Planner', icon: 'planner', href: '/', action: 'open-planner' };
   }
 
-  // The Attendance item's label for a screen reader: the flags to review and the character claims waiting in the same queue.
-  function attendanceLabel(flags, claims) {
-    const parts = [];
-    if (flags) parts.push(flags + (flags === 1 ? ' flag' : ' flags'));
-    if (claims) parts.push(claims + (claims === 1 ? ' character claim' : ' character claims'));
-    return parts.length ? 'Attendance, ' + parts.join(' and ') + ' to review' : 'Attendance';
+  // The Attendance item's label for a screen reader: the flags to review.
+  function attendanceLabel(flags) {
+    return flags ? 'Attendance, ' + flags + (flags === 1 ? ' flag' : ' flags') + ' to review' : 'Attendance';
   }
 
-  // badges: { roster, attendance, claims } counts (a bare number is the Roster count; 0 = none). Attendance shows its flags to review and the pending
-  // character claims together. base: see guildHref.
+  // The Roster item's label for a screen reader: what the one number is made of ("2 trials and 1 team request to decide"). A bare total (no split) is trials.
+  function rosterLabel(total, trials, requests) {
+    if (!total) return 'Roster';
+    const parts = [];
+    if (!trials && !requests) parts.push(total + (total === 1 ? ' trial' : ' trials'));
+    if (trials) parts.push(trials + (trials === 1 ? ' trial' : ' trials'));
+    if (requests) parts.push(requests + (requests === 1 ? ' team request' : ' team requests'));
+    return 'Roster, ' + parts.join(' and ') + ' to decide';
+  }
+
+  // badges: { roster, trials, requests, attendance } counts (a bare number is the Roster count; 0 = none). Roster is the trials to decide and the team requests
+  // waiting as one number; Attendance is its flags to review. base: see guildHref.
   function navItems(gid, can, badges, base) {
     const bs = typeof badges === 'number' ? { roster: badges } : (badges || {});
     const n = bs.roster > 0 ? bs.roster : 0;
-    const flags = bs.attendance > 0 ? bs.attendance : 0;
-    const claims = bs.claims > 0 ? bs.claims : 0;
-    const a = flags + claims;
+    const a = bs.attendance > 0 ? bs.attendance : 0;
     const b = base || '';
     const top = [
       { key: 'raids', label: 'Raids', short: 'Raids', icon: 'raids', href: guildHref(gid, 'raids', b) },
       { key: 'loot', label: 'Loot', short: 'Loot', icon: 'loot', href: guildHref(gid, 'loot', b) },
       { key: 'roster', label: 'Roster', short: 'Roster', icon: 'roster', href: guildHref(gid, 'roster', b), badge: n,
-        ariaLabel: n ? 'Roster, ' + n + (n === 1 ? ' trial' : ' trials') + ' to decide' : 'Roster' },
+        ariaLabel: rosterLabel(n, bs.trials > 0 ? bs.trials : 0, bs.requests > 0 ? bs.requests : 0) },
       { key: 'attendance', label: 'Attendance', short: 'Attendance', icon: 'attendance', href: guildHref(gid, 'attendance', b), badge: a,
-        ariaLabel: attendanceLabel(flags, claims) },
+        ariaLabel: attendanceLabel(a) },
     ];
     // Team tools: the Planner, for those who hold raids.edit for at least one team. Guild admin: Guild settings. The bare settings address lets the app
     // open the first page on a wide screen and the list of pages on a phone.
@@ -712,7 +726,7 @@
     hasTiles: hasTiles,
     rosterBadge: rosterBadge,
     attendanceBadge: attendanceBadge,
-    claimsBadge: claimsBadge,
+    badgesOf: badgesOf,
     allowsTeam: allowsTeam,
     breadcrumbItems: breadcrumbItems,
     leadHtml: leadHtml,

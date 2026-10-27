@@ -112,7 +112,7 @@
       return G.ui.listPageHtml({
         head: { title: 'Away notices', context: context },
         noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'),
-        bodyHtml: G.ui.emptyStateHtml({ kind: 'first', icon: 'roster', title: 'No roster entry yet', text: 'Ask an officer to link your account to your roster entry. Away notices belong to your roster entry.' }),
+        bodyHtml: G.ui.emptyStateHtml({ kind: 'first', icon: 'roster', title: 'No roster entry yet', text: 'Add your character on My characters, or find your roster entry there and say This is me. Away notices belong to your roster entry.', actions: [{ label: 'My characters', href: G.router.format({ name: 'characters' }), variant: 'secondary', attrs: { 'data-key': 'away-characters' } }] }),
       });
     }
     const parts = split(d.notices, d.today);

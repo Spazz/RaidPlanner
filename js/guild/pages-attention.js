@@ -23,6 +23,7 @@
     { id: 'signup_unmatched', severity: 'action', heading: 'Sign-ups not linked to a person', action: 'Link sign-ups' },
     { id: 'claims', severity: 'action', heading: 'Character claims', action: 'Review claims' },
     { id: 'applications', severity: 'action', heading: 'New applications', action: 'Review' },
+    { id: 'team_requests', severity: 'action', heading: 'Team requests', action: 'Open roster' },
     { id: 'trial', severity: 'action', heading: 'Trials', action: 'Open roster' },
     { id: 'no_loot', severity: 'action', heading: 'Raids without loot', action: 'Add loot' },
     { id: 'low_signups', severity: 'action', heading: 'Raids short on sign-ups', action: 'Open raid' },
@@ -42,6 +43,7 @@
     signup_unmatched: { name: 'section', section: 'raids' },
     claims: { name: 'review' },
     applications: { name: 'applications' },
+    team_requests: { name: 'section', section: 'roster' },
     trial: { name: 'section', section: 'roster' },
     no_loot: { name: 'section', section: 'raids' },
     low_signups: { name: 'section', section: 'raids' },
@@ -83,6 +85,7 @@
       case 'signup_unmatched': return plural(n, 'sign-up', 'sign-ups') + ' on ' + dayOf(it.date) + (n === 1 ? ' is' : ' are') + ' not linked to a person';
       case 'claims': return plural(n, 'character claim', 'character claims') + (n === 1 ? ' is' : ' are') + ' waiting';
       case 'applications': return plural(n, 'new application', 'new applications') + ' waiting';
+      case 'team_requests': return plural(n, 'team request', 'team requests') + ' waiting';
       case 'trial': {
         const days = Math.abs(num(it.days));
         const copy = G.ui.trialCopy({ kind: it.ended ? 'ended' : 'ends', days: days });
@@ -312,7 +315,14 @@
     const start = dateParts(shown.start) ? shown.start : (today ? shiftDay(today, -1) : '');
     const raids = weekRaids.filter(function (w) { return w && w.raidId; })
       .sort(function (p, q) { return (num(p.startsAt) - num(q.startsAt)) || (String(p.raidId) < String(q.raidId) ? -1 : 1); });
-    const items = (Array.isArray(data.items) ? data.items : []).filter(function (it) { return it && !it.readiness && !!kindOf(it.kind); });
+    // Team requests and "This is me" asks are rows with Approve / Reject (opts.requests, opts.asks: what the page read beside GET /attention; null = the read failed or
+    // nothing waits). A row stands in for its count item; asks leave the generic "N character claims are waiting" line only the claims they do not cover.
+    const requests = Array.isArray(opts.requests) && (data.items || []).some(function (it) { return it && it.kind === 'team_requests'; }) ? opts.requests : [];
+    const asks = Array.isArray(opts.asks) && (data.items || []).some(function (it) { return it && it.kind === 'claims'; }) ? opts.asks : [];
+    const items = (Array.isArray(data.items) ? data.items : []).filter(function (it) { return it && !it.readiness && !!kindOf(it.kind); })
+      .filter(function (it) { return !(it.kind === 'team_requests' && requests.length); })
+      .map(function (it) { return it.kind === 'claims' && asks.length ? Object.assign({}, it, { count: num(it.count) - asks.length }) : it; })
+      .filter(function (it) { return !(it.kind === 'claims' && num(it.count) <= 0); });
     const weekIds = {};
     raids.forEach(function (w) { weekIds[w.raidId] = true; });
     const todosOf = function (raidId) { return items.filter(function (it) { return it.raidId === raidId; }); };
@@ -336,7 +346,7 @@
       gd: gd, gid: gd.guild.id, data: data, tz: tz, now: now, today: today, raids: raids, days: days, next: next, selected: selected,
       offset: offset, autoAdvanced: !!shown.autoAdvanced, resetDay: typeof shown.resetDay === 'number' && WEEKDAYS[shown.resetDay] ? shown.resetDay : null,
       busy: !!opts.weekBusy, pick: typeof opts.pick === 'string' ? opts.pick : '',
-      selDay: selDay || (selected ? selected.date : ''), items: items, todosOf: todosOf, hidden: hidden,
+      selDay: selDay || (selected ? selected.date : ''), items: items, todosOf: todosOf, hidden: hidden, requests: requests, asks: asks,
       guildTodos: items.filter(function (it) { return !it.raidId; }),
       earlier: items.filter(function (it) { return it.raidId && !weekIds[it.raidId]; }),
       phoneList: phoneList,
@@ -595,10 +605,16 @@
     const guild = todoListHtml(m, m.guildTodos, 'g', 'Guild to-dos');
     const earlier = m.earlier.length ? '<div class="gs-hd-earlier"><h3 class="gs-hd-sl gs-hd-sl-sub">Earlier raids</h3>' + todoListHtml(m, m.earlier, 'e', 'Earlier raids') + '</div>' : '';
     const rest = moreLinesHtml(m);
-    const none = !m.guildTodos.length && !rank && !m.earlier.length && !rest;
+    const none = !m.guildTodos.length && !rank && !m.earlier.length && !rest && !m.asks.length && !m.requests.length;
     return '<section class="gs-hd-panel gs-hd-side" aria-label="Guild"><h2 class="gs-hd-sl">Guild</h2>' + errorPanelHtml(opts) +
-      (none ? '<p class="gs-hd-muted gs-hd-center">Nothing to do.</p>' : '') + guild + (rank || rest ? '<ul class="gs-hd-todos">' + rank + rest + '</ul>' : '') + earlier +
+      (none ? '<p class="gs-hd-muted gs-hd-center">Nothing to do.</p>' : '') + askRowsHtml(m, 'd') + guild + (rank || rest ? '<ul class="gs-hd-todos">' + rank + rest + '</ul>' : '') + earlier +
       hiddenHtml(m, 'd') + moreNavHtml(m) + '</section>';
+  }
+
+  // The asks that have Approve / Reject on their own row: "This is me" (a character a member says is theirs), then team requests. prefix: 'd' desktop, 'p' phone (keys stay unique).
+  function askRowsHtml(m, prefix) {
+    const rowOpts = { gd: m.gd, ctx: 'home', withTeam: m.showTeam, now: m.now, prefix: prefix };
+    return G.pages.thisIsMe.asksBlockHtml(m.asks, rowOpts) + G.pages.teamRequests.blockHtml(m.requests, rowOpts);
   }
 
   function weekHtml(m, opts) {
@@ -630,8 +646,9 @@
     const shown = all ? m.phoneList : m.phoneList.slice(0, PHONE_TODOS);
     const rest = moreLinesHtml(m);
     const hasMore = m.phoneList.length > PHONE_TODOS;
+    const askRows = askRowsHtml(m, 'p');
     const todo = '<section class="gs-hd-todosec" aria-label="To do"><h2 class="gs-hd-sl">To do</h2>' + errorPanelHtml(opts) +
-      (m.phoneList.length || (all && rest) ? '<div class="gs-hd-panel gs-hd-listpanel">' + todoListHtml(m, shown, 'p', 'To do') + (all && rest ? '<ul class="gs-hd-todos">' + rest + '</ul>' : '') + '</div>'
+      (m.phoneList.length || askRows || (all && rest) ? '<div class="gs-hd-panel gs-hd-listpanel">' + askRows + todoListHtml(m, shown, 'p', 'To do') + (all && rest ? '<ul class="gs-hd-todos">' + rest + '</ul>' : '') + '</div>'
         : '<p class="gs-hd-muted gs-hd-center">Nothing to do.</p>') +
       (hasMore ? G.ui.buttonHtml({ label: all ? 'Show fewer' : 'See all ' + Math.max(m.total, m.phoneList.length), variant: 'secondary', block: true, attrs: { 'data-action': 'home-seeall', 'data-key': 'home-seeall' } }) : '') +
       hiddenHtml(m, 'p') + '</section>';
@@ -692,23 +709,42 @@
   // Officers read GET /attention; everyone else gets the member Home, which has its own reads.
   function isOfficerHome(gd) { return !!gd && G.shell.canSeeAttention(gd.me && gd.me.can); }
 
+  // The rows behind two count items are read beside GET /attention: the team requests (GET /team-requests) and the claims a member says are theirs (GET /claims),
+  // each only when the to-dos say something waits. A failed read leaves the count line in their place (the readers never reject).
+  function readRows(gid, data) {
+    const kinds = {};
+    (data && Array.isArray(data.items) ? data.items : []).forEach(function (it) { if (it) kinds[it.kind] = true; });
+    const jobs = [];
+    if (kinds.team_requests) jobs.push(G.pages.teamRequests.read(gid));
+    if (kinds.claims) jobs.push(G.pages.thisIsMe.readAsks(gid));
+    return Promise.all(jobs);
+  }
+
   function load(r, gd) {
     if (!isOfficerHome(gd)) return G.pages.homeMember.load(r, gd);
     const gid = gd.guild.id;
     return G.api.attention.get(gid).then(function (data) {
       a().attention = { gid: gid, data: data, refreshing: false, error: '' };
       G.app.setAttention(gid, data);
-      return null;
+      return readRows(gid, data).then(function () { return null; });
     });
+  }
+
+  // What Home draws as rows: the pending team requests (for a decider) and the "This is me" asks, or null where the read did not happen.
+  function rowsOf(gid) {
+    const bucket = G.pages.teamRequests.bucketOf(gid);
+    const asks = G.pages.thisIsMe.asksFor(gid);
+    return { requests: bucket && bucket.can && bucket.can.decide ? G.pages.teamRequests.pendingOf(gid) : null, asks: asks ? asks.asks : null };
   }
 
   function main(r, gd, ctx) {
     if (!isOfficerHome(gd)) return G.pages.homeMember.main(r, gd, ctx);
     const x = a().attention;
     if (!x || x.gid !== gd.guild.id) return skeletonHtml();
+    const rows = rowsOf(gd.guild.id);
     return attentionHtml({
       guildData: gd, data: x.data, week: x.weekOverride, weekBusy: x.weekBusy, pick: x.pick, refreshing: x.refreshing, error: x.error, errorTitle: x.errorTitle, dismissing: x.dismissing, setupOpen: x.setupOpen,
-      sel: x.sel, hiddenOpen: x.hiddenOpen, seeAll: x.seeAll, toast: x.toast, busyItem: x.busyItem,
+      sel: x.sel, hiddenOpen: x.hiddenOpen, seeAll: x.seeAll, toast: x.toast, busyItem: x.busyItem, requests: rows.requests, asks: rows.asks,
     });
   }
 
@@ -729,9 +765,42 @@
     return G.api.attention.get(x.gid).then(function (data) {
       x.data = data;
       G.app.setAttention(x.gid, data);
-      return data;
+      return readRows(x.gid, data).then(function () { return data; });
     });
   }
+
+  // Approve / Reject on a team request or a "This is me" ask (run by pages-team-requests.js and pages-this-is-me.js): the row is gone already, so the page draws at
+  // once, then reads the to-dos again (the count, the other rows). A refusal (decided meanwhile, the character moved) is said in the page's error panel.
+  function decidedHook(sentence) {
+    return {
+      done: function (gid, verb, ask) {
+        const x = a().attention;
+        G.app.render();
+        if (!x || x.gid !== gid) return null;
+        x.error = '';
+        return reread(x).then(function () {
+          G.app.render();
+          G.ui.announce('attn-status', sentence(verb, ask));
+          G.pages.teamRequests.focusAfterDecision();
+        }, function (err) { return failed(x, err, 'Could not refresh Home'); });
+      },
+      fail: function (gid, text) {
+        const x = a().attention;
+        if (!x || x.gid !== gid) { G.app.render(); return null; }
+        x.error = text;
+        x.errorTitle = 'Could not decide that';
+        return reread(x).then(function () { G.app.render(); }, function () { G.app.render(); });
+      },
+    };
+  }
+  G.pages.teamRequests.setHooks('home', decidedHook(function (verb, request) {
+    const name = request && request.character ? request.character.name : 'The request';
+    return verb === 'approve' ? 'Approved ' + name + (request && request.team ? ' for ' + request.team.name : '') + '.' : 'Rejected ' + name + '.';
+  }));
+  G.pages.thisIsMe.setHooks('home', decidedHook(function (verb, claim) {
+    const name = claim && claim.character ? claim.character.name : 'The character';
+    return (verb === 'approve' ? 'Approved: ' : 'Rejected: ') + name + '.';
+  }));
 
   function itemById(x, id) {
     const items = x && x.data && Array.isArray(x.data.items) ? x.data.items : [];

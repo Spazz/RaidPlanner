@@ -736,7 +736,7 @@ function withState(fn) {
     assert(G.pages.attention.main({ name: 'section', section: 'home' }, g, {}).includes('Loading this week'));
     let s = stub(() => Promise.resolve(ATTN(FULL)));
     await G.pages.attention.load({ name: 'section', gid: 'g1', section: 'home' }, g);
-    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['get', '/api/guild/g1/attention']]);
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['get', '/api/guild/g1/attention'], ['get', '/api/guild/g1/claims']], 'the claims item is read as rows beside the to-dos');
     assert.equal(S.attention.g1.data.total, 8, 'the nav badge reads the same answer');
     assert.equal(G.app.attentionCountFor('g1'), 8);
     assert(G.pages.attention.main({}, g, {}).includes('Review Sat Oct 17: 3 to decide'));

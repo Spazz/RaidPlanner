@@ -97,7 +97,8 @@ export async function putCharacterTeam(ctx) {
   } catch (error) {
     mapPlaceError(error);
   }
-  if (results[0].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, current.id);
+  // `< 1`, not `!== 1`: D1 reports total_changes, and the characters_team_since_move trigger (migration 0040) adds a row of its own, so a write that worked says 2.
+  if (results[0].meta.changes < 1) return characterMoved(ctx, guildContext, data.player.id, current.id);
   const removed = moving && removeSignups ? { signups: results[3].meta.changes, standing: results[4].meta.changes } : null;
   return jsonResponse({ ...(await personReply(ctx, guildContext, data.player.id)), ...(removed ? { removed } : {}) });
 }
@@ -127,7 +128,8 @@ export async function deleteCharacterTeam(ctx) {
     statements.push(...dropUpcomingSignupsStatements(db, { guildId: guild.id, personId: data.player.id, teamId: current.team_id, nowMs: now, left: personLeftTeamSql(guild.id, data.player.id, current.team_id) }));
   }
   const results = await db.batch(statements);
-  if (results[0].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, current.id);
+  // `< 1`, not `!== 1`: D1 reports total_changes, and the characters_team_since_move trigger (migration 0040) adds a row of its own, so a write that worked says 2.
+  if (results[0].meta.changes < 1) return characterMoved(ctx, guildContext, data.player.id, current.id);
   const removed = removeSignups ? { signups: results[3].meta.changes, standing: results[4].meta.changes } : null;
   return jsonResponse({ ...(await personReply(ctx, guildContext, data.player.id)), ...(removed ? { removed } : {}) });
 }

@@ -261,6 +261,7 @@ const ALLOWED = [
   ["worker/routes/team-requests.js", "id, name, team_id FROM characters WHERE id = ? AND guild_id = ? AND player_id", "id"],
   ["worker/routes/team-requests.js", "SELECT 1 AS found FROM characters WHERE player_id = ? AND team_id = ?", "team"],
   ["worker/routes/team-requests.js", "?, 'pending', ?, ? FROM characters c WHERE c.id = ? AND c.guild_id = ? AND", "id"],
+  ["worker/routes/team-requests.js", "character_id IN (SELECT id FROM characters WHERE guild_id = ? AND player_id = ?)", "person"],
   ["worker/routes/teams.js", "c.player_id) AS n FROM characters c WHERE c.guild_id = ? AND ? GROUP BY", "team"],
   ["worker/routes/trial.js", "AND EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.player_id =", "evidence"],
   ["worker/seniority.js", "EXISTS (SELECT 1 FROM characters pc WHERE pc.player_id = ? AND pc.guild_id =", "key"],

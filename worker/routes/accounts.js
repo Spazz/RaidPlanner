@@ -92,7 +92,7 @@ export async function unlinkDiscord(ctx) {
   ).bind(userId).all();
   if (leads.results.length) {
     throw new HttpError(409, 'leads_guild',
-      'You are the Guild Master of a guild you would lose access to without Discord. Hand it over first, or ask an officer to link your account to your roster entry there.',
+      'You are the Guild Master of a guild you would lose access to without Discord. Hand it over first, or claim your roster entry there (Battle.net, or This is me on My characters).',
       { guilds: leads.results.map((row) => ({ id: row.id, name: row.name })) });
   }
 

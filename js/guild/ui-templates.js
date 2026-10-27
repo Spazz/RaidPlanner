@@ -27,6 +27,7 @@
   //   iconHtml         markup before the title block (a person's spec icon)      titleClass   a class on the h1 (a character's class colour)
   //   more             { id, items } for ui.menuHtml (label "More")
   //   primary          ui.buttonHtml options for the page's one primary action
+  //   actionHtml       one secondary button (ui.buttonHtml) left of More, for an action of the page that is not its primary (a member's Request team on their own record)
   ui.pageHeadHtml = function (opts) {
     const o = opts || {};
     const titleId = o.titleId || 'page-title';
@@ -40,7 +41,7 @@
     return '<header class="gs-pagehead">' + back + '<div class="gs-pagehead-row">' + (o.iconHtml ? '<span class="gs-pagehead-icon">' + o.iconHtml + '</span>' : '') + '<div class="gs-pagehead-title">' +
       '<div class="gs-pagehead-h"><h1 class="gs-h1' + (o.titleClass ? ' ' + esc(o.titleClass) : '') + '" id="' + esc(titleId) + '" tabindex="-1">' + esc(o.title) + '</h1>' + (o.chipsHtml || '') + '</div>' +
       (context ? '<p class="gs-sub gs-pagehead-context">' + context + '</p>' : '') + '</div>' +
-      (more || primary ? '<div class="gs-pagehead-actions">' + more + primary + '</div>' : '') + '</div></header>';
+      (more || primary || o.actionHtml ? '<div class="gs-pagehead-actions">' + (o.actionHtml || '') + more + primary + '</div>' : '') + '</div></header>';
   };
 
   // T1 - list page (Raids, Roster, Loot, Review queue, Applications, Away notices). The segment bar filters the same table and stays when the table is

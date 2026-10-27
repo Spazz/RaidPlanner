@@ -42,6 +42,7 @@ import {
 import { deleteCharacterTeam, getTeamSignups, listUnassigned, putCharacterTeam } from './routes/team-placement.js';
 import { joinPerson } from './routes/person-join.js';
 import { matchToRoster } from './routes/roster-match.js';
+import { findUnlinked } from './routes/roster-unlinked.js';
 import { approveTeamRequest, createTeamRequest, listTeamRequests, rejectTeamRequest, withdrawTeamRequest } from './routes/team-requests.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
 import { commitCsv, previewCsv } from './routes/roster-import-csv.js';
@@ -168,6 +169,7 @@ export const ROUTES = [
   // Literal paths are registered before `:pid`, so "linkable" and "import" are never read as a person id.
   { method: 'GET', path: '/api/guild/:gid/roster/linkable', auth: true, handler: getLinkable },
   { method: 'GET', path: '/api/guild/:gid/roster/unassigned', auth: true, handler: listUnassigned },
+  { method: 'GET', path: '/api/guild/:gid/roster/unlinked', auth: true, handler: findUnlinked },
   { method: 'GET', path: '/api/guild/:gid/accounts', auth: true, handler: lookupAccounts },
   { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/preview', auth: true, handler: previewRaidHelper },
   { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/commit', auth: true, handler: commitRaidHelper, maxBody: COMMIT_MAX_BODY },

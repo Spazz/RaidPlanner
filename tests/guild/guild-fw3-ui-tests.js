@@ -252,7 +252,7 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
 
   await check('10. Away notices: no roster entry and no notices are empty states with the next step in words; the dialogs use the kit\'s layout', () => {
     const none = awayPage(AWAY_DATA({ personId: null, notices: [] }));
-    assert(stripTags(none).includes('No roster entry yet') && stripTags(none).includes('Ask an officer to link your account to your roster entry.') && molten(none) === 0 && !none.includes('away-add'));
+    assert(stripTags(none).includes('No roster entry yet') && stripTags(none).includes('Add your character on My characters, or find your roster entry there and say This is me.') && none.includes('href="#/characters"') && molten(none) === 0 && !none.includes('away-add'));
     const empty = awayPage(AWAY_DATA({ notices: [] }));
     assert(stripTags(empty).includes('You have no away notices') && empty.includes('gs-empty2'));
     const dialog = G.pages.away.dialogHtml({ mode: 'add', ctx: 'mine', today: '2026-10-20', minToday: true });
@@ -269,20 +269,20 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
   await check('10. My characters: somebody already on the roster is told what Battle.net adds, not to connect it to see their roster entry', () => {
     const on = chars(BNET({ guilds: [BNET_GUILD({ onRoster: true })] }));
     const t = stripTags(on);
-    assert(t.includes('You are on the roster already') && t.includes('so you do not need Battle.net to raid there') && t.includes('claim your alts') && t.includes('a second way to sign in'), t);
+    assert(t.includes('You are on the roster already') && t.includes('so you do not need Battle.net to raid there') && t.includes('add your alts') && t.includes('a second way to sign in'), t);
     assert(!t.includes('Connect Battle.net to see your characters') && !/Connect Battle\.net/.test(t), 'no "Connect Battle.net" anywhere: ' + t);
     assert(t.includes('Add Battle.net') && on.includes('href="/auth/bnet/login"') && molten(on) === 0, 'a quiet Add Battle.net link');
     const off = chars(BNET());
     assert(stripTags(off).includes('Connect Battle.net to see your characters') && off.includes('gs-btn-molten'), 'somebody on no roster still gets the invitation, as the page primary');
     const mixed = chars(BNET({ guilds: [BNET_GUILD({ onRoster: true }), BNET_GUILD({ guildId: 'g2', guildName: 'Owls', onRoster: false })] }));
     const m = stripTags(mixed);
-    assert(m.includes('Find your characters with Battle.net') && m.includes('You are on the roster of Ember. In Owls, Battle.net finds your characters so you can claim them. For Ember it adds your other characters (alts) and a second way to sign in.'), m);
+    assert(m.includes('Find your characters with Battle.net') && m.includes('You are on the roster of Ember. In Owls, Battle.net finds your characters so you can add them. For Ember it adds your other characters (alts) and a second way to sign in.'), m);
     // The per-guild card of a not-connected guild says the same thing in a line.
     const guildCard = G.pages.bnet.guildCardHtml(BNET_GUILD({ onRoster: true }));
-    assert(stripTags(guildCard).includes('You are already on this roster. Adding Battle.net lists your other characters here, so you can claim your alts.') && !/Connect Battle\.net/.test(stripTags(guildCard)));
+    assert(stripTags(guildCard).includes('You are already on this roster. Adding Battle.net lists your other characters here, so you can add your alts.') && !/Connect Battle\.net/.test(stripTags(guildCard)));
   });
 
-  await check('10. My characters (connected): your own characters keep the delivered order, status as chips, Claim is a quiet button, no orange, and the intro is an info banner', () => {
+  await check('10. My characters (connected): your own characters keep the delivered order, status as chips, Add is a quiet button, no orange, and the intro is an info banner', () => {
     const rows = [
       { name: 'Cassia', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'PRIEST', level: 68, state: 'new', claim: null, claimable: true },
       { name: 'Aldric', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'WARRIOR', level: 70, state: 'yours', claim: null, claimable: false },
@@ -290,8 +290,8 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     ];
     const out = chars(BNET({ link: { battletag: 'T#1', linkedAt: 1, fetchedAt: 1, expiresAt: 2e12 }, guilds: [BNET_GUILD({ status: 'ok', onRoster: true, characters: rows })] }));
     assert(out.indexOf('>Cassia<') < out.indexOf('>Aldric<') && out.indexOf('>Aldric<') < out.indexOf('>Eliora<'), 'delivered order kept, yours not moved first');
-    assert(out.includes('gs-schip gs-schip-success') && out.includes('On your record') && out.includes('gs-schip-warning') && out.includes('Waiting for officers'), 'status = tint + icon + word');
-    assert(/class="gs-btn gs-btn-sm" aria-label="Claim Cassia" data-action="bnet-claim"/.test(out) && /aria-label="Withdraw the claim on Eliora"/.test(out));
+    assert(out.includes('gs-schip gs-schip-success') && out.includes('On your record') && out.includes('gs-schip-warning') && out.includes('Needs an officer'), 'status = tint + icon + word');
+    assert(/class="gs-btn gs-btn-sm" aria-label="Add Cassia" data-action="bnet-claim"/.test(out) && /aria-label="Withdraw the request for Eliora"/.test(out));
     assert.equal(count(out, /gs-btn-molten/g), 0);
     assert(out.includes('id="chars-intro"') && out.includes('gs-banner-info') && out.includes('<span>Refresh characters</span>'));
   });
