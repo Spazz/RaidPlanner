@@ -192,6 +192,49 @@ export function tombstoneDeleteStatement(db, { guildId, blockRefs, guard }) {
   ).bind(guildId, JSON.stringify(blockRefs), ...guard.params);
 }
 
+// A BLOCKED account links a NEW Battle.net account (routes/bnet.js, a first link): that Battle.net account id is a key of the account like the ones it had when the block was made, so
+// it gets a tombstone under the account's own block ref in every guild that blocks the account (pending-review blocks wait for an officer's Keep, which writes the account's keys
+// itself). Without it the block would end when the account is deleted and the person comes back through the new Battle.net account. Unblock deletes it with the others (same ref).
+// ctx: { db, env, now, log }. At most NEW_KEY_GUILD_LIMIT guilds are written here (a statement each, inside the Battle.net callback's budget); the rest, and every guild when there is
+// no usable TOMBSTONE_KEY, are flagged tombstone_missing = 1, which the daily repair answers from the account's CURRENT keys (the new Battle.net id is one of them).
+// Best effort, never throws. -> the D1 statements it ran (the callback counts them against its budget): 1 for an account that blocks nowhere.
+export const NEW_KEY_GUILD_LIMIT = 10;
+export async function tombstoneNewBnetAccount(ctx, { userId, bnetAccountId }) {
+  const { db, env } = ctx;
+  let used = 0;
+  try {
+    const found = await db.prepare('SELECT guild_id FROM guild_blocks WHERE user_id = ? AND pending_review = 0 ORDER BY guild_id LIMIT ?').bind(userId, NEW_KEY_GUILD_LIMIT + 1).all();
+    used++;
+    const guildIds = found.results.map((row) => row.guild_id);
+    if (!guildIds.length) return used;
+    const nowMs = ctx.now();
+    const statements = [];
+    let missing = false;
+    for (const guildId of guildIds.slice(0, NEW_KEY_GUILD_LIMIT)) {
+      const plan = await planTombstones(env, guildId, { bnetAccountId });
+      if (plan.missing) { missing = true; break; }
+      statements.push(...tombstoneInsertStatements(db, {
+        guildId, blockRef: accountBlockRef(userId), plan, now: nowMs,
+        guard: { sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND pending_review = 0)', params: [guildId, userId] },
+      }));
+    }
+    const flagged = missing ? guildIds : guildIds.slice(NEW_KEY_GUILD_LIMIT);
+    if (flagged.length) {
+      statements.push(db.prepare(
+        'UPDATE guild_blocks SET tombstone_missing = 1 WHERE user_id = ? AND pending_review = 0 AND guild_id IN (SELECT value FROM json_each(?))',
+      ).bind(userId, JSON.stringify(flagged)));
+    }
+    if (missing) ctx.log(MISSING_KEY_LINE);
+    if (statements.length) {
+      await db.batch(statements);
+      used += statements.length;
+    }
+  } catch (error) {
+    try { ctx.log(`tombstone for a new Battle.net account failed: ${error && error.message}`); } catch { /* logging must not throw */ }
+  }
+  return used;
+}
+
 // The refs whose tombstones the given keys hit (in every key version the guild's rows use): an unblock deletes these as well as its own ref, so lifting a
 // block really lifts it (a pending-review block, or a block moved to another ref by a person join, would otherwise match again at the next sign-in).
 export async function matchedRefsOf(db, env, guildId, keys) {
