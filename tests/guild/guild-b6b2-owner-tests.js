@@ -2,7 +2,7 @@
  * Raidsmith guild tracker - lane B6b part 2a of the user-hierarchy build: the Owner-seat gates (worker/routes/people.js, guild-data.js, guild.js, auth.js, roster.js, membership.js)
  * Run: node tests/guild/guild-b6b2-owner-tests.js
  *
- *   - hand-over and guild delete need a consumed fresh-auth (403 fresh_required { purpose, params } without one; a manual guild is session only); a hand-over of the SEAT moves only
+ *   - hand-over and guild delete need a consumed fresh-auth (403 fresh_required { purpose, params } without one; a manual guild too, lane P3 fix); a hand-over of the SEAT moves only
  *     `owner_user_id` (guard `owner_user_id IS <the Owner>` inside the batch), writes no Officer row for the previous Owner, needs a live recipient in an in-game guild, and a seat-only
  *     Owner passes the route gate; a legacy guild keeps the stored-Guild-Master swap;
  *   - an unsuspended Owner cannot be blocked (route refusal, the guard inside the write, and a block row on them is ignored); a suspended Owner is blockable and any Guild Master tier
@@ -128,8 +128,8 @@ check('hand-over, SEAT set: only owner_user_id moves, no Officer row for the pre
   assert.equal(rows.length, 1);
   assert.deepEqual([rows[0].actor_user_id, rows[0].entity_id, rows[0].actor_role], [s.uids.own, s.uids.mem, 'owner'], 'recorded as the Owner (the move changes who that is)');
   assert.deepEqual(JSON.parse(rows[0].after), { guildMasterUserId: s.uids.mem });
-  // The reply is the people list as the previous Owner sees it now.
-  assert(done.json.people && !done.json.people.some((entry) => entry.actions && entry.actions.makeGuildMaster));
+  // The reply goes to the previous Owner, who holds nothing now: the bare answer, no People list (audit L2; tests/guild/guild-hier-p3fix-tests.js has the rest).
+  assert.deepEqual(done.json, { handedOver: true });
   assert.equal((await s.handover('own', 'mem')).status, 403, 'the Owner is mem now');
 });
 
@@ -203,7 +203,7 @@ check('hand-over, in-game guild: the liveness guard sits inside the batch (a pro
   assert.equal(await s.seat(), s.uids.own);
 });
 
-check('hand-over in a MANUAL guild is session only (no fresh sign-in asked), in a guild with no rank source it is not', async () => {
+check('hand-over in a MANUAL guild needs the fresh sign-in too (lane P3 fix; tests/guild/guild-hier-p3fix-tests.js runs the real flow), as in a guild with no rank source', async () => {
   const s = await legacyWorld();
   for (const key of ['own', 'mem']) {
     const made = await s.person({ name: `Linked${key}` });
@@ -211,10 +211,14 @@ check('hand-over in a MANUAL guild is session only (no fresh sign-in asked), in 
   }
   s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'guild_master'`);
   s.exec(`UPDATE guilds SET rank_source = 'manual', owner_user_id = '${s.uids.own}' WHERE id = '${s.gid}'`);
+  const without = await s.handover('own', 'mem');
+  assert.deepEqual([without.status, without.json.error, without.json.purpose], [403, 'fresh_required', 'handover']);
+  assert.equal(await s.seat(), s.uids.own);
+  await s.handoverGrant('own', 'mem');
   const done = await s.handover('own', 'mem');
   assert.equal(done.status, 200, done.text);
   assert.equal(await s.seat(), s.uids.mem);
-  assert.equal(await s.w.count('fresh_act_markers'), 0, 'nothing was consumed');
+  assert.equal(await s.w.count('fresh_act_markers'), 1, 'the grant was consumed');
   assert.equal((await s.audit('guild_master.transfer')).length, 1);
   // The same guild without a rank source: fresh sign-in needed.
   s.exec(`UPDATE guilds SET rank_source = NULL WHERE id = '${s.gid}'`);
@@ -254,7 +258,7 @@ check('guild delete: the Owner with a fresh sign-in deletes it (grant spent, aud
   assert.equal(await s.w.count('fresh_act_markers'), 1);
 });
 
-check('guild delete: a derived Guild Master and an Officer are refused with a grant; a hand-over that races it leaves the guild; a MANUAL guild is session only; parallel deletes with one grant give one', async () => {
+check('guild delete: a derived Guild Master and an Officer are refused with a grant; a hand-over that races it leaves the guild; a MANUAL guild needs the grant too; parallel deletes with one grant give one', async () => {
   const s = await ingameWorld();
   await s.grant('dgm', { purpose: 'guild_delete', guildId: s.gid, params: {} });
   const dgm = await s.call('dgm', 'DELETE', `/api/guild/${s.gid}`, { confirmName: NAME });
@@ -272,9 +276,14 @@ check('guild delete: a derived Guild Master and an Officer are refused with a gr
   assert.notEqual(raced.status, 200, raced.text);
   assert.equal(await s.w.count('guilds', 'id = ?', s.gid), 1, 'a hand-over that raced the delete saved the guild');
   assert.equal(await s.w.count('audit_log', "action = 'guild.delete'"), 0);
-  // Manual: session only.
+  // Manual: the fresh sign-in is asked for as well (lane P3 fix). The grant the race left on the session is spent first.
   s.exec(`UPDATE guilds SET rank_source = 'manual' WHERE id = '${s.gid}'`);
   s.exec(`UPDATE guilds SET owner_user_id = '${s.uids.own}' WHERE id = '${s.gid}'`);
+  s.exec(`UPDATE sessions SET fresh_purpose = NULL, fresh_hash = NULL, fresh_at = NULL WHERE user_id = '${s.uids.own}'`);
+  const withoutGrant = await s.call('own', 'DELETE', `/api/guild/${s.gid}`, { confirmName: NAME });
+  assert.deepEqual([withoutGrant.status, withoutGrant.json.error], [403, 'fresh_required'], withoutGrant.text);
+  assert.equal(await s.w.count('guilds', 'id = ?', s.gid), 1);
+  await s.grant('own', { purpose: 'guild_delete', guildId: s.gid, params: {} });
   const manual = await s.call('own', 'DELETE', `/api/guild/${s.gid}`, { confirmName: NAME });
   assert.equal(manual.status, 200, manual.text);
   assert.equal(await s.w.count('guilds', 'id = ?', s.gid), 0);

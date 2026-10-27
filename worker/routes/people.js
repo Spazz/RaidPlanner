@@ -12,7 +12,7 @@ import { botConfigured } from '../discord-bot.js';
 import { requireDiscord } from '../discord-guard.js';
 import { discordProblem, syncMember } from '../discord-sync.js';
 import { assertMayGrant, loadRolesData } from '../roles-store.js';
-import { ROLE_RANK, isCustomRole, loadGuildContext, rankOf, requireAction, requireAnyAction, shapeRoles } from '../permissions.js';
+import { ROLE_RANK, isCustomRole, isGranted, loadGuildContext, rankOf, requireAction, requireAnyAction, shapeRoles } from '../permissions.js';
 import { personFor, viewerFor } from '../redact.js';
 import { PEOPLE_LIMIT, PEOPLE_WINDOW_MS, enforceRateLimit, peopleKey } from '../ratelimit.js';
 import { visibleCharacterSql } from '../character-visibility.js';
@@ -408,8 +408,8 @@ function findSeatTarget(model, userId, guildContext) {
   return entry;
 }
 
-// POST /api/guild/:gid/people/:uid/guild-master: hand the guild to a member. An Owner act that needs a FRESH sign-in (purpose handover, params { targetUserId }) in every guild
-// except one whose rank source is 'manual' (session only: such a guild has no Battle.net proof to ask for; documented in tasks/open/b6b-api-contract.md). Without the grant:
+// POST /api/guild/:gid/people/:uid/guild-master: hand the guild to a member. An Owner act that needs a FRESH sign-in (purpose handover, params { targetUserId }) in EVERY guild, a
+// manual one included (lane P3 fix: the account confirms with whichever identity it has, Discord or Battle.net: worker/routes/fresh.js). Without the grant:
 // 403 fresh_required { purpose, params }.
 //   seat set (owner_user_id)  ONLY the seat moves: `UPDATE guilds SET owner_user_id = <target> WHERE id = ? AND owner_user_id IS <the Owner>`. The recipient must be a member and, in
 //                             an 'ingame' guild, live (a Battle.net-proven character on the roster: the guard sits in the batch). The previous Owner keeps what their own rank and
@@ -439,9 +439,7 @@ export async function makeGuildMaster(ctx) {
         'That person has no character proved by Battle.net on the in-game roster, so they could not hold the guild. Ask them to connect Battle.net first.', { field: 'uid' });
     }
   }
-  const act = await beginFreshAct(ctx, {
-    required: seat.rankSource !== 'manual', purpose: 'handover', guildId, params: { targetUserId: targetId }, extra: asOwner,
-  });
+  const act = await beginFreshAct(ctx, { purpose: 'handover', guildId, params: { targetUserId: targetId }, extra: asOwner });
 
   let results;
   let moved;
@@ -489,14 +487,19 @@ export async function makeGuildMaster(ctx) {
   } catch (error) {
     // A concurrent identical hand-over won the unique index: answer from the fresh state.
     if (!isUniqueViolation(error)) throw error;
-    return peopleReply(ctx, await loadGuildContext(ctx.db, oldMasterId, guildId));
+    return handOverReply(ctx, oldMasterId, guildId);
   }
   if (!act.consumed(results)) throw freshRequiredError('handover', { targetUserId: targetId });
   if (moved !== 1) {
     throw new HttpError(409, 'conflict', 'The guild changed while you were handing it over. Reload and try again.');
   }
-  // The previous Owner is an Officer (legacy) or whatever their own rank makes them (seat); answer from fresh state. A previous Owner whom the guild's rank source no longer
-  // counts as a member (a seat holder with no roster character of their own) gets the bare answer.
+  return handOverReply(ctx, oldMasterId, guildId);
+}
+
+// The answer of a hand-over goes to the PREVIOUS Owner, whose rights the hand-over may have cut (audit L2). It carries the People list only when their reloaded context still passes
+// the gate of GET /people (guild.access or guild.roles: an Officer of a legacy guild, a derived Officer), else the bare { handedOver: true }. A previous Owner whom the guild's rank
+// source no longer counts as a member (a seat holder with no roster character of their own) gets the bare answer as well.
+async function handOverReply(ctx, oldMasterId, guildId) {
   let fresh;
   try {
     fresh = await loadGuildContext(ctx.db, oldMasterId, guildId);
@@ -504,6 +507,7 @@ export async function makeGuildMaster(ctx) {
     if (error instanceof HttpError && error.status === 403) return jsonResponse({ handedOver: true });
     throw error;
   }
+  if (!['guild.access', 'guild.roles'].some((action) => isGranted(fresh.can[action]))) return jsonResponse({ handedOver: true });
   return peopleReply(ctx, fresh);
 }
 

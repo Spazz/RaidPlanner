@@ -449,7 +449,7 @@ check('F6: guild.claim_failed counts only for an account with a tie to the guild
   s.suspendOwner();
   s.exec(`DELETE FROM players WHERE id = '${s.people.gm.pid}'`);
   s.live.profiles[ACCOUNT.igm.id] = [entry('Gmlive', ID.gm)];
-  s.live.roster = s.live.roster.filter((member) => member.rank !== 0);
+  // (The live roster is fine and its rank 0 is the OTHER account's character: not_gm. A roster with no rank 0 is a Battle.net problem now and is not counted at all.)
   const seatHolder = await claim(s, 'gm', { account: { id: s.one ? (await s.one('SELECT bnet_account_id FROM bnet_links WHERE user_id = ?', s.uids.gm)).bnet_account_id : '0', battletag: 'Tagown#1234' } });
   assert.equal(seatHolder.location, refused('not_gm'), seatHolder.location);
   const rows = await s.rows("SELECT actor_user_id FROM audit_log WHERE action = 'guild.claim_failed'");
@@ -568,8 +568,8 @@ check('F9: a block on the Owner while suspended stays when they are live again, 
   await s.grant('own', { purpose: 'handover', guildId: s.gid, params: { targetUserId: s.uids.dgm } });
   const handed = await s.call('own', 'POST', `/people/${s.uids.dgm}/guild-master`, {});
   assert.equal(handed.status, 200, handed.text);
-  assert.notEqual(handed.json.handedOver, true, 'the previous Owner is still a member');
-  assert.equal((await s.call('own', 'GET', '')).status, 200);
+  assert.deepEqual(handed.json, { handedOver: true }, 'a plain Raider now: no People list goes back to them (audit L2)');
+  assert.equal((await s.call('own', 'GET', '')).status, 200, 'the previous Owner is still a member');
 });
 
 check('F9: an ignored row is restorable by an Officer too, not by a plain member; a real block still needs seniority; a suspended Owner\'s block is a real block again', async () => {
