@@ -41,10 +41,11 @@ import { tombstoneHmacsAllVersions } from './block-tombstones.js';
 import { CALLBACK_STATEMENT_BUDGET, claimCharacterStatements, keyedCharacters, readClaimFacts, readClaimRows } from './bnet-match.js';
 import { realmDisplayName } from './bnet-store.js';
 import { markerGuard, newMarkerId } from './dry-run.js';
-import { checkFreshIdentity, identityGuard, noteFreshFailure } from './fresh.js';
+import { checkFreshIdentity, freshAccountKey, freshSessionKey, identityGuard, noteFreshFailure } from './fresh.js';
 import { HttpError } from './http.js';
 import { newId } from './ids.js';
 import { moveSeatStatement, ownerSql, seatHeldBySql, seatHolderSql } from './owner.js';
+import { bnetCallbackKey, refundRateLimit } from './ratelimit.js';
 import { pinOf } from './roster-pin.js';
 import { replaceStoredRoster, rosterHash } from './roster-sync.js';
 
@@ -74,12 +75,16 @@ export async function claimPreflight(db, { guildId, userId }) {
   return { row, pin, support };
 }
 
+const PIN_MISMATCHES = Object.freeze(['guild_id_mismatch', 'realm_id_mismatch']);
+
 // The decision, pure. roster: parseGuildRoster's answer, characters: fetchAccountCharacters' answer for the pin's namespace, pin: pinOf(guild).
-// -> { ok: true, gm (the roster's rank-0 member), mine (the claimant's own entry for it) } | { ok: false, reason } with reason the roster rule that failed (assessRoster:
-// guild_id_mismatch, realm_id_mismatch, several_rank_zero, ...) or 'not_rank_zero' (the roster is fine and its Guild Master is somebody else's character).
+// -> { ok: true, gm (the roster's rank-0 member), mine (the claimant's own entry for it) } | { ok: false, reason, malformed? } with reason the roster rule that failed (assessRoster:
+// guild_id_mismatch, realm_id_mismatch, several_rank_zero, ...) or 'not_rank_zero' (the roster is fine and its Guild Master is somebody else's character). `malformed` is true for
+// a roster that is broken in itself (cut off, members missing, duplicate names or ids, an invalid row, no rank 0 or several): the rules of assessRoster that are about the SHAPE of the
+// answer. A roster of another Blizzard guild or realm than the pin (guild_id_mismatch, realm_id_mismatch) is well formed, and stays a refusal of the claim.
 export function claimVerdict({ roster, characters, pin }) {
   const assessed = assessRoster(roster, { guildId: pin.blizzardGuildId, realmId: pin.blizzardRealmId });
-  if (!assessed.good) return { ok: false, reason: assessed.reason };
+  if (!assessed.good) return { ok: false, reason: assessed.reason, ...(PIN_MISMATCHES.includes(assessed.reason) ? {} : { malformed: true }) };
   const gm = roster.members.find((member) => member.rank === 0);
   const mine = characters.find((entry) => entry.namespace === gm.namespace && entry.realmId === gm.realmId && entry.characterId === gm.characterId);
   return mine ? { ok: true, gm, mine } : { ok: false, reason: 'not_rank_zero' };
@@ -127,7 +132,8 @@ export const claimAuditStatement = (ctx, { guildId, userId, from, suspended, unp
 
 // The claim, inside the Battle.net fresh-auth callback. input: { session, parsed ({ purpose, guildId }), accessToken, info ({ id, battletag }), now, spent (the D1 statements the
 // callback has used so far) }. -> { ok: true, deferred: [reason] } | { ok: false, reason: 'mismatch' | 'identity_new' | 'provider' | 'not_gm' | 'conflict' } (the redirect reasons of
-// worker/fresh.js plus not_gm and conflict). A refused verdict is counted with B7a's helper (audit guild.claim_failed, one row per user, guild and hour).
+// worker/fresh.js plus not_gm and conflict). A refused verdict is counted with B7a's helper (audit guild.claim_failed, one row per user, guild and hour); a roster that is
+// malformed in itself is 'provider' (try again later) and counts nothing (see claimVerdict).
 export async function runGmClaim(ctx, { session, parsed, accessToken, info, now, spent }) {
   const { db } = ctx;
   const userId = session.user.id;
@@ -169,6 +175,15 @@ export async function runGmClaim(ctx, { session, parsed, accessToken, info, now,
     return { ok: false, reason: 'provider' };
   }
   const verdict = claimVerdict({ roster, characters, pin });
+  if (!verdict.ok && verdict.malformed) {
+    // A roster Blizzard sent cut off, with duplicate names or without exactly one rank 0 says nothing about the claimant: it is a Battle.net problem ("try again later"), not a failed
+    // claim. Nothing is counted against the claimant: no guild.claim_failed row, no failure counter, and the attempt limits this attempt spent are given back (the start budget of the
+    // session and of the account, the callback window of their Blizzard account), so retrying a broken answer never locks out a real Guild Master. The platform-wide callback
+    // tripwire (bnetcb:global) is nobody's and stays counted.
+    ctx.log(`gm claim: the roster is not usable: ${verdict.reason}`);
+    await refundRateLimit(db, [freshSessionKey(session.tokenHash), freshAccountKey(userId), bnetCallbackKey(info.id)]);
+    return { ok: false, reason: 'provider' };
+  }
   if (!verdict.ok) {
     ctx.log(`gm claim: refused: ${verdict.reason}`);
     await noteFreshFailure(ctx, { userId, guildId, purpose: CLAIM_PURPOSE, reason: verdict.reason, action: 'guild.claim_failed' });

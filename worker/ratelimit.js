@@ -80,6 +80,15 @@ export async function checkRateLimit(db, userId, nowMs, { limit = RATE_LIMIT, wi
   }
 }
 
+// Gives ONE hit back to each of the keys' windows (never below 0), in one statement: for an attempt that failed for a reason that is not the caller's (a malformed answer from
+// Blizzard during a Guild Master claim, worker/gm-claim.js), so it does not count against their budget. A window that has rolled over since is not the attempt's any more, but a hit
+// off its count is harmless. Best effort: if D1 errors the hit stays counted.
+export async function refundRateLimit(db, keys) {
+  try {
+    await db.prepare('UPDATE rate_limits SET count = MAX(count - 1, 0) WHERE key IN (SELECT value FROM json_each(?))').bind(JSON.stringify(keys)).run();
+  } catch { /* a refund is a courtesy */ }
+}
+
 // A budget that never refuses: counts into the same fixed window as checkRateLimit and says when it has run out -> { spent, alarm }. spent: this window's
 // count is past `limit`. alarm: true for exactly ONE call per window (the first past the limit), so the caller can log one operator line per window.
 // If D1 errors the budget is not spent (it is a tripwire, never a gate).
