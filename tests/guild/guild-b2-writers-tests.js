@@ -16,6 +16,7 @@
  * The guild is built through the API; a character is placed on a team (which only the team routes of lane B3 will do) with the column itself where a check needs one.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -67,6 +68,7 @@ async function scenario({ teams = ['Alpha', 'Bravo'] } = {}) {
     },
     async newPerson(body = {}, who = 'gm') {
       const res = await s.ok(who, 'POST', '/roster', { teamId: tids[0], class: 'MAGE', mainSpec: 'Fire', offSpec: null, ...body });
+      if (body.linkUserId) ownPerson(w.db.sqlite, res.person.id, body.linkUserId); // the account owns it (players.user_id): linkUserId only records the Discord ID since the identity split
       return { pid: res.person.id, cid: res.characters[0].id, version: res.person.version, today: res.today, res };
     },
     async alt(pid, name, body = {}, who = 'gm') {
@@ -158,7 +160,7 @@ check('every other path that adds an alt: attendance "add as an alt", Battle.net
   assert.deepEqual([got.Csvnew, got.Csvnewalt, got.Csvexalt], [s.tids[1], null, null]);
   // A claim: the claimant already has a person (Pathsmain), the claimed character becomes an alt of it.
   const claimant = await s.member('claimant');
-  await s.ok('gm', 'PUT', `/roster/${p.pid}/account`, { userId: claimant }, 200);
+  s.exec(`UPDATE players SET user_id = '${claimant}' WHERE id = '${p.pid}'`); // the claimant owns Pathsmain (players.user_id: the Link account route only records a Discord ID)
   const clid = 'cl_' + 'p'.repeat(22);
   s.exec(`INSERT INTO character_claims (id, guild_id, user_id, name, name_key, realm, realm_key, class, level, status, created_at)
           VALUES ('${clid}', '${s.gid}', '${claimant}', 'Claimedalt', 'claimedalt', 'Nightslayer', 'nightslayer', 'MAGE', 70, 'pending', 1)`);
@@ -216,8 +218,11 @@ check('D1: an officer creates a person with no team, a Team Lead cannot; notes, 
   assert.equal(noted.notes.text, 'Good player');
   const memberId = await s.member('member');
   const linked = await s.ok('gm', 'PUT', `/roster/${p.pid}/account`, { userId: memberId }, 200);
-  assert.equal(linked.person.account.linked, true);
+  assert.deepEqual([linked.person.account.via, linked.person.account.linked], ['discord', false], 'Link account records the Discord ID on a person with no team: the write landed, and it makes no owner');
+  assert.notEqual((await s.rows('SELECT discord_user_id FROM players WHERE id = ?', p.pid))[0].discord_user_id, null);
+  s.exec(`UPDATE players SET user_id = '${memberId}' WHERE id = '${p.pid}'`); // an owner, the way an approved claim leaves it
   assert.equal((await s.ok('gm', 'PUT', `/roster/${p.pid}/account`, { userId: null }, 200)).person.account.linked, false);
+  assert.equal((await s.rows('SELECT user_id FROM players WHERE id = ?', p.pid))[0].user_id, null, 'the unlink of a person with no team landed too');
   const altId = await s.alt(p.pid, 'Homelessalt');
   const edited = await s.ok('gm', 'PATCH', `/roster/${p.pid}/characters/${altId}`, { mainSpec: 'Frost', class: 'MAGE' }, 200);
   assert.equal(edited.characters.find((c) => c.id === altId).mainSpec, 'Frost');

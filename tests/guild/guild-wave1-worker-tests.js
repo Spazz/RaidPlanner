@@ -950,14 +950,15 @@ check('audit route: the name an account chose (display name) is the name shown -
   const r = await s.call('alice', 'GET', '/audit');
   assert.equal(r.status, 200);
   const link = r.json.rows[0];
-  assert.deepEqual([link.action, link.group, link.text, link.actor.displayName], ['person.account_link', 'roster', 'Linked Thoren to the account Erin E', 'Officer Bob']);
-  assert.deepEqual(link.after, { userId: s.ids.erin });
+  assert.deepEqual([link.action, link.group, link.text, link.actor.displayName], ['person.account_link', 'roster', 'Recorded the Discord ID of the account Erin E on Thoren', 'Officer Bob']);
+  assert.deepEqual(link.after, { userId: s.ids.erin, recordedDiscord: true });
   assert.deepEqual(r.json.actors.map((a) => a.displayName), ['Alice A', 'Officer Bob']);
   assert(r.json.rows.some((row) => row.action === 'roles.set' && row.text === 'Made Officer Bob an Officer'), 'sentences use the chosen name too');
   // The chosen name wins over the Discord name for the linked account as well; no name chosen: the Discord name.
   s.w.exec(`UPDATE users SET display_name = 'Erin the Healer' WHERE id = '${s.ids.erin}'`);
-  assert.equal((await s.call('alice', 'GET', '/audit')).json.rows[0].text, 'Linked Thoren to the account Erin the Healer');
+  assert.equal((await s.call('alice', 'GET', '/audit')).json.rows[0].text, 'Recorded the Discord ID of the account Erin the Healer on Thoren');
   s.w.advance(1000);
+  s.w.exec(`UPDATE players SET user_id = '${s.ids.erin}' WHERE id = '${s.p.Thoren}'`); // an owner (a claim approval leaves this); Link account never writes it
   assert.equal((await s.call('bob', 'PUT', `/roster/${s.p.Thoren}/account`, { userId: null })).status, 200);
   const unlinked = (await s.call('alice', 'GET', '/audit')).json.rows[0];
   assert.deepEqual([unlinked.action, unlinked.text], ['person.account_unlink', 'Unlinked the account Erin the Healer from Thoren']);
@@ -1168,7 +1169,7 @@ check('watch list (team attendance): only for those who may review the team; a m
   assert.notEqual((await s.team('alice')).json.watch, null);
   assert.equal((await s.team('dave')).status, 403, 'a Team Lead of another team cannot open the page at all');
   // Erin is the person behind Dorrin: she may view her team's attendance but not review it.
-  s.w.exec(`UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.Dorrin}'`);
+  s.w.exec(`UPDATE players SET discord_user_id = '${PEOPLE.erin.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.erin.id}') WHERE id = '${s.p.Dorrin}'`);
   assert.equal((await s.team('erin')).status, 403, 'a member with attendance.view only reads her own record');
   assert.equal((await s.team('gina')).status, 403);
 });
@@ -1408,7 +1409,7 @@ async function calWorld() {
   await addPerson(s, 'bob', s.A, 'Eliora', { class: 'PRIEST', mainSpec: 'Holy' });
   await addPerson(s, 'bob', s.A, 'Mirabel', { class: 'HUNTER', mainSpec: 'Marksmanship' });
   await addPerson(s, 'bob', s.A, 'Kaelith', { class: 'ROGUE', mainSpec: 'Combat' });
-  s.w.exec(`UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.Eliora}'`);
+  s.w.exec(`UPDATE players SET discord_user_id = '${PEOPLE.erin.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.erin.id}') WHERE id = '${s.p.Eliora}'`);
   const raid = (teamId, raidOn, extra = {}) => addRaid(s, teamId, raidOn, { startTime: '20:00', ...extra });
   s.raid = {
     old: await raid(s.A, '2026-12-16'),                                  // 2026-12-17T01:00Z, a little over 30 days before NOW: left out
@@ -1589,10 +1590,15 @@ check('calendar: every fetch re-checks the person - blocked, out of the Discord 
   assert.equal(blocked.status, 404);
   assert.equal((await s.call('alice', 'DELETE', `/people/${s.ids.erin}/block`, {})).status, 200);
   assert.equal((await s.feed(made.url)).status, 200, 'restored: the same link works again');
-  // No longer in the guild's Discord server.
+  // No longer in the guild's Discord server: the person is the account's by players.user_id, a membership source of its own, so the feed stays...
   s.w.exec(`DELETE FROM user_servers WHERE user_id = '${s.ids.erin}'`);
+  assert.equal((await s.feed(made.url)).status, 200, 'the link keeps the account in the guild without the server');
+  // ...and with the link cut as well there is no person and no member: the same plain 404. (The Discord ID Eliora records is bookkeeping: it keeps no one in.)
+  s.w.exec(`UPDATE players SET user_id = NULL WHERE id = '${s.p.Eliora}'`);
   assert.equal((await s.feed(made.url)).status, 404);
   s.w.exec(`INSERT INTO user_servers (user_id, server_id, seen_at) VALUES ('${s.ids.erin}', '${SERVER_A}', ${NOW})`);
+  assert.equal((await s.feed(made.url)).status, 200, 'back in the server: a member again (the server is a source), and the feed is theirs');
+  s.w.exec(`UPDATE players SET user_id = '${s.ids.erin}' WHERE id = '${s.p.Eliora}'`);
   assert.equal((await s.feed(made.url)).status, 200);
   // The same body for every kind of "no".
   const unknown = await s.feed(`${ORIGIN}/cal/${'A'.repeat(43)}.ics`);
@@ -1638,9 +1644,12 @@ check('calendar: a Battle.net-only account has a working feed once an officer li
     const feed = (url) => s.w.req('GET', new URL(url).pathname);
     assert.equal((await feed(planted)).status, 404, 'not linked: no feed');
 
-    // An officer links the account to Holly's person: now she is a member, and "me" is the linked person.
-    const linked = await s.call('bob', 'PUT', `/roster/${s.p.Holly}/account`, { userId: s.ids.holly });
-    assert.equal(linked.status, 200, JSON.stringify(linked.json));
+    // An officer cannot link a Battle.net-only account (it has no Discord ID to record): Holly claims her record herself. An approved claim leaves players.user_id; now she is a
+    // member, and "me" is the person she owns.
+    const refusedLink = await s.call('bob', 'PUT', `/roster/${s.p.Holly}/account`, { userId: s.ids.holly });
+    assert.deepEqual([refusedLink.status, refusedLink.json.error], [409, 'no_discord_id']);
+    assert.equal((await feed(planted)).status, 404, 'still not linked');
+    s.w.exec(`UPDATE players SET user_id = '${s.ids.holly}' WHERE id = '${s.p.Holly}'`);
     assert.equal((await feed(planted)).status, 200, 'linked: the same link works');
     const made = await s.call('holly', 'POST', '/calendar', { teamId: s.A });
     assert.equal(made.status, 201, JSON.stringify(made.json));

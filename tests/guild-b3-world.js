@@ -4,10 +4,11 @@
 //   s.call(who, method, tail, body)       -> { status, json, text }   `who` is a key of s.jars; tail is under /api/guild/<gid> unless it starts with /api/ or /auth/
 //   s.ok(who, method, tail, body, status) -> json, asserting the status (200, 201 for a POST)
 //   s.member(key) / s.officer(key) / s.lead(key, teamIds)    sign the account in (a Discord member of the server) and give it the role; -> its user id
-//   s.person(body, who) / s.alt(pid, name, body, who)        roster writes; s.link(pid, key) links the account to the person (an officer's link)
+//   s.person(body, who) / s.alt(pid, name, body, who)        roster writes; s.link(pid, key) makes the account the owner of the person (players.user_id, a fixture write)
 //   s.rows(sql, ...values) / s.exec(sql)                     the database; s.teamOf(characterId)
 const assert = require('node:assert/strict');
 const { adminOf, load, makeWorld, memberOf, signIn } = require('./guild-world');
+const { ownPerson } = require('./guild-owner-fixture');
 
 const STEP = 2000;
 const SERVER = '900000000000000091';
@@ -78,9 +79,11 @@ async function scenario({ teams = ['Alpha', 'Bravo'], env = {}, serverId = SERVE
       const res = await s.ok(who, 'POST', `/roster/${pid}/characters`, { class: 'ROGUE', mainSpec: 'Combat', offSpec: null, name, ...body });
       return res.characters.find((c) => c.name === name).id;
     },
-    // An officer's account link (players.user_id).
+    // The account owns the person (players.user_id). Since the identity split (2026-10-26) the officer's Link account route only records the Discord ID, so this writes
+    // the column the way a Battle.net proof, an accepted application or an approved claim leaves it (tests/guild-owner-fixture.js). -> the person record, read as `who`.
     async link(pid, key, who = 'gm') {
-      return s.ok(who, 'PUT', `/roster/${pid}/account`, { userId: uids[key] }, 200);
+      ownPerson(w.db.sqlite, pid, uids[key], { bump: true });
+      return s.ok(who, 'GET', `/roster/${pid}`, undefined, 200);
     },
     teamOf: async (characterId) => (await s.one('SELECT team_id FROM characters WHERE id = ?', characterId)).team_id,
     // Put a character on a team with the column itself (a fixture; the team routes are what the tests exercise).

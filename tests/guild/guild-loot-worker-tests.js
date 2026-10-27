@@ -199,7 +199,7 @@ async function lootWorld({ imported = true, migrationsDir, retag = true } = {}) 
   for (const [key, name, team] of [['aldric', 'Aldric', A], ['brindle', 'Brindle', A], ['cassia', 'Cassia', A], ['dunmar', 'Dunmar', A], ['wander', 'Wanderfell', B]]) {
     s.p[key] = (await addPerson(s, 'bob', team, name)).person.id;
   }
-  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.brindle}'`);
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.erin.id}') WHERE id = '${s.p.brindle}'`);
   const raid = async (teamId, raidOn, present, extra = {}) => {
     const made = await s.call('bob', 'POST', '/raids', { teamId, raidOn, ...extra });
     assert.equal(made.status, 201, JSON.stringify(made.json));

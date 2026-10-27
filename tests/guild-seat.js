@@ -7,6 +7,7 @@
 //     who                                                 the key of the account that makes the person (the Guild Master / Owner); default 'gm'
 // -> { pid, cid, id }: the person, its Main character and the roster key.
 const assert = require('node:assert/strict');
+const { ownPerson } = require('./guild-owner-fixture');
 
 const NAMESPACE = 'profile-classicann-us';
 const REALM_ID = 4001;
@@ -21,10 +22,7 @@ async function seatOnRoster({ call, sqlite, guildId, teamId, userId, who = 'gm' 
     `INSERT OR REPLACE INTO guild_roster (guild_id, namespace, blizzard_realm_id, blizzard_char_id, name, name_key, realm_slug, class, level, rank)
      VALUES (?, ?, ?, ?, ?, ?, 'nightslayer', 'MAGE', 70, ?)`,
   ).run(guildId, NAMESPACE, REALM_ID, id, name, name.toLowerCase(), rank);
-  if (link) {
-    const linked = await call(who, 'PUT', `/roster/${pid}/account`, { userId });
-    assert.equal(linked.status, 200, linked.text);
-  }
+  if (link) ownPerson(sqlite, pid, userId); // players.user_id: the Link account route only records a Discord ID since the identity split (tests/guild-owner-fixture.js)
   return { pid, cid, id };
 }
 

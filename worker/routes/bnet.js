@@ -17,7 +17,7 @@ import {
 import { CLAIM_BATCH_MAX, DATA_TTL_MS, loadMemberGuilds, parseSnapshot, realmDisplayName } from '../bnet-store.js';
 import { bnetNameOf, findUserByBnet, hasBnetSql, hasDiscordSql, insertBnetAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
-import { isOwnPlayer, ownPersonStatement } from '../membership.js';
+import { ownPersonStatement, personStanding } from '../membership.js';
 import { loadGuildContext } from '../permissions.js';
 import {
   BNET_CALLBACK_BUDGET, BNET_CALLBACK_BUDGET_KEY, BNET_CALLBACK_LIMIT, BNET_CALLBACK_WINDOW_MS, bnetCallbackKey, checkRateLimit, spendBudget,
@@ -428,7 +428,7 @@ async function loadLatestClaims(db, guildId, userId) {
 }
 
 // state: new (not on the roster) | on_roster (on a person nobody linked) | yours (on your person) | taken (on someone else's linked person) | other_realm
-// viewer: { userId, discordId } - a person is yours when it is linked to your account or carries your Discord ID.
+// viewer: { userId, discordId } - a person is yours only when it is linked to your account (players.user_id); one that records only your Discord ID is on_roster, claimable with This is me.
 function characterView(guild, character, owners, viewer, claims) {
   const resolved = resolveRealm(guild, character.realm);
   const base = { name: character.name, realm: character.realm, realmSlug: character.realmSlug, class: character.class, level: character.level };
@@ -436,7 +436,7 @@ function characterView(guild, character, owners, viewer, claims) {
   const key = `${nameKey(character.name)}|${resolved.key}`;
   const owner = owners.get(key);
   let state = 'new';
-  if (owner) state = isOwnPlayer(owner, viewer) ? 'yours' : (owner.discord_user_id || owner.user_id ? 'taken' : 'on_roster');
+  if (owner) state = { yours: 'yours', taken: 'taken', open: 'on_roster' }[personStanding(owner, viewer)];
   const claim = claims.get(key) || null;
   return { ...base, state, claim, claimable: (state === 'new' || state === 'on_roster') && !(claim && claim.status === 'pending') };
 }

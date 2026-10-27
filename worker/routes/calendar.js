@@ -93,7 +93,7 @@ export async function getCalendarFeed(ctx) {
   const from = now - FEED_PAST_DAYS * DAY_MS;
   const to = now + FEED_AHEAD_DAYS * DAY_MS;
   const seeCounts = allows(can, 'attendance.view', link.team_id);
-  // "Me" is the membership rule's (worker/membership.js): the person linked to the account or carrying its Discord ID.
+  // "Me" is the membership rule's (worker/membership.js): the person whose players.user_id is the account (a Discord ID on a person is bookkeeping).
   const own = await ownPersonStatement(db, guild.id, link.user_id).first();
   const today = guildToday(guild, now);
   const [teamResult, raidResult, countResult, mineResult, noticeResult, realResult] = await db.batch([

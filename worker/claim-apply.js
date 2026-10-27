@@ -31,12 +31,12 @@ export const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 export const MAX_PENDING_PER_GUILD = 20;
 const and = (...guards) => ({ sql: guards.map((guard) => `(${guard.sql})`).join(' AND '), params: guards.flatMap((guard) => guard.params) });
 
-// The claimant still owns this person / still has no person: guards of the writes below (ownPlayerSql repeats its user, so it is bound twice).
+// The claimant still owns this person / still has no person (players.user_id: worker/membership.js ownPlayerSql): guards of the writes below.
 const ownsPerson = (guildId, personId, userId) => ({
-  sql: `EXISTS (SELECT 1 FROM players op WHERE op.id = ? AND op.guild_id = ? AND ${ownPlayerSql('op', '?')})`, params: [personId, guildId, userId, userId],
+  sql: `EXISTS (SELECT 1 FROM players op WHERE op.id = ? AND op.guild_id = ? AND ${ownPlayerSql('op', '?')})`, params: [personId, guildId, userId],
 });
 const hasNoPerson = (guildId, userId) => ({
-  sql: `NOT EXISTS (SELECT 1 FROM players np WHERE np.guild_id = ? AND ${ownPlayerSql('np', '?')})`, params: [guildId, userId, userId],
+  sql: `NOT EXISTS (SELECT 1 FROM players np WHERE np.guild_id = ? AND ${ownPlayerSql('np', '?')})`, params: [guildId, userId],
 });
 const personIsTheirs = (personId, userId) => ({ sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND user_id = ?)', params: [personId, userId] });
 
@@ -47,8 +47,9 @@ const INSERT_CHARACTER_SQL = `INSERT INTO characters (id, guild_id, player_id, t
 // The players row of a new person. The rank is the Main's (the INSERT INTO characters above); players.status is the inert placeholder (worker/person-legacy.js).
 const INSERT_PLAYER_SQL = `INSERT INTO players (id, guild_id, status, joined_on, discord_user_id, discord_nickname, user_id, version, notes_version, created_by, created_at, updated_at)
        SELECT ?, ?, 'raider', ?, ?, NULL, ?, 1, 0, ?, ?, ? WHERE `;
+// The person must be unowned and record either no Discord ID or the claimant's own (bookkeeping that the claim now turns into ownership; a bound NULL matches only the first).
 const LINK_PERSON_SQL = `UPDATE players SET discord_user_id = ?, user_id = ?, discord_nickname = NULL, version = version + 1, updated_at = ?
-        WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL AND user_id IS NULL
+        WHERE id = ? AND guild_id = ? AND (discord_user_id IS NULL OR discord_user_id = ?) AND user_id IS NULL
           AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id IS ?) AND `;
 const INSERT_CLAIM_SQL = `INSERT INTO character_claims (id, guild_id, user_id, name, name_key, realm, realm_key, class, level, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`;
@@ -94,7 +95,7 @@ export function applyClaimPlan(ctx, { guild, plan, claimant, character, source, 
   if (plan.kind === 'link_person') {
     const g = and(guard, hasNoPerson(guild.id, claimant.userId));
     return {
-      writes: [db.prepare(LINK_PERSON_SQL + g.sql).bind(claimant.discordId || null, claimant.userId, now, plan.person.id, guild.id, plan.homeTeamId, ...g.params)],
+      writes: [db.prepare(LINK_PERSON_SQL + g.sql).bind(claimant.discordId || null, claimant.userId, now, plan.person.id, guild.id, claimant.discordId || null, plan.homeTeamId, ...g.params)],
       stale: [markPersonRaidsStale(db, guild.id, plan.person.id, null, freeze)], personId: plan.person.id, characterId: plan.characterId,
     };
   }

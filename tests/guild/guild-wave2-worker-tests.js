@@ -292,7 +292,7 @@ async function wave2World() {
   for (const [key, name, which, classId, spec, discord] of ROSTER) {
     const made = await addPerson(s, 'bob', which === 'A' ? A : B, name, { class: classId, mainSpec: spec, offSpec: null });
     s.p[key] = made.person.id;
-    exec(s.w, `UPDATE players SET discord_user_id = '${discord}' WHERE id = '${made.person.id}'`);
+    exec(s.w, `UPDATE players SET discord_user_id = '${discord}', user_id = (SELECT id FROM users WHERE discord_id = '${discord}') WHERE id = '${made.person.id}'`);
     s.roster[key] = { name, discord, rhClass: RH_CLASS[classId], spec };
   }
   // Alts on the other team: Eliora (Alpha) has Eliobee on Bravo and Mirabel on Alpha; Jorund (Bravo) has Thessaly on Alpha.
@@ -2088,7 +2088,7 @@ async function deadlineWorld() {
   const person = async (key, name, classId, spec, discord) => {
     const made = await addPerson(s, 'bob', s.A, name, { class: classId, mainSpec: spec, offSpec: null });
     s.p[key] = made.person.id;
-    exec(s.w, `UPDATE players SET discord_user_id = '${discord}' WHERE id = '${made.person.id}'`);
+    exec(s.w, `UPDATE players SET discord_user_id = '${discord}', user_id = (SELECT id FROM users WHERE discord_id = '${discord}') WHERE id = '${made.person.id}'`);
   };
   await person('eliora', 'Eliora', 'PRIEST', 'Holy', PEOPLE.erin.id);
   await person('gorrim', 'Gorrim', 'PALADIN', 'Protection', PEOPLE.gina.id);
@@ -2957,7 +2957,7 @@ async function awayWorld(opts = {}) {
   const person = async (key, name, classId, spec, team, discord) => {
     const made = await addPerson(s, 'bob', team, name, { class: classId, mainSpec: spec, offSpec: null });
     s.p[key] = made.person.id;
-    if (discord) exec(s.w, `UPDATE players SET discord_user_id = '${discord}' WHERE id = '${made.person.id}'`);
+    if (discord) exec(s.w, `UPDATE players SET discord_user_id = '${discord}', user_id = (SELECT id FROM users WHERE discord_id = '${discord}') WHERE id = '${made.person.id}'`);
   };
   await person('eliora', 'Eliora', 'PRIEST', 'Holy', s.A, PEOPLE.erin.id);
   await person('gorrim', 'Gorrim', 'PALADIN', 'Protection', s.A, PEOPLE.gina.id);
@@ -3196,7 +3196,7 @@ check('away: officers\' writes for someone else are audited (kind and person onl
     ['away.set', 'signups', 'Changed a notice for Gorrim (Leaving early)'],
   ]);
   // An officer writing for their own person is the person's own write: not audited.
-  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.bob.id}' WHERE id = '${s.p.nodisc}'`);
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.bob.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.bob.id}') WHERE id = '${s.p.nodisc}'`);
   await s.file('bob', { kind: 'away', from: '2027-01-20', to: '2027-01-21' });
   assert.equal(await s.w.count('audit_log', "action LIKE 'away.%'"), 3);
 });
@@ -3483,7 +3483,7 @@ const DAY = 86400000;
 
 check('away attendance: a missed raid under a covering Away notice is "missed with notice"; the policy decides the credit; attending, a real sign-up and the wrong date or weekday all beat or miss it', async () => {
   const s = await attAwayWorld();
-  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.eliora}'`);
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.erin.id}') WHERE id = '${s.p.eliora}'`);
   // The raid is Tuesday 2027-01-19 20:00; the clock (Saturday the 16th) is before it, so every notice below is filed in time.
   const brindle = await s.notice('brindle', { kind: 'away', from: '2027-01-18', to: '2027-01-19' });
   await s.notice('aldric', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });                         // came anyway
@@ -3668,7 +3668,7 @@ async function standingWorld() {
   const person = async (key, teamId, name, classId, spec, discord) => {
     const made = await addPerson(s, 'bob', teamId, name, { class: classId, mainSpec: spec, offSpec: null });
     s.p[key] = made.person.id;
-    exec(s.w, `UPDATE players SET discord_user_id = '${discord}' WHERE id = '${made.person.id}'`);
+    exec(s.w, `UPDATE players SET discord_user_id = '${discord}', user_id = (SELECT id FROM users WHERE discord_id = '${discord}') WHERE id = '${made.person.id}'`);
     s.c[key] = await idOf(name);
   };
   const alt = async (key, pid, teamId, name, classId, spec) => {

@@ -401,7 +401,7 @@ async function signupWorld() {
   const person = async (key, teamId, name, extra, discord) => {
     const made = await addPerson(s, 'bob', teamId, name, extra);
     s.p[key] = made.person.id;
-    if (discord) exec(s.w, `UPDATE players SET discord_user_id = '${discord}' WHERE id = '${made.person.id}'`);
+    if (discord) exec(s.w, `UPDATE players SET discord_user_id = '${discord}', user_id = (SELECT id FROM users WHERE discord_id = '${discord}') WHERE id = '${made.person.id}'`);
     s.c[key] = (await s.w.rows('SELECT id FROM characters WHERE player_id = ? AND is_main = 1', made.person.id))[0].id;
   };
   // A new alt starts on no team (B2). `place` puts it on the team with the column itself (the team routes that do it come with B3).
@@ -773,7 +773,7 @@ check('attendance: a Raidsmith sign-up counts like any other and replaces the pe
   for (const key of ['brindle', 'fenwick', 'dunmar', 'cassia']) assert.equal((await s.call('bob', 'DELETE', s.raid(id, `/signups/${s.p[key]}`), {})).status, 200);
   assert.deepEqual(await attendanceSnapshot(s, id), GOLDEN.eventAndReport);
   // A member cannot touch a raid that has started: Erin is Aldric here, and the raid is past.
-  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.aldric}'`);
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.erin.id}') WHERE id = '${s.p.aldric}'`);
   const closed = await s.call('erin', 'PUT', s.raid(id, '/signup'), { kind: 'absence' });
   assert.deepEqual([closed.status, closed.json.reason], [409, 'started']);
   assert.deepEqual(await attendanceSnapshot(s, id), GOLDEN.eventAndReport);

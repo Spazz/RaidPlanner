@@ -8,6 +8,7 @@
  * directly; the routes and the SQL run over HTTP.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const { load, adminOf, memberOf, makeWorld, signIn, newJar } = require('../guild-world');
 
 const SERVER = '900000000000000081';
@@ -87,6 +88,7 @@ async function scenario({ version = 'tbc', members = [], teams = 1 } = {}) {
     async person(name, { team = tids[0], cls = 'WARRIOR', status = 'raider', link = null, spec = null } = {}) {
       const specs = { WARRIOR: 'Arms', MAGE: 'Fire', PRIEST: 'Holy', ROGUE: 'Combat', DRUID: 'Restoration' };
       const res = await s.ok('gm', 'POST', '/roster', { teamId: team, name, class: cls, mainSpec: spec || specs[cls], offSpec: null, status, joinedOn: '2026-09-01', ...(link ? { linkUserId: uids[link] } : {}) });
+      if (link) ownPerson(w.db.sqlite, res.person.id, uids[link]); // the account owns it (players.user_id): linkUserId only records the Discord ID since the identity split
       return { pid: res.person.id, cid: res.characters[0].id };
     },
     // A raid on a guild-local date and time, made through the API.

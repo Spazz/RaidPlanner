@@ -138,9 +138,9 @@ async function scenario() {
   }
   const raid = (await G.api.post(`${base}/raids`, { teamId, raidOn: RAID_ON })).raid.id;
   await G.api.put(`${base}/raids/${raid}/manual`, { reason: 'No log kept', presentPlayerIds: Object.values(people) });
-  // Erin is the member behind Thoren.
-  world.db.sqlite.exec(`UPDATE players SET discord_user_id = '${ERIN.id}' WHERE id = '${people.Thoren}'`);
+  // Erin is the member behind Thoren (signed in first: players.user_id names the account).
   const memberJar = await signIn(world, ERIN, [{ id: SERVER, name: 'Server', icon: null, owner: false, permissions: '0' }]);
+  world.db.sqlite.exec(`UPDATE players SET discord_user_id = '${ERIN.id}', user_id = (SELECT id FROM users WHERE discord_id = '${ERIN.id}') WHERE id = '${people.Thoren}'`);
   const guildData = await G.api.get(base);
   const parsed = G.gargul.parse(FIXTURE);
   assert(parsed.ok && parsed.awards.length === 14, 'the fixture parses to 14 awards (one is a disenchant)');

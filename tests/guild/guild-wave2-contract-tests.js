@@ -12,6 +12,7 @@
  * Discord and Raid-Helper are faked by an injected fetch and the clock is injected: no network, no Wrangler, no credentials, no real time.
  */
 const assert = require('node:assert/strict');
+const { ownByDiscord } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -168,6 +169,7 @@ async function scenario({ version = 'tbc', teams = ['Alpha'], roster = ROSTER } 
   const E = loadPages(world, await signIn(world, PEOPLE.erin, member));
   const N = loadPages(world, await signIn(world, PEOPLE.gina, member));
   const H = loadPages(world, await signIn(world, PEOPLE.hank, member));
+  ownByDiscord(world.db.sqlite); // a person that records a signed-in account's Discord ID is that account's only when players.user_id says so (identity split)
   const s = { world, A, E, N, H, gid, teamId: teamIds[0], teamIds, base, people, version };
   for (const G of [A, E, N, H]) G.guildData = await G.api.get(base);
   s.refresh = async (...pages) => { for (const G of pages) G.guildData = await G.api.get(base); };

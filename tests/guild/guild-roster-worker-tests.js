@@ -907,6 +907,7 @@ check('GET /roster: one row per person with a character on the team, the shown c
   const s = await scenario({ teams: 2 });
   const [alpha, bravo] = s.teams;
   const p1 = await addPerson(s, 'bob', alpha, 'Aldric', { status: 'trial', trialEnd: '2027-01-17', linkUserId: s.ids.erin });
+  exec(s.w, `UPDATE players SET user_id = '${s.ids.erin}' WHERE id = '${p1.person.id}'`); // erin owns Aldric (players.user_id); linkUserId only records her Discord ID
   await addAlt(s, 'bob', p1.person.id, bravo, 'Brindle');
   const p2 = await addPerson(s, 'bob', bravo, 'Cassia', { class: 'PRIEST', mainSpec: 'Holy' });
   await addAlt(s, 'bob', p2.person.id, alpha, 'Dunmar', { class: 'ROGUE', mainSpec: 'Combat' });
@@ -1127,7 +1128,10 @@ check('linking: officers link by u_ id; linkable excludes blocked, linked and no
   assert.deepEqual([linked.json.person.discord.signIn, linked.json.person.discord.user.username, linked.json.person.discord.nickname], ['signed_in', 'erin', null]);
   assert.equal(linked.json.person.isMe, false);
   const own = await s.call('erin', 'GET', `/roster/${linked.json.person.id}`);
-  assert.equal(own.json.person.isMe, true);
+  assert.equal(own.json.person.isMe, false, 'the Discord ID on the person is bookkeeping: erin is not its owner');
+  exec(s.w, `UPDATE players SET user_id = '${s.ids.erin}' WHERE id = '${linked.json.person.id}'`);
+  assert.equal((await s.call('erin', 'GET', `/roster/${linked.json.person.id}`)).json.person.isMe, true, 'players.user_id makes it hers');
+  exec(s.w, `UPDATE players SET user_id = NULL WHERE id = '${linked.json.person.id}'`); // back to a Discord-ID-only person for the linking checks below
   assert.deepEqual(own.json.can, { edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false });
 
   const names = async () => (await s.call('bob', 'GET', '/roster/linkable')).json.users.map((u) => u.username).sort();
@@ -1170,10 +1174,13 @@ check('linking: a person is linked when a user holds their Discord ID, read on t
   const newbie = await signIn(s.w, { id: DID(1), username: 'newbie', globalName: null }, [plain(SERVER_A)]);
   const writes = await s.w.count('audit_log');
   const after = await s.w.call(newbie, 'GET', `/api/guild/${s.guildId}/roster/${pid}`);
-  assert.deepEqual([after.json.person.discord.signIn, after.json.person.discord.user.displayName, after.json.person.discord.user.username, after.json.person.isMe], ['signed_in', 'newbie', '', true]);
+  assert.deepEqual([after.json.person.discord.signIn, after.json.person.discord.user.displayName, after.json.person.discord.user.username, after.json.person.isMe], ['signed_in', 'newbie', '', false]);
   assert.equal(await s.w.count('audit_log'), writes);
   const list = await s.w.call(newbie, 'GET', `/api/guild/${s.guildId}/roster?team=${s.teamId}`);
-  assert.deepEqual([list.json.people[0].signIn, list.json.people[0].isMe], ['signed_in', true]);
+  assert.deepEqual([list.json.people[0].signIn, list.json.people[0].isMe], ['signed_in', false], 'the Discord ID shows who signed in, never whose person it is');
+  exec(s.w, `UPDATE players SET user_id = (SELECT id FROM users WHERE discord_id = '${DID(1)}') WHERE id = '${pid}'`);
+  const owned = await s.w.call(newbie, 'GET', `/api/guild/${s.guildId}/roster?team=${s.teamId}`);
+  assert.deepEqual([owned.json.people[0].signIn, owned.json.people[0].isMe], ['signed_in', true]);
   await assertOneMain(s.w);
 });
 
@@ -1191,10 +1198,13 @@ check('own_teams: a Member\'s own characters give them their teams; the set merg
   const s = await scenario({ teams: 2 });
   const [A, B] = s.teams;
   const erinPerson = await addPerson(s, 'bob', A, 'Aldric', { linkUserId: s.ids.erin });
+  assert.deepEqual((await s.call('erin', 'GET', '')).json.me.can['attendance.view'], [], 'a Discord ID on the person gives no own team');
+  exec(s.w, `UPDATE players SET user_id = '${s.ids.erin}' WHERE id = '${erinPerson.person.id}'`);
   assert.deepEqual((await s.call('erin', 'GET', '')).json.me.can['attendance.view'], [A]);
   assert.equal((await addAlt(s, 'bob', erinPerson.person.id, B, 'Brindle')).status, 201);
   assert.deepEqual((await s.call('erin', 'GET', '')).json.me.can['attendance.view'], [A, B].sort());
-  await addPerson(s, 'bob', B, 'Cassia', { linkUserId: s.ids.carol });
+  const carolPerson = await addPerson(s, 'bob', B, 'Cassia', { linkUserId: s.ids.carol });
+  exec(s.w, `UPDATE players SET user_id = '${s.ids.carol}' WHERE id = '${carolPerson.person.id}'`);
   assert.deepEqual((await s.call('carol', 'GET', '')).json.me.can['attendance.view'], [A, B].sort(), 'Team Lead of A + own team B');
   assert.equal((await s.call('carol', 'GET', '')).json.me.can['roster.edit'].length, 1, 'own teams grant no roster rights');
   assert.deepEqual((await s.call('bob', 'GET', '')).json.me.can['attendance.view'], 'guild');

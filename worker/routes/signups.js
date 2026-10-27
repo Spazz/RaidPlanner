@@ -81,7 +81,7 @@ export async function buildView(ctx, guildContext, raid) {
   const closeHours = closeHoursOf(raid);
   const closed = closedReason(raid, ctx.now(), closeHours);
   const userId = ctx.session.user.id;
-  // The viewer's own person is the one linked to their account or carrying their Discord ID (worker/membership.js), so an account that signs in with Battle.net only has one too.
+  // The viewer's own person is the one linked to their account (players.user_id: worker/membership.js), whichever way they sign in.
   const statements = [
     ownPersonStatement(db, guild.id, userId),
     db.prepare(
@@ -92,7 +92,7 @@ export async function buildView(ctx, guildContext, raid) {
       `SELECT ${CHARACTER_COLUMNS} FROM characters
         WHERE guild_id = ? AND (player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND player_id IS NOT NULL)
                                 OR player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')})) AND ${visibleCharacterSql('characters')}`,
-    ).bind(guild.id, raid.id, guild.id, userId, userId),
+    ).bind(guild.id, raid.id, guild.id, userId),
   ];
   // An upcoming raid also reads the Away / Late / Leaving notices that cover its date (worker/away.js): a virtual Absence for the people who are away and have
   // no sign-up, a note on those who are late or leaving. They come last, so the positions of the other results do not move.

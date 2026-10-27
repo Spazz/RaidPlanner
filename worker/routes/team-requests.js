@@ -41,7 +41,7 @@ const PENDING = (id) => ({ sql: "EXISTS (SELECT 1 FROM team_requests WHERE id = 
 export const askerStillOwns = (guildId, row) => ({
   sql: `EXISTS (SELECT 1 FROM players op WHERE op.id = ? AND op.guild_id = ? AND ${ownPlayerSql('op', '?')})
         AND NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)`,
-  params: [row.player_id, guildId, row.requested_by, row.requested_by, guildId, row.requested_by],
+  params: [row.player_id, guildId, row.requested_by, guildId, row.requested_by],
 });
 
 const REQUEST_COLUMNS = `q.id, q.status, q.note, q.created_at, q.decided_at, q.team_id, t.name AS team_name, t.archived AS team_archived,
@@ -174,7 +174,7 @@ export async function approveTeamRequest(ctx) {
   const changed = () => new HttpError(409, 'request_changed', 'The request or the character changed while you were deciding. Reload to see where it stands.');
   if (!row.requested_by || await isBlocked(db, guild.id, row.requested_by)) throw changed();
   const owns = await db.prepare(`SELECT 1 AS found FROM players p WHERE p.id = ? AND p.guild_id = ? AND ${ownPlayerSql('p', '?')}`)
-    .bind(row.player_id, guild.id, row.requested_by, row.requested_by).first();
+    .bind(row.player_id, guild.id, row.requested_by).first();
   if (!owns) throw changed();
   if (row.team_archived === 1) throw new HttpError(409, 'team_archived', 'That team is archived, so nobody can be placed on it. Reject the request.');
   if (row.character_team_id !== null) {

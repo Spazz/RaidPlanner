@@ -3,8 +3,8 @@
  * Run: node tests/guild/guild-fw1b-worker-tests.js
  *
  * The guild payload (GET /api/guild/:gid) says which roster person is the viewer's (`me.personId`, null when the account is on no roster): the member
- * Home and "My profile" open their pages from it. The person is the one worker/membership.js ownPersonStatement finds (linked to the account, or
- * carrying its Discord ID), so the payload cannot drift from what the sign-up, loot and away routes call "mine". The setup checklist's first step is
+ * Home and "My profile" open their pages from it. The person is the one worker/membership.js ownPersonStatement finds (players.user_id is the account; a
+ * Discord ID on a person is bookkeeping since the identity split), so the payload cannot drift from what the sign-up, loot and away routes call "mine". The setup checklist's first step is
  * done as soon as the guild has an active team (Create a guild made one).
  */
 const assert = require('node:assert/strict');
@@ -37,7 +37,7 @@ async function scenario() {
 
 const personIdOf = async (s, who) => (await s.call(who, 'GET', '')).json.me.personId;
 
-check('me.personId: null until the account is linked to a roster person, then that person; other accounts stay null', async () => {
+check('me.personId: null until the account owns a roster person (players.user_id), then that person; the officer\'s Link account only records the Discord ID; other accounts stay null', async () => {
   const s = await scenario();
   assert.equal(s.created.me.personId, null, 'the create reply has the field too');
   for (const who of ['alice', 'bob', 'carol']) assert.equal(await personIdOf(s, who), null, `${who}: on no roster yet`);
@@ -45,14 +45,17 @@ check('me.personId: null until the account is linked to a roster person, then th
   assert.equal(added.status, 201, added.text);
   const pid = added.json.person.id;
   assert.equal(await personIdOf(s, 'bob'), null, 'a roster person nobody linked is nobody\'s');
+  s.w.db.sqlite.prepare('UPDATE users SET discord_id = ? WHERE id = ?').run('800000000000000066', s.ids.bob); // a real snowflake: the person column's CHECK wants 17-20 digits
   const linked = await s.call('alice', 'PUT', `/roster/${pid}/account`, { userId: s.ids.bob });
   assert.equal(linked.status, 200, linked.text);
-  assert.equal(await personIdOf(s, 'bob'), pid, 'the linked account has it');
+  assert.equal(await personIdOf(s, 'bob'), null, 'Link account recorded bob\'s Discord ID: bookkeeping, not ownership');
+  s.w.db.sqlite.prepare('UPDATE players SET user_id = ? WHERE id = ?').run(s.ids.bob, pid); // what a Battle.net proof or an approved claim does
+  assert.equal(await personIdOf(s, 'bob'), pid, 'the owning account has it');
   assert.equal(await personIdOf(s, 'carol'), null, 'another account does not');
   assert.equal(await personIdOf(s, 'alice'), null, 'neither does the Guild Master who linked it');
 });
 
-check('me.personId: a person that carries the account\'s Discord ID is the account\'s (the rule every "mine" route uses)', async () => {
+check('me.personId: the account\'s person is the one players.user_id names; a person that only carries the account\'s Discord ID is bookkeeping, not the account\'s (identity split 2026-10-26)', async () => {
   const s = await scenario();
   const added = await s.call('alice', 'POST', '/roster', { teamId: s.teamId, name: 'Mendra', class: 'PRIEST', mainSpec: 'Holy', offSpec: null, status: 'raider' });
   assert.equal(added.status, 201, added.text);
@@ -60,6 +63,8 @@ check('me.personId: a person that carries the account\'s Discord ID is the accou
   const discordId = '800000000000000077';
   s.w.db.sqlite.prepare('UPDATE users SET discord_id = ? WHERE id = ?').run(discordId, s.ids.carol);
   s.w.db.sqlite.prepare('UPDATE players SET discord_user_id = ? WHERE id = ?').run(discordId, pid);
+  assert.equal(await personIdOf(s, 'carol'), null, 'the Discord ID on the person is bookkeeping: it does not make carol the owner');
+  s.w.db.sqlite.prepare('UPDATE players SET user_id = ? WHERE id = ?').run(s.ids.carol, pid);
   assert.equal(await personIdOf(s, 'carol'), pid);
   assert.equal(await personIdOf(s, 'bob'), null);
 });

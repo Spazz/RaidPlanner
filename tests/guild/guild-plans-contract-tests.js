@@ -12,6 +12,7 @@
  * clock is injected: no network, no Wrangler, no credentials.
  */
 const assert = require('node:assert/strict');
+const { ownByDiscord } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -228,6 +229,7 @@ async function scenario() {
   }
   const member = [{ id: SERVER, name: 'Server', icon: null, owner: false, permissions: '0' }];
   const erinJar = await signIn(world, PEOPLE.erin, member);
+  ownByDiscord(world.db.sqlite); // a person that records a signed-in account's Discord ID is that account's only when players.user_id says so (identity split)
   const E = loadGuild(world, erinJar);
   const erinUid = (await E.api.get('/auth/me')).user.id;
   await A.api.put(`${base}/people/${erinUid}/roles`, { officer: true, teamLeadTeamIds: [] });

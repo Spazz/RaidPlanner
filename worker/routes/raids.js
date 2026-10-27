@@ -291,7 +291,7 @@ export async function listRaids(ctx) {
          FROM raid_signups s LEFT JOIN characters c ON c.id = s.character_id
         WHERE s.player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}) AND s.source IN ('raid_helper', 'raidsmith')
           AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at > ?)`,
-    ).bind(guild.id, ctx.session.user.id, ctx.session.user.id, guild.id, teamId, now),
+    ).bind(guild.id, ctx.session.user.id, guild.id, teamId, now),
     ctx.db.prepare('SELECT schedule_weeks, schedule_auto, (SELECT COUNT(*) FROM team_schedules x WHERE x.team_id = teams.id) AS slots FROM teams WHERE id = ? AND guild_id = ?')
       .bind(teamId, guild.id),
     // Away notices from today on (worker/away.js): a virtual Absence on each upcoming raid they cover, for the people who have no real sign-up there.
@@ -302,7 +302,7 @@ export async function listRaids(ctx) {
       `SELECT rr.raid_id, rr.group_number, rr.status FROM raid_roster rr
         WHERE rr.player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')})
           AND rr.raid_id IN (SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at > ?) ORDER BY rr.seq`,
-    ).bind(guild.id, ctx.session.user.id, ctx.session.user.id, guild.id, teamId, now),
+    ).bind(guild.id, ctx.session.user.id, guild.id, teamId, now),
   ]);
   const team = teamResult.results[0];
   if (!team) throw bad('That team does not exist in this guild.', 'team');

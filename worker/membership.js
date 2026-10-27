@@ -19,7 +19,10 @@
 //                           Discord server still ends a Discord member's access, exactly as before accounts existed.
 //   blocked                 a guild_blocks row; it wins over every source, except on the unsuspended Owner (they cannot be blocked: a row on them is ignored)
 //
-//   my person = players.user_id is the account  OR  players.discord_user_id is the account's Discord ID  (ownPlayerSql / isOwnPlayer)
+//   my person = players.user_id is the account, and NOTHING else  (ownPlayerSql / isOwnPlayer; user decision 2026-10-26). A person's Discord ID
+//               (players.discord_user_id) and names are bookkeeping: sign-ups, logs and loot keep following them and staff keep recording them, but they never make an
+//               account the owner. players.user_id is written only by Battle.net proof, the account holder's own accepted application and an officer-approved
+//               "This is me" claim (pinned by tests/guild/guild-identity-split-tests.js).
 //
 // The switch on the source is ONE CASE inside the fragment, keyed on the guild expression, so a request that races a flip reads the source once and cannot mix
 // two rules. The pure forms (reachesOf / membershipOf) mirror the SQL for the places that already hold the facts; a parity test runs both over the whole matrix.
@@ -28,7 +31,7 @@
 // values, `FROM ..., (SELECT ? AS gid, ? AS sid) gc` with `gc.gid`. Do not pass a bare `?` for more than one expression of a fragment, and do not
 // rely on the order of placeholders inside a fragment; the bound forms (boundMember, boundReaches) exist for guards that carry their own values. The server
 // expression is used once (the legacy branch); the user and guild expressions several times: pass columns, or numbered parameters (?1) for those.
-// (ownPlayerSql repeats only its user, so a bare `?` for the user is fine there: bind the user twice.) The aliases inside the fragments (mb, ms, ml, mx_*) are
+// (ownPlayerSql uses its user once, so a bare `?` for the user is fine there: bind the user once.) The aliases inside the fragments (mb, ms, ml, mx_*) are
 // fixed: a caller must not use them for its own tables.
 
 import { serverIdIsDiscordSql } from './discord-guard.js';
@@ -162,19 +165,29 @@ export function boundReaches(userId, guildId, serverId) {
   return { sql: `EXISTS (SELECT 1 FROM ${VALUES} WHERE ${reachesGuildSql('b.uid', 'b.gid', 'b.sid')})`, params: [userId, guildId, serverId] };
 }
 
-// The person (a players row, alias given) belongs to the account; the account is an expression used twice.
-export const ownPlayerSql = (playerAlias, userExpr) =>
-  `(${playerAlias}.user_id = ${userExpr} OR (${playerAlias}.discord_user_id IS NOT NULL AND ${playerAlias}.discord_user_id = (SELECT du.discord_id FROM users du WHERE du.id = ${userExpr})))`;
+// The person (a players row, alias given) belongs to the account: players.user_id is the account. The Discord ID the person carries is bookkeeping and never
+// decides this (user decision 2026-10-26). The account is an expression used once.
+export const ownPlayerSql = (playerAlias, userExpr) => `(${playerAlias}.user_id = ${userExpr})`;
 
-// The roster person who is the account's in a guild (linked to the account, or carrying its Discord ID), as a statement that returns { id } or
-// nothing. Every route that asks "which person am I" (sign-ups, loot, the Raids list) reads it from here.
+// The roster person who is the account's in a guild (players.user_id = the account), as a statement that returns { id } or nothing. Every route that
+// asks "which person am I" (sign-ups, loot, the Raids list) reads it from here.
 export function ownPersonStatement(db, guildId, userId) {
-  return db.prepare(`SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}`).bind(guildId, userId, userId);
+  return db.prepare(`SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}`).bind(guildId, userId);
 }
 
-// Pure form: player = { user_id, discord_user_id } (a players row), viewer = { userId, discordId } (the session's user).
+// Pure form: player = { user_id } (a players row), viewer = { userId } (the session's user). Other fields of either (discord ids) are ignored on purpose.
 export function isOwnPlayer(player, viewer) {
   if (!player || !viewer) return false;
-  if (player.user_id && viewer.userId && player.user_id === viewer.userId) return true;
-  return !!player.discord_user_id && !!viewer.discordId && player.discord_user_id === viewer.discordId;
+  return !!player.user_id && !!viewer.userId && player.user_id === viewer.userId;
+}
+
+// How a person stands for an account that wants to claim one of its characters ("This is me"): player = { user_id, discord_user_id }, viewer = { userId, discordId }.
+//   'yours'  players.user_id is the viewer
+//   'taken'  another account owns it, or it records a Discord ID that is not the viewer's (bookkeeping for somebody else)
+//   'open'   nobody owns it. It may record the viewer's own Discord ID: that makes the claim a likely one, never an ownership (user decision 2026-10-26).
+export function personStanding(player, viewer) {
+  if (isOwnPlayer(player, viewer)) return 'yours';
+  if (player.user_id) return 'taken';
+  if (player.discord_user_id && player.discord_user_id !== (viewer && viewer.discordId)) return 'taken';
+  return 'open';
 }

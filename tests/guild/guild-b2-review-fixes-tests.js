@@ -13,6 +13,7 @@
  * The guild is built through the API; a character is placed on a team (the team routes of lane B3 will do that) with the column itself.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const { ROOT, adminOf, load, memberOf, makeWorld, signIn } = require('../guild-world');
@@ -65,6 +66,7 @@ async function scenario({ teams = ['Alpha', 'Bravo'] } = {}) {
     },
     async newPerson(body = {}, who = 'gm') {
       const res = await s.ok(who, 'POST', '/roster', { teamId: tids[0], class: 'MAGE', mainSpec: 'Fire', offSpec: null, ...body });
+      if (body.linkUserId) ownPerson(w.db.sqlite, res.person.id, body.linkUserId); // the account owns it (players.user_id): linkUserId only records the Discord ID since the identity split
       return { pid: res.person.id, cid: res.characters[0].id, version: res.person.version, today: res.today, res };
     },
     async alt(pid, name, body = {}, who = 'gm') {

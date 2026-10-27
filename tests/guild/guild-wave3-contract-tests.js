@@ -10,6 +10,7 @@
  * the post, the apply form (signed out and signed in) with the inbox, Accept and the Home line, the CSV import.
  */
 const assert = require('node:assert/strict');
+const { ownByDiscord } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -154,6 +155,7 @@ async function scenario({ version = 'forever', teams = ['Alpha'] } = {}) {
     if (who) world.db.sqlite.exec(`UPDATE players SET discord_user_id = '${PEOPLE[who].id}' WHERE id = '${made.person.id}'`);
   }
   const E = loadPages(world, await signIn(world, PEOPLE.erin, MEMBER_SERVER));
+  ownByDiscord(world.db.sqlite); // a person that records a signed-in account's Discord ID is that account's only when players.user_id says so (identity split)
   const s = { world, A, E, gid, teamId: teamIds[0], teamIds, base, people, version };
   for (const G of [A, E]) G.guildData = await G.api.get(base);
   s.rows = (sql, ...values) => world.db.prepare(sql).bind(...values).all().then((r) => r.results);

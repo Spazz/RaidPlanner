@@ -7,6 +7,7 @@
  * The pure rules are pinned directly; the routes and the SQL run over HTTP. Nothing touches the network.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const { load, adminOf, memberOf, makeWorld, signIn } = require('../guild-world');
 
 const SERVER = '900000000000000061';
@@ -67,6 +68,7 @@ async function scenario({ members = [], teams = 1 } = {}) {
     // A raider on a team: { pid, cid }. link: the key of a signed-in member whose account becomes theirs.
     async person(name, { team = tids[0], cls = 'WARRIOR', link = null } = {}) {
       const res = await s.ok('gm', 'POST', '/roster', { teamId: team, name, class: cls, mainSpec: SPEC_OF[cls], offSpec: null, status: 'raider', ...(link ? { linkUserId: uids[link] } : {}) });
+      if (link) ownPerson(w.db.sqlite, res.person.id, uids[link]); // the account owns it (players.user_id): linkUserId only records the Discord ID since the identity split
       return { pid: res.person.id, cid: res.characters[0].id };
     },
     rows: (sql, ...values) => w.rows(sql, ...values),

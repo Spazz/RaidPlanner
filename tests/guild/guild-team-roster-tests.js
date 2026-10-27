@@ -12,6 +12,7 @@
  * The predicate itself (one definition in SQL and in JS) is pinned over every combination first.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const { createD1Fake } = require('../d1-fake');
 const { load, adminOf, memberOf, makeWorld, signIn, newJar } = require('../guild-world');
 
@@ -55,6 +56,7 @@ async function scenario(members = []) {
     rows: (sql, ...values) => w.rows(sql, ...values),
     async person(name, { team = alpha, status = 'raider', link = null, cls = 'MAGE', spec = 'Fire' } = {}) {
       const res = await s.ok('gm', 'POST', '/roster', { teamId: team, name, class: cls, mainSpec: spec, offSpec: null, status, joinedOn: '2026-09-01', ...(link ? { linkUserId: uids[link] } : {}) });
+      if (link) ownPerson(w.db.sqlite, res.person.id, uids[link]); // the account owns it (players.user_id): linkUserId only records the Discord ID since the identity split
       return { pid: res.person.id, cid: res.characters[0].id, version: res.person.version };
     },
     // A new alt starts on no team (B2); the team routes that place it come with B3, so the test places it with the column itself.

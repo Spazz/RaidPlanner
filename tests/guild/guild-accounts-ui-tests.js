@@ -339,6 +339,15 @@ function withApi(stubs, fn) {
       { id: 'u7', displayName: 'Hollyhock', initials: 'HO', battletag: null, matchedBy: 'name', ambiguous: true },
     ], 'Hollyhock');
     assert(!twins.includes('data-action="account-pick"') && (twins.match(/Several accounts show this name\. Ask for the BattleTag\./g) || []).length === 2, 'no Link for look-alike names');
+    // Claimants that show one name carry a short suffix (identity split): it is in the row and in the Link button's label, and a name of its own shows none.
+    const suffixed = G.pages.person.accountResultsHtml([
+      { id: 'u6', displayName: 'Twin', nameSuffix: '#ab12', initials: 'TW', battletag: null, matchedBy: 'claim' },
+      { id: 'u7', displayName: 'Twin', nameSuffix: '#cd34', initials: 'TW', battletag: null, matchedBy: 'claim' },
+      { id: 'u8', displayName: 'Solo', nameSuffix: '', initials: 'SO', battletag: null, matchedBy: 'claim' },
+    ], '');
+    assert(text(suffixed).includes('Twin #ab12') && text(suffixed).includes('Twin #cd34') && !/Solo #/.test(text(suffixed)), 'the suffix follows the name');
+    assert(suffixed.includes('aria-label="Link Twin #ab12"') && suffixed.includes('aria-label="Link Twin #cd34"') && suffixed.includes('aria-label="Link Solo"'), 'and the button says which');
+    assert((suffixed.match(/data-action="account-pick"/g) || []).length === 3, 'a claimant list still offers Link for each');
     assert(text(G.pages.person.accountResultsHtml([], 'Nobody#1')).includes('No account has exactly that BattleTag or name'));
     assert(text(G.pages.person.accountResultsHtml([], '')).includes('Nobody has sent a character claim that is waiting for a person'));
     assertEscaped(G.pages.person.accountResultsHtml([{ id: 'u8', displayName: HOSTILE + QUOTES, battletag: HOSTILE, matchedBy: 'name' }], 'x'), 'results');

@@ -10,6 +10,7 @@
  * The writers that must work for a character on no team (patch character, delete person, make main, ...) are exercised in guild-b2-writers-tests.js.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const { load, adminOf, memberOf, makeWorld, signIn } = require('../guild-world');
 
 const SERVER = '900000000000000051';
@@ -50,6 +51,7 @@ async function scenario() {
     },
     async newPerson(body) {
       const res = await s.ok('gm', 'POST', '/roster', { teamId: tids[0], class: 'MAGE', mainSpec: 'Fire', offSpec: null, ...body });
+      if (body && body.linkUserId) ownPerson(w.db.sqlite, res.person.id, body.linkUserId); // the account owns it (players.user_id): linkUserId only records the Discord ID since the identity split
       return { pid: res.person.id, cid: res.characters[0].id, version: res.person.version, today: res.today };
     },
     // A new alt starts on no team (lane B2); the team routes that place it come with B3, so a test that wants it placed (teamId given, or the first team) does it

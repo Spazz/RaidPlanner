@@ -8,6 +8,7 @@
  * and the public page in the guild's zone, and the three person pages with and without the You line.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -118,7 +119,7 @@ async function scenario() {
   const bobId = (await B.api.get('/auth/me')).user.id;
   const made = await A.api.post(`${base}/roster`, { teamId, name: 'Thornwick', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' });
   const pid = made.person.id;
-  await A.api.put(`${base}/roster/${pid}/account`, { userId: bobId });
+  ownPerson(world.db.sqlite, pid, bobId); // players.user_id: the Link account route only records a Discord ID since the identity split
   await A.api.post(`${base}/roster/${pid}/characters`, { name: 'Thornalt', class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId, makeMain: false });
   for (const G of [A, B, C]) G.guildData = await G.api.get(base);
   return { world, A, B, C, gid, teamId, base, pid };

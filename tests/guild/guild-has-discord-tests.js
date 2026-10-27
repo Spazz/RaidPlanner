@@ -11,6 +11,7 @@
  *      guarded, and the counts are pinned, so a new unguarded Discord path fails this test until it is guarded and listed on purpose.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createD1Fake } = require('../d1-fake');
@@ -94,7 +95,7 @@ async function scenario() {
   // The officer's link (players.user_id) is what makes someone a member without the server.
   const link = async (key, name) => {
     const made = await s.ok('gm', 'POST', '/roster', { teamId: team, name, class: 'MAGE', mainSpec: 'Fire', offSpec: null, status: 'raider' });
-    await s.ok('gm', 'PUT', `/roster/${made.person.id}/account`, { userId: uids[key] }, 200);
+    ownPerson(w.db.sqlite, made.person.id, uids[key]); // players.user_id: the Link account route only records a Discord ID since the identity split
     return made;
   };
   s.gmPerson = await link('gm', 'Gmmain');

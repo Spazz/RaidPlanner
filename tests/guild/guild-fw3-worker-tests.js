@@ -9,6 +9,7 @@
  *   - The person loot answer carries `isMe` and the Main's class, which the page needs for its You line and its header.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const { adminOf, memberOf, makeWorld, signIn, person } = require('../guild-world');
 
 const S1 = '900000000000000001';
@@ -35,7 +36,7 @@ async function scenario() {
     const res = await s.call('alice', 'POST', '/roster', { teamId: s.teamId, name, class: cls, mainSpec: spec, offSpec: null, status: 'raider' });
     assert.equal(res.status, 201, res.text);
     const pid = res.json.person.id;
-    if (link) assert.equal((await s.call('alice', 'PUT', `/roster/${pid}/account`, { userId: s.ids[link] })).status, 200);
+    if (link) ownPerson(w.db.sqlite, pid, s.ids[link]); // players.user_id: the Link account route only records a Discord ID since the identity split
     return pid;
   };
   return s;

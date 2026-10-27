@@ -306,8 +306,11 @@ async function seed(base, fakes, discord) {
   const altCharacter = (alt.characters || []).find((character) => character.name === 'Thornmage');
   if (!altCharacter) throw new Error('seed: the Alt character was not created');
   const altId = altCharacter.id;
-  for (const [pid, user] of [[people.thornwick, gm], [people.mendra, member], [people.quillfeather, member2]]) {
-    await need('gm', gm.cookie, 'PATCH', `${root}/roster/${pid}`, { expectedVersion: 1, linkUserId: user.userId });
+  // Each account owns its person the way a player does it since the identity split: a claim on the person's Main by hand, approved by the Guild Master (that claim
+  // links the account AND records its Discord ID). The officer's Link account / the Discord field only record a Discord ID, which is bookkeeping, not ownership.
+  for (const [who, name, cls, spec, user] of [['gm', 'Thornwick', 'WARRIOR', 'Arms', gm], ['member', 'Mendra', 'SHAMAN', 'Enhancement', member], ['member2', 'Quillfeather', 'HUNTER', 'Marksmanship', member2]]) {
+    const asked = await need(who, user.cookie, 'POST', `${root}/me/characters`, { name, class: cls, mainSpec: spec, offSpec: null });
+    await need('gm', gm.cookie, 'POST', `${root}/claims/${asked.claims[0].id}/approve`, { expectedKind: 'link_person' });
   }
 
   let past;

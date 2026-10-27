@@ -6,6 +6,7 @@
  * inbox with its public form, the CSV roster import and the version-aware default team size. No network, no Wrangler, no real time.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -58,6 +59,7 @@ async function scenario({ version = 'tbc', teams = 1, members = [], leads = [], 
       if (link) body.linkUserId = uids[link];
       if (joinedOn) body.joinedOn = joinedOn;
       const res = await s.ok('gm', 'POST', '/roster', body);
+      if (link) ownPerson(w.db.sqlite, res.person.id, uids[link]); // the account owns it (players.user_id): linkUserId only records the Discord ID since the identity split
       return { pid: res.person.id, cid: res.characters[0].id };
     },
     rows: (sql, ...values) => w.rows(sql, ...values),
