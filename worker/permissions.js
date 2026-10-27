@@ -210,7 +210,7 @@ export const effectivePermissionsStatement = (db, guildId) =>
 
 // One DB.batch loads everything a guild route needs. Order of checks:
 // guild exists (404) -> blocked (403 access_removed) -> a member by the guild's rank source (403 not_member): legacy = in the guild's Discord server or linked to one
-// of its people; 'manual' = linked; 'ingame' = the Owner or linked to a person with a character on the in-game roster. Roles stored for a non-member grant nothing:
+// of its people; 'manual' = the Owner or linked; 'ingame' = the Owner or linked to a person with a character on the in-game roster. Roles stored for a non-member grant nothing:
 // they are read only after this check passes. The membership rule is worker/membership.js's. The guild id always comes from the URL.
 // viewAs (dev only, from session.viewAs; see worker/view-as.js): { guildId, roleId, teamId } or null. Honoured ONLY for this guild and ONLY when the
 // person's real rank is Guild Master; then can / roles / rank / isGuildMaster are those of ONE stand-in assignment (a stale role or team: real rights).

@@ -5,7 +5,9 @@
 //   member of a guild = NOT blocked there AND ( the guild's rank source lets the account in )      guilds.rank_source, read INSIDE the SQL
 //
 //   rank_source NULL      legacy (every guild before the flip, and any value this file does not know): in the guild's Discord server  OR  linked to a roster person
-//   rank_source 'manual'  no Battle.net data (U R3-Q7), today's rule minus Discord: linked to a roster person
+//   rank_source 'manual'  no Battle.net data (U R3-Q7), today's rule minus Discord: the Owner  OR  linked to a roster person. The Owner is always a member, the same exemption
+//                         an in-game guild has: a creator with no person of their own, or an Owner who marked all their characters as left, is never locked out of the
+//                         guild. A manual guild never suspends its Owner (worker/owner.js), so "the Owner" here is the seat holder.
 //   rank_source 'ingame'  the unsuspended Owner  OR  linked to a person with at least one character that is on the in-game roster (guild_roster, by identity key)
 //                         and not Former (left_on IS NULL), any proof type. players.user_id ONLY: never players.discord_user_id, and Discord server membership
 //                         grants nothing. A Social-ranked character on the roster keeps membership; a person with no character on the roster, or only Former
@@ -35,12 +37,12 @@ import { ownedGuildsSql, ownerCandidatesSql, ownerSql, seatHeldBySql } from './o
 // Pure form of the rule, for the places that already hold the facts. `source` is guilds.rank_source (null = legacy; a value this file does not know is legacy too).
 //   inServer         a user_servers row for the guild's Discord server
 //   linked           players.user_id = the account on a person of the guild
-//   owner            the unsuspended Owner (unsuspendedOwnerSql)
+//   owner            the unsuspended Owner (unsuspendedOwnerSql): lets an 'ingame' and a 'manual' guild's Owner in
 //   rosterCharacter  linked to a person with a character on the in-game roster that is not Former (rosterCharacterSql)
 // -> true when the guild's source lets the account in (the block test is separate).
 export function reachesOf({ source = null, inServer = false, linked = false, owner = false, rosterCharacter = false }) {
   if (source === 'ingame') return !!(owner || rosterCharacter);
-  if (source === 'manual') return !!linked;
+  if (source === 'manual') return !!(owner || linked);
   return !!(inServer || linked);
 }
 
@@ -91,16 +93,16 @@ export const personOnRosterSql = (personExpr, guildExpr) =>
 export const rosterCharacterSql = (userExpr, guildExpr) =>
   `EXISTS (SELECT 1 FROM players mx_pl WHERE mx_pl.guild_id = ${guildExpr} AND mx_pl.user_id = ${userExpr} AND ${personOnRosterSql('mx_pl.id', guildExpr)})`;
 
-// The Owner term of the 'ingame' rule: the Owner row of the effective-roles view (worker/owner.js), i.e. the seat holder who is NOT suspended (an Owner with no valid
-// Battle.net-proven character on the last good roster is suspended, U R4-Q3), the same fragment that decides isOwner. A suspended Owner keeps the seat and is a member
-// only through a roster character of their own.
+// The Owner term of the 'ingame' and 'manual' rules: the Owner row of the effective-roles view (worker/owner.js), i.e. the seat holder who is NOT suspended (an Owner of an
+// in-game guild with no valid Battle.net-proven character on the last good roster is suspended, U R4-Q3; a manual guild never suspends its Owner), the same fragment that
+// decides isOwner. A suspended Owner keeps the seat and is a member only through a roster character of their own.
 export const unsuspendedOwnerSql = (userExpr, guildExpr) => ownerSql(guildExpr, userExpr);
 
 // "The source lets the account in" without the block test: for the screens that show blocked people apart from members (People and roles).
 export const reachesGuildSql = (userExpr, guildExpr, serverExpr) =>
   `CASE ${rankSourceSql(guildExpr)}
      WHEN 'ingame' THEN (${unsuspendedOwnerSql(userExpr, guildExpr)} OR ${rosterCharacterSql(userExpr, guildExpr)})
-     WHEN 'manual' THEN ${rosterLinkSql(userExpr, guildExpr)}
+     WHEN 'manual' THEN (${unsuspendedOwnerSql(userExpr, guildExpr)} OR ${rosterLinkSql(userExpr, guildExpr)})
      ELSE (${inServerSql(userExpr, serverExpr)} OR ${rosterLinkSql(userExpr, guildExpr)})
    END`;
 
@@ -124,12 +126,12 @@ export async function hasGuildTie(db, userId, guildId) {
 }
 
 // The accounts that can be members of a guild at all (a one-column subquery of user ids), per source: the Discord server's members only while the source is
-// legacy, everyone linked to one of its people, and the Owner candidates (ownerCandidatesSql) only while it is 'ingame'. A SUPERSET: list screens start from
+// legacy, everyone linked to one of its people, and the Owner candidates (ownerCandidatesSql) only while it is 'ingame' or 'manual'. A SUPERSET: list screens start from
 // this set and then apply memberSql / blockedSql. Three terms (D1 allows five).
 export const memberCandidatesSql = (guildExpr, serverExpr) =>
   `SELECT user_id FROM user_servers WHERE server_id = ${serverExpr} AND ${serverIdIsDiscordSql('server_id')} AND ${rankSourceSql(guildExpr)} NOT IN ('ingame', 'manual')
    UNION SELECT user_id FROM players WHERE guild_id = ${guildExpr} AND user_id IS NOT NULL
-   UNION SELECT user_id FROM (${ownerCandidatesSql(guildExpr)}) WHERE ${rankSourceSql(guildExpr)} = 'ingame'`;
+   UNION SELECT user_id FROM (${ownerCandidatesSql(guildExpr)}) WHERE ${rankSourceSql(guildExpr)} IN ('ingame', 'manual')`;
 
 // "My guilds": the guilds ONE account can be a member of, driven from the account's own rows instead of a pass over every guild. ?1 = the account. Each lookup is
 // index-backed: user_servers (primary key user_id) then guilds.discord_server_id (unique), players_user, guilds_owner and idx_role_assignments_user. A SUPERSET of
