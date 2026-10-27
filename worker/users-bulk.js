@@ -25,7 +25,7 @@ import { ROLE_RANK } from './permissions.js';
 import { nameKey } from './roster-data.js';
 import { actorHolds, outranksSql } from './routes/people.js';
 import { accountLessSql, outranksPersonSql, prospectiveRankSql } from './routes/person-blocks.js';
-import { accountSegmentSql, accountsCte, bestBuiltinSql, ignoredBlockSql, newScope, personNameSql, personSegmentSql, viewerOf } from './users-list.js';
+import { accountSegmentSql, accountsCte, bestBuiltinSql, ignoredBlockSql, mergedIntoAccountSql, newScope, personNameSql, personSegmentSql, viewerOf } from './users-list.js';
 import { parseUserKey } from './users-detail.js';
 
 // The most names one request blocks or unblocks, and the most keys a request may carry (the rest of a long list is skipped, not refused).
@@ -129,9 +129,9 @@ function accountFactsStatement(db, ctx, guildContext, ids) {
 function personFactsStatement(db, ctx, guildContext, ids, actorId) {
   const scope = newScope(guildContext.guild, ctx.now(), { signIn: false, viewer: viewerOf(guildContext) });
   const g = scope.g();
-  // Every person of the request that is in this guild; has_account says whether it is listed as an account instead (players.user_id, or the Discord id of an account).
+  // Every person of the request that is in this guild; has_account says whether the list shows it merged into an account row instead (mergedIntoAccountSql, the list's own test).
   const sql = `WITH solo AS MATERIALIZED (
-      SELECT p.id AS id, p.discord_nickname AS nick, (p.user_id IS NOT NULL OR EXISTS (SELECT 1 FROM users du WHERE du.discord_id = p.discord_user_id)) AS has_account
+      SELECT p.id AS id, p.discord_nickname AS nick, ${mergedIntoAccountSql(scope, 'p')} AS has_account
         FROM players p WHERE p.guild_id = ${g} AND p.id IN (SELECT value FROM json_each(${scope.add(JSON.stringify(ids))})))
     SELECT solo.id AS id, ${personNameSql()} AS name, solo.has_account AS has_account, ${personSegmentSql(scope, null)} AS seg,
            ${prospectiveRankSql('solo.id', g)} AS prank, ${ownerSql(g, scope.add(actorId))} AS actor_owner
@@ -373,7 +373,7 @@ export async function bulkBlock(ctx, guildContext, { keys, reason }) {
         const id = field('i');
         return `INSERT INTO person_blocks (guild_id, player_id, blocked_by, reason, tombstone_missing, created_at)
           SELECT ${g}, ${id}, ${a}, ${add(reason)}, ${field('m')}, ${add(now)} FROM json_each(${add(JSON.stringify(go.persons.map((i) => ({ i, m: flagged.get(i) }))))}) j
-           WHERE EXISTS (SELECT 1 FROM players WHERE id = ${id} AND guild_id = ${g}) AND ${accountLessSql(id, g)} AND ${holds(add)} AND ${outranksPersonSql(g, a, id)}
+           WHERE EXISTS (SELECT 1 FROM players WHERE id = ${id} AND guild_id = ${g}) AND ${accountLessSql(id, g, viewerOf(guildContext))} AND ${holds(add)} AND ${outranksPersonSql(g, a, id)}
              AND NOT EXISTS (SELECT 1 FROM person_blocks x WHERE x.guild_id = ${g} AND x.player_id = ${id})`;
       }), directRowsStatement(db));
     }

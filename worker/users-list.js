@@ -149,14 +149,23 @@ export const accountsCte = (sc, only = null) => `a AS MATERIALIZED (
          ${personOfAccountSql(sc.g(), 'u.id', 'u.discord_id')} AS pid
     FROM users u WHERE u.id IN (${candidateAccountsSql(sc)})${only ? onlyIn(sc, 'u.id', only) : ''})`;
 
-// An account of the list (a candidate: tied to the guild by something other than a person's recorded Discord ID) holds this Discord id: the person that carries the id is listed as
-// that account. Any other account that holds the id is not on this guild's list, so the person stays a person of its own.
-const listedAccountHoldsSql = (sc, discordExpr) => `EXISTS (SELECT 1 FROM users du WHERE du.discord_id = ${discordExpr} AND du.id IN (${candidateAccountsSql(sc)}))`;
+// The person is merged into an account row of the list: it is linked to an account (players.user_id), or the Discord ID it carries belongs to an account that is on the list for
+// another reason (a candidate: tied to the guild by something other than a person's recorded Discord ID). A person whose Discord ID points only at an account that is not tied to
+// the guild stays a person of its own. THE one definition: the list's persons (personsCte), the person block (worker/routes/person-blocks.js accountLessSql) and the bulk Block
+// (worker/users-bulk.js) all read it here, so a person can be blocked exactly when the list shows it as a person. `p`: the alias of the players row.
+export const mergedIntoAccountSql = (sc, p) => `(${p}.user_id IS NOT NULL
+    OR EXISTS (SELECT 1 FROM users du WHERE du.discord_id = ${p}.discord_user_id AND du.id IN (${candidateAccountsSql(sc)})))`;
 
-// CTE `solo`: the account-less persons (no players.user_id and no listed account holding the Discord id they carry). `only`: one person's id, or a list of ids.
+// A scope for a statement that holds no scope of its own (a write guard with bare placeholders): the guild as a SQL expression of the statement (a column), its Discord server read
+// from it, and the viewer's permissions as in the list. Enough for mergedIntoAccountSql; nothing in it needs a bound value.
+export const expressionScope = (viewer, guildExpr) => ({
+  g: () => guildExpr, s: () => `(SELECT xsg.discord_server_id FROM guilds xsg WHERE xsg.id = ${guildExpr})`, viewer,
+});
+
+// CTE `solo`: the account-less persons (not merged into an account, see mergedIntoAccountSql). `only`: one person's id, or a list of ids.
 export const personsCte = (sc, only = null) => `solo AS MATERIALIZED (
   SELECT p.id AS id, p.discord_nickname AS nick FROM players p
-   WHERE p.guild_id = ${sc.g()} AND p.user_id IS NULL AND NOT ${listedAccountHoldsSql(sc, 'p.discord_user_id')}${only ? onlyIn(sc, 'p.id', only) : ''})`;
+   WHERE p.guild_id = ${sc.g()} AND NOT ${mergedIntoAccountSql(sc, 'p')}${only ? onlyIn(sc, 'p.id', only) : ''})`;
 
 // The person has characters and every one of them is Former (worker/person-rank.js leftOn): read through characters_player only.
 const formerSql = (pid) => `(EXISTS (SELECT 1 FROM characters fv WHERE fv.player_id = ${pid} AND ${visibleCharacterSql('fv')})

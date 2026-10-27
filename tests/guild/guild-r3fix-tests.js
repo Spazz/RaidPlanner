@@ -32,13 +32,18 @@ const scenario = async (options) => unlimited(await baseScenario(options));
 // ---------------------------------------------------------------------------
 // R3-1: a Discord ID on a person is bookkeeping
 
+const KEY = 'test-tombstone-key-0123456789abcdef';
 const USERS = '/users';
 const ALL_SEGMENTS = ['members', 'former', 'nonmembers', 'blocked'];
+async function matchAtSignIn(s, userId) {
+  const { matchAccountAtSignIn } = await load('worker/block-tombstones.js');
+  return matchAccountAtSignIn({ db: s.w.db, env: { TOMBSTONE_KEY: KEY }, now: () => s.w.clock.now, randomBytes: s.w.randomBytes, log: () => {} }, userId);
+}
 const listOf = (s, who, segment) => s.ok(who, 'GET', `${USERS}?segment=${segment}&limit=100`, undefined, 200);
 const discordIdOf = (s, key) => rowsOf(s, 'SELECT discord_id FROM users WHERE id = ?', s.uids[key])[0].discord_id;
 
 async function strangerWorld() {
-  const s = await scenario({ teams: ['Alpha', 'Bravo'] });
+  const s = await scenario({ teams: ['Alpha', 'Bravo'], env: { TOMBSTONE_KEY: KEY } });
   [s.alpha, s.bravo] = s.tids;
   await s.officer('off', 'Officerone');
   await s.member('m1', 'Memberone');
@@ -71,7 +76,7 @@ check('R3-1: the lookup answers with the name and nothing account-wide; linking 
   assert.deepEqual([row.user_id, row.discord_user_id], [null, discordIdOf(s, 'str')]);
 });
 
-check('R3-1: a stranger an officer linked is on no Users segment, has no page and is no bulk-block target; the person is listed as the person it is', async () => {
+check('R3-1: a stranger an officer linked is on no Users segment, has no page and is no bulk-block target; the person is listed, and blocked, as the person it is', async () => {
   const s = await strangerWorld();
   const before = {};
   for (const segment of ALL_SEGMENTS) before[segment] = (await listOf(s, 'gm', segment)).counts;
@@ -87,12 +92,74 @@ check('R3-1: a stranger an officer linked is on no Users segment, has no page an
   assert.deepEqual([person.kind, person.main && person.main.name], ['person', 'Targetchar']);
   assert.equal((await s.call('gm', 'GET', `${USERS}/${s.stranger}`)).status, 404, 'no page for the stranger');
   assert.equal((await s.call('gm', 'GET', `${USERS}/${s.target.pid}`)).status, 200, 'the person has its own page');
-  // Bulk block: nothing is written for the stranger (an unknown key); the person answers as the single route does - it carries an account's Discord ID, so has_account.
+  // Bulk block: nothing is written for the stranger (an unknown key); the person is blocked as a person, and the block keeps the Discord ID it carries.
   const res = await s.ok('off', 'POST', `${USERS}/block`, { keys: [s.stranger, s.target.pid], reason: 'Test' }, 200);
-  assert.deepEqual(res.skipped.map((entry) => [entry.key, entry.reason]), [[s.stranger, 'not_found'], [s.target.pid, 'has_account']], JSON.stringify(res));
-  assert.deepEqual(res.done, []);
+  assert.deepEqual(res.skipped.map((entry) => [entry.key, entry.reason]), [[s.stranger, 'not_found']], JSON.stringify(res));
+  assert.deepEqual(res.done.map((entry) => entry.key), [s.target.pid]);
   assert.equal(rowsOf(s, 'SELECT COUNT(*) AS n FROM guild_blocks WHERE user_id = ?', s.stranger)[0].n, 0, 'the stranger was not blocked');
-  assert.equal((await s.call('off', 'POST', `/roster/${s.target.pid}/block`, { reason: 'Test' })).json.error, 'has_account', 'the single route says the same');
+  assert.equal(rowsOf(s, 'SELECT COUNT(*) AS n FROM person_blocks WHERE player_id = ?', s.target.pid)[0].n, 1);
+  assert.equal(rowsOf(s, 'SELECT COUNT(*) AS n FROM block_tombstones WHERE block_ref = ?', `p:${s.target.pid}`)[0].n, 1, 'the person\'s Discord ID is in its tombstones');
+  assert((await listOf(s, 'gm', 'blocked')).rows.some((entry) => entry.key === s.target.pid && entry.kind === 'person'));
+  // The stranger's next sign-in meets the tombstone: blocked here, pending review.
+  await matchAtSignIn(s, s.stranger);
+  assert.deepEqual(rowsOf(s, 'SELECT pending_review, blocked_by FROM guild_blocks WHERE user_id = ?', s.stranger), [{ pending_review: 1, blocked_by: null }]);
+});
+
+// A former member whose person still carries their Discord ID: the account is tied to nothing here any more, so the list shows the person on its own, and the person can be blocked
+// (single route and bulk). A person merged into an account row of the list is still refused with has_account.
+async function exMembers() {
+  const s = await strangerWorld();
+  s.ex = {};
+  for (const [key, name] of [['x1', 'Exone'], ['x2', 'Extwo']]) {
+    await s.member(key, name);
+    s.ex[key] = await s.person({ name: `Char${name.toLowerCase()}` });
+    assert.equal((await s.call('off', 'PUT', `/roster/${s.ex[key].pid}/account`, { userId: s.uids[key] })).status, 200);
+    exec(s, 'DELETE FROM user_servers WHERE user_id = ?', s.uids[key]); // they left the Discord server: nothing else ties the account to the guild
+  }
+  return s;
+}
+
+check('R3-1b: a former member whose person only carries their Discord ID is blockable as a person - single route and bulk; the block keeps the ID, the account is refused at its next sign-in', async () => {
+  const s = await exMembers();
+  const nonmembers = await listOf(s, 'gm', 'nonmembers');
+  assert(!nonmembers.rows.some((entry) => entry.key === s.uids.x1 || entry.key === s.uids.x2), 'neither account is on the list');
+  const members = await listOf(s, 'gm', 'members');
+  for (const key of ['x1', 'x2']) assert.equal(members.rows.find((entry) => entry.key === s.ex[key].pid).kind, 'person', `${key}'s person is listed as a person`);
+  // Single route.
+  const single = await s.call('off', 'POST', `/roster/${s.ex.x1.pid}/block`, { reason: 'Banned' });
+  assert.deepEqual([single.status, single.json.blocked, single.json.tombstoneMissing], [200, true, false], single.text);
+  assert.equal(rowsOf(s, 'SELECT COUNT(*) AS n FROM block_tombstones WHERE block_ref = ?', `p:${s.ex.x1.pid}`)[0].n, 1, 'the Discord ID is in the tombstones');
+  await matchAtSignIn(s, s.uids.x1);
+  assert.deepEqual(rowsOf(s, 'SELECT pending_review FROM guild_blocks WHERE user_id = ?', s.uids.x1), [{ pending_review: 1 }], 'the account is refused at its next sign-in');
+  // Bulk.
+  const bulk = await s.ok('off', 'POST', `${USERS}/block`, { keys: [s.ex.x2.pid], reason: 'Banned' }, 200);
+  assert.deepEqual([bulk.done.map((entry) => entry.key), bulk.skipped], [[s.ex.x2.pid], []], JSON.stringify(bulk));
+  assert.equal(rowsOf(s, 'SELECT COUNT(*) AS n FROM block_tombstones WHERE block_ref = ?', `p:${s.ex.x2.pid}`)[0].n, 1);
+  await matchAtSignIn(s, s.uids.x2);
+  assert.deepEqual(rowsOf(s, 'SELECT pending_review FROM guild_blocks WHERE user_id = ?', s.uids.x2), [{ pending_review: 1 }]);
+  // Unblock still works for both (single and bulk).
+  assert.equal((await s.call('off', 'DELETE', `/roster/${s.ex.x1.pid}/block`)).json.blocked, false);
+  assert.deepEqual((await s.ok('off', 'POST', `${USERS}/unblock`, { keys: [s.ex.x2.pid] }, 200)).done.map((entry) => entry.key), [s.ex.x2.pid]);
+});
+
+check('R3-1b: a person merged into an account row of the list still gets has_account - a Discord-server member, an applicant, an owner (players.user_id) - on the single route and in bulk', async () => {
+  const s = await strangerWorld();
+  // m1 is in the Discord server; the stranger applies here; the linked owner owns the person.
+  const viaServer = await s.person({ name: 'Viaserver' });
+  assert.equal((await s.call('off', 'PUT', `/roster/${viaServer.pid}/account`, { userId: s.uids.m1 })).status, 200);
+  assert.equal((await s.call('off', 'PUT', `/roster/${s.target.pid}/account`, { userId: s.stranger })).status, 200);
+  addApplication(s, { name: 'Strangerapp', userId: s.stranger });
+  await s.member('m2', 'Membertwo');
+  const owned = await s.person({ name: 'Ownedchar' });
+  await s.link(owned.pid, 'm2');
+  for (const person of [viaServer, s.target, owned]) {
+    const single = await s.call('off', 'POST', `/roster/${person.pid}/block`, { reason: 'No' });
+    assert.deepEqual([single.status, single.json.error], [409, 'has_account'], single.text);
+  }
+  const bulk = await s.ok('off', 'POST', `${USERS}/block`, { keys: [viaServer.pid, s.target.pid, owned.pid], reason: 'No' }, 200);
+  assert.deepEqual(bulk.done, []);
+  assert.deepEqual(bulk.skipped.map((entry) => entry.reason), ['has_account', 'has_account', 'has_account']);
+  assert.equal(rowsOf(s, 'SELECT COUNT(*) AS n FROM person_blocks')[0].n, 0, 'no person block was written');
 });
 
 check('R3-1: any other tie lists the account and merges the person into it - an application here; the Discord-server members and linked owners keep their rows', async () => {

@@ -3,8 +3,9 @@
 //                                                            person off every team and withdraws their upcoming sign-ups, audited as person.block
 //   DELETE /api/guild/:gid/roster/:pid/block                 lifts it: the marker and the tombstones (by block_ref 'p:<player id>' and by the refs its keys hit)
 //   -> { blocked: true | false, personId, tombstoneMissing }
-// The permission is the one of an account block (guild.access). A person who HAS an account (players.user_id, or a user holding its Discord id) is blocked through
-// the account (POST /people/:uid/block), never here: 409 has_account.
+// The permission is the one of an account block (guild.access). A person the Users list shows merged into an account row (players.user_id, or the Discord ID of an account
+// that is on the list for another reason: users-list.js mergedIntoAccountSql) is blocked through the account (POST /people/:uid/block), never here: 409 has_account. A person
+// whose Discord ID points only at an account that is not tied to the guild is a person of its own and is blocked here; its Discord ID goes in the tombstones.
 // The OUTRANKS test (A9-05): the blocker must be strictly senior to the rank the person would have once an account owns it, i.e. the hand roles of its owning
 // account (none: it has no account) and the rank-map role of its characters' identity keys on the in-game roster. The Owner passes. An Officer cannot block
 // the person whose character holds an Officer-mapped in-game rank, however the person has not signed in yet. The same test guards the unblock.
@@ -17,6 +18,7 @@ import {
 import { isId } from '../ids.js';
 import { isOwner, ownerSql } from '../owner.js';
 import { ROLE_RANK, loadGuildContext, requireAction } from '../permissions.js';
+import { expressionScope, mergedIntoAccountSql, viewerOf } from '../users-list.js';
 import { actorHolds, and } from './people.js';
 import { wrote } from '../d1-changes.js';
 
@@ -37,10 +39,11 @@ export const prospectiveRankSql = (personExpr, guildExpr) => `COALESCE((
        AND EXISTS (SELECT 1 FROM guilds x WHERE x.id = c.guild_id AND x.rank_source = 'ingame')), ${ROLE_RANK.member})`;
 const PROSPECTIVE_RANK_SQL = prospectiveRankSql('?', '?');
 
-// The person has no account: no players.user_id and no user holds its Discord id (worker/seniority.js ACCOUNT_OF_PERSON, the one definition).
-export const accountLessSql = (personExpr, guildExpr) => `NOT EXISTS (SELECT 1 FROM players x WHERE x.id = ${personExpr} AND x.guild_id = ${guildExpr}
-    AND (x.user_id IS NOT NULL OR EXISTS (SELECT 1 FROM users du WHERE du.discord_id = x.discord_user_id)))`;
-const ACCOUNT_LESS_SQL = accountLessSql('?', '?');
+// The person has no account row on the Users list: no players.user_id and no Discord-ID tie to an account that is on the list for another reason (users-list.js
+// mergedIntoAccountSql, the one definition). `viewer`: viewerOf(guildContext), because the list's ties depend on what the viewer may see. The guild comes from the person's own
+// row, so the only values to bind are the person and the guild (two bare placeholders, in that order).
+export const accountLessSql = (personExpr, guildExpr, viewer) => `NOT EXISTS (SELECT 1 FROM players x WHERE x.id = ${personExpr} AND x.guild_id = ${guildExpr}
+    AND ${mergedIntoAccountSql(expressionScope(viewer, 'x.guild_id'), 'x')})`;
 
 // { sql, params }: true while the actor is the Owner or strictly senior to the person's prospective rank.
 function actorOutranksPerson(guildId, actorId, playerId) {
@@ -57,11 +60,12 @@ async function loadTarget(ctx, guildContext) {
   const { pid } = ctx.params;
   if (!isId('p', pid)) throw notFound();
   const guildId = guildContext.guild.id;
+  const accountLess = accountLessSql('?', '?', viewerOf(guildContext));
   const [person, blocked, rank, hasAccount] = await ctx.db.batch([
     ctx.db.prepare('SELECT id FROM players WHERE id = ? AND guild_id = ?').bind(pid, guildId),
     ctx.db.prepare('SELECT reason, tombstone_missing FROM person_blocks WHERE guild_id = ? AND player_id = ?').bind(guildId, pid),
     ctx.db.prepare(`SELECT ${PROSPECTIVE_RANK_SQL} AS rank`).bind(pid, guildId),
-    ctx.db.prepare(`SELECT NOT (${ACCOUNT_LESS_SQL}) AS has_account`).bind(pid, guildId),
+    ctx.db.prepare(`SELECT NOT (${accountLess}) AS has_account`).bind(pid, guildId),
   ]);
   if (!person.results.length) throw notFound();
   return { pid, blocked: blocked.results[0] || null, prospectiveRank: rank.results[0].rank, hasAccount: hasAccount.results[0].has_account === 1 };
@@ -94,7 +98,7 @@ export async function blockRosterPerson(ctx) {
   if (plan.missing) ctx.log(MISSING_KEY_LINE);
   const guard = and(
     { sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ?)', params: [target.pid, guildId] },
-    { sql: ACCOUNT_LESS_SQL, params: [target.pid, guildId] },
+    { sql: accountLessSql('?', '?', viewerOf(guildContext)), params: [target.pid, guildId] },
     actorHolds('guild.access', guildId, actorId),
     actorOutranksPerson(guildId, actorId, target.pid),
   );

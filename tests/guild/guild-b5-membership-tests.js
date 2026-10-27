@@ -584,7 +584,6 @@ const USER_SERVERS_ALLOWED = {
 
 const PLAYERS_USER_ID_ALLOWED = {
   'worker/bnet-match.js': { count: 9, reason: 'the Battle.net sign-in match: which person is the signing-in account\'s (players.user_id), the person it creates or is linked to, and the stamping of that person\'s characters; membership itself stays memberSql (a person on the roster is what makes the roster rule true)' },
-  'worker/routes/person-blocks.js': { count: 1, reason: 'blocking a roster person: the person must have no account (players.user_id NULL and no user holding its Discord id); the block target is judged by the guild_blocks / person_blocks rows, not by membership' },
   'worker/block-tombstones.js': { count: 1, reason: 'the tombstone match: the guilds where the account has a person, to run the match there (the block itself is judged by guild_blocks and memberSql)' },
   'worker/bnet-store.js': { count: 2, reason: 'claim planning: which person is the claimant\'s own (ownership of a person; the member test is memberSql)' },
   'worker/claim-apply.js': { count: 3, reason: 'writes and guards of an applied claim: the person is still the claimant\'s' },
@@ -604,8 +603,8 @@ const PLAYERS_USER_ID_ALLOWED = {
   'worker/routes/roster-unlinked.js': { count: 1, reason: 'read-only "This is me" look-up: the roster records nobody owns (openPersonSql) minus the characters the viewer has a pending claim on; who is a member is loadGuildContext\'s' },
   'worker/routes/team-requests.js': { count: 1, reason: 'ownership: the asker\'s account still owns the character\'s person' },
   'worker/seniority.js': { count: 1, reason: 'the account of a person (players.user_id, else the Discord ID match): the Seniority guard' },
-  'worker/users-bulk.js': { count: 3, reason: 'bulk Block / Unblock of the Users page: the persons of the accounts being blocked (their effects, the same persons worker/block-effects.js reaches through ownPlayerSql: linked, or carrying the account\'s Discord ID) and the persons whose block is read; who is a member is never decided here' },
-  'worker/users-list.js': { count: 3, reason: 'the Users list: the accounts linked to a person are candidates of the list, the person an account is shown with (its Main), and the account-less persons (no players.user_id) are listed apart; the member test itself is the reachesGuildSql fragment' },
+  'worker/users-bulk.js': { count: 2, reason: 'bulk Block / Unblock of the Users page: the persons of the accounts being blocked (their effects, the same persons worker/block-effects.js reaches through ownPlayerSql: linked, or carrying the account\'s Discord ID); who is a member is never decided here' },
+  'worker/users-list.js': { count: 2, reason: 'the Users list: the accounts linked to a person are candidates of the list and the person an account is shown with (its Main); mergedIntoAccountSql (players.user_id or a Discord-ID tie to a listed account) is the one test of which persons are listed apart as account-less, shared with the person block and the bulk Block; the member test itself is the reachesGuildSql fragment' },
 };
 
 function touchesOutsideMembership(detector) {
