@@ -287,8 +287,10 @@ export async function beginIdentityChange(ctx, { userId, change, protectedAccoun
 // Officer or a Team Lead) or when the delete would take a guild with it (`deletesGuild`: the guild_delete act without its grant). Any other account needs none, but its batch opens
 // with a marker written `WHERE NOT protected`, so an account that became staff between the read and the write deletes nothing. Either way every statement of the delete carries
 // `act.guard` (the marker) and the batch is all or nothing: -> the shape of beginFreshAct, with `consumed(results)` true when the marker was written.
-export async function beginAccountDelete(ctx, { userId, deletesGuild }) {
-  if (deletesGuild || (await isProtectedAccount(ctx.db, userId))) return beginFreshAct(ctx, { required: true, purpose: 'account_delete', params: {} });
+// `extra` ({ sql, params }): a condition of the delete itself (an Owner seat that must not be emptied: worker/succession.js manualSeatKeptGuard), inside the opening statement either
+// way: when it fails no marker is written, nothing applies and a fresh grant is NOT spent.
+export async function beginAccountDelete(ctx, { userId, deletesGuild, extra = null }) {
+  if (deletesGuild || (await isProtectedAccount(ctx.db, userId))) return beginFreshAct(ctx, { required: true, purpose: 'account_delete', params: {}, extra });
   const markerId = newMarkerId(ctx.randomBytes);
   const guard = protectedGuard(userId);
   return {
@@ -297,8 +299,8 @@ export async function beginAccountDelete(ctx, { userId, deletesGuild }) {
     offset: 1,
     consumed: (results) => results[0].meta.changes === 1,
     statements: [ctx.db.prepare(
-      `INSERT INTO fresh_act_markers (act_id, session_token_hash, purpose, at) SELECT ?, ?, 'account_delete', ? WHERE NOT ${guard.sql}`,
-    ).bind(markerId, ctx.session.tokenHash, ctx.now(), ...guard.params)],
+      `INSERT INTO fresh_act_markers (act_id, session_token_hash, purpose, at) SELECT ?, ?, 'account_delete', ? WHERE NOT ${guard.sql}${extra ? ` AND (${extra.sql})` : ''}`,
+    ).bind(markerId, ctx.session.tokenHash, ctx.now(), ...guard.params, ...(extra ? extra.params : []))],
   };
 }
 

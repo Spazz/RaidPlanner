@@ -225,7 +225,7 @@ check('segments of a legacy guild: members, former, blocked and non-members; acc
   assert(row(nonmembers, 'Lootguy').key.startsWith('n_'));
 });
 
-check('segments: the rank source decides who a member is - legacy (Discord server or a link), manual (a link only, no Owner exemption), in-game (a person on the roster, or the live Owner)', async () => {
+check('segments: the rank source decides who a member is - legacy (Discord server or a link), manual (a link, or the Owner), in-game (a person on the roster, or the live Owner)', async () => {
   const s = await scenario({ teams: ['Alpha', 'Bravo'] });
   [s.alpha, s.bravo] = s.tids;
   // The viewer is an Officer with a person of their own, so they stay a member under every rule. linked = a person on the roster; server = in the Discord server only;
@@ -242,13 +242,15 @@ check('segments: the rank source decides who a member is - legacy (Discord serve
   const segments = async () => Object.fromEntries(await Promise.all(names4.map(async (name) => [name, await segmentOf(s, 'viewer', name)])));
   assert.deepEqual(await segments(), { Linkedone: 'members', Serveronly: 'members', Bareperson: 'members', Seatholder: 'members', Gmb3: 'members' }, 'legacy: the Discord server, or a link');
 
-  // Manual: the seat holder and the Guild Master hold roles and sit in the Discord server, but only a link lets anyone in.
+  // Manual: the seat holder and the Guild Master hold roles and sit in the Discord server, but only a link (or the Owner exemption, lane P3 fix) lets anyone in.
   exec(s, "UPDATE guilds SET rank_source = 'manual', owner_user_id = ? WHERE id = ?", s.uids.owner, s.gid);
-  assert.deepEqual(await segments(), { Linkedone: 'members', Serveronly: 'nonmembers', Bareperson: 'members', Seatholder: 'nonmembers', Gmb3: 'nonmembers' }, 'manual: a link only');
+  assert.deepEqual(await segments(), { Linkedone: 'members', Serveronly: 'nonmembers', Bareperson: 'members', Seatholder: 'members', Gmb3: 'nonmembers' }, 'manual: a link, or the Owner');
   const manual = await list(s, 'viewer', 'segment=nonmembers&limit=100');
   assert.deepEqual(row(manual, 'Serveronly').tags, ['discord_signin'], 'in the guild\'s Discord server and no member: a Discord sign-in');
-  assert.deepEqual(row(manual, 'Seatholder').flags, { owner: true }, 'the Owner row of the view says so even where the Owner is no member');
-  assert.equal(row(manual, 'Seatholder').permission, 'Guild Master');
+  assert.equal(row(manual, 'Seatholder'), undefined, 'the Owner is no non-member');
+  const manualMembers = await list(s, 'viewer', 'segment=members&limit=100');
+  assert.deepEqual(row(manualMembers, 'Seatholder').flags, { owner: true }, 'the Owner row of the view says so');
+  assert.equal(row(manualMembers, 'Seatholder').permission, 'Guild Master');
   assert.equal(row(manual, 'Gmb3').permission, null, 'a stored Guild Master role grants nothing once the guild has a rank source');
 
   // In-game: the roster decides, and the viewer holds the seat with a Battle.net-proven character on it. The accounts are the same.

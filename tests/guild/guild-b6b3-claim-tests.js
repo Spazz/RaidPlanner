@@ -112,7 +112,7 @@ const snapshotOf = async (s) => ({
 });
 const TOUCHES_STORED = /\b(characters|players|guild_blocks|block_tombstones|person_blocks)\b/;
 
-check('refused: not the rank-0 member / another Blizzard guild / two rank-0 members / no rank-0 member -> not_gm, NOTHING written but the counted claim_failed row (one per hour, a counter)', async () => {
+check('refused: not the rank-0 member / another Blizzard guild or realm -> not_gm, NOTHING written but the counted claim_failed row (one per hour, a counter); two rank-0 members / no rank-0 member -> provider, not counted', async () => {
   const s = await claimWorld();
   await s.bnetSignUp('oth', ACCOUNT.oth);
   s.live.profiles[ACCOUNT.oth.id] = [entry('Memberone', ID.mem)];
@@ -154,12 +154,17 @@ check('refused: not the rank-0 member / another Blizzard guild / two rank-0 memb
   assert.equal((await claim(s, 'igm')).location, refused('not_gm'), 'another Blizzard realm id as well');
   s.live.realmId = REALM_ID;
 
-  // A roster with two rank-0 members, and one with none, is not a roster the sync would trust.
+  // A roster with two rank-0 members, and one with none, is not a roster the sync would trust: a Battle.net problem ("provider"), not a failed claim, so it is not counted
+  // (lane P3 fix; tests/guild/guild-hier-p3fix-tests.js has the budget side).
+  const counted = await s.w.count('audit_log', "action = 'guild.claim_failed'");
+  const counterOf = async (user) => (await s.one('SELECT count FROM rate_limits WHERE key = ?', `auditfail:guild.claim_failed:${s.gid}:${s.uids[user]}:${Math.floor(s.w.clock.now / 3600000)}`)).count;
+  const igmCount = await counterOf('igm');
   s.live.roster.push({ name: 'Secondgm', id: 9300, rank: 0 });
-  assert.equal((await claim(s, 'igm')).location, refused('not_gm'));
-  assert.equal(jsonOf((await auditRows(s, 'guild.claim_failed')).at(-1).after).count >= 1, true);
+  assert.equal((await claim(s, 'igm')).location, refused('provider'));
   s.live.roster = s.live.roster.filter((member) => member.rank !== 0);
-  assert.equal((await claim(s, 'igm')).location, refused('not_gm'));
+  assert.equal((await claim(s, 'igm')).location, refused('provider'));
+  assert.equal(await s.w.count('audit_log', "action = 'guild.claim_failed'"), counted, 'no row for a malformed roster');
+  assert.equal(await counterOf('igm'), igmCount, 'and no count');
 
   after = await snapshotOf(s);
   assert.deepEqual(after.tables, before.tables, 'still nothing written but the failure counters');

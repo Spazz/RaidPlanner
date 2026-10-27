@@ -16,6 +16,8 @@
 // person", todo.md), so the 'ingame' side is judged on the person each account would have after that link. An account that is blocked here is out of every list (a block wins
 // in every source).
 //   loses   today a member, not one after the flip. Reasons: discord_only (a member only through the Discord server: no person of the guild is theirs),
+//           owner_exemption (the Owner of a 'manual' guild, a member only through the Owner exemption membership.js gives that source: no person of the guild is theirs; after
+//           the flip they are a member only while the Owner is live),
 //           no_roster_character (their person has no character on the in-game roster; unkeyedCharacters counts the characters with no identity key yet, the ones
 //           the flip's name binding could still match), all_former (every character of their person is Former)
 //   gains   not a member today, one after the flip. Reasons: owner (the Owner exemption), discord_owned_person (their person is the one the flip links, and it is on the roster)
@@ -27,7 +29,7 @@
 // (membership.js: the Owner exemption ends with suspension), because the Owner view of a guild before the flip never suspends anybody.
 // Both read the STORED roster (guild_roster), the roster the approval token binds to (roster sync id): a roster that moves between the dry run and the flip makes the token stale.
 // Nothing returned carries a Discord ID or a BattleTag.
-import { memberSql, personOnRosterSql, unsuspendedOwnerSql, blockedSql } from './membership.js';
+import { memberSql, personOnRosterSql, rankSourceSql, unsuspendedOwnerSql, blockedSql } from './membership.js';
 import { serverIdIsDiscordSql } from './discord-guard.js';
 import { ownerCandidatesSql, seatHolderSql } from './owner.js';
 import { hashToken } from './session.js';
@@ -89,7 +91,7 @@ const ACCOUNTS_CTE = `WITH proven AS (${PROVEN_AFTER}), base AS (
 const ACCESS_ROWS_SQL = `${ACCOUNTS_CTE}
 SELECT CASE WHEN a.today = 1 THEN 'loses' ELSE 'gains' END AS kind,
        CASE WHEN a.today = 1 THEN
-              CASE WHEN a.person_id IS NULL THEN 'discord_only'
+              CASE WHEN a.person_id IS NULL THEN (CASE WHEN a.is_owner = 1 AND ${rankSourceSql(GUILD)} = 'manual' THEN 'owner_exemption' ELSE 'discord_only' END)
                    WHEN EXISTS (SELECT 1 FROM characters fc WHERE fc.player_id = a.person_id AND ${visibleCharacterSql('fc')})
                         AND NOT EXISTS (SELECT 1 FROM characters fc WHERE fc.player_id = a.person_id AND fc.left_on IS NULL AND ${visibleCharacterSql('fc')}) THEN 'all_former'
                    ELSE 'no_roster_character' END

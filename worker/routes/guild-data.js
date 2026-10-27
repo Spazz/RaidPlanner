@@ -8,7 +8,7 @@ import { hasDiscord } from '../discord-guard.js';
 import { buildGuildExport } from '../guild-export.js';
 import { sees } from '../onboarding.js';
 import { allOf, beginFreshAct, freshRequiredError } from '../fresh.js';
-import { ownerGuard, readSeat, requireOwner } from '../owner.js';
+import { ownerGuard, requireOwner } from '../owner.js';
 import { loadGuildContext } from '../permissions.js';
 import { EXPORT_LIMIT, EXPORT_WINDOW_MS, enforceRateLimit } from '../ratelimit.js';
 import { todayIn } from '../roster-data.js';
@@ -36,9 +36,9 @@ export async function exportGuild(ctx) {
 }
 
 // The Discord server of a deleted guild keeps no membership rows (blocked people included), exactly like when an account deletes its last guild.
-// DELETE /api/guild/:gid { confirmName }: an Owner act that needs a FRESH sign-in (purpose guild_delete, no params) in every guild except one whose rank source is 'manual'
-// (session only; documented in tasks/open/b6b-api-contract.md). Without the grant: 403 fresh_required { purpose }. The grant is consumed inside the batch below, and the Owner
-// test repeats there, so a hand-over that raced this request deletes nothing.
+// DELETE /api/guild/:gid { confirmName }: an Owner act that needs a FRESH sign-in (purpose guild_delete, no params) in EVERY guild, a manual one included (lane P3 fix: the account
+// confirms with whichever identity it has, Discord or Battle.net: worker/routes/fresh.js). Without the grant: 403 fresh_required { purpose }. The grant is consumed inside the
+// batch below, and the Owner test repeats there, so a hand-over that raced this request deletes nothing.
 export async function deleteGuild(ctx) {
   const { db, session, body } = ctx;
   const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid, session.viewAs);
@@ -50,8 +50,7 @@ export async function deleteGuild(ctx) {
     throw new HttpError(400, 'confirm_mismatch', 'Type the guild name exactly as shown to delete the guild.', { field: 'confirmName' });
   }
   const asOwner = ownerGuard(guild.id, session.user.id);
-  const seat = await readSeat(db, guild.id);
-  const act = await beginFreshAct(ctx, { required: seat.rankSource !== 'manual', purpose: 'guild_delete', guildId: guild.id, params: {}, extra: asOwner });
+  const act = await beginFreshAct(ctx, { purpose: 'guild_delete', guildId: guild.id, params: {}, extra: asOwner });
   const guard = allOf(act.guard, asOwner);
   const results = await db.batch([
     ...act.statements,

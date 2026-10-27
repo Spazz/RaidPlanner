@@ -248,7 +248,7 @@ check("'manual': the Discord server grants nothing, a link to a person does; the
   const { loadMemberGuilds } = await load('worker/bnet-store.js');
   assert.deepEqual((await loadMemberGuilds(s.w.db, s.uids.discordonly)).map((g) => g.id), []);
   assert.deepEqual((await loadMemberGuilds(s.w.db, s.uids.seated)).map((g) => g.id), [s.gid]);
-  // No link, no entry: the rule is "linked", the same for everyone (there is no Owner exemption in a manual guild).
+  // No link, no entry: the rule is "linked" for everyone but the seat holder (always a member: tests/guild/guild-hier-p3fix-tests.js); a stored Guild Master row is no Owner here.
   s.exec(`UPDATE players SET user_id = NULL WHERE id = '${gmPerson.pid}'`);
   assert.equal((await guildGet(s, 'gm')).status, 403);
 });

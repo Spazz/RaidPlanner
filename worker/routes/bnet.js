@@ -7,7 +7,7 @@ import { auditStatement } from '../audit.js';
 import {
   BnetError, authorizeUrl, bnetSupport, canonicalOrigin, exchangeCode, fetchAccountCharacters, fetchUserInfo, isConfigured,
 } from '../battlenet.js';
-import { matchAccountAtSignIn } from '../block-tombstones.js';
+import { matchAccountAtSignIn, tombstoneNewBnetAccount } from '../block-tombstones.js';
 import { runGmClaim } from '../gm-claim.js';
 import { CALLBACK_STATEMENT_BUDGET, clearBnetProofStatement, loadIngameCombos, runBnetMatch } from '../bnet-match.js';
 import {
@@ -248,6 +248,8 @@ export async function bnetCallback(ctx) {
     return fail('bnet');
   }
 
+  // A BLOCKED account that links a NEW Battle.net account (a first link): the new account id is tombstoned for each of its blocks after the save (worker/block-tombstones.js).
+  let tombstoneNewLink = false;
   try {
     if (mode === 'signin') return await finishSignin(ctx, info, snapshot, now, clear);
     // The same Battle.net account again refreshes its link; a DIFFERENT one never replaces it (disconnect first): swapping the sign-in of an
@@ -257,7 +259,10 @@ export async function bnetCallback(ctx) {
     // exactly this change (the begin route already asked; this is the authoritative check, inside the batch), and every account's change nulls its grants and is audited in
     // each guild it is a member of. A refresh of the same Battle.net account is not a change.
     const userId = session.user.id;
-    const state = await db.prepare(`SELECT (SELECT bnet_account_id FROM bnet_links WHERE user_id = ?1) AS linked, ${protectedAccountSql('?1')} AS protected`).bind(userId).first();
+    const state = await db.prepare(
+      `SELECT (SELECT bnet_account_id FROM bnet_links WHERE user_id = ?1) AS linked, ${protectedAccountSql('?1')} AS protected,
+              EXISTS (SELECT 1 FROM guild_blocks WHERE user_id = ?1 AND pending_review = 0) AS blocked`,
+    ).bind(userId).first();
     const first = !state.linked;
     let act = null;
     if (first) {
@@ -301,13 +306,16 @@ export async function bnetCallback(ctx) {
       const linkedNow = await db.prepare('SELECT 1 AS found FROM bnet_links WHERE user_id = ?').bind(userId).first();
       return fail(linkedNow ? 'has_bnet' : 'state');
     }
+    tombstoneNewLink = first && state.blocked === 1;
   } catch (error) {
     if (isUniqueViolation(error)) return fail('taken');
     ctx.log(`bnet ${mode}: saving failed: ${error && error.message}`);
     return fail('bnet');
   }
+  // The statements this adds count against the callback's budget, ahead of the match below; an account that blocks nowhere costs none.
+  const tombstoned = tombstoneNewLink ? await tombstoneNewBnetAccount(ctx, { userId: session.user.id, bnetAccountId: info.id }) : 0;
   // A first link and the same Battle.net account again ("Re-verify with Battle.net") both prove the account's characters afresh.
-  await matchAfterCallback(ctx, { userId: session.user.id, bnetAccountId: info.id, snapshot, now, spent: STATEMENTS_BEFORE_MATCH.link });
+  await matchAfterCallback(ctx, { userId: session.user.id, bnetAccountId: info.id, snapshot, now, spent: STATEMENTS_BEFORE_MATCH.link + tombstoned });
   return redirectResponse(CHARACTERS_REDIRECT, [clear]);
 }
 

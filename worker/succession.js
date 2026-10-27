@@ -12,7 +12,7 @@
 // successor is worked out INSIDE the statement (SQL), so what the batch does is what holds when it runs, whatever deleteImpact showed the page.
 import { newId } from './ids.js';
 import { memberCandidatesSql, memberSql } from './membership.js';
-import { liveRecipientSql, moveSeatStatement, seatHolderSql } from './owner.js';
+import { liveRecipientSql, moveSeatStatement, seatHeldBySql, seatHolderSql } from './owner.js';
 
 export const SUCCESSION_RULES = Object.freeze(['ingame_gm', 'manual_officer', 'officer', 'vacant']);
 
@@ -82,4 +82,18 @@ export function successionStatements(ctx, { guildId, departingUserId, guard = nu
     db.prepare(guard ? `${SUCCESSION_AUDIT_SQL} AND ${guard.sql}` : SUCCESSION_AUDIT_SQL)
       .bind(newId('al', ctx.randomBytes), departingUserId, departingUserId, ctx.now(), departingUserId, guildId, ...(guard ? guard.params : [])),
   ];
+}
+
+// { sql, params }: no MANUAL guild would be left with an EMPTY Owner seat when this account is deleted. A manual guild has no claim (the in-game Guild Master claims an in-game seat
+// only) and a hand-over needs an Owner, so an empty seat there can never be filled again. The seat of a manual guild the account holds is emptied when somebody else is a member (the
+// guild is not deleted) and no stored manual Officer can take it (officerSuccessorSql): the delete is refused ("Hand the guild over first."). An Owner who is seen with other members at
+// the read is refused there already (deleteImpact handOverFirst); this guard is the same test INSIDE the write, for the member who joined in between. It is the `extra` of the delete's
+// opening statement (worker/fresh.js beginAccountDelete), so a failing test writes no marker and nothing of the batch applies, and a fresh grant is not spent.
+export function manualSeatKeptGuard(departingUserId) {
+  return {
+    sql: `NOT EXISTS (SELECT 1 FROM guilds eg WHERE ${seatHeldBySql('eg.id', '?')} AND eg.rank_source = 'manual'
+            AND ${othersExistSql('eg.id', 'eg.discord_server_id', '?')}
+            AND NOT EXISTS (${officerSuccessorSql('eg.id', 'eg.discord_server_id', '?')}))`,
+    params: [departingUserId, departingUserId, departingUserId],
+  };
 }

@@ -47,6 +47,7 @@ export const ROSTER_INSERT_CHUNK = 300;
 // SQL text with interpolated fixed fragments lives in consts (the Worker SQL lint allows interpolation only there, never inside prepare()).
 const LEASE_SQL = `UPDATE guilds SET next_sync_at = ? WHERE id = ? AND next_sync_at <= ? AND ${COMPLETE_PIN_SQL}`;
 const DUE_SQL = `SELECT id FROM guilds WHERE next_sync_at <= ? AND ${COMPLETE_PIN_SQL} ORDER BY next_sync_at, id LIMIT ?`;
+const RELEASE_SQL = `UPDATE guilds SET next_sync_at = ? WHERE id = ? AND next_sync_at = ? AND ${COMPLETE_PIN_SQL}`;
 
 // ---------------------------------------------------------------------------
 // Lease
@@ -56,6 +57,14 @@ const DUE_SQL = `SELECT id FROM guilds WHERE next_sync_at <= ? AND ${COMPLETE_PI
 export async function claimSyncLease(db, guildId, nowMs, { onDemand = false } = {}) {
   const dueBefore = onDemand ? nowMs + SYNC_INTERVAL_MS - ON_DEMAND_MIN_GAP_MS : nowMs;
   const result = await db.prepare(LEASE_SQL).bind(nowMs + SYNC_INTERVAL_MS, guildId, dueBefore).run();
+  return result.meta.changes === 1;
+}
+
+// Hands a lease back so the guild is due NOW: for the sync that ran inside the setup pin (worker/routes/bnet-pin.js), which leaves the lease one interval ahead because its sync
+// is the guild's first, and which FAILED. Without this the Owner would wait an hour for "Sync now" (and six for the cron) after a hiccup that was nobody's fault. `leasedUntil` is
+// the value the caller's own lease wrote: a claim made since (a Sync now, a cron tick) moved the column and is left alone. -> true when the lease was released.
+export async function releaseSyncLease(db, guildId, { leasedUntil, nowMs }) {
+  const result = await db.prepare(RELEASE_SQL).bind(nowMs, guildId, leasedUntil).run();
   return result.meta.changes === 1;
 }
 

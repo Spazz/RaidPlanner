@@ -226,18 +226,22 @@
     return '/api/guild/' + encodeURIComponent(gid) + '/people/' + encodeURIComponent(uid) + (tail || '');
   }
 
+  // A hand-over answers the bare { handedOver: true } when the previous Owner may not read the People list any more (the Worker withholds it): the stale list goes, there is nothing to draw.
+  const isBareAnswer = function (res) { return !!res && res.handedOver === true && !Array.isArray(res.people); };
+
   function applyPeople(gid, res) {
-    G.app.state.people[gid] = res;
+    if (isBareAnswer(res)) delete G.app.state.people[gid];
+    else G.app.state.people[gid] = res;
     G.app.state.pageAlert = '';
     G.app.render();
   }
 
-  // Runs a mutation from a dialog form: busy state, error mapping, close on success.
+  // Runs a mutation from a dialog form: busy state, error mapping, close on success. after(res) runs once the answer is applied.
   function runFromDialog(form, gid, promise, after) {
     G.ui.setBusy(form, true);
     promise.then(function (res) {
       applyPeople(gid, res);
-      return after ? after() : null;
+      return after ? after(res) : null;
     }).then(function () {
       G.ui.closeDialogOf(form);
     }, function (err) {
@@ -298,9 +302,12 @@
     const c = ctxGuild();
     if (!form || !c) return;
     const uid = form.getAttribute('data-uid');
-    runFromDialog(form, c.gid, G.api.post(peopleUrl(c.gid, uid, '/guild-master'), {}), function () {
+    runFromDialog(form, c.gid, G.api.post(peopleUrl(c.gid, uid, '/guild-master'), {}), function (res) {
       // The viewer's own roles changed, so what they may do changed too.
-      return G.app.refreshGuild(c.gid);
+      return G.app.refreshGuild(c.gid).then(function () {
+        // A viewer who may not read the People list any more has nothing to look at here: leave the tab.
+        if (isBareAnswer(res)) G.app.go(G.router.format({ name: 'home' }));
+      });
     });
   };
 

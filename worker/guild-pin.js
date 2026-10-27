@@ -52,7 +52,8 @@ export function pinAuditStatement(ctx, { guildId, userId, before, after, guard }
 // The switch of the rank source (plan "Source/pin" rule (6)): to OR away from the in-game source is a fresh-auth act (purpose source_switch), and leaving 'ingame' nulls blizzard_guild_id.
 // No route switches the rank source yet: lane B9's flip (to 'ingame') and unflip (away from it) consume these helpers inside their own batches.
 // The opening of the act (worker/fresh.js beginFreshAct): a Battle.net fresh grant consumed in the caller's batch whenever the switch involves 'ingame' (a switch between the legacy
-// rule and 'manual' is session-only, like the other manual-guild acts), and the Owner test inside the consuming UPDATE. -> the shape of beginFreshAct; the caller puts
+// rule and 'manual' is session-only: it moves no Owner seat and deletes nothing, unlike a manual guild's hand-over and delete, which ask for the fresh sign-in too), and the Owner
+// test inside the consuming UPDATE. -> the shape of beginFreshAct; the caller puts
 // `act.statements` first and `act.guard` on every statement after.
 export async function beginSourceSwitch(ctx, { guildId, from, to }) {
   return beginFreshAct(ctx, {
