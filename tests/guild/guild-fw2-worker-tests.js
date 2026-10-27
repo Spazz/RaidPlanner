@@ -8,6 +8,7 @@
  *   - The Attendance nav badge counts open FLAGS (the sum of the raids' open_flags), the same unit as the Review queue's header and the Home list.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const { adminOf, memberOf, makeWorld, signIn, person } = require('../guild-world');
 
 const S1 = '900000000000000001';
@@ -45,7 +46,7 @@ check('me.mainTeamId and me.teamIds: the team of the Main, every team a characte
   const added = await s.call('alice', 'POST', '/roster', { teamId: weekendId, name: 'Thornwick', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' });
   assert.equal(added.status, 201, added.text);
   const pid = added.json.person.id;
-  assert.equal((await s.call('alice', 'PUT', `/roster/${pid}/account`, { userId: s.ids.bob })).status, 200);
+  ownPerson(s.w.db.sqlite, pid, s.ids.bob); // players.user_id: the Link account route only records a Discord ID since the identity split
   const alt = await s.call('alice', 'POST', `/roster/${pid}/characters`, { name: 'Thornalt', class: 'MAGE', mainSpec: 'Fire', offSpec: null, teamId: s.teamId, makeMain: false });
   assert.equal(alt.status, 201, alt.text);
   const bob = await me('bob');
@@ -64,7 +65,7 @@ check('the Loot balance marks the viewer\'s own row with isMe (the page pins it 
   const mk = async (name, userKey) => {
     const added = await s.call('alice', 'POST', '/roster', { teamId: s.teamId, name, class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' });
     assert.equal(added.status, 201, added.text);
-    if (userKey) assert.equal((await s.call('alice', 'PUT', `/roster/${added.json.person.id}/account`, { userId: s.ids[userKey] })).status, 200);
+    if (userKey) ownPerson(s.w.db.sqlite, added.json.person.id, s.ids[userKey]); // players.user_id: the Link account route only records a Discord ID since the identity split
     return added.json.person.id;
   };
   const p1 = await mk('Aimer');

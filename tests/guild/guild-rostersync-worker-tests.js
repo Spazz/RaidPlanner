@@ -144,7 +144,7 @@ async function scenario({ teams = 1, pin = true, rankSource = null, officer = fa
     const made = await s.call('gm', 'POST', '/roster', { teamId: tids[0], name: nameOf(0), class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' });
     assert.equal(made.status, 201, made.text);
     const pid = made.json.person.id;
-    assert.equal((await s.call('gm', 'PUT', `/roster/${pid}/account`, { userId: uids.gm })).status, 200);
+    s.sql('UPDATE players SET user_id = ? WHERE id = ?', uids.gm, pid); // the Guild Master owns the person (the Link account route only records a Discord ID)
     s.sql("INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, '730000001', 'Syncgm#1', 1, '{}', 1)", uids.gm);
     s.sql("UPDATE characters SET owner_proof = 'bnet', proof_user_id = ?, proof_bnet_account_id = '730000001', proof_at = 1, namespace = ?, blizzard_realm_id = 4001, blizzard_char_id = ? WHERE id = ?",
       uids.gm, NS, idOf(0), made.json.characters[0].id);

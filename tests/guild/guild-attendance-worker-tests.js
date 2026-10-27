@@ -878,7 +878,7 @@ check('redaction: the raid detail hides people, sign-ups and nicknames from thos
   assert.equal(byName(bob).Brindle.decision.reason, 'Private reason');
   assert(!JSON.stringify(bob).includes('discord_user_id') && !JSON.stringify(bob).includes(DID(1)), 'a Discord ID is never sent');
   // A Member with a character on team A may read the attendance, but sees no nicknames and no reasons.
-  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.fenwick}'`);
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.erin.id}') WHERE id = '${s.p.fenwick}'`);
   const erin = await view('erin');
   assert.equal(erin.can.seeAttendance, true);
   assert.equal(erin.signups.length, 6);
@@ -1170,7 +1170,7 @@ check('plan beats a Raid-Helper Absence (the strongest kind wins across sources)
 check('Delete my data: the sign-up loses the Discord ID and nickname, keeps the person link, and the outcomes recompute the same', async () => {
   const s = await raidWorld();
   s.w.sources.events.set(EVENT_ID, rhEvent(EVENT_ID, SERVER_A, [...eventSignUps(), signUp(7, PEOPLE.erin.id, 'Erinnick', 'Warrior', 'Arms')]));
-  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.fenwick}'`);
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.erin.id}') WHERE id = '${s.p.fenwick}'`);
   const { id, detail } = await fullRaid(s);
   const before = outcomes(detail);
   assert.equal(before.Fenwick, 'missed', 'signed up and not in the log');
@@ -1529,7 +1529,7 @@ check('J: the raid detail lists who was ticked on a manual raid, team-page Other
   const replaced = (await s.call('bob', 'GET', `/attendance/team?team=${s.B}&window=all`)).json.people.find((p) => p.name === 'Wanderfell').cells;
   assert.deepEqual(replaced.map((c) => [c.outcome, c.via]), [['fill_in', { id: s.A, name: 'Alpha' }]]);
   // person.isMe
-  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.carol.id}' WHERE id = '${s.p.aldric}'`);
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.carol.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.carol.id}') WHERE id = '${s.p.aldric}'`);
   assert.equal((await s.call('carol', 'GET', `/attendance/person/${s.p.aldric}`)).json.person.isMe, true);
   assert.equal((await s.call('bob', 'GET', `/attendance/person/${s.p.aldric}`)).json.person.isMe, false);
 });
@@ -1825,7 +1825,7 @@ check('R3-1: officer reasons and names (manual, decisions) reach only reviewers 
   assert.equal((await decide(s, 'bob', id, { playerId: brindle, outcome: 'bench', reason: 'Private reason', expectedFlags: ['no_show'] })).status, 200);
   assert.equal((await s.call('bob', 'DELETE', s.raid(id, `/decisions/${brindle}`), { reason: 'Undo reason text' })).status, 200);
   assert.equal((await decide(s, 'bob', id, { playerId: brindle, outcome: 'bench', reason: 'Second private reason', expectedFlags: ['no_show'] })).status, 200);
-  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.fenwick}'`);
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.erin.id}') WHERE id = '${s.p.fenwick}'`);
   const SECRETS = ['Logger was off', 'rivate reason', 'Undo reason text', 'Carol C', 'Dave D', '"bob"'];
   // dave (Team Lead of Bravo) and erin (a Member of Alpha) are not reviewers of Alpha.
   for (const who of ['dave', 'erin']) {

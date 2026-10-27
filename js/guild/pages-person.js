@@ -338,7 +338,8 @@
     });
   }
 
-  // Found accounts as rows: opts.accounts [{ id, displayName, avatarUrl, initials, battletag, matchedBy }], opts.query ('' = the claimants list).
+  // Found accounts as rows: opts.accounts [{ id, displayName, nameSuffix, avatarUrl, initials, battletag, matchedBy }], opts.query ('' = the claimants list).
+  // nameSuffix is '#xxxx' on accounts that show the same name as another row of the list, '' otherwise.
   function accountResultsHtml(accounts, query) {
     const list = Array.isArray(accounts) ? accounts : [];
     if (!list.length) {
@@ -349,10 +350,12 @@
     const how = { claim: 'Sent a character claim', battletag: 'BattleTag match', name: 'Name match' };
     return '<ul class="gs-account-results" aria-label="Accounts found">' + list.map(function (a) {
       // A display name is free text: when several accounts show the same one there is no telling them apart here, so none can be linked from it.
+      const label = a.displayName + (a.nameSuffix ? ' ' + a.nameSuffix : '');
       const action = a.ambiguous
         ? '<span class="gs-fine gs-account-ambiguous">Several accounts show this name. Ask for the BattleTag.</span>'
-        : G.ui.buttonHtml({ label: 'Link', size: 'sm', ariaLabel: 'Link ' + a.displayName, attrs: { 'data-action': 'account-pick', 'data-uid': a.id, 'data-key': 'account-pick-' + a.id } });
-      return '<li class="gs-account-row">' + G.ui.avatarHtml(a, 'gs-avatar-md') + '<span class="gs-account-text"><span class="gs-account-name">' + esc(a.displayName) + '</span>' +
+        : G.ui.buttonHtml({ label: 'Link', size: 'sm', ariaLabel: 'Link ' + label, attrs: { 'data-action': 'account-pick', 'data-uid': a.id, 'data-key': 'account-pick-' + a.id } });
+      return '<li class="gs-account-row">' + G.ui.avatarHtml(a, 'gs-avatar-md') + '<span class="gs-account-text"><span class="gs-account-name">' + esc(a.displayName) +
+        (a.nameSuffix ? ' <span class="gs-fine">' + esc(a.nameSuffix) + '</span>' : '') + '</span>' +
         '<span class="gs-fine">' + esc(how[a.matchedBy] || '') + (a.battletag ? ' &middot; ' + esc(a.battletag) : '') + '</span></span>' + action + '</li>';
     }).join('') + '</ul>';
   }

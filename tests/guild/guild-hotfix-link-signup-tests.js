@@ -12,6 +12,7 @@
  * The guild is built through the API, like the other Worker suites (tests/guild-world.js).
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const { adminOf, load, makeWorld, memberOf, signIn } = require('../guild-world');
 
 const SERVER = '900000000000000071';
@@ -60,11 +61,11 @@ async function world() {
       uids[key] = (await w.call(jars[key], 'GET', '/auth/me')).json.user.id;
       if (roles) await s.ok('gm', 'PUT', `/people/${uids[key]}/roles`, roles, 200);
     },
-    // A roster person with a Main on `teamId`; with `key`, the person is the account's own (an officer's account link, players.user_id).
+    // A roster person with a Main on `teamId`; with `key`, the person is the account's own (players.user_id).
     async person(name, teamId, key) {
       const res = await s.ok('gm', 'POST', '/roster', { teamId, class: 'MAGE', mainSpec: 'Fire', offSpec: null, name });
       const pid = res.person.id;
-      if (key) await s.ok('gm', 'PUT', `/roster/${pid}/account`, { userId: uids[key] }, 200);
+      if (key) ownPerson(w.db.sqlite, pid, uids[key]); // players.user_id (the Link account route only records a Discord ID since the identity split)
       return pid;
     },
   };

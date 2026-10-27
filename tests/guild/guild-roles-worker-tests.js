@@ -1716,9 +1716,9 @@ check('review: disconnecting Discord takes the roles Discord gave with it (and l
   s.discordRoles('dave', [D_OFFICERS]);
   await s.signInAgain('dave');
   assert.deepEqual((await s.me('dave')).roles.map((r) => r.role), ['officer', council]);
-  // Dave has Battle.net too, so Discord can be disconnected, and an officer linked his account to a roster person (so he stays a member without Discord).
+  // Dave has Battle.net too, so Discord can be disconnected, and he owns a roster person (players.user_id, which an approved claim or a Battle.net proof writes), so he stays a member without Discord.
   const person = await s.call('alice', 'POST', '/roster', { teamId: s.A, name: 'Davepal', class: 'MAGE', mainSpec: null, offSpec: null, status: 'raider' });
-  assert.equal((await s.call('alice', 'PUT', `/roster/${person.json.person.id}/account`, { userId: s.ids.dave })).status, 200);
+  s.w.db.sqlite.prepare('UPDATE players SET user_id = ? WHERE id = ?').run(s.ids.dave, person.json.person.id);
   s.w.db.sqlite.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES ('${s.ids.dave}', '777001', 'Dave#1234', 1, '{}', 1)`);
   const gone = await s.w.call(s.jars.dave, 'DELETE', '/auth/discord', {});
   assert.equal(gone.status, 200, gone.text);
@@ -1770,8 +1770,11 @@ check('review: a custom role that edits the whole roster does not also open the 
   assert.equal((await s.w.call(outsider, 'GET', `${s.guildPath}`)).status, 403, 'still not a member');
   // The Officer (roster.edit and guild.access) can.
   assert.equal((await s.call('bob', 'GET', `/accounts?q=${encodeURIComponent('Frank F')}`)).status, 200);
+  // Link account records the account's Discord ID on the person (bookkeeping): it no longer lets anybody in, so the outsider is still no member (a claim approval or a Battle.net
+  // proof writes the players.user_id that membership reads).
   assert.equal((await s.call('bob', 'PUT', `/roster/${data.people.mirabel}/account`, { userId: outsiderId })).status, 200);
-  assert.equal((await s.w.call(outsider, 'GET', `${s.guildPath}`)).status, 200);
+  assert.equal((await s.w.call(outsider, 'GET', `${s.guildPath}`)).status, 403, 'the Discord ID on a person admits no one');
+  assert.notEqual((await s.w.rows('SELECT discord_user_id FROM players WHERE id = ?', data.people.mirabel))[0].discord_user_id, null);
 });
 
 check('review: the read-only view respects a team\'s private loot ("own" visibility), and the hand-out rule applies to guest links and the public page', async () => {

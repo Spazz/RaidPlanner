@@ -6,7 +6,8 @@
 //                           account the open-raid guest sign-ups it made (raid_signups.guest = 1, guest_user_id)
 //   pending team requests . the account's own, still waiting
 //   raids ................. the upcoming raids that read those sign-ups are re-versioned and the raids that depend on the rosters are marked stale
-// "The person(s)": an account's persons are the roster people linked to it (players.user_id, or the Discord id it carries: worker/membership.js ownPlayerSql); an
+// "The person(s)": an account's persons are the roster people linked to it (players.user_id: worker/membership.js ownPlayerSql) AND the ones that record its Discord ID
+// (bookkeeping, not ownership: a block must still reach a person the account's own Discord ID stands on, or recording the ID would be a way round it); an
 // account-less block names the one person. Every statement carries `guard` ({ sql, params }): the block row this very call wrote is there, so a lost race writes
 // nothing. A pending-review block (a tombstone match) does NOT run these: the match only enforces, an officer's Keep decides (lane B7b).
 import { markRaidsStale } from './attendance-store.js';
@@ -14,7 +15,8 @@ import { ownPlayerSql } from './membership.js';
 import { nameKey } from './roster-data.js';
 
 const personsOfAccount = (guildId, userId) => ({
-  sql: `SELECT players.id FROM players WHERE players.guild_id = ? AND ${ownPlayerSql('players', '?')}`,
+  sql: `SELECT players.id FROM players WHERE players.guild_id = ?
+          AND (${ownPlayerSql('players', '?')} OR players.discord_user_id = (SELECT du.discord_id FROM users du WHERE du.id = ?))`,
   params: [guildId, userId, userId],
 });
 const onePerson = (guildId, playerId) => ({ sql: 'SELECT players.id FROM players WHERE players.id = ? AND players.guild_id = ?', params: [playerId, guildId] });

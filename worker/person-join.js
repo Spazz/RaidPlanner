@@ -15,7 +15,7 @@
 //
 // WHO SURVIVES   the account-linked person (players.user_id), else the older one (created_at, then id).
 // REFUSED        400 same person | 404 a person that is not in this guild | 409 join_owned_by_two: both persons are owned and the sets of owners differ (an owner is the
-//                account of players.user_id, the account whose Discord ID the person carries, else the bare Discord ID: worker/membership.js ownPlayerSql meaning) |
+//                account of players.user_id, the account whose Discord ID the person carries, else the bare Discord ID: every identity the person has, wider on purpose than ownPlayerSql, which counts players.user_id only) |
 //                409 join_too_many_characters: the two together hold more than LIMITS.charactersPerPerson |
 //                409 join_blocked_person: the loser carries a person block (an account-less person an officer blocked) and the survivor belongs to an account. The block
 //                would land on that account, so it is carried only by an OFFICER join whose actor is the Owner or strictly senior to the account, and the account is

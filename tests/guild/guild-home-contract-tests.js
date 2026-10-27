@@ -150,7 +150,7 @@ async function scenario() {
   await add(A, 'Eliora', 'PRIEST', 'Holy');
   await add(A, 'Veyla', 'MAGE', 'Fire', { status: 'trial', joinedOn: '2027-01-05', trialEnd: '2027-01-19' });
   await add(B, 'Dorrin', 'WARRIOR', 'Arms');
-  world.db.sqlite.exec(`UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${p.Eliora}'`);
+  world.db.sqlite.exec(`UPDATE players SET discord_user_id = '${PEOPLE.erin.id}', user_id = (SELECT id FROM users WHERE discord_id = '${PEOPLE.erin.id}') WHERE id = '${p.Eliora}'`);
   const raid = async (teamId, raidOn, extra = {}) => (await pages.bob.api.post(`${base}/raids`, { teamId, raidOn, ...extra })).raid.id;
   const exec = (sql) => world.db.sqlite.exec(sql);
   const attend = (raidId, teamId, who, outcome, credit) => exec(`INSERT OR REPLACE INTO attendance (raid_id, guild_id, team_id, player_id, outcome, credit, attended) VALUES ('${raidId}', '${gid}', '${teamId}', '${p[who]}', '${outcome}', ${credit}, ${credit > 0 ? 1 : 0})`);

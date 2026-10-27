@@ -7,6 +7,7 @@
  * which it honours only for localhost). The fake's `state` is changed in place to make Blizzard misbehave. No network, no Wrangler, no credentials.
  */
 const assert = require('node:assert/strict');
+const { ownPerson, disownPerson } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -190,11 +191,14 @@ async function addPerson(s, who, teamId, name, extra = {}) {
   return r.json;
 }
 
-// The roster used by the claim tests: Aldric (Alpha, linked to Erin), Brindle (Alpha, nobody linked), Dunmar (Bravo, linked to Dave).
+// The roster used by the claim tests: Aldric (Alpha, owned by Erin), Brindle (Alpha, nobody linked), Dunmar (Bravo, owned by Dave). The owner is players.user_id (the
+// fixture writes it, as a Battle.net proof or an approved claim does); linkUserId alone would only record the Discord ID, which is bookkeeping since the identity split.
 async function seedRoster(s) {
   const aldric = await addPerson(s, 'bob', s.A, 'Aldric', { linkUserId: s.ids.erin });
   const brindle = await addPerson(s, 'bob', s.A, 'Brindle');
   const dunmar = await addPerson(s, 'bob', s.B, 'Dunmar', { class: 'HUNTER', mainSpec: 'Marksmanship', linkUserId: s.ids.dave });
+  ownPerson(s.w.db.sqlite, aldric.person.id, s.ids.erin);
+  ownPerson(s.w.db.sqlite, dunmar.person.id, s.ids.dave);
   return { aldric: aldric.person.id, brindle: brindle.person.id, dunmar: dunmar.person.id };
 }
 
@@ -964,7 +968,7 @@ check('approve: permissions follow roster.edit by team, a lost race is a 409, an
 
 check('approve: a name taken in the meantime, a claimant who left and another guild\'s claim are refused and change nothing', async () => {
   const s = await scenario();
-  await seedRoster(s);
+  const seeded = await seedRoster(s);
   await link(s, 'erin');
   const claim = (await pend(s, 'erin', 'Eliora')).json.claims[0];
   // The same character is added by hand (to a person Erin does not own) between the list and the click.
@@ -973,7 +977,8 @@ check('approve: a name taken in the meantime, a claimant who left and another gu
   assert.equal(res.status, 409);
   assert.equal(res.json.error, 'claim_changed', 'the plan now says the roster holds it on an unlinked person next to the claimant\'s own');
   assert.equal(await s.w.count('character_claims', "status = 'pending'"), 1);
-  // Erin leaves the server
+  // Erin leaves the server (and owns no person any more: an owned person is a membership source of its own)
+  disownPerson(s.w.db.sqlite, seeded.aldric);
   await signIn(s.w, PEOPLE.erin, [], s.jars.erin);
   const left = await s.call('bob', 'POST', `/claims/${claim.id}/approve`, approveBody('blocked'));
   assert.equal(left.json.error, 'claim_blocked');

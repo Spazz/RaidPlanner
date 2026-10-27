@@ -231,13 +231,13 @@ export async function loadGuildContext(db, userId, guildId, viewAs = null) {
         WHERE ra.guild_id = ? AND ra.user_id = ?`,
     ).bind(guildId, userId),
     effectivePermissionsStatement(db, guildId),
-    // ownTeamIds (U R8-Q2): the teams of the characters of the person who is this user's (linked to the account, or matching its Discord ID) that are on a
+    // ownTeamIds (U R8-Q2): the teams of the characters of the person who is this user's (players.user_id = the account) that are on a
     // TEAM ROSTER (worker/team-roster.js: placed, still here, a raiding rank). A teamless, Social or Former character grants no team scope; another
     // visible character of the same person on that team still does.
     db.prepare(
       `SELECT DISTINCT c.team_id FROM characters c JOIN players p ON p.id = c.player_id
         WHERE p.guild_id = ? AND ${teamRosterSql('c')} AND ${ownPlayerSql('p', '?')}`,
-    ).bind(guildId, userId, userId),
+    ).bind(guildId, userId),
   ]);
   const guild = guildResult.results[0];
   if (!guild) throw new HttpError(404, 'not_found', 'That guild does not exist.');

@@ -1,6 +1,6 @@
 // Battle.net data: the settings a guild keeps, the snapshot a member's link keeps, and the plan an officer's approval of a character claim
 // would carry out. D1 I/O only; the Blizzard calls are in battlenet.js.
-import { isOwnPlayer, memberGuildsStatement, memberSql } from './membership.js';
+import { isOwnPlayer, memberGuildsStatement, memberSql, personStanding } from './membership.js';
 import { REALMS } from './realms.js';
 
 // Blizzard's terms: stored Battle.net data is refreshed or deleted within 30 days.
@@ -65,13 +65,16 @@ export async function loadMemberGuilds(db, userId) {
 // ---------------------------------------------------------------------------
 // Claims
 
-// What approving a pending claim would do, decided from the roster as it is now. A person is the claimant's own when it is linked to their account
-// (players.user_id) or carries their Discord ID; approving that makes a person the claimant's ACCOUNT's (user_id) and, if the account has Discord, its Discord ID too.
+// What approving a pending claim would do, decided from the roster as it is now. A person is the claimant's own only when it is linked to their account
+// (players.user_id); a Discord ID on a person is bookkeeping (user decision 2026-10-26). Approving a link makes the person the claimant's ACCOUNT's (user_id) and, if
+// the account has Discord, records its Discord ID on it.
 //   add_alt      the claimant already has a person: the character joins them as an Alt (the officer picks the team)
 //   new_person   the claimant has no person and the character is on no roster: a new person with it as Main (team and status picked)
 //   link_person  the character is on a person nobody has linked yet and the claimant has no person: the claimant's account links to that person
 //   already      the character is already on the claimant's own person: approving only closes the claim
-//   blocked      cannot be approved: reason not_member | taken (on a person linked to someone else, by account or Discord ID) | other_person (on an unlinked person, but the claimant has their own)
+//   blocked      cannot be approved: reason not_member | taken (on a person owned by someone else, or recording someone else's Discord ID) | other_person (on an unowned person, but the claimant has their own)
+//                | recorded (the character is on no roster and the claimant owns no person, but an unowned person already records the claimant's Discord ID: a second person would
+//                  break the one-Discord-ID-per-person rule, and the Discord ID alone does not make that person theirs)
 //                a blocked plan also says `proof`: how the character got on the roster (characters.owner_proof; 'hand' = typed in, which proves nothing)
 // claims: character_claims rows (user_id, name_key, realm_key). -> Map(claim id -> { kind, reason, person: { id, name } | null, homeTeamId, defaultTeamId })
 export async function planClaims(db, guild, claims) {
@@ -84,11 +87,11 @@ export async function planClaims(db, guild, claims) {
       `SELECT u.id, u.discord_id, ${memberSql('u.id', 'gc.gid', 'gc.sid')} AS member
          FROM users u, (SELECT ? AS gid, ? AS sid) gc WHERE u.id IN (SELECT value FROM json_each(?))`,
     ).bind(guild.id, guild.discord_server_id, userIds),
-    // The claimants' own people: linked to the account, or carrying its Discord ID.
+    // The claimants' own people (players.user_id), and the unowned people that record a claimant's Discord ID (bookkeeping: they are not the claimant's).
     db.prepare(
       `SELECT p.id, p.discord_user_id, p.user_id, m.name, m.team_id FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
         WHERE p.guild_id = ? AND (p.user_id IN (SELECT value FROM json_each(?))
-                                  OR p.discord_user_id IN (SELECT u.discord_id FROM users u WHERE u.id IN (SELECT value FROM json_each(?))))`,
+                                  OR (p.user_id IS NULL AND p.discord_user_id IN (SELECT u.discord_id FROM users u WHERE u.id IN (SELECT value FROM json_each(?)))))`,
     ).bind(guild.id, userIds, userIds),
     db.prepare(
       `SELECT c.id AS character_id, c.name_key, c.realm_key, c.owner_proof, p.id AS player_id, p.discord_user_id, p.user_id, m.name AS main_name, m.team_id AS home_team_id
@@ -102,6 +105,7 @@ export async function planClaims(db, guild, claims) {
     const user = users.get(claim.user_id);
     const viewer = user ? { userId: user.id, discordId: user.discord_id } : null;
     const own = viewer ? personResult.results.find((row) => isOwnPlayer(row, viewer)) || null : null;
+    const recorded = viewer && !own ? personResult.results.find((row) => !row.user_id && row.discord_user_id && row.discord_user_id === viewer.discordId) || null : null;
     const owner = owners.get(`${claim.name_key}|${claim.realm_key}`) || null;
     const blocked = (reason) => ({
       kind: 'blocked', reason, person: owner ? { id: owner.player_id, name: owner.main_name } : null, homeTeamId: null, defaultTeamId: null, characterId: null,
@@ -111,13 +115,14 @@ export async function planClaims(db, guild, claims) {
     if (!user || user.member !== 1) plan = blocked('not_member');
     else if (owner && isOwnPlayer(owner, viewer)) {
       plan = { kind: 'already', reason: null, person: { id: owner.player_id, name: owner.main_name }, homeTeamId: owner.home_team_id, defaultTeamId: null, characterId: owner.character_id };
-    } else if (owner && (owner.discord_user_id || owner.user_id)) plan = blocked('taken');
+    } else if (owner && personStanding(owner, viewer) === 'taken') plan = blocked('taken');
     else if (owner && own) plan = blocked('other_person');
     else if (owner) {
       plan = { kind: 'link_person', reason: null, person: { id: owner.player_id, name: owner.main_name }, homeTeamId: owner.home_team_id, defaultTeamId: null, characterId: owner.character_id };
     } else if (own) {
       plan = { kind: 'add_alt', reason: null, person: { id: own.id, name: own.name }, homeTeamId: own.team_id, defaultTeamId: own.team_id, characterId: null };
-    } else {
+    } else if (recorded) plan = blocked('recorded');
+    else {
       plan = { kind: 'new_person', reason: null, person: null, homeTeamId: null, defaultTeamId: null, characterId: null };
     }
     plans.set(claim.id, plan);
@@ -129,4 +134,5 @@ export const CLAIM_BLOCKED_TEXT = {
   not_member: 'This person is no longer in the guild (they left its Discord server or were unlinked from the roster), so the claim cannot be approved.',
   taken: 'That character is already on a person linked to someone else. Reject the claim, or fix the roster first.',
   other_person: 'That character is on a person nobody has linked, but the claimant already has their own person. Merge them by hand on the roster, then reject this claim.',
+  recorded: 'A roster entry already records the Discord ID of the claimant, but nobody has linked it to their account. Have them claim a character of that entry with This is me, or merge the character into it by hand, then reject this claim.',
 };

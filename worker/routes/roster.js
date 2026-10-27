@@ -142,7 +142,7 @@ export function nameTaken(name, owner, extra = {}) {
 }
 
 // -> { id, discord_id } of a member with a Discord account that the officer may link to a person (the person takes its Discord ID).
-// 409 already_linked when that member already belongs to another person of the guild, by Discord ID or by an officer's account link.
+// 409 already_linked when that member already belongs to another person of the guild: its Discord ID is on one, or it owns one (players.user_id).
 export async function resolveLinkUser(db, guildContext, userId, exceptPlayerId = null, personAccountId = null) {
   if (!isId('u', userId)) throw bad('Pick a member to link.', 'linkUserId');
   const guildId = guildContext.guild.id;
@@ -393,6 +393,9 @@ async function requireHandRanks(db, guildId) {
   }
 }
 
+// The fields of PATCH /roster/:pid that write the person's rank on every character (the officer rank edit of a manual / legacy guild).
+const RANK_FIELDS = ['status', 'trialStart', 'trialEnd', 'leftOn', 'leftReason'];
+
 export async function patchPerson(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
@@ -460,10 +463,13 @@ export async function patchPerson(ctx) {
   if (changed.some((key) => ['status', 'leftOn', 'leftReason'].includes(key))) await requireHandRanks(db, guildContext.guild.id);
   if (changed.length) {
     const now = ctx.now();
-    // Changing the Discord link relinks the person: the Seniority guard (worker/seniority.js) applies, in the pre-check and in both writes below.
+    // The Seniority guard (worker/seniority.js) applies, in the pre-check and in the writes below, to what changes who a person is or how they stand: the Discord link
+    // (it relinks the person) and the rank fields (status, trial dates, left date and reason write the rank of EVERY character). A Team Lead cannot change a senior's
+    // status, rank or left date. Joined on alone stays open to whoever may edit the roster.
     const relink = changed.includes('link');
-    if (relink) await assertSenior(db, guildContext, player.id);
-    let senior = relink ? seniorityOk(guildContext.guild.id, ctx.session.user.id, player.id) : { sql: '1 = 1', params: [] };
+    const rankChange = changed.some((key) => RANK_FIELDS.includes(key));
+    if (relink || rankChange) await assertSenior(db, guildContext, player.id);
+    let senior = relink || rankChange ? seniorityOk(guildContext.guild.id, ctx.session.user.id, player.id) : { sql: '1 = 1', params: [] };
     if (relink) {
       // A person that holds a Battle.net-proven character changes its Discord link (linkUserId, null clears it) by the Owner only, the same rule as PUT /roster/:pid/account and
       // POST /raids/:rid/signups/link: the Discord ID on the person makes that account its owner too. Read for a clean 403, repeated inside both writes through `senior`.
@@ -487,7 +493,7 @@ export async function patchPerson(ctx) {
     // Social; the dates by migration 0030's mapping). The players row keeps only the version bump and the person's own fields: since R4 nothing mirrors the rank
     // there. Both statements carry the same optimistic checks (version, the main still on the home team), so a lost race changes neither.
     const statements = [];
-    if (changed.some((key) => ['status', 'trialStart', 'trialEnd', 'leftOn', 'leftReason'].includes(key))) {
+    if (rankChange) {
       const unchanged = {
         sql: `EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND version = ?)
               AND EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND is_main = 1 AND team_id IS ?) AND ${senior.sql}`,

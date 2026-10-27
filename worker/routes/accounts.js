@@ -23,6 +23,8 @@ const LOOKUP_LIMIT = 40;
 const LOOKUP_WINDOW_MS = 10 * 60 * 1000;
 const FOUND_MAX = 5;
 const CLAIMANTS_MAX = 20;
+// What players.discord_user_id accepts (a Discord snowflake: its CHECK constraint, migration 0002): an account with any other id has nothing recordable.
+const DISCORD_ID_COLUMN = /^[0-9]{17,20}$/;
 const conflict = () => new HttpError(409, 'conflict', 'That changed while you were working on it. Reload and try again.');
 export { PROVEN_LINK_MESSAGE };
 
@@ -136,7 +138,9 @@ export async function unlinkDiscord(ctx) {
 //           someone with roster.edit on the whole guild (an Officer) may ask: a Team Lead sees the claimants.
 // Accounts blocked in the guild, or already a person's here, are left out. A BattleTag comes back only when it is what the officer typed, and
 // never the Discord handle. A display name is free text, so several accounts can show the same one: those rows say `ambiguous` (the page
-// offers no Link for them: ask for the BattleTag).
+// offers no Link for them: ask for the BattleTag). Whatever the mode, rows that show the same name (any case) each carry a short `nameSuffix`
+// (# and the last characters of the account id, nameSuffixes below) so they can be told apart in the list; a row with a name of its own has ''.
+// "Not a person's yet" means: not the owner of one (players.user_id) and not recorded on one by its Discord ID (the Link below would only refuse it).
 // Looking an account up by name, or linking one that is not in the guild yet, lets someone in: the Officer's call (roster.edit on the whole guild AND
 // guild.access, so a custom role that edits the whole roster does not also open the guild's door).
 const mayAdmitAccounts = (can) => can['roster.edit'] === 'guild' && can['guild.access'] === 'guild';
@@ -154,7 +158,8 @@ export async function lookupAccounts(ctx) {
   if (q && (Array.from(q).length < MIN_LOOKUP || Array.from(q).length > MAX_LOOKUP)) {
     throw bad(`Type the whole BattleTag or name: ${MIN_LOOKUP} to ${MAX_LOOKUP} characters.`, 'q');
   }
-  const free = `NOT ${blockedSql('u.id', '?')} AND NOT EXISTS (SELECT 1 FROM players p WHERE p.guild_id = ? AND ${ownPlayerSql('p', 'u.id')})`;
+  const free = `NOT ${blockedSql('u.id', '?')} AND NOT EXISTS (SELECT 1 FROM players p WHERE p.guild_id = ?
+                 AND (${ownPlayerSql('p', 'u.id')} OR (u.discord_id IS NOT NULL AND p.discord_user_id = u.discord_id)))`;
   let rows;
   if (!q) {
     rows = (await db.prepare(
@@ -177,17 +182,40 @@ export async function lookupAccounts(ctx) {
   // Initials only: an avatar URL carries the account's Discord ID, which an officer has no business learning from a name they typed. The Discord
   // handle (username) stays out too; the name shown is the display name the account chose, else its Discord name or BattleTag name.
   const byName = rows.filter((row) => row.matched_by === 'name').length;
+  const suffixes = nameSuffixes(rows);
   return jsonResponse({
     accounts: rows.map((row) => ({
       ...personFor(row, VIEWERS.lookup), battletag: row.battletag, matchedBy: row.matched_by,
-      ambiguous: row.matched_by === 'name' && byName > 1,
+      ambiguous: row.matched_by === 'name' && byName > 1, nameSuffix: suffixes.get(row.id) || '',
     })),
   });
 }
 
+// Accounts that show the same name (any case) get '#' + the last characters of their account id: the shortest tail (at least 4 characters) that tells every account of
+// that name apart. -> Map(account id -> suffix) for the accounts of a clash only. The id is random, so the suffix says nothing about the person and never changes.
+const MIN_SUFFIX = 4;
+export function nameSuffixes(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const name = String(row.display_name || row.global_name || row.username || '').toLowerCase();
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(row.id);
+  }
+  const suffixes = new Map();
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue;
+    let length = MIN_SUFFIX;
+    while (length < 22 && new Set(ids.map((id) => id.slice(-length))).size < ids.length) length++;
+    for (const id of ids) suffixes.set(id, `#${id.slice(-length)}`);
+  }
+  return suffixes;
+}
+
 // PUT /api/guild/:gid/roster/:pid/account { userId: string | null }  (roster.edit on the person's home team).
-// A string links that account to the person (players.user_id); null unlinks the account an officer linked. The Discord account field and
-// the Discord ID a person carries are separate (PATCH /roster/:pid { linkUserId }). Answers with the whole person record.
+// A string RECORDS that account's Discord ID on the person (players.discord_user_id): bookkeeping that sign-ups, logs and loot follow. It does NOT make the account the
+// owner of the person: players.user_id is written only by Battle.net proof, the account holder's own accepted application and an approved "This is me" claim (user
+// decision 2026-10-26). An account without a Discord ID has nothing to record, so it is refused (409 no_discord_id): its player claims the record themselves.
+// null unlinks the account that owns the person (clears players.user_id; an unlink is the one write of that column staff keep). Answers with the whole person record.
 export async function setPersonAccount(ctx) {
   const { db, body } = ctx;
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
@@ -236,14 +264,20 @@ export async function setPersonAccount(ctx) {
   if (!target) throw new HttpError(404, 'not_found', 'That account was not found.');
   const blocked = await db.prepare('SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?').bind(guildId, target.id).first();
   if (blocked) throw new HttpError(409, 'account_blocked', 'An officer removed that account\'s access to this guild. Restore its access first.');
-  if (player.user_id === target.id) return jsonResponse(await personReply(ctx, guildContext, player.id));
-  if (player.user_id) throw new HttpError(409, 'already_linked', 'This person is already linked to an account. Unlink it first.', { field: 'userId' });
-  if (player.discord_user_id && player.discord_user_id !== target.discord_id) {
-    throw new HttpError(409, 'discord_linked',
-      'This person is linked to a Discord account. Change that on the Discord account field, or ask the member to connect Discord to their account.', { field: 'userId' });
+  if (!target.discord_id || !DISCORD_ID_COLUMN.test(target.discord_id)) {
+    throw new HttpError(409, 'no_discord_id',
+      'That account has no Discord ID to record on this person. The player claims this record themselves: they connect Battle.net or use This is me on their character.', { field: 'userId' });
   }
-  // Linking makes the account a member of the WHOLE guild, so a Team Lead (roster.edit on their team only) may link only an account that already
-  // is a member or has a character claim waiting here; letting anyone else in is an Officer's call.
+  if (player.discord_user_id === target.discord_id) return jsonResponse(await personReply(ctx, guildContext, player.id));
+  if (player.user_id && player.user_id !== target.id) {
+    throw new HttpError(409, 'already_linked', 'This person already belongs to another account. Unlink it first.', { field: 'userId' });
+  }
+  if (player.discord_user_id) {
+    throw new HttpError(409, 'discord_linked',
+      'This person already records a different Discord account. Change that on the Discord account field, or ask the member to connect Discord to their account.', { field: 'userId' });
+  }
+  // A Team Lead (roster.edit on their team only) records only the Discord ID of an account that already is a member or has a character claim waiting here;
+  // looking up any other account is an Officer's call.
   if (!mayAdmitAccounts(guildContext.can)) {
     const known = await db.prepare(
       `SELECT ${memberSql('u.id', 'gc.gid', 'gc.sid')} AS member,
@@ -262,14 +296,15 @@ export async function setPersonAccount(ctx) {
   let results;
   try {
     results = await db.batch([
+      // players.user_id is not written here: the Discord ID is the whole write (a nickname taken from sign-ups goes, as when the Discord account field links).
       db.prepare(
-        `UPDATE players SET user_id = ?, version = version + 1, updated_at = ?
-          WHERE id = ? AND guild_id = ? AND user_id IS NULL AND (discord_user_id IS NULL OR discord_user_id = ?)
+        `UPDATE players SET discord_user_id = ?, discord_nickname = NULL, version = version + 1, updated_at = ?
+          WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL AND (user_id IS NULL OR user_id = ?)
             AND NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?) AND ${onHomeTeam.sql}`,
-      ).bind(target.id, now, player.id, guildId, target.discord_id, guildId, target.id, ...onHomeTeam.params),
+      ).bind(target.discord_id, now, player.id, guildId, target.id, guildId, target.id, ...onHomeTeam.params),
       auditStatement(ctx, {
         guildId, actorUserId: ctx.session.user.id, action: 'person.account_link', entityType: 'person', entityId: player.id,
-        before: { userId: null }, after: { userId: target.id },
+        before: { userId: null }, after: { userId: target.id, recordedDiscord: true },
       }, { sql: 'changes() = 1', params: [] }),
     ]);
   } catch (error) {

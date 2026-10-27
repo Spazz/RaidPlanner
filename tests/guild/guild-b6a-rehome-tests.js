@@ -808,14 +808,18 @@ check('membership: a person with only a placeholder is on no in-game roster (the
   assert.equal(refusedLink.status, 403, refusedLink.text);
   assert.equal(refusedLink.json.error, 'forbidden');
   assert.match(refusedLink.json.message, /Owner/);
-  assert.equal(sOne(s, 'SELECT user_id FROM players WHERE id = ?', P.pid).user_id, null);
-  assert.equal((await link('o1', Q.pid, s.uids.m1)).status, 200, 'a person with no proved character is the officer\'s to link');
-  assert.equal((await link('o1', Q.pid, null)).status, 200, '... and to unlink');
+  assert.equal(sOne(s, 'SELECT discord_user_id FROM players WHERE id = ?', P.pid).discord_user_id, null);
+  assert.equal((await link('o1', Q.pid, s.uids.m1)).status, 200, 'a person with no proved character is the officer\'s to link (Link account records the account\'s Discord ID)');
+  assert.notEqual(sOne(s, 'SELECT discord_user_id FROM players WHERE id = ?', Q.pid).discord_user_id, null);
+  sRun(s, 'UPDATE players SET discord_user_id = NULL WHERE id = ?', Q.pid); // the Discord ID is free again for the Owner\'s link below
   // the Owner (the Guild Master) may
   const owned = await link('gm', P.pid, s.uids.m1);
   assert.equal(owned.status, 200, owned.text);
-  assert.equal(sOne(s, 'SELECT user_id FROM players WHERE id = ?', P.pid).user_id, s.uids.m1);
-  sRun(s, "UPDATE characters SET owner_proof = 'bnet', proof_user_id = ?, proof_bnet_account_id = '711', proof_at = 5 WHERE id = ?", s.uids.m1, P.cid); // the link cleared the proof: put it back
+  assert.notEqual(sOne(s, 'SELECT discord_user_id FROM players WHERE id = ?', P.pid).discord_user_id, null);
+  assert.equal(sOne(s, 'SELECT user_id FROM players WHERE id = ?', P.pid).user_id, null, 'Link account never writes the owner');
+  // The proving account owns the person (what a Battle.net proof writes); only the Owner unlinks it.
+  sRun(s, 'UPDATE players SET user_id = ? WHERE id = ?', s.uids.m1, P.pid);
+  sRun(s, "UPDATE characters SET owner_proof = 'bnet', proof_user_id = ?, proof_bnet_account_id = '711', proof_at = 5 WHERE id = ?", s.uids.m1, P.cid); // the owner change cleared the proof: put it back
   const refusedUnlink = await link('o1', P.pid, null);
   assert.equal(refusedUnlink.status, 403, refusedUnlink.text);
   assert.equal(sOne(s, 'SELECT user_id FROM players WHERE id = ?', P.pid).user_id, s.uids.m1, 'nothing changed');

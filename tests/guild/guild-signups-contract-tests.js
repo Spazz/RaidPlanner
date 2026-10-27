@@ -10,6 +10,7 @@
  * Raid-Helper reader. Discord is faked by an injected fetch; no network, no Wrangler, no credentials.
  */
 const assert = require('node:assert/strict');
+const { ownByDiscord } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -149,6 +150,7 @@ async function scenario() {
   const member = [{ id: SERVER, name: 'Server', icon: null, owner: false, permissions: '0' }];
   const E = loadPages(world, await signIn(world, ERIN, member));
   const H = loadPages(world, await signIn(world, HANK, member));
+  ownByDiscord(world.db.sqlite); // a person that records a signed-in account's Discord ID is that account's only when players.user_id says so (identity split)
   const s = { world, A, E, H, gid, teamId, base, people, raid, rid: raid };
   for (const G of [A, E, H]) G.guildData = await G.api.get(base);
   return s;

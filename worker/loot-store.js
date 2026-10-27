@@ -73,7 +73,7 @@ export function lootAccess(guildContext, resolver, teamId) {
   return { canEdit, level: 'own' };
 }
 
-// The person who is the signed-in user's (linked to the account, or carrying its Discord ID) is resolved in worker/membership.js.
+// The person who is the signed-in user's (players.user_id is the account) is resolved in worker/membership.js.
 export { ownPersonStatement };
 
 // ---------------------------------------------------------------------------

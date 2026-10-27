@@ -8,6 +8,7 @@
  * checked next to what the Worker stored. Discord is never called.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -140,6 +141,7 @@ async function scenario() {
   const s = { world, A, E, gid, teamId, base };
   s.person = async (name, cls = 'WARRIOR', link = null) => {
     const res = await A.api.post(`${base}/roster`, { teamId, name, class: cls, mainSpec: SPEC_OF[cls], offSpec: null, status: 'raider', ...(link ? { linkUserId: link } : {}) });
+    if (link) ownPerson(world.db.sqlite, res.person.id, link); // the account owns it (players.user_id): linkUserId only records the Discord ID since the identity split
     return res.person.id;
   };
   s.erinUser = erinUser;

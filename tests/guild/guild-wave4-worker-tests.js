@@ -6,6 +6,7 @@
  * fetch that RECORDS what the Worker posts: nothing here touches the network, and no real Discord address is ever used.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const { load, adminOf, memberOf, makeWorld, signIn, newJar } = require('../guild-world');
 
 const SERVER = '900000000000000031';
@@ -77,6 +78,7 @@ async function scenario({ teams = 1, members = [], leads = [] } = {}) {
       const body = { teamId: team, name, class: cls, mainSpec: spec, offSpec: null, status };
       if (link) body.linkUserId = uids[link];
       const res = await s.ok('gm', 'POST', '/roster', body);
+      if (link) ownPerson(w.db.sqlite, res.person.id, uids[link]); // the account owns it (players.user_id): linkUserId only records the Discord ID since the identity split
       return { pid: res.person.id, cid: res.characters[0].id };
     },
     rows: (sql, ...values) => w.rows(sql, ...values),

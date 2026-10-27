@@ -312,7 +312,11 @@ export function describeRow(row, names = {}) {
       return after.kind === 'review' ? `Dismissed the suggestion to review ${person(ent)} for 30 days` : `Dismissed the suggestion to promote ${person(ent)}${after.toName ? ` to ${after.toName}` : ''} for 30 days`;
     case 'person.notes': return `Edited the officer notes of ${person(ent)}`;
     // An officer's account link (Phase 7a): the account's name is looked up at read time; an account since deleted reads as "an account".
-    case 'person.account_link': return `Linked ${person(ent)} to ${get('user', after.userId, null) ? `the account ${user(after.userId)}` : 'an account'}`;
+    // Since the identity split (2026-10-26) a link records the account's Discord ID only (after.recordedDiscord); an older row is a link of ownership.
+    case 'person.account_link': {
+      const who = get('user', after.userId, null) ? `the account ${user(after.userId)}` : 'an account';
+      return after.recordedDiscord ? `Recorded the Discord ID of ${who} on ${person(ent)}` : `Linked ${person(ent)} to ${who}`;
+    }
     case 'person.account_unlink': return `Unlinked ${get('user', before.userId, null) ? `the account ${user(before.userId)}` : 'an account'} from ${person(ent)}`;
     case 'character.create': return `Added the character ${character(ent)} to ${person(after.personId)}`;
     case 'character.update': {

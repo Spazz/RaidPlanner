@@ -76,7 +76,7 @@ function writeGuard(ctx, guildContext, personId, access) {
     const scope = guildContext.can['raids.edit'];
     return { sql: OFFICER_GUARD, params: [guildContext.guild.id, personId, scope === 'guild' ? 1 : 0, JSON.stringify(scope === 'guild' ? [] : scope)] };
   }
-  return { sql: OWN_GUARD, params: [personId, guildContext.guild.id, ctx.session.user.id, ctx.session.user.id] };
+  return { sql: OWN_GUARD, params: [personId, guildContext.guild.id, ctx.session.user.id] };
 }
 
 const ownPersonId = async (ctx, guildContext) => {

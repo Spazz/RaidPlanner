@@ -9,6 +9,7 @@
  * data and the display name. No network, no Wrangler, no credentials.
  */
 const assert = require('node:assert/strict');
+const { ownPerson } = require('../guild-owner-fixture');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -32,6 +33,7 @@ const PEOPLE = {
   erin: { id: '110000000000000005', username: 'erin', globalName: 'Erin E' },
   gina: { id: '110000000000000006', username: 'gina', globalName: 'Gina G' },
   gale: { id: '110000000000000009', username: 'gale', globalName: 'Gale G' },
+  frank: { id: '110000000000000010', username: 'frank', globalName: 'Frank F' },
 };
 // Battle.net accounts. holly and ivan sign up with Battle.net only; erin, gina and gale link one to a Discord account.
 const BNET = {
@@ -220,6 +222,9 @@ async function addPerson(s, who, teamId, name, extra = {}) {
   return r.json;
 }
 const linkAccount = (s, who, personId, userId) => s.call(who, 'PUT', `/roster/${personId}/account`, { userId });
+// The owner of a person is players.user_id, written by a Battle.net proof, an accepted application or an approved claim (identity split, 2026-10-26); the officer's
+// Link account only records the account's Discord ID. A test that needs an owner writes the column the way those paths leave it.
+const ownBy = (s, personId, key, opts) => ownPerson(s.w.db.sqlite, personId, s.ids[key], opts);
 const claimBody = (...names) => ({ characters: names.map((name) => ({ name, realmSlug: name === 'Cassia' || name === 'Fenwick' ? 'nightslayer' : 'dreamscythe' })) });
 const approveBody = (kind, extra = {}) => ({ expectedKind: kind, ...extra });
 
@@ -247,13 +252,13 @@ check('membership rule (pure): blocked wins; otherwise in the Discord server OR 
     [false, false, false, 'none'], [false, false, true, 'member'], [false, true, false, 'member'], [false, true, true, 'member'],
     [true, false, false, 'blocked'], [true, false, true, 'blocked'], [true, true, false, 'blocked'], [true, true, true, 'blocked'],
   ]);
-  // My person: linked to my account, or carrying my Discord ID. A Battle.net-only account has no Discord ID to match.
+  // My person: linked to my account (players.user_id), and nothing else: a Discord ID on the person is bookkeeping (identity split, user decision 2026-10-26).
   const viewer = { userId: 'u_me', discordId: '123' };
   assert.equal(isOwnPlayer({ user_id: 'u_me', discord_user_id: null }, viewer), true);
-  assert.equal(isOwnPlayer({ user_id: null, discord_user_id: '123' }, viewer), true);
+  assert.equal(isOwnPlayer({ user_id: null, discord_user_id: '123' }, viewer), false, 'the Discord ID of the viewer on the person does not make it theirs');
+  assert.equal(isOwnPlayer({ user_id: 'u_other', discord_user_id: '123' }, viewer), false);
   assert.equal(isOwnPlayer({ user_id: 'u_other', discord_user_id: '999' }, viewer), false);
   assert.equal(isOwnPlayer({ user_id: null, discord_user_id: null }, viewer), false);
-  assert.equal(isOwnPlayer({ user_id: null, discord_user_id: '123' }, { userId: 'u_me', discordId: null }), false, 'no Discord, no Discord match');
   assert.equal(isOwnPlayer({ user_id: 'u_me', discord_user_id: null }, { userId: 'u_me', discordId: null }), true);
   assert.equal(isOwnPlayer({ user_id: null, discord_user_id: null }, { userId: 'u_me', discordId: null }), false, 'null never equals null');
   assert.equal(isOwnPlayer(null, viewer), false);
@@ -754,7 +759,7 @@ check('link Discord: a Discord ID that would put two people of one guild on the 
   const holly = await signUpHolly(s);
   const mine = await addPerson(s, 'bob', s.A, 'Aldric');
   const gales = await addPerson(s, 'bob', s.A, 'Brindle');
-  assert.equal((await linkAccount(s, 'bob', mine.person.id, s.ids.holly)).status, 200);
+  ownBy(s, mine.person.id, 'holly');
   w.db.sqlite.exec(`UPDATE players SET discord_user_id = '${PEOPLE.gale.id}' WHERE id = '${gales.person.id}'`);
   const clash = await discordLink(w, holly, PEOPLE.gale, [plain(SERVER_A)]);
   assert.equal(locationOf(clash.callback), '/#/linked?error=roster_conflict');
@@ -881,8 +886,10 @@ check('unlink Discord: the account becomes a Battle.net account (named after its
   assert.equal((await s.call('erin', 'GET', '')).json.error, 'not_member');
   const record = (await s.call('bob', 'GET', `/roster/${personId}`)).json;
   assert.deepEqual([record.person.account.user, record.person.discord.signIn], [null, 'no_discord']);
-  // An officer's link is what keeps her in: linking her BATTLE.NET account to the person makes her a member again, Discord or not.
-  assert.equal((await linkAccount(s, 'bob', personId, s.ids.erin)).status, 200);
+  // A link to her ACCOUNT (players.user_id, which a Battle.net proof or an approved claim writes) is what keeps her in: it makes her a member again, Discord or not. An officer's Link
+  // account cannot do it any more: her Battle.net account has no Discord ID to record.
+  assert.equal((await linkAccount(s, 'bob', personId, s.ids.erin)).json.error, 'no_discord_id');
+  ownBy(s, personId, 'erin');
   assert.deepEqual((await w.call(s.jars.erin, 'GET', '/auth/me')).json.guilds.map((g) => g.name), ['Ember']);
   assert.deepEqual(await w.rows("SELECT guild_id, actor_user_id FROM audit_log WHERE action = 'discord.unlink'"), [{ guild_id: null, actor_user_id: s.ids.erin }]);
   // Gina has Battle.net but no person: without Discord she is no longer in the guild.
@@ -909,7 +916,7 @@ check('unlink Discord: a Guild Master who would lose the guild is told to hand o
   // A roster person that only carries her Discord ID does not keep the guild once the Discord goes; one linked to her ACCOUNT does.
   const mine = await addPerson(s, 'alice', s.A, 'Alicia', { linkUserId: s.ids.alice });
   assert.equal((await w.call(s.jars.alice, 'DELETE', '/auth/discord', {})).json.error, 'leads_guild');
-  assert.equal((await linkAccount(s, 'alice', mine.person.id, s.ids.alice)).status, 200);
+  ownBy(s, mine.person.id, 'alice');
   const ok = await w.call(s.jars.alice, 'DELETE', '/auth/discord', {});
   assert.equal(ok.status, 200, JSON.stringify(ok.json));
   assert.equal((await w.call(s.jars.alice, 'GET', s.guildPath)).status, 200);
@@ -932,7 +939,7 @@ check('Discord link on a person: refused while the person belongs to ANOTHER acc
   const s = await scenario();
   await signUpHolly(s);
   const aldric = await addPerson(s, 'bob', s.A, 'Aldric');
-  assert.equal((await linkAccount(s, 'bob', aldric.person.id, s.ids.holly)).status, 200);
+  ownBy(s, aldric.person.id, 'holly', { bump: true });
   const version = (await s.call('bob', 'GET', `/roster/${aldric.person.id}`)).json.person.version;
   const clash = await s.call('bob', 'PATCH', `/roster/${aldric.person.id}`, { expectedVersion: version, linkUserId: s.ids.erin });
   assert.deepEqual([clash.status, clash.json.error, clash.json.field], [409, 'already_linked', 'linkUserId']);
@@ -949,8 +956,11 @@ check('membership: an officer links a Battle.net-only account to a roster person
   assert.equal((await w.call(holly, 'GET', s.guildPath)).json.error, 'not_member', 'before the link: not in the guild');
   assert.equal((await w.call(holly, 'GET', `${s.guildPath}/roster?team=${s.A}`)).status, 403);
   const aldric = await addPerson(s, 'bob', s.A, 'Aldric');
-  const linked = await linkAccount(s, 'bob', aldric.person.id, s.ids.holly);
-  assert.equal(linked.status, 200, JSON.stringify(linked.json));
+  const refusedLink = await linkAccount(s, 'bob', aldric.person.id, s.ids.holly);
+  assert.deepEqual([refusedLink.status, refusedLink.json.error], [409, 'no_discord_id'], 'a Battle.net-only account has no Discord ID to record: the player claims the record herself');
+  assert.equal((await w.call(holly, 'GET', s.guildPath)).json.error, 'not_member', 'and the refused link let nobody in');
+  ownBy(s, aldric.person.id, 'holly', { bump: true }); // what her approved claim (or a Battle.net proof) leaves
+  const linked = { status: 200, json: (await s.call('bob', 'GET', `/roster/${aldric.person.id}`)).json };
   assert.deepEqual(linked.json.person.account.via, 'link');
   assert.equal(linked.json.person.account.user.displayName, 'Holly');
   assert.equal(linked.json.person.version, aldric.person.version + 1);
@@ -988,7 +998,7 @@ check('membership: an officer links a Battle.net-only account to a roster person
   assert.equal((await s.call('bob', 'GET', `/roster/${aldric.person.id}`)).json.person.account.user, null, 'a blocked account does not count as signed in');
   assert.equal((await w.call(s.jars.alice, 'DELETE', `${s.guildPath}/people/${s.ids.holly}/block`, {})).status, 200);
   assert.equal((await w.call(holly, 'GET', s.guildPath)).status, 200);
-  // Unlinking ends the membership.
+  // Unlinking (clearing players.user_id, the one write of it that staff keep) ends the membership.
   const unlinked = await linkAccount(s, 'bob', aldric.person.id, null);
   assert.equal(unlinked.status, 200);
   assert.equal(unlinked.json.person.account.user, null);
@@ -1008,55 +1018,69 @@ check('membership: a Discord ID on a roster person without a Discord server memb
 // ---------------------------------------------------------------------------
 // The officers' side: link an account to a person, look an account up
 
-check('PUT /roster/:pid/account: link and unlink with the rights of the person\'s home team, audited with internal ids, bumping the version', async () => {
+check("PUT /roster/:pid/account: Link account records the account's Discord ID with the rights of the person's home team (audited, version bumped) and never writes the owner; the unlink clears players.user_id", async () => {
   const s = await scenario();
   const { w } = s;
   await signUpHolly(s);
-  await signUpHolly(s, 'ivan');
   const aldric = await addPerson(s, 'bob', s.A, 'Aldric');
   const dunmar = await addPerson(s, 'bob', s.B, 'Dunmar');
   const pid = aldric.person.id;
   // Who may: Guild Master, Officer, the Team Lead of the home team. Not another team's lead, not a member.
   for (const [who, status] of [['erin', 403], ['dave', 403], ['gina', 403]]) {
-    assert.equal((await linkAccount(s, who, pid, s.ids.holly)).status, status, who);
+    assert.equal((await linkAccount(s, who, pid, s.ids.erin)).status, status, who);
   }
   assert.equal(await w.count('audit_log', "action = 'person.account_link'"), 0);
-  // A Team Lead may not let a stranger into the whole guild: Holly is no member and sent no claim.
-  const stranger = await linkAccount(s, 'carol', pid, s.ids.holly);
+  // A Battle.net-only account has no Discord ID to record: its player claims the record themselves (409), and nothing wrote an owner.
+  const noDiscord = await linkAccount(s, 'bob', pid, s.ids.holly);
+  assert.deepEqual([noDiscord.status, noDiscord.json.error, noDiscord.json.field], [409, 'no_discord_id', 'userId']);
+  assert.match(noDiscord.json.message, /claims this record themselves/);
+  assert.equal(await w.count('players', 'user_id IS NOT NULL OR discord_user_id IS NOT NULL'), 0);
+  // A Team Lead records only the Discord ID of an account that already is a member or has a claim waiting here; any other account is an Officer's lookup.
+  const outsider = await signIn(w, PEOPLE.frank, []);
+  const outsiderId = (await w.call(outsider, 'GET', '/auth/me')).json.user.id;
+  const stranger = await linkAccount(s, 'carol', pid, outsiderId);
   assert.deepEqual([stranger.status, stranger.json.error], [403, 'forbidden']);
-  assert.equal(await w.count('players', 'user_id IS NOT NULL'), 0);
-  // An account that is already a member, or has a claim waiting here, they may link (to a person of their own team).
   const cassia = await addPerson(s, 'bob', s.A, 'Cassia');
   const lead = await linkAccount(s, 'carol', cassia.person.id, s.ids.gina);
   assert.equal(lead.status, 200, JSON.stringify(lead.json));
-  assert.deepEqual(lead.json.rosterFlags, { [s.A]: 0 }, 'the reply carries the nav counts like every person write (a Team Lead\'s own team)');
-  assert.equal((await linkAccount(s, 'carol', cassia.person.id, null)).status, 200, 'and unlink it');
-  assert.deepEqual(await w.rows("SELECT actor_user_id, action FROM audit_log WHERE action LIKE 'person.account_%' ORDER BY created_at, rowid"), [
-    { actor_user_id: s.ids.carol, action: 'person.account_link' }, { actor_user_id: s.ids.carol, action: 'person.account_unlink' },
-  ]);
+  assert.deepEqual(lead.json.rosterFlags, { [s.A]: 0 }, "the reply carries the nav counts like every person write (a Team Lead's own team)");
+  assert.deepEqual([lead.json.person.account.via, lead.json.person.account.linked], ['discord', false], 'a Discord ID on the person: the account shows, it is not the owner');
+  assert.equal((await w.rows('SELECT discord_user_id, user_id FROM players WHERE id = ?', cassia.person.id))[0].discord_user_id, PEOPLE.gina.id);
+  assert.equal((await w.rows('SELECT user_id FROM players WHERE id = ?', cassia.person.id))[0].user_id, null);
+  assert.equal(await w.count('players', 'user_id IS NOT NULL'), 0, 'no owner was written');
+  assert.equal((await linkAccount(s, 'carol', cassia.person.id, null)).status, 200, 'unlinking a person with no owner changes nothing');
+  assert.deepEqual(await w.rows("SELECT actor_user_id, action FROM audit_log WHERE action LIKE 'person.account_%' ORDER BY created_at, rowid"), [{ actor_user_id: s.ids.carol, action: 'person.account_link' }]);
   // The log is append-only (migration 0034): the cassia rows above stay and the checks below look at the rows of this person only.
-  const byLead = await linkAccount(s, 'bob', pid, s.ids.holly);
-  assert.equal(byLead.status, 200, JSON.stringify(byLead.json));
-  assert.equal(byLead.json.person.account.user.id, s.ids.holly);
-  const stored = (await w.rows('SELECT user_id, version FROM players WHERE id = ?', pid))[0];
-  assert.deepEqual([stored.user_id, stored.version], [s.ids.holly, aldric.person.version + 1]);
+  const byOfficer = await linkAccount(s, 'bob', pid, s.ids.erin);
+  assert.equal(byOfficer.status, 200, JSON.stringify(byOfficer.json));
+  assert.equal(byOfficer.json.person.account.user.id, s.ids.erin);
+  const stored = (await w.rows('SELECT user_id, discord_user_id, version FROM players WHERE id = ?', pid))[0];
+  assert.deepEqual([stored.user_id, stored.discord_user_id, stored.version], [null, PEOPLE.erin.id, aldric.person.version + 1]);
   assert.deepEqual(await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, before, after FROM audit_log WHERE action = 'person.account_link' AND entity_id = ?", pid), [{
-    guild_id: s.guildId, actor_user_id: s.ids.bob, entity_type: 'person', entity_id: pid, before: JSON.stringify({ userId: null }), after: JSON.stringify({ userId: s.ids.holly }),
+    guild_id: s.guildId, actor_user_id: s.ids.bob, entity_type: 'person', entity_id: pid, before: JSON.stringify({ userId: null }), after: JSON.stringify({ userId: s.ids.erin, recordedDiscord: true }),
   }]);
-  // The same link again changes nothing; a different account needs the first unlinked.
-  assert.equal((await linkAccount(s, 'bob', pid, s.ids.holly)).status, 200);
+  // The same link again changes nothing; a different account needs the Discord ID taken off first.
+  assert.equal((await linkAccount(s, 'bob', pid, s.ids.erin)).status, 200);
   assert.equal(await w.count('audit_log', "action = 'person.account_link' AND entity_id = ?", pid), 1);
-  const other = await linkAccount(s, 'bob', pid, s.ids.ivan);
-  assert.deepEqual([other.status, other.json.error], [409, 'already_linked']);
-  // One person per account in a guild.
-  const twice = await linkAccount(s, 'bob', dunmar.person.id, s.ids.holly);
+  const other = await linkAccount(s, 'bob', pid, s.ids.gina);
+  assert.deepEqual([other.status, other.json.error], [409, 'discord_linked']);
+  // One person per Discord ID in a guild.
+  const twice = await linkAccount(s, 'bob', dunmar.person.id, s.ids.erin);
   assert.deepEqual([twice.status, twice.json.error], [409, 'already_linked']);
-  // Unlink: the lead of another team may not; the officer may; unlinking an unlinked person is a no-op.
+  // A person an account owns is not given a different account's Discord ID, and an owner may have their own recorded.
+  w.db.sqlite.exec(`UPDATE players SET discord_user_id = NULL WHERE id = '${pid}'`);
+  ownBy(s, pid, 'gina');
+  const notOwner = await linkAccount(s, 'bob', pid, s.ids.erin);
+  assert.deepEqual([notOwner.status, notOwner.json.error], [409, 'already_linked']);
+  w.db.sqlite.exec(`UPDATE players SET discord_user_id = NULL WHERE id = '${cassia.person.id}'`);
+  assert.equal((await linkAccount(s, 'bob', pid, s.ids.gina)).status, 200, "the owner's own Discord ID may be recorded");
+  assert.equal((await w.rows('SELECT user_id, discord_user_id FROM players WHERE id = ?', pid))[0].user_id, s.ids.gina);
+  // Unlink: the lead of another team may not; the officer may (it clears the owner); unlinking a person with no owner is a no-op.
   assert.equal((await linkAccount(s, 'dave', pid, null)).status, 403);
   const off = await linkAccount(s, 'bob', pid, null);
   assert.equal(off.status, 200, JSON.stringify(off.json));
-  assert.equal(off.json.person.account.user, null);
-  assert.deepEqual(await w.rows("SELECT before, after FROM audit_log WHERE action = 'person.account_unlink' AND entity_id = ?", pid), [{ before: JSON.stringify({ userId: s.ids.holly }), after: JSON.stringify({ userId: null }) }]);
+  assert.equal((await w.rows('SELECT user_id FROM players WHERE id = ?', pid))[0].user_id, null);
+  assert.deepEqual(await w.rows("SELECT before, after FROM audit_log WHERE action = 'person.account_unlink' AND entity_id = ?", pid), [{ before: JSON.stringify({ userId: s.ids.gina }), after: JSON.stringify({ userId: null }) }]);
   assert.equal((await linkAccount(s, 'bob', pid, null)).status, 200);
   assert.equal(await w.count('audit_log', "action = 'person.account_unlink' AND entity_id = ?", pid), 1);
   // Validation and lookups of what does not exist.
@@ -1065,44 +1089,44 @@ check('PUT /roster/:pid/account: link and unlink with the rights of the person\'
     assert.deepEqual([r.status, r.json.error, r.json.field], [400, 'bad_request', 'userId'], JSON.stringify(body));
   }
   assert.equal((await linkAccount(s, 'bob', pid, `u_${'A'.repeat(22)}`)).status, 404);
-  assert.equal((await s.call('bob', 'PUT', `/roster/p_${'A'.repeat(22)}/account`, { userId: s.ids.holly })).status, 404);
+  assert.equal((await s.call('bob', 'PUT', `/roster/p_${'A'.repeat(22)}/account`, { userId: s.ids.erin })).status, 404);
   // Signed out: 401. The audit rows hold ids only.
   assert.equal((await w.call({}, 'PUT', `${s.guildPath}/roster/${pid}/account`, { userId: null })).status, 401);
   for (const row of await w.rows("SELECT before, after FROM audit_log WHERE action LIKE 'person.account_%'")) assert(!/Holly|Ivan|battletag|#/.test(`${row.before}${row.after}`));
 });
 
-check('PUT /roster/:pid/account: a person carrying another Discord ID, an account that is blocked, and one that is another person\'s are refused; the person\'s own Discord account may be linked too', async () => {
+check("PUT /roster/:pid/account: a person recording another Discord ID, an account that is blocked, and one whose Discord ID is another person's are refused; the person's own Discord account may be recorded", async () => {
   const s = await scenario();
   const { w } = s;
   await signUpHolly(s);
   const withDiscord = await addPerson(s, 'bob', s.A, 'Aldric', { linkUserId: s.ids.erin });
   const plainPerson = await addPerson(s, 'bob', s.A, 'Brindle');
-  // Aldric carries Erin's Discord ID: a Battle.net-only account cannot be put on him, Erin's own account can (it adds nothing but is allowed).
-  const refused = await linkAccount(s, 'bob', withDiscord.person.id, s.ids.holly);
+  // Aldric records Erin's Discord ID: another account cannot be put on him, Erin's own account can (a no-op, allowed).
+  const refused = await linkAccount(s, 'bob', withDiscord.person.id, s.ids.gina);
   assert.deepEqual([refused.status, refused.json.error], [409, 'discord_linked']);
   assert.equal((await linkAccount(s, 'bob', withDiscord.person.id, s.ids.erin)).status, 200);
-  // Gina is Brindle's by Discord ID elsewhere: cannot also be Aldric's... (Gina already belongs to Brindle via the Discord field)
+  // Gina's Discord ID is Brindle's: it cannot also be Cassia's.
   w.db.sqlite.exec(`UPDATE players SET discord_user_id = '${PEOPLE.gina.id}' WHERE id = '${plainPerson.person.id}'`);
   const taken = await linkAccount(s, 'bob', (await addPerson(s, 'bob', s.A, 'Cassia')).person.id, s.ids.gina);
   assert.deepEqual([taken.status, taken.json.error], [409, 'already_linked']);
-  // Blocked accounts cannot be linked.
+  // Blocked accounts cannot be linked (and a Battle.net-only one has nothing to record anyway: blocked is checked first).
   w.db.sqlite.exec(`INSERT INTO guild_blocks (guild_id, user_id, created_at) VALUES ('${s.guildId}', '${s.ids.holly}', 1)`);
   const blocked = await linkAccount(s, 'bob', (await addPerson(s, 'bob', s.B, 'Fenwick')).person.id, s.ids.holly);
   assert.deepEqual([blocked.status, blocked.json.error], [409, 'account_blocked']);
   assert.equal(await w.count('players', 'user_id = ?', s.ids.holly), 0);
-  // The existing Discord link keeps refusing a member who already belongs to a person by account link.
+  // The Discord field keeps refusing a member whose Discord ID or account already belongs to a person.
   w.db.sqlite.exec(`DELETE FROM guild_blocks WHERE user_id = '${s.ids.holly}'`);
   const dunmar = await addPerson(s, 'bob', s.B, 'Dunmar');
-  await linkAccount(s, 'bob', dunmar.person.id, s.ids.erin).then((r) => assert.equal(r.status, 409, 'Erin is Aldric\'s already'));
+  await linkAccount(s, 'bob', dunmar.person.id, s.ids.erin).then((r) => assert.equal(r.status, 409, "Erin's Discord ID is Aldric's already"));
   const dup = await s.call('bob', 'PATCH', `/roster/${dunmar.person.id}`, { expectedVersion: dunmar.person.version, linkUserId: s.ids.erin });
   assert.deepEqual([dup.status, dup.json.error], [409, 'already_linked']);
-  // And the linkable list of the Discord field leaves out members who already belong to a person by account link.
+  // And the linkable list of the Discord field leaves out members whose Discord ID is on a person, and members who own one.
   const gale = await signIn(w, PEOPLE.gale, [plain(SERVER_A)]);
   const galeId = (await w.call(gale, 'GET', '/auth/me')).json.user.id;
   const mia = await addPerson(s, 'bob', s.A, 'Mirelle');
   assert.equal((await linkAccount(s, 'bob', mia.person.id, galeId)).status, 200);
   const linkable = (await s.call('bob', 'GET', '/roster/linkable')).json.users.map((u) => u.id);
-  assert(!linkable.includes(galeId), 'Gale belongs to Mirelle through the account link');
+  assert(!linkable.includes(galeId), "Gale's Discord ID is on Mirelle");
   assert(!linkable.includes(s.ids.holly), 'a Battle.net-only account has no Discord to link');
 });
 
@@ -1119,7 +1143,8 @@ check('GET /accounts?q=: only the accounts that claimed here (no q) or whose Bat
   assert.equal((await pendClaim(s, 'erin', 'Eliora')).status, 201);
   const claimants = (await lookup('bob')).json.accounts;
   assert.deepEqual(claimants.map((a) => [a.id, a.displayName, a.battletag, a.matchedBy]), [[s.ids.erin, 'Erin E', null, 'claim']]);
-  assert.deepEqual(Object.keys(claimants[0]).sort(), ['ambiguous', 'avatarUrl', 'battletag', 'displayName', 'id', 'initials', 'matchedBy', 'username']);
+  assert.deepEqual(Object.keys(claimants[0]).sort(), ['ambiguous', 'avatarUrl', 'battletag', 'displayName', 'id', 'initials', 'matchedBy', 'nameSuffix', 'username']);
+  assert.equal(claimants[0].nameSuffix, '', 'a name of its own needs no suffix');
   assert.deepEqual([claimants[0].username, claimants[0].ambiguous], ['', false], 'never the Discord handle');
   // Exact BattleTag, any case; the answer carries the BattleTag the officer typed.
   for (const q of ['Holly#1111', 'holly#1111', 'HOLLY#1111']) {
@@ -1146,6 +1171,9 @@ check('GET /accounts?q=: only the accounts that claimed here (no q) or whose Bat
   await w.call(s.jars.ivan, 'PATCH', '/api/me', { displayName: 'Hollyhock' });
   const twin = (await lookup('bob', 'Hollyhock')).json.accounts;
   assert.deepEqual(twin.map((a) => [a.id, a.matchedBy, a.ambiguous, a.username]).sort(), [[s.ids.holly, 'name', true, ''], [s.ids.ivan, 'name', true, '']].sort());
+  const suffixes = twin.map((a) => a.nameSuffix);
+  assert(suffixes.every((x) => /^#[A-Za-z0-9_-]{4,}$/.test(x)) && new Set(suffixes).size === 2, 'each of the two shows a different short suffix: ' + suffixes.join(' '));
+  for (const a of twin) assert(a.id.endsWith(a.nameSuffix.slice(1)), 'the suffix is the tail of the account id');
   // Length: 3 to 64 characters, otherwise a 400.
   for (const q of ['ab', 'x'.repeat(65)]) {
     const r = await lookup('bob', q);
@@ -1153,8 +1181,8 @@ check('GET /accounts?q=: only the accounts that claimed here (no q) or whose Bat
   }
   // Accounts that already belong to a person here, or are blocked here, are not offered.
   const aldric = await addPerson(s, 'bob', s.A, 'Aldric');
-  await linkAccount(s, 'bob', aldric.person.id, s.ids.holly);
-  assert.deepEqual((await lookup('bob', 'Holly#1111')).json.accounts, []);
+  ownBy(s, aldric.person.id, 'holly');
+  assert.deepEqual((await lookup('bob', 'Holly#1111')).json.accounts, [], 'an owner of a person is not offered');
   await w.call(s.jars.alice, 'POST', `${s.guildPath}/people/${s.ids.ivan}/block`, {}).then((r) => assert.equal(r.status, 404, 'Ivan is no member to block'));
   await addPerson(s, 'bob', s.A, 'Eliora', { linkUserId: s.ids.erin });
   assert.deepEqual((await lookup('bob')).json.accounts, [], 'Erin is a person now: no longer offered');
@@ -1211,12 +1239,12 @@ check('claims: an approved claim links the claimant\'s ACCOUNT to the person (pl
   assert.equal((await s.call('bob', 'POST', `/claims/${second.id}/approve`, approveBody('add_alt', { teamId: s.A }))).status, 200);
 });
 
-check('claims: a Battle.net-only member (linked to a person by an officer) loads her characters at her next Battle.net sign-in and adds an Alt to her own person at once', async () => {
+check('claims: a Battle.net-only member (who owns a person: players.user_id) loads her characters at her next Battle.net sign-in and adds an Alt to her own person at once', async () => {
   const s = await scenario();
   const { w } = s;
   const holly = await signUpHolly(s);
   const aldric = await addPerson(s, 'bob', s.A, 'Aldric');
-  assert.equal((await linkAccount(s, 'bob', aldric.person.id, s.ids.holly)).status, 200);
+  ownBy(s, aldric.person.id, 'holly', { bump: true });
   // Her snapshot predates the guild: she is asked to refresh.
   let view = (await w.call(holly, 'GET', '/auth/bnet')).json;
   assert.equal(view.guilds[0].status, 'needs_refresh');
@@ -1277,7 +1305,7 @@ check('Delete my data for a Battle.net-only account: the account, its link and s
   const { w } = s;
   const holly = await signUpHolly(s);
   const aldric = await addPerson(s, 'bob', s.A, 'Aldric');
-  await linkAccount(s, 'bob', aldric.person.id, s.ids.holly);
+  ownBy(s, aldric.person.id, 'holly', { bump: true });
   const version = (await w.rows('SELECT version FROM players WHERE id = ?', aldric.person.id))[0].version;
   await s.w.call(s.jars.bob, 'GET', `${s.guildPath}/accounts?q=Nobody`); // an acct: window
   const del = await w.call(holly, 'DELETE', '/auth/me', { deleteGuildIds: [] });
@@ -1291,7 +1319,7 @@ check('Delete my data for a Battle.net-only account: the account, its link and s
   assert(del.headers.getSetCookie().some((c) => c.startsWith('__Host-rs_session=;')));
   assert.equal((await w.call(holly, 'GET', '/auth/me')).status, 401);
   assert.equal(await w.count('audit_log', "action = 'account.delete'"), 1);
-  assert.equal(await w.count('audit_log', "action = 'person.account_link' AND actor_user_id IS NOT NULL"), 1, 'the officer\'s audit row stays');
+  assert.equal(await w.count('audit_log', "action = 'person.account_link'"), 0, 'the owner came from a claim or a proof, not from an officer link: no link row exists');
   // The Battle.net account is free again: signing up with it makes a brand-new account.
   const again = await bnetSignIn(w, BNET.holly);
   assert.equal(locationOf(again.callback), '/#/');
@@ -1308,7 +1336,7 @@ const upcomingRaid = async (s, teamId = s.A) => {
   return made.json.raid.id;
 };
 
-check('sign-ups: a Battle.net-only account an officer linked to a person signs up for a raid of its team; an unlinked one cannot, and neither can a linked one for another team', async () => {
+check('sign-ups: a Battle.net-only account that owns a person signs up for a raid of its team; an unlinked one cannot, and neither can a linked one for another team', async () => {
   const s = await scenario();
   const { w } = s;
   const holly = await signUpHolly(s);
@@ -1323,8 +1351,8 @@ check('sign-ups: a Battle.net-only account an officer linked to a person signs u
   }
   assert.equal(await w.count('raid_signups', "source = 'raidsmith'"), 0);
 
-  // Linked by an officer: she is a member with the rights of her own team, and the sign-up panel knows her person.
-  assert.equal((await linkAccount(s, 'bob', aldric.person.id, s.ids.holly)).status, 200);
+  // She owns the person (players.user_id): she is a member with the rights of her own team, and the sign-up panel knows her person.
+  ownBy(s, aldric.person.id, 'holly', { bump: true });
   const panel = await w.call(holly, 'GET', `${s.guildPath}/raids/${raidA}/signups`);
   assert.equal(panel.status, 200, JSON.stringify(panel.json));
   assert.deepEqual([panel.json.can.self, panel.json.me.personId, panel.json.me.canChange], [true, aldric.person.id, true]);
@@ -1359,24 +1387,27 @@ check('sign-ups: a Battle.net-only account an officer linked to a person signs u
   assert.deepEqual(await w.rows("SELECT kind FROM raid_signups WHERE source = 'raidsmith'"), [{ kind: 'signed' }]);
 });
 
-check('sign-ups: the same person is found by link or by Discord ID, whichever the account has - Discord added to a Battle.net account later, and a Discord account with no link', async () => {
+check('sign-ups: the person is found by players.user_id only - a Discord ID on the person finds nobody; Discord added to a Battle.net account later changes nothing', async () => {
   const s = await scenario();
   const { w } = s;
   const raid = await upcomingRaid(s, s.A);
   const sign = (jar, body = { kind: 'signed' }) => w.call(jar, 'PUT', `${s.guildPath}/raids/${raid}/signup`, body);
-  // Erin: in the Discord server, her person carries her Discord ID (no account link).
+  // Erin: in the Discord server, a person records her Discord ID (bookkeeping). That is not hers: no sign-up until she owns it.
   const eliora = await addPerson(s, 'bob', s.A, 'Eliora', { class: 'PRIEST', mainSpec: 'Holy' });
   await w.db.prepare('UPDATE players SET discord_user_id = ? WHERE id = ?').bind(PEOPLE.erin.id, eliora.person.id).run();
+  const bookkeeping = await sign(s.jars.erin);
+  assert.deepEqual([bookkeeping.status, bookkeeping.json.error], [403, 'forbidden']);
+  ownBy(s, eliora.person.id, 'erin');
   const erin = await sign(s.jars.erin);
   assert.equal(erin.status, 200, JSON.stringify(erin.json));
   assert.equal(erin.json.me.personId, eliora.person.id);
   // Gina: in the Discord server, nothing links her to a person: no sign-up.
   const none = await sign(s.jars.gina);
   assert.deepEqual([none.status, none.json.error], [403, 'forbidden']);
-  // Holly: Battle.net only, linked by an officer to a person with no Discord ID; she connects Discord afterwards (not in the server).
+  // Holly: Battle.net only, owns a person with no Discord ID; she connects Discord afterwards (not in the server).
   const holly = await signUpHolly(s);
   const brindle = await addPerson(s, 'bob', s.A, 'Brindle', { class: 'MAGE', mainSpec: 'Fire' });
-  assert.equal((await linkAccount(s, 'bob', brindle.person.id, s.ids.holly)).status, 200);
+  ownBy(s, brindle.person.id, 'holly');
   const linked = await discordLink(w, holly, PEOPLE.gale, []);
   assert.equal(locationOf(linked.callback), '/#/linked', 'Discord connected');
   const hollySign = await sign(holly);
@@ -1394,7 +1425,7 @@ check('Delete my data for a Battle.net-only account that signed up: its notes go
   const holly = await signUpHolly(s);
   const aldric = await addPerson(s, 'bob', s.A, 'Aldric');
   const brindle = await addPerson(s, 'bob', s.A, 'Brindle', { class: 'MAGE', mainSpec: 'Fire' });
-  await linkAccount(s, 'bob', aldric.person.id, s.ids.holly);
+  ownBy(s, aldric.person.id, 'holly');
   const raid = await upcomingRaid(s, s.A);
   assert.equal((await w.call(holly, 'PUT', `${s.guildPath}/raids/${raid}/signup`, { kind: 'signed', note: 'my own words' })).status, 200);
   assert.equal((await s.call('bob', 'PUT', `/raids/${raid}/signups/${brindle.person.id}`, { kind: 'bench', note: 'officer note' })).status, 200);
@@ -1409,7 +1440,7 @@ check('Delete my data for a Battle.net-only account that signed up: its notes go
   assert.equal((await w.rows('SELECT user_id FROM players WHERE id = ?', aldric.person.id))[0].user_id, null, 'the person is unlinked from the deleted account');
 });
 
-check('Delete my data for a Guild Master: someone linked to a roster person counts as another member, so the guild is handed over, not deleted', async () => {
+check('Delete my data for a Guild Master: someone who owns a roster person counts as another member, so the guild is handed over, not deleted', async () => {
   const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
   const alice = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
   const created = await w.call(alice, 'POST', '/api/guild', { ...GUILD_BODY, multipleTeams: false });
@@ -1421,7 +1452,7 @@ check('Delete my data for a Guild Master: someone linked to a roster person coun
   const hollyId = (await w.call(holly, 'GET', '/auth/me')).json.user.id;
   const made = await w.call(alice, 'POST', `/api/guild/${gid}/roster`, { teamId: created.json.teams[0].id, name: 'Aldric', class: 'WARRIOR', mainSpec: 'Arms', status: 'raider' });
   assert.equal(made.status, 201, JSON.stringify(made.json));
-  assert.equal((await w.call(alice, 'PUT', `/api/guild/${gid}/roster/${made.json.person.id}/account`, { userId: hollyId })).status, 200);
+  w.db.sqlite.prepare('UPDATE players SET user_id = ? WHERE id = ?').run(hollyId, made.json.person.id); // Holly owns the person (players.user_id)
   const after = (await w.call(alice, 'GET', '/auth/me')).json.deleteImpact;
   assert.deepEqual([after.handOverFirst, after.guildsDeleted], [[{ id: gid, name: 'Ember' }], []]);
   const blocked = await w.call(alice, 'DELETE', '/auth/me', { deleteGuildIds: [] });

@@ -102,7 +102,7 @@ export async function putStanding(ctx) {
 
   const now = ctx.now();
   const keep = JSON.stringify(rows.map((row) => row.weekday));
-  const guard = { sql: OWN_GUARD, params: [personId, guild.id, ctx.session.user.id, ctx.session.user.id] };
+  const guard = { sql: OWN_GUARD, params: [personId, guild.id, ctx.session.user.id] };
   await db.batch([
     db.prepare(
       `DELETE FROM standing_signups WHERE guild_id = ? AND team_id = ? AND player_id = ? AND weekday NOT IN (SELECT value FROM json_each(?)) AND ${guard.sql}`,
