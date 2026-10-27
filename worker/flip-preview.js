@@ -38,7 +38,7 @@ import { serverIdIsDiscordSql } from './discord-guard.js';
 import { ownerCandidatesSql, seatHolderSql } from './owner.js';
 import { hashToken } from './session.js';
 import { visibleCharacterSql } from './character-visibility.js';
-import { nameBindingSection, ranksSection, willBeOnRosterSql } from './flip-binding.js';
+import { boundByNameSection, notOnRosterSection, ranksSection, restriction, willBeOnRosterSql } from './flip-binding.js';
 
 export const FLIP_SAMPLES = 25;
 export const FLIP_PURPOSE = 'flip';
@@ -73,7 +73,7 @@ const NAME_OF = (userExpr) => `COALESCE((SELECT fm.name FROM players fp JOIN cha
 const PERSON_OF = (userExpr) => `(SELECT lp.id FROM players lp WHERE lp.guild_id = ${GUILD} AND lp.user_id = ${userExpr})`;
 
 // One row per account of the universe that is not blocked: what it is today, and what it would be after the flip.
-const ACCOUNTS_CTE = `WITH proven AS (${PROVEN_AFTER}), base AS (
+const accountsCte = (only) => `WITH proven AS (${PROVEN_AFTER}), base AS (
   SELECT u.id AS user_id, u.discord_id, u.display_name, u.global_name, u.username,
          ${memberSql('u.id', GUILD, SERVER)} AS today,
          ${unsuspendedOwnerSql('u.id', GUILD)} AS is_owner,
@@ -85,13 +85,13 @@ const ACCOUNTS_CTE = `WITH proven AS (${PROVEN_AFTER}), base AS (
 ), acc AS (
   SELECT b.*, b.linked_person AS person_id,
          CASE WHEN b.owner_live = 1 THEN 1
-              WHEN b.linked_person IS NOT NULL AND ${willBeOnRosterSql('b.linked_person', GUILD)} THEN 1
+              WHEN b.linked_person IS NOT NULL AND ${willBeOnRosterSql('b.linked_person', GUILD, only)} THEN 1
               ELSE 0 END AS after_member
     FROM base b
 )`;
 
 // loses / gains rows, every one (ids and reasons are hashed; the names are display only).
-const ACCESS_ROWS_SQL = `${ACCOUNTS_CTE}
+const accessRowsSql = (only) => `${accountsCte(only)}
 SELECT CASE WHEN a.today = 1 THEN 'loses' ELSE 'gains' END AS kind,
        CASE WHEN a.today = 1 THEN
               CASE WHEN a.person_id IS NULL THEN (CASE WHEN a.is_owner = 1 AND ${rankSourceSql(GUILD)} = 'manual' THEN 'owner_exemption'
@@ -108,12 +108,12 @@ SELECT CASE WHEN a.today = 1 THEN 'loses' ELSE 'gains' END AS kind,
  WHERE a.today != a.after_member
  ORDER BY kind, reason, name, a.user_id`;
 
-const ACCESS_TOTALS_SQL = `${ACCOUNTS_CTE}
+const accessTotalsSql = (only) => `${accountsCte(only)}
 SELECT COALESCE(SUM(a.today), 0) AS today_members, COALESCE(SUM(a.after_member), 0) AS after_members FROM acc a`;
 
 // The persons that record an account's Discord ID with nobody owning them, for an account that owns no person of the guild: the account claims the person ("This is me"), the
 // flip does not link it. (An account that owns another person of the guild already has its person; the Discord ID on this one is bookkeeping and needs no claim.)
-const NEEDS_CLAIM_SQL = `SELECT dp.id AS person_id, du.id AS user_id, ${willBeOnRosterSql('dp.id', GUILD)} AS on_roster,
+const needsClaimSql = (only) => `SELECT dp.id AS person_id, du.id AS user_id, ${willBeOnRosterSql('dp.id', GUILD, only)} AS on_roster,
        ${unsuspendedOwnerSql('du.id', GUILD)} AS is_owner,
        ${MAIN_NAME('dp.id')} AS name
   FROM players dp JOIN users du ON du.discord_id = dp.discord_user_id
@@ -125,7 +125,10 @@ const tally = (rows, key) => rows.reduce((counts, row) => ({ ...counts, [row[key
 
 const accessSection = {
   key: 'access',
-  statements: (db, guildId) => [db.prepare(ACCESS_ROWS_SQL).bind(guildId), db.prepare(ACCESS_TOTALS_SQL).bind(guildId)],
+  statements(db, guildId, options) {
+    const { only, values } = restriction(options);
+    return [db.prepare(accessRowsSql(only)).bind(guildId, ...values), db.prepare(accessTotalsSql(only)).bind(guildId, ...values)];
+  },
   build([rowResult, totalResult]) {
     const rows = rowResult.results;
     const list = (kind, label) => {
@@ -161,7 +164,10 @@ const accessSection = {
 
 const needsClaimSection = {
   key: 'needsClaim',
-  statements: (db, guildId) => [db.prepare(NEEDS_CLAIM_SQL).bind(guildId)],
+  statements(db, guildId, options) {
+    const { only, values } = restriction(options);
+    return [db.prepare(needsClaimSql(only)).bind(guildId, ...values)];
+  },
   build([result]) {
     const rows = result.results;
     return {
@@ -311,9 +317,12 @@ const ownerSection = {
   },
 };
 
-// The sections, in order. Lane B9 adds the NAME BINDING (the id-less characters the flip binds to the stored roster by name, which the Owner confirms with the approval) and the RANK
-// CHANGES (what every character's core rank becomes, counted as if the binding had happened): worker/flip-binding.js. The approval covers both lists.
-export const FLIP_SECTIONS = [accessSection, needsClaimSection, permissionsSection, ownerSection, nameBindingSection, ranksSection];
+// The sections, in order. Lane B9 adds the BOUND-BY-NAME list (the id-less characters the flip can bind to the stored roster by name; the Owner ticks the ones to bind), the RANK
+// CHANGES (what every character's core rank becomes, counted as if the binding had happened) and the characters NOT ON THE ROSTER (Social / Former): worker/flip-binding.js. The
+// approval covers all three lists in full.
+export const FLIP_SECTIONS = [accessSection, needsClaimSection, permissionsSection, ownerSection, boundByNameSection, ranksSection, notOnRosterSection];
+// The three sections whose lines depend on which characters are bound: the flip runs them a second time for the ids the Owner confirmed.
+export const BINDING_DEPENDENT_KEYS = ['access', 'needsClaim', 'ranks', 'notOnRoster'];
 
 // 'flip:' + the hash of the parts. The prefix is the purpose (worker/dry-run.js): a token minted here is never valid for a rank-map change, and the other way round.
 export async function flipStateHash(hashParts) {
@@ -323,11 +332,11 @@ export async function flipStateHash(hashParts) {
 const GUILD_ROW_SQL = `SELECT id, rank_source, last_good_sync_id, pinned_guild_slug IS NOT NULL AND pinned_realm_slug IS NOT NULL AND pinned_namespace IS NOT NULL
        AND blizzard_guild_id IS NOT NULL AND blizzard_realm_id IS NOT NULL AS pin_complete FROM guilds WHERE id = ?`;
 
-// -> { guild: { id, rankSource, rosterSyncId, hasGoodSync, pinComplete } | null, payload, hashParts (what the token covers, per section: the flip binds the ids of nameBinding's), stateHash }. One batch: the guild row and every section's reads come from the same snapshot.
-export async function previewFlip(db, guildId, sections = FLIP_SECTIONS) {
+// -> { guild: { id, rankSource, rosterSyncId, hasGoodSync, pinComplete } | null, payload, hashParts (what the token covers, per section: the flip binds the ids of boundByName's), stateHash }. One batch: the guild row and every section's reads come from the same snapshot.
+export async function previewFlip(db, guildId, sections = FLIP_SECTIONS, options = null) {
   const statements = [db.prepare(GUILD_ROW_SQL).bind(guildId)];
   const spans = sections.map((section) => {
-    const own = section.statements(db, guildId);
+    const own = section.statements(db, guildId, options);
     const span = { start: statements.length, length: own.length };
     statements.push(...own);
     return span;

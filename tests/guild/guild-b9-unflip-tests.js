@@ -36,7 +36,7 @@ function check(name, fn) {
 async function flipped(options) {
   const s = await flipWorld(options);
   const dry = (await dryRun(s)).json;
-  const res = await flipWith(s, dry.token);
+  const res = await flipWith(s, dry);
   assert.equal(res.status, 200, res.text);
   return s;
 }
@@ -229,7 +229,7 @@ check('B9 acceptance: after flip + unflip the login, the permissions and the cla
   assert.equal(before.out.dis.guild[0], 200, 'the Discord-only member is a member before');
   assert.equal(before.out.out.guild[0] >= 400, true);
   const dry = (await dryRun(s)).json;
-  const res = await flipWith(s, dry.token);
+  const res = await flipWith(s, dry);
   assert.equal(res.status, 200, res.text);
   // (Under the in-game rule the Discord-only member is out: the flip really changed the answers.)
   const during = await snapshot(s);

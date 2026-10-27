@@ -129,10 +129,14 @@ const dryRun = (s, who = 'gm') => s.call(who, 'POST', '/flip/dry-run', {});
 // The fresh grant of the source switch, written on the session row (no OAuth: this is about the act).
 const grant = (s, who = 'gm', extra = {}) => s.grant(who, { purpose: 'source_switch', guildId: s.gid, params: SWITCH, ...extra });
 
-// POST /flip with its grant (grant: false = none, or an object = the grant's own fields).
-async function flipWith(s, token, who = 'gm', { grant: wanted = true } = {}) {
+// The body of POST /flip for a dry run's answer: its token and every character of its boundByName list ticked (confirmed = a subset to tick fewer).
+const flipBody = (dry, confirmed) => ({ token: dry.token, confirmedCharacterIds: confirmed === undefined ? dry.boundByName.ids : confirmed });
+
+// POST /flip with its grant (grant: false = none, or an object = the grant's own fields). `dry`: the dry run's answer (or a bare token, which ticks nothing).
+async function flipWith(s, dry, who = 'gm', { grant: wanted = true, confirmed } = {}) {
   if (wanted) await grant(s, who, wanted === true ? {} : wanted);
-  return s.call(who, 'POST', '/flip', token === undefined ? {} : { token });
+  const body = dry === undefined ? {} : (typeof dry === 'string' ? { token: dry, confirmedCharacterIds: confirmed === undefined ? [] : confirmed } : flipBody(dry, confirmed));
+  return s.call(who, 'POST', '/flip', body);
 }
 
 // Everything a flip may write, as plain data: two calls to it compare equal exactly when the flip changed nothing.
@@ -163,5 +167,5 @@ function beforeBatch(s, when, action) {
 const isFlipBatch = (statements) => statements.some((statement) => /UPDATE guilds SET rank_source = 'ingame'/.test(statement.sql));
 
 module.exports = {
-  SLUG, BLIZZARD_GUILD_ID, SWITCH, MAP, STEP, flipWorld, rosterRow, keyCharacter, dryRun, grant, flipWith, stateOf, beforeBatch, isFlipBatch, addNamedBulk,
+  SLUG, BLIZZARD_GUILD_ID, SWITCH, MAP, STEP, flipWorld, rosterRow, keyCharacter, dryRun, grant, flipBody, flipWith, stateOf, beforeBatch, isFlipBatch, addNamedBulk,
 };

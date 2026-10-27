@@ -237,7 +237,7 @@ export function describeRow(row, names = {}) {
       const counted = (n, what) => `${n} ${what}`;
       // The flip (lane B9) and the unflip tool record what they did.
       const detail = after.flip
-        ? ` (${counted(after.charactersBound || 0, 'characters matched to the roster by name')}, ${counted(after.ranksChanged || 0, 'ranks changed')}, ${counted((after.discordRolesConverted || 0) + (after.discordRolesDropped || 0), 'Discord-given roles made hand-set')})`
+        ? ` (${counted(after.boundByName || 0, 'characters matched to the roster by name')}, ${counted(after.rankChanges || 0, 'ranks changed')}, ${counted((after.discordRolesMadeManual || 0) + (after.discordRolesDropped || 0), 'Discord-given roles made hand-set')})`
         : (after.unflip ? ' (undone by the unflip tool)' : '');
       return `Moved the guild from ${name(before.rankSource)} to ${name(after.rankSource)}${after.unpinned ? ' and cut its link to the in-game guild' : ''}${detail}`;
     }

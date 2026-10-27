@@ -1,12 +1,13 @@
 // The flip (user-hierarchy build, lanes B5 and B9). OWNER ONLY, like the rank map: the flip changes how the whole guild is let in.
 //
-//   POST /api/guild/:gid/flip/dry-run   no body -> { token, expiresAt, rankSource, rosterSyncId, access, needsClaim, permissions, owner, nameBinding, ranks, blockers }
+//   POST /api/guild/:gid/flip/dry-run   no body -> { token, expiresAt, rankSource, rosterSyncId, access, needsClaim, permissions, owner, boundByName, ranks, notOnRoster, blockers }
 //                                       READS and mints a token (worker/dry-run.js), bound to this Owner, the previewed lists (state hash 'flip:...' = every section's hashPart), the stored
 //                                       roster's sync id and 10 minutes. `blockers` lists what the flip would refuse today ([] = it can run): the same refusals, codes and texts as below.
 //                                       403 forbidden (not the Owner) | 409 already_ingame | 429 (10 dry runs per 10 minutes)
-//   POST /api/guild/:gid/flip           body { token } -> { ok, rankSource: 'ingame', ownerUserId, applied }   (worker/flip.js: ONE atomic batch)
+//   POST /api/guild/:gid/flip           body { token, confirmedCharacterIds } -> { ok, rankSource: 'ingame', ownerUserId, applied }   (worker/flip.js: ONE atomic batch)
+//                                       confirmedCharacterIds: the characters of the dry run's `boundByName` list the Owner ticked (a subset of its ids, [] = none); the others stay unbound
 //                                       needs the fresh sign-in of purpose source_switch, params { from: null, to: 'ingame' } (Battle.net, worker/fresh.js)
-//                                       400 approval_required | 403 forbidden | 403 fresh_required | 404 | 503 effective_roles_missing
+//                                       400 approval_required | confirmation_required | bad_confirmation | 403 forbidden | 403 fresh_required | 404 | 503 effective_roles_missing
 //                                       409 already_ingame | source_not_legacy | not_pinned | no_good_sync | no_owner | owner_would_be_suspended | rank_map_incomplete | approval_invalid | approval_stale
 // The order of the refusals: the facts the guild row alone shows (cheap), then the fresh sign-in, then the preview-based ones (the Owner would be suspended, an unmapped rank), then the
 // approval. A guild whose rank_source is already 'ingame' has nothing to preview or flip.
@@ -14,7 +15,7 @@ import { HttpError, jsonResponse } from '../http.js';
 import { APPROVAL_TTL_MS, approvalProblem, insertApprovalStatement, loadApproval, markerGuard, newApprovalToken, newMarkerId } from '../dry-run.js';
 import { allOf, beginFreshAct } from '../fresh.js';
 import { FLIP_FRESH_PARAMS, alreadyIngameError, approvalInvalidError, approvalStaleError, blockerError, flipBlockers, flipStatements, missingRoleViews, rolesMissingError } from '../flip.js';
-import { previewFlip } from '../flip-preview.js';
+import { BINDING_DEPENDENT_KEYS, FLIP_SECTIONS, previewFlip } from '../flip-preview.js';
 import { requireOwnerFirst } from '../owner-gate.js';
 import { ownerGuard } from '../owner.js';
 import { FLIP_DRY_RUN_LIMIT, FLIP_DRY_RUN_WINDOW_MS, enforceRateLimit } from '../ratelimit.js';
@@ -52,6 +53,18 @@ export async function dryRunFlip(ctx) {
   });
 }
 
+// The ticked characters: a list of ids, [] allowed (none), duplicates collapsed. Whether they are all on the dry run's list is checked once the state is read.
+export const MAX_CONFIRMED = 2000;
+const badConfirmation = (extra = {}) => new HttpError(400, 'bad_confirmation', "Confirm only characters from the dry run's list of characters to match to the roster by name.", { field: 'confirmedCharacterIds', ...extra });
+function readConfirmed(body) {
+  const list = body && body.confirmedCharacterIds;
+  if (!Array.isArray(list)) {
+    throw new HttpError(400, 'confirmation_required', 'Say which characters to match to the roster by name: send confirmedCharacterIds (an empty list matches none).', { field: 'confirmedCharacterIds' });
+  }
+  if (list.length > MAX_CONFIRMED || list.some((id) => typeof id !== 'string' || !id || id.length > 64)) throw badConfirmation();
+  return [...new Set(list)];
+}
+
 const readToken = (body) => {
   const presented = body && body.token;
   if (typeof presented !== 'string' || !presented || presented.length > 200) {
@@ -78,6 +91,7 @@ export async function flipGuild(ctx) {
   if (missing.length) throw rolesMissingError(missing);
   await requireOwnerFirst(db, { userId: approverUserId, guildId, viewAs: ctx.session.viewAs }, 'Only the Owner of the guild can switch the guild to the in-game roster.');
   const tokenHash = await hashToken(readToken(ctx.body));
+  const confirmed = readConfirmed(ctx.body);
 
   // The facts the guild row alone shows. (The Owner gate passed, so the guild exists.)
   const row = await db.prepare(
@@ -110,7 +124,15 @@ export async function flipGuild(ctx) {
     throw problem === 'invalid' ? approvalInvalidError() : approvalStaleError();
   }
 
-  const plan = flipStatements(ctx, { guildId, approverUserId, timeZone: row.time_zone, preview, tokenHash, checkId, act });
+  // The ticked characters must all be on the list the Owner saw (the token covers it in full, so it is the list of this request too).
+  const listed = new Set(preview.hashParts.boundByName.ids);
+  const foreign = confirmed.filter((id) => !listed.has(id));
+  if (foreign.length) throw badConfirmation({ ids: foreign.slice(0, 25) });
+  // Everything that depends on the binding is counted again for the characters that are really bound (the whole list: the preview already says it).
+  const effective = confirmed.length === listed.size
+    ? preview
+    : await previewFlip(db, guildId, FLIP_SECTIONS.filter((section) => BINDING_DEPENDENT_KEYS.includes(section.key)), { confirmed });
+  const plan = flipStatements(ctx, { guildId, approverUserId, timeZone: row.time_zone, preview, effective, confirmedIds: confirmed, tokenHash, checkId, act });
   const results = await db.batch(plan.statements);
   if (!wrote(results[plan.flippedAt])) {
     throw await refusalAfterBatch(ctx, { guildId, approverUserId, tokenHash, now, reassertFresh: () => beginFreshAct(ctx, freshOptions) });

@@ -5,8 +5,8 @@
 // THE BATCH is a compare-and-set chain. A statement that does not apply changes nothing and leaves every later statement of the chain without its guard:
 //   P0   the PREFLIGHT marker, written only while every condition of the act still holds INSIDE the database: the guild is legacy and pinned, the roster is the one the Owner approved
 //        (sync id), the approver holds the stored Guild Master row, the approval is theirs, unused and unexpired and bound to the previewed state, they have a Battle.net-proven
-//        character on the stored roster (they will not be suspended), every rank on the roster is mapped, the characters the flip binds by name are the approved list and the rank
-//        changes are the approved ones. The conditions are one statement so the fresh grant below is spent only when the act can apply.
+//        character on the stored roster (they will not be suspended), every rank on the roster is mapped, the candidates for the name binding are the approved list (the Owner ticked a subset of
+//        it: those are bound) and the rank changes are those of the ticked binding. The conditions are one statement so the fresh grant below is spent only when the act can apply.
 //   F0-1 the fresh-auth pair (worker/fresh.js, purpose source_switch, params { from: null, to: 'ingame' }): consumes the session's grant (only with the Owner test and the preflight
 //        marker) and writes its marker WHERE changes() = 1
 //   S1   UPDATE guilds SET rank_source = 'ingame' WHERE ... rank_source IS NULL AND last_good_sync_id = ? AND EXISTS (the stored Guild Master row) AND the fresh marker
@@ -96,7 +96,7 @@ const rosterColumn = (column) => `(SELECT gr.${column} FROM guild_roster gr JOIN
        AND (ng.realm_kind = 'ruleset' OR characters.realm_key = replace(gr.realm_slug, '-', '')))`;
 
 // The preflight statement (see P0 above). All parameters are numbered, so the guild is written wherever it is needed.
-export function preflightStatement(db, { guildId, checkId, tokenHash, now, rosterSyncId, approverUserId, stateHash, idsText, transitionsText }) {
+export function preflightStatement(db, { guildId, checkId, tokenHash, now, rosterSyncId, approverUserId, stateHash, idsText, transitionsText, confirmedJson }) {
   return db.prepare(
     `INSERT INTO fresh_act_markers (act_id, session_token_hash, purpose, at)
      SELECT ?2, ?3, '${FLIP_CHECK_PURPOSE}', ?4
@@ -107,36 +107,47 @@ export function preflightStatement(db, { guildId, checkId, tokenHash, now, roste
         AND EXISTS (SELECT 1 FROM (${provenAfterSql('?1')}) pv WHERE pv.user_id = ?6)
         AND ${rankMapCompleteSql('?1')}
         AND ${boundIdsTextSql('?1')} = ?8
-        AND ${transitionsTextSql('?1')} = ?9`,
-  ).bind(guildId, checkId, tokenHash, now, rosterSyncId, approverUserId, stateHash, idsText, transitionsText);
+        AND ${transitionsTextSql('?1', '?10')} = ?9`,
+  ).bind(guildId, checkId, tokenHash, now, rosterSyncId, approverUserId, stateHash, idsText, transitionsText, confirmedJson);
 }
 
-// -> { statements, flippedAt, checkId }. checkId: the preflight marker's id, which the fresh act's consuming UPDATE must already carry (worker/routes/flip.js passes it to beginFreshAct).
-// `act` is beginFreshAct's answer (its two statements and its guard). preview: previewFlip's answer for THIS request (payload, hashParts, stateHash, guild).
-export function flipStatements(ctx, { guildId, approverUserId, timeZone, preview, tokenHash, checkId, act }) {
+// -> { statements, flippedAt, applied }. checkId: the preflight marker's id, which the fresh act's consuming UPDATE must already carry (worker/routes/flip.js passes it to beginFreshAct).
+// `act` is beginFreshAct's answer (its two statements and its guard). preview: previewFlip's answer for THIS request, the whole dry-run state the approval covers. effective: the same
+// lines for the characters the Owner confirmed (the second pass of previewFlip; the preview itself when they confirmed every candidate). confirmedIds: the ids to bind.
+export function flipStatements(ctx, { guildId, approverUserId, timeZone, preview, effective, confirmedIds, tokenHash, checkId, act }) {
   const { db } = ctx;
   const now = ctx.now();
   const { rosterSyncId } = preview.guild;
-  const ids = preview.hashParts.nameBinding.ids;
+  const approvedIdsText = JSON.stringify(preview.hashParts.boundByName.ids);
+  const ids = [...confirmedIds].sort();
   const idsJson = JSON.stringify(ids);
-  const transitionsText = JSON.stringify(preview.payload.ranks.transitions.map((entry) => [entry.from, entry.to, entry.count]));
+  const transitionsText = JSON.stringify(effective.payload.ranks.transitions.map((entry) => [entry.from, entry.to, entry.count]));
   const markerId = newMarkerId(ctx.randomBytes);
   const marker = markerGuard(markerId);
   const approval = { tokenHash, guildId, approverUserId, stateHash: preview.stateHash, rosterSyncId, now };
-  const { access, ranks, permissions } = preview.payload;
-  const applied = {
-    charactersBound: ids.length,
-    ranksChanged: ranks.changed,
-    becomesTrial: ranks.becomesTrial,
-    becomesSocial: ranks.becomesSocial,
-    discordRolesConverted: permissions.discordRoles.count - permissions.discordRoles.withHandTwin,
-    discordRolesDropped: permissions.discordRoles.withHandTwin,
+  const { access, ranks, needsClaim } = effective.payload;
+  const { permissions, owner } = preview.payload;
+  // What the result banner shows. The access and rank lines are those of the confirmed binding; the batch itself re-checks the rank changes (the preflight statement).
+  const counts = {
     membersBefore: access.members.today,
     membersAfter: access.members.afterFlip,
+    stay: access.members.today - access.loses.count,
+    gains: access.gains.count,
+    loses: access.loses.count,
+    rankChanges: ranks.changed,
+    becameTrial: ranks.becomesTrial,
+    becameSocial: ranks.becomesSocial,
+    discordRolesMadeManual: permissions.discordRoles.count - permissions.discordRoles.withHandTwin,
+    discordRolesDropped: permissions.discordRoles.withHandTwin,
+    newPermissions: permissions.gains.count,
+    lostPermissions: permissions.loses.count,
+    needsClaim: needsClaim.count,
+    boundByName: ids.length,
   };
+  const applied = { ...counts, owner: { userId: approverUserId, live: owner.live === true } };
 
   const statements = [
-    preflightStatement(db, { guildId, checkId, tokenHash, now, rosterSyncId, approverUserId, stateHash: preview.stateHash, idsText: idsJson, transitionsText }),
+    preflightStatement(db, { guildId, checkId, tokenHash, now, rosterSyncId, approverUserId, stateHash: preview.stateHash, idsText: approvedIdsText, transitionsText, confirmedJson: idsJson }),
     ...act.statements,
   ];
   // S1: the compare-and-set of the rank source.
@@ -169,7 +180,7 @@ export function flipStatements(ctx, { guildId, approverUserId, timeZone, preview
     auditStatement(ctx, {
       guildId, actorUserId: approverUserId, action: 'guild.source_switch', entityType: 'guild', entityId: guildId,
       before: { rankSource: null },
-      after: { rankSource: 'ingame', unpinned: false, flip: true, ownerUserId: approverUserId, ...applied },
+      after: { rankSource: 'ingame', unpinned: false, flip: true, ownerUserId: approverUserId, ...counts },
     }, marker),
   );
   return { statements, flippedAt, applied };
