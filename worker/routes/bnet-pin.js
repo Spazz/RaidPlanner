@@ -19,7 +19,8 @@
 // A guild that has a Blizzard guild id already is LOCKED to it: a re-pin (after a Blizzard rename or a realm move) must name the SAME Blizzard guild, else 409 pin_locked.
 // THE FIRST SYNC. The fetched roster is applied in the same invocation (worker/roster-sync.js settleFetchedRoster, the part of a sync after the fetch: no second fetch, no second
 // parse). The pin sets the guild's sync lease one interval ahead, so the scheduler has nothing to do for it. A sync that fails leaves the pin standing and says so in `sync`
-// ({ status: 'failed', reason }); Sync now or the next scheduled sync tries again.
+// ({ status: 'failed', reason }) and hands the lease back (roster-sync.js releaseSyncLease), so Sync now or the next scheduled sync tries again AT ONCE, without the hour a lease
+// would otherwise hold it back.
 // Statements and Blizzard requests: measured in tests/guild/guild-b6b-p3a-tests.js (a 1,200-member roster stays inside the 45 D1 statements of Workers Free).
 import { HttpError, isUniqueViolation, jsonResponse } from '../http.js';
 import { BnetError, assessRoster, bnetSupport, fetchGuildRosterBySlug, rosterHttpError, rosterInvalidHttpError } from '../battlenet.js';
@@ -34,7 +35,7 @@ import { characterOnRoster, livePinCharacters } from '../pin-proof.js';
 import { PIN_NOT_OPEN_MESSAGE, canonicalPinParams, pinOpen, readPinTarget } from '../pin-target.js';
 import { PIN_LIMIT, PIN_WINDOW_MS, enforceRateLimit, pinKey } from '../ratelimit.js';
 import { PIN_SQL, pinOf } from '../roster-pin.js';
-import { SYNC_INTERVAL_MS, settleFetchedRoster } from '../roster-sync.js';
+import { SYNC_INTERVAL_MS, releaseSyncLease, settleFetchedRoster } from '../roster-sync.js';
 import { requireBnetConfigured } from './bnet-import.js';
 import { bad } from './roster.js';
 
@@ -110,11 +111,12 @@ export async function postBnetPin(ctx) {
 
   const pin = { guildSlug: target.guildSlug, realmSlug: target.realmSlug, namespace: support.namespace, blizzardGuildId: roster.guildId, blizzardRealmId: roster.guildRealmId };
   const mode = current.blizzardGuildId === null ? 'first' : 're_pin';
+  const leasedUntil = ctx.now() + SYNC_INTERVAL_MS;
   let results;
   try {
     results = await db.batch([
       ...act.statements,
-      setupPinStatement(db, { guildId, pin, expected, nextSyncAt: ctx.now() + SYNC_INTERVAL_MS, guards: [act.guard] }),
+      setupPinStatement(db, { guildId, pin, expected, nextSyncAt: leasedUntil, guards: [act.guard] }),
       pinAuditStatement(ctx, {
         guildId, userId, guard: act.guard,
         before: { pinned: current.complete, guildSlug: current.guildSlug, realmSlug: current.realmSlug },
@@ -134,6 +136,15 @@ export async function postBnetPin(ctx) {
     blizzard_guild_id: pin.blizzardGuildId, blizzard_realm_id: pin.blizzardRealmId,
   });
   const sync = await settleFetchedRoster(ctx, { guildId, guild, pin: pinned, roster, startedAt, syncId: newId('rs', ctx.randomBytes) });
+  // A first sync that FAILED hands the lease back: the guild is due now, so "Sync now" (and the next cron tick) retries at once instead of after the hour the pin's lease implies.
+  // The release only undoes THIS pin's lease (a claim made since moved the column). Best effort: the pin stands either way.
+  if (sync.status === 'failed') {
+    try {
+      await releaseSyncLease(db, guildId, { leasedUntil, nowMs: ctx.now() });
+    } catch (error) {
+      ctx.log(`bnet pin: the lease of the failed first sync could not be released: ${error && error.message}`);
+    }
+  }
   return jsonResponse({
     pinned: true, mode, guildName: roster.guildName, guildSlug: pin.guildSlug, realmSlug: pin.realmSlug, namespace: pin.namespace, rankSource: guild.rank_source,
     sync: { status: sync.status, reason: sync.reason, members: sync.members, syncId: sync.syncId },
