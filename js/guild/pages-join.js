@@ -24,17 +24,21 @@
     return [what, raid.teamName, whenText(raid, data.guild.timeZone)].filter(Boolean).join(' - ');
   }
 
-  function formHtml(x) {
+  // The form of a join link and of an open raid (pages-open-raid.js). o: { submit (the data-submit name, default 'join-form'), identityHtml (replaces the Character name and
+  // Class fields: the open sign-up of an in-game guild picks a Battle.net character instead), specClass (the class whose specs the Spec select lists) }.
+  function formHtml(x, o) {
+    const opts = o || {};
     const data = x.data;
     const d = x.draft || {};
     const options = optionsOf(data);
     const check = { 'data-change': 'join-field' };
-    return '<form class="gs-apply-form" data-submit="join-form" novalidate aria-describedby="jn-intro">' +
-      '<div data-error-summary-slot></div>' +
+    const identity = opts.identityHtml != null ? opts.identityHtml :
       G.ui.fieldHtml({ id: 'jn-name', name: 'name', label: 'Character name', kind: 'text', required: true, value: d.name || '', maxlength: 40, autocomplete: 'off', attrs: check,
         help: data.guild.gameVersion === 'forever' ? NAME_HINT_FOREVER : NAME_HINT }) +
-      G.ui.fieldHtml({ id: 'jn-class', name: 'class', label: 'Class', kind: 'select', required: true, value: d.class || '', attrs: { 'data-change': 'join-class' }, options: G.ui.classChoices(options, 'Choose a class') }) +
-      G.ui.fieldHtml({ id: 'jn-spec', name: 'spec', label: 'Spec', kind: 'select', required: true, value: d.spec || '', attrs: check, options: G.ui.specChoices(options, d.class || '', 'Choose a spec') }) +
+      G.ui.fieldHtml({ id: 'jn-class', name: 'class', label: 'Class', kind: 'select', required: true, value: d.class || '', attrs: { 'data-change': 'join-class' }, options: G.ui.classChoices(options, 'Choose a class') });
+    return '<form class="gs-apply-form" data-submit="' + esc(opts.submit || 'join-form') + '" novalidate aria-describedby="jn-intro">' +
+      '<div data-error-summary-slot></div>' + identity +
+      G.ui.fieldHtml({ id: 'jn-spec', name: 'spec', label: 'Spec', kind: 'select', required: true, value: d.spec || '', attrs: check, options: G.ui.specChoices(options, opts.specClass != null ? opts.specClass : (d.class || ''), 'Choose a spec') }) +
       G.ui.fieldHtml({ id: 'jn-note', name: 'note', label: 'A note for the officers (optional)', kind: 'text', value: d.note || '', maxlength: data.noteMax || 120, autocomplete: 'off', placeholder: 'Your guild, gear, anything they should know' }) +
       '<div class="gs-hp" aria-hidden="true"><label for="jn-website">Leave this empty</label><input type="text" id="jn-website" name="website" tabindex="-1" autocomplete="off" value=""></div>' +
       '<p class="gs-alert" id="jn-error" role="alert"' + (x.error ? '' : ' hidden') + '>' + esc(x.error || '') + '</p>' +
@@ -162,5 +166,5 @@
     });
   };
 
-  G.pages.join = { NAME_HINT: NAME_HINT, joinHtml: joinHtml, formHtml: formHtml, load: load, bodyFrom: bodyFrom, problemOf: problemOf, whenText: whenText, RULES: RULES };
+  G.pages.join = { NAME_HINT: NAME_HINT, joinHtml: joinHtml, formHtml: formHtml, load: load, bodyFrom: bodyFrom, problemOf: problemOf, whenText: whenText, raidLine: raidLine, spotsText: spotsText, RULES: RULES };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

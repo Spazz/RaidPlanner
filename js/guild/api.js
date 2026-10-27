@@ -317,6 +317,13 @@
     view: function (token) { return G.api.post('/api/join/view', { token: token }); },
     submit: function (body) { return G.api.post('/api/join', body); },
   };
+  // A raid that is open to guests (worker/routes/open-raids.js): a signed-in account views it, signs up, and withdraws its own sign-up. No token.
+  function openPath(gid, rid) { return '/api/open/' + enc(gid) + '/raids/' + enc(rid); }
+  G.api.openRaid = {
+    view: function (gid, rid) { return G.api.get(openPath(gid, rid)); },
+    submit: function (gid, rid, body) { return G.api.post(openPath(gid, rid), body); },
+    withdraw: function (gid, rid) { return G.api.del(openPath(gid, rid), {}); },
+  };
   G.api.pasteRoster = {
     preview: function (gid, rid, text) { return G.api.post(raidPath(gid, rid, '/manual/paste/preview'), { text: text }); },
     save: function (gid, rid, text, reason) { return G.api.post(raidPath(gid, rid, '/manual/paste'), reason ? { text: text, reason: reason } : { text: text }); },

@@ -1669,6 +1669,30 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 .gs-form-page .gs-apply-form { gap: var(--sp-4); }
 .gs-form-page .gs-osection { margin-bottom: 0; }
 .gs-form-page > .gs-osection + .gs-osection { margin-top: 0; }
+
+/* Raids open to guests (B3, canvas "Teams and open raids (B3), round 2" boards 5, 6a, 6c, 8b): the Open to guests check and its guest limit under it (New raid and Raid settings),
+   and the sign-up page's Battle.net character list (radio rows; the row is the label, so the whole row is the target). Tokens only. */
+.gs-guests { margin-top: 4px; }
+.gs-guest-limit { margin: 4px 0 0 30px; }
+.gs-guest-limit .gs-input { max-width: 160px; }
+.gs-bnetpick { gap: 8px; }
+.gs-bnetpick .gs-label { display: block; font-weight: 600; }
+.gs-bnetpick .gs-req { font-weight: 400; color: var(--text-muted); }
+.gs-pick { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-pickrow { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px; border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--bg-panel); cursor: pointer; }
+.gs-pickrow:hover { border-color: var(--border-field); }
+.gs-pickrow.is-picked { border-color: var(--border-field); background: var(--seg-on-bg); }
+.gs-pickrow .gs-spec-icon { flex: none; border-radius: 3px; }
+.gs-pickradio { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--text-primary); }
+.gs-pickradio:focus-visible, .gs-pick:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-pickid { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px; }
+.gs-picksub { font-size: 13px; font-weight: 400; color: var(--text-muted); }
+.gs-pickact { display: flex; }
+.gs-open .gs-actions, .gs-open .gs-empty2 { margin-top: 4px; }
+@media (width <= 600px) {
+  .gs-pickrow { min-height: 56px; }
+  .gs-open .gs-pickact .gs-btn { min-height: 44px; }
+}
 .gs-doc-page .gs-prose p { max-width: 68ch; }
 
 /* An away notice row (the officers' card and the person page) keeps its text and its two buttons on one line when there is room */

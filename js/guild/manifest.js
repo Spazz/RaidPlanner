@@ -31,6 +31,7 @@
     '/js/guild/pages-view.js',
     '/js/guild/pages-apply.js',
     '/js/guild/pages-join.js',
+    '/js/guild/pages-open-raid.js',
     '/js/guild/coverage.js',
     '/js/guild/pages-roster-tabs.js',
     '/js/guild/pages-roster.js',

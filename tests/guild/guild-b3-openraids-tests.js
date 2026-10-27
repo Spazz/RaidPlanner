@@ -70,8 +70,9 @@ check('the view: exactly the join-link view (guild, raid, spots, choices) for a 
   const link = await s.ok('gm', 'POST', `/raids/${s.raid}/join-links`, { maxUses: 3 });
   const joinView = (await s.w.call({}, 'POST', '/api/join/view', { token: link.created.token })).json;
   for (const key of ['guild', 'raid', 'rosterOptions', 'noteMax']) assert.deepEqual(res.json[key], joinView[key], key);
-  assert.deepEqual(Object.keys(res.json).sort(), [...Object.keys(joinView), 'member', 'mine'].sort());
+  assert.deepEqual(Object.keys(res.json).sort(), [...Object.keys(joinView), 'member', 'mine', 'signUp'].sort());
   assert.deepEqual([res.json.spotsLeft, res.json.member, res.json.mine], [null, false, null], 'no guest limit: no spots to show');
+  assert.deepEqual(res.json.signUp, { mode: 'typed' }, 'a guild that is not in-game takes a typed name and class');
   assert.deepEqual([res.json.guild.name, res.json.raid.teamName, res.json.raid.zone], ['Writers B3', 'Alpha', 'Karazhan']);
   for (const word of ['Rosterguy', 'Memberone', 'Officerone']) assert(!res.text.includes(word), `the view leaks ${word}`);
   // Not open: every kind of "no".
