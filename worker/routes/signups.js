@@ -15,6 +15,7 @@ import {
   NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closeHoursOf, closedReason, closesAtOf, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey,
   signUpSpecLabel, specChoices, storedKind, windowFieldsOf,
 } from '../signups-data.js';
+import { assertSenior, seniorityOk } from '../seniority.js';
 import { SLOT_TIME_SQL } from '../signup-window.js';
 import { personOnTeamRosterSql, rosterRankOnTeamSql } from '../team-roster.js';
 import { loadRaid, raidAudit } from './raids.js';
@@ -459,6 +460,8 @@ export async function guestSignup(ctx) {
 
 // POST .../signups/link { signupId, personId }: the person takes the row's Discord ID when they have none,
 // and every unlinked row of the guild with that ID follows. A row without a Discord ID links only itself.
+// Giving a person a Discord ID relinks them: that needs roster.edit on the PERSON's home team (as PATCH /roster/:pid does for discordUserId, not only on the
+// raid's team) and passes the Seniority guard (worker/seniority.js), in the pre-check and inside both writes.
 export async function linkSignup(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
@@ -471,7 +474,8 @@ export async function linkSignup(ctx) {
     db.prepare(`SELECT discord_user_id, nickname, player_id,
       EXISTS (SELECT 1 FROM raid_signups n WHERE n.raid_id = s.raid_id AND n.rh_signup_id = s.signup_id) AS resolved_guest
       FROM raid_signups s WHERE raid_id = ? AND source = 'raid_helper' AND signup_id = ?`).bind(raid.id, body.signupId),
-    db.prepare('SELECT id, discord_user_id FROM players WHERE id = ? AND guild_id = ?').bind(body.personId, guild.id),
+    db.prepare(`SELECT id, discord_user_id, (SELECT m.team_id FROM characters m WHERE m.player_id = players.id AND m.is_main = 1) AS home_team_id
+                  FROM players WHERE id = ? AND guild_id = ?`).bind(body.personId, guild.id),
   ]);
   const row = rowResult.results[0];
   if (!row) throw new HttpError(404, 'not_found', 'That sign-up was not found.');
@@ -480,6 +484,12 @@ export async function linkSignup(ctx) {
   if (!person) throw bad('Pick a person on the roster.', 'personId');
   if (row.player_id) throw new HttpError(409, 'already_linked', 'That sign-up is already linked to a person.', { field: 'signupId' });
   const discordId = row.discord_user_id || null;
+  const relink = !!discordId && !person.discord_user_id;
+  if (relink) {
+    if (!allows(guildContext.can, 'roster.edit', person.home_team_id)) throw forbidden();
+    await assertSenior(db, guildContext, person.id);
+  }
+  const senior = relink ? seniorityOk(guild.id, ctx.session.user.id, person.id) : null;
   if (discordId && person.discord_user_id && person.discord_user_id !== discordId) {
     throw new HttpError(409, 'discord_mismatch', 'That person is already linked to a different Discord account.', { field: 'personId' });
   }
@@ -489,18 +499,18 @@ export async function linkSignup(ctx) {
   }
   const now = ctx.now();
   const statements = [];
-  if (discordId && !person.discord_user_id) {
+  if (relink) {
     statements.push(db.prepare(
-      'UPDATE players SET discord_user_id = ?, version = version + 1, updated_at = ? WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL',
-    ).bind(discordId, now, person.id, guild.id));
+      `UPDATE players SET discord_user_id = ?, version = version + 1, updated_at = ? WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL AND ${senior.sql}`,
+    ).bind(discordId, now, person.id, guild.id, ...senior.params));
   }
   statements.push(
-    linkSignupsStatement(db, guild.id, person.id, discordId, raid.id, body.signupId),
+    linkSignupsStatement(db, guild.id, person.id, discordId, raid.id, body.signupId, senior),
     markPersonRaidsStale(db, guild.id, person.id),
     db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ?").bind(raid.id, guild.id),
   );
   const auditIndex = statements.length;
-  statements.push(raidAudit(ctx, guildContext, 'signup.link', raid.id, null, { personId: person.id, nickname: row.nickname, linkedDiscord: !!discordId }));
+  statements.push(raidAudit(ctx, guildContext, 'signup.link', raid.id, null, { personId: person.id, nickname: row.nickname, linkedDiscord: !!discordId }, senior));
   let results;
   try {
     results = await db.batch(statements);
@@ -509,6 +519,8 @@ export async function linkSignup(ctx) {
     throw error;
   }
   const relinked = results[auditIndex - 3].meta.changes;
+  // The row itself always links, so none linked means the Seniority guard (or another request) stopped the relink inside the batch.
+  if (relink && relinked === 0) throw new HttpError(409, 'conflict', 'That person changed while you were linking. Reload and try again.');
   await recomputeIfEvidence(ctx, guild, raid);
   return jsonResponse({ ...(await buildView(ctx, guildContext, await loadRaid(ctx, guildContext))), relinked });
 }
