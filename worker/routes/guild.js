@@ -8,6 +8,7 @@ import { ownPersonStatement } from '../membership.js';
 import { hasOwnerSql, legacyClaimClosedSql } from '../owner.js';
 import { loadGuildContext } from '../permissions.js';
 import { defaultTeamSize } from '../raid-zones.js';
+import { viewerFor } from '../redact.js';
 import { readManageable } from '../session.js';
 import { FOREVER_RULESETS, REGIONS, findRealm, isVersion } from '../realms.js';
 import { rosterOptions } from '../roster-data.js';
@@ -52,7 +53,7 @@ export async function guildPayload(db, guildContext, nowMs = Date.now()) {
     guild: guildContext.isGuildMaster
       ? { ...guildView(guildContext.guild), discordServerId: hasDiscord(guildContext.guild) ? guildContext.guild.discord_server_id : null }
       : guildView(guildContext.guild),
-    teams: await loadTeams(db, guildContext.guild.id),
+    teams: await loadTeams(db, guildContext.guild.id, viewerFor(guildContext)),
     me: {
       roles: guildContext.roles, can: guildContext.can, personId: own ? own.id : null,
       mainTeamId: mainRow ? mainRow.team_id : null,

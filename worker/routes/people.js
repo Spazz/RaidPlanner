@@ -13,7 +13,7 @@ import { requireDiscord } from '../discord-guard.js';
 import { discordProblem, syncMember } from '../discord-sync.js';
 import { assertMayGrant, loadRolesData } from '../roles-store.js';
 import { ROLE_RANK, isCustomRole, loadGuildContext, rankOf, requireAction, requireAnyAction, shapeRoles } from '../permissions.js';
-import { toPerson } from '../person.js';
+import { personFor, viewerFor } from '../redact.js';
 import { PEOPLE_LIMIT, PEOPLE_WINDOW_MS, enforceRateLimit, peopleKey } from '../ratelimit.js';
 import { visibleCharacterSql } from '../character-visibility.js';
 
@@ -27,6 +27,7 @@ const MAX_EXTRA_ROLES = 40;
 
 async function loadModel(db, guildContext) {
   const guildId = guildContext.guild.id;
+  const who = viewerFor(guildContext);
   const serverId = guildContext.guild.discord_server_id;
   const [userResult, assignmentResult, blockResult, rosterResult, mapResult] = await db.batch([
     // is_member: the guild's rank source lets the account in (the block is read from guild_blocks below, not folded in here).
@@ -60,7 +61,7 @@ async function loadModel(db, guildContext) {
   const byId = new Map();
   for (const row of userResult.results) {
     byId.set(row.id, {
-      id: row.id, row, person: toPerson(row), isMember: row.is_member === 1, assignments: [], block: null, ignoredBlock: null,
+      id: row.id, row, person: personFor(row, who), isMember: row.is_member === 1, assignments: [], block: null, ignoredBlock: null,
       roster: rosterByUser.get(row.id) || (row.discord_id ? rosterByDiscord.get(row.discord_id) : null) || null,
     });
   }

@@ -13,7 +13,7 @@ import {
 } from '../api-keys.js';
 import { base64url, newId } from '../ids.js';
 import { canGrant, loadGuildContext, requireAction } from '../permissions.js';
-import { toPerson } from '../person.js';
+import { personFor, viewerFor } from '../redact.js';
 import { hashToken } from '../session.js';
 
 async function keysPayload(db, guildContext, nowMs) {
@@ -31,6 +31,7 @@ async function keysPayload(db, guildContext, nowMs) {
     memberPermissionsStatement(db, guildId),
   ]);
   const available = availableDatasets(memberResult.results, null, teamResult.results.map((row) => row.id));
+  const who = viewerFor(guildContext);
   return {
     keys: keyResult.results.map((row) => ({
       id: row.id,
@@ -43,7 +44,7 @@ async function keysPayload(db, guildContext, nowMs) {
       uses: row.uses,
       lastUsedAt: row.last_used_at,
       createdAt: row.created_at,
-      createdBy: row.user_id ? toPerson({ id: row.user_id, discord_id: row.discord_id, username: row.username, global_name: row.global_name, display_name: row.display_name, avatar: row.avatar }) : null,
+      createdBy: row.user_id ? personFor({ id: row.user_id, discord_id: row.discord_id, username: row.username, global_name: row.global_name, display_name: row.display_name, avatar: row.avatar }, who) : null,
     })),
     // The datasets a key can read: `available` is false when the guild's Member role cannot see it (a key reads what a member of its scope reads).
     datasets: DATASET_IDS.map((id) => ({ id, label: API_DATASETS[id].label, available: available[id] })),

@@ -623,7 +623,8 @@ check('notes: saved with their own version, text cleaned and capped, "Last edite
   assert.deepEqual(Object.keys(saved.json).sort(), ['notes', 'rosterFlags']);
   assert.equal(saved.json.notes.text, 'Line one\nLine two');
   assert.equal(saved.json.notes.version, 1);
-  assert.equal(saved.json.notes.updatedBy.username, 'carol');
+  // carol is a Team Lead: she is shown by the name her account shows, with no handle and no avatar (worker/redact.js: only whoever opens People gets those).
+  assert.deepEqual([saved.json.notes.updatedBy.displayName, saved.json.notes.updatedBy.username, saved.json.notes.updatedBy.avatarUrl], ['Carol C', '', null]);
   assert.equal(saved.json.notes.updatedAt, s.w.clock.now);
   const got = await s.call('bob', 'GET', `/roster/${pid}`);
   assert.equal(got.json.notes.text, 'Line one\nLine two');
@@ -1169,7 +1170,7 @@ check('linking: a person is linked when a user holds their Discord ID, read on t
   const newbie = await signIn(s.w, { id: DID(1), username: 'newbie', globalName: null }, [plain(SERVER_A)]);
   const writes = await s.w.count('audit_log');
   const after = await s.w.call(newbie, 'GET', `/api/guild/${s.guildId}/roster/${pid}`);
-  assert.deepEqual([after.json.person.discord.signIn, after.json.person.discord.user.username, after.json.person.isMe], ['signed_in', 'newbie', true]);
+  assert.deepEqual([after.json.person.discord.signIn, after.json.person.discord.user.displayName, after.json.person.discord.user.username, after.json.person.isMe], ['signed_in', 'newbie', '', true]);
   assert.equal(await s.w.count('audit_log'), writes);
   const list = await s.w.call(newbie, 'GET', `/api/guild/${s.guildId}/roster?team=${s.teamId}`);
   assert.deepEqual([list.json.people[0].signIn, list.json.people[0].isMe], ['signed_in', true]);

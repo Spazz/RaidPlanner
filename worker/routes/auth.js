@@ -21,7 +21,8 @@ import { liveGmSql, officerSuccessorSql, othersExistSql, ruleOf, successionState
 import { LIMITS } from '../limits.js';
 import { shapeRoles } from '../permissions.js';
 import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
-import { parsePrefs, personFromSession, toPerson } from '../person.js';
+import { parsePrefs, personFromSession } from '../person.js';
+import { VIEWERS, personFor, viewerAtTier } from '../redact.js';
 import {
   FRESH_MODE, STATE_COOKIE, claimStateNonce, clearSessionCookie, clearStateCookie, discordStateMode, hashToken, loadSession, newSessionToken,
   presentedToken, readManageable, sessionCookie, signDiscordLinkState, signState, startSessionStatements, stateCookie, verifyDiscordLinkState,
@@ -34,6 +35,8 @@ const SIGNIN_REDIRECT = '/#/signin';
 const LINKED_REDIRECT = '/#/linked';
 const ERROR_REDIRECT = (reason) => `/#/signin?error=${reason}`;
 const LINKED_ERROR_REDIRECT = (reason) => `/#/linked?error=${reason}`;
+// The reader of the successor in the delete dialog is the guild's own Guild Master (the stored one of a guild without a seat) leaving it: the tier that sees an avatar and a handle.
+const guildMasterView = viewerAtTier('guild_master');
 
 // ---------------------------------------------------------------------------
 // Sign in and link
@@ -339,7 +342,7 @@ async function deleteImpact(db, userId) {
     // to: null = nobody qualifies (the seat stays vacant until the Guild Master in game claims it); { userId: null, name: null } = somebody does but the account is not a member any more.
     return {
       guild: brief(row),
-      to: !toId ? null : people.has(toId) && row.self_member === 1 ? { userId: toId, name: toPerson(people.get(toId)).displayName } : { userId: null, name: null },
+      to: !toId ? null : people.has(toId) && row.self_member === 1 ? { userId: toId, name: personFor(people.get(toId), VIEWERS.lookup).displayName } : { userId: null, name: null },
       rule: ruleOf({ gmId, officerId, rankSource: row.rank_source }),
     };
   };
@@ -348,7 +351,7 @@ async function deleteImpact(db, userId) {
     guildsDeleted: rows.filter((row) => row.has_others !== 1).map(brief),
     autoPromote: rows.filter((row) => row.has_others === 1 && row.self_member !== 1 && row.seat_holder !== 1).map((row) => ({
       ...brief(row),
-      to: row.successor_id && people.has(row.successor_id) ? toPerson(people.get(row.successor_id)) : null,
+      to: row.successor_id && people.has(row.successor_id) ? personFor(people.get(row.successor_id), guildMasterView) : null,
     })),
     succession: rows.filter((row) => row.has_others === 1 && row.seat_holder === 1 && row.owner_live !== 1).map(successor),
     seatGuildIds: rows.filter((row) => row.seat_holder === 1 && !mustHandOver(row)).map((row) => row.id),

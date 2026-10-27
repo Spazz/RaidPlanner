@@ -3,18 +3,12 @@
 // field an officer would (notes, nicknames, flags) by taking a different route.
 import { isOwnPlayer, memberSql } from './membership.js';
 import { allows, isGranted } from './permissions.js';
-import { toPerson } from './person.js';
+import { personFor, viewerFor } from './redact.js';
 import { characterOfRow, personFields } from './person-rank.js';
 import { raidRoleOf } from './recruit-data.js';
 import { roleOf, todayIn, trialFlag } from './roster-data.js';
 import { isTeamRosterRow, onTeamRosterSql } from './team-roster.js';
 import { visibleCharacterSql } from './character-visibility.js';
-
-// Avatar URLs carry the user's Discord ID, so only the people who can open People and roles (where avatars are
-// already shown) get them in roster responses; everyone else gets initials.
-export function canSeeAvatars(can) {
-  return allows(can, 'guild.access') || allows(can, 'guild.roles');
-}
 
 export function guildToday(guild, nowMs) {
   return todayIn(guild.time_zone, nowMs);
@@ -112,7 +106,7 @@ export function notesView(data, guildContext, home) {
   return {
     text: player.notes || '',
     version: player.notes_version,
-    updatedBy: data.notesUser ? toPerson(data.notesUser, { avatar: canSeeAvatars(guildContext.can) }) : null,
+    updatedBy: data.notesUser ? personFor(data.notesUser, viewerFor(guildContext)) : null,
     updatedAt: player.notes_updated_at,
   };
 }
@@ -122,6 +116,8 @@ export function buildPersonRecord(guildContext, data, today, viewer) {
   const { player } = data;
   const home = homeTeamOf(data);
   const can = guildContext.can;
+  // Avatar URLs carry the account's Discord ID and a handle is the Discord username: only a viewer who may see them (worker/redact.js) gets them, everyone else the display name.
+  const who = viewerFor(guildContext);
   const edit = !!home && allows(can, 'roster.edit', home.id);
   // The teams a delete must be allowed on: each character's own team; a character on no team is covered by the person's home team (as in deletePerson).
   const teamIds = [...new Set(data.characters.map((entry) => (entry.view.team.id === null && home ? home.id : entry.view.team.id)))];
@@ -147,13 +143,13 @@ export function buildPersonRecord(guildContext, data, today, viewer) {
       version: player.version,
       discord: {
         signIn: signInOf(player, data.linkedUser),
-        user: data.linkedUser ? toPerson(data.linkedUser, { avatar: canSeeAvatars(can) }) : null,
+        user: data.linkedUser ? personFor(data.linkedUser, who) : null,
         nickname: edit ? player.discord_nickname : null,
       },
       // The Raidsmith account the person belongs to: via 'link' (an officer linked it, or an approved claim did) or 'discord' (the Discord ID matches).
       // An officer can change a 'link'; a 'discord' one changes through the Discord account field.
       account: {
-        user: data.accountUser ? toPerson(data.accountUser, { avatar: canSeeAvatars(can) }) : null,
+        user: data.accountUser ? personFor(data.accountUser, who) : null,
         via: data.accountUser ? (data.accountUser.by_link === 1 ? 'link' : 'discord') : null,
         linked: !!player.user_id,
       },
