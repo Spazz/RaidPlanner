@@ -1,19 +1,21 @@
-// The Trial clock (user-hierarchy build, lane B4b; plan "Model" > Trial, U R3-Q6). A Trial character's dates start with its team's raids, not with the day the rank
-// changed:
+// The Trial clock (user-hierarchy build, lane B4b; rewritten for the user decision of 2026-10-26, which replaces H-Q24 and R3-Q6). A Trial character's dates start
+// when the character ENTERED ITS TEAM, not with the first raid and not with an edit of the character:
 //
-//   trial_start   the date of the FIRST raid of the character's own team that logged the character (raid_presence), on or after the day it entered Trial
+//   trial_start   the guild-local date of the later of two instants: characters.team_since (the character was placed on its current team) and characters.trial_since (its
+//                 rank became Trial; a trial cannot start before the character was a Trial). Entering Trial while already on the team therefore starts today, being placed on
+//                 a team while already a Trial starts at the placement, and a team move restarts the clock on the new team.
 //   trial_end     trial_start + teams.trial_days (14 by default); a Team Lead may edit it afterwards
-//   written       by ONE set-based UPDATE ... WHERE trial_end IS NULL, so a clock that has started is never moved by a later run (a hand-set end date is final too)
-//   restarted     entering Trial by a rank change clears both (worker/rank-map.js applyRankMap, and the officer rank edit); the clock then starts again at the next raid
+//   written       by ONE set-based UPDATE ... WHERE trial_end IS NULL, so a clock that has started is never moved by a later run
+//   kept          a hand-set date is never overwritten by the clock: trial_end set = the row is skipped; trial_start set (typed by an officer, or the start of an accepted
+//                 application) = kept, and only the end is filled from it. The only things that clear the dates are a rank change (worker/rank-map.js applyRankMap, the
+//                 officer rank edit: both write NULL dates and the clock starts again) and a team move (trigger characters_trial_restart, migration 0040).
 //
-// Where it runs: at the end of every raid recompute (worker/attendance-store.js recomputeRaid: a raid with a log is what starts a clock), and in every rank-map apply
-// (the roster sync and a map edit; lane B9's flip backfill is the same statement). Each run is idempotent and independent of the order raids are recomputed in.
+// team_since and trial_since are kept by triggers (migration 0040), so no writer sets them. The clock reads them with a fallback to created_at for team_since, so a row
+// the triggers never stamped (none after the backfill) still gets its dates.
 //
-// "On or after the day it entered Trial": NOTHING stores the day a character entered Trial (no column; this lane adds no migration). Every writer of a rank sets
-// characters.updated_at = now in the same statement, so the floor is the guild-local date of updated_at. A later edit of the character (a rename, a team move)
-// moves the floor forward, which only ever matters before the clock has started. A column (characters.trial_since) would make it exact: the floor is ONE
-// expression (FLOOR_SQL), so that is a one-line swap. See the lane report.
-import { resolvedNameKeySql } from './name-alias.js';
+// Where it runs: at the end of every raid recompute (worker/attendance-store.js recomputeRaid), in every rank-map apply (the roster sync and a map edit; lane B9's flip
+// backfill is the same statement), and, scoped to the character or person that just changed, in the writers that start a clock themselves (the officer rank edit, a team
+// placement, a team move). It no longer depends on a raid being logged. Each run is idempotent and independent of the order anything happens in.
 
 // The UTC offset, in minutes, of an IANA time zone at an instant (epoch ms). 0 for a zone the runtime does not know.
 export function zoneOffsetMinutes(timeZone, ms) {
@@ -32,30 +34,23 @@ export function zoneOffsetMinutes(timeZone, ms) {
 // The SQLite date modifier for an offset: '-240 minutes'.
 export const offsetModifier = (minutes) => `${Number.isFinite(minutes) ? Math.trunc(minutes) : 0} minutes`;
 
-// SQL (one placeholder: the offset modifier): the guild-local date the character last had its rank written.
-const FLOOR_SQL = `date(characters.updated_at / 1000, 'unixepoch', ?)`;
-
-// A presence row is the character's when its stored name, read as of the raid, is the name the character carries today (renames: worker/name-alias.js).
-const PRESENCE_IS_CHARACTER = `${resolvedNameKeySql({ guild: 'rp.guild_id', nameKey: 'rp.name_key', realmKey: 'rp.realm_key', at: 'pr.starts_at' })} = characters.name_key`;
-
-// SQL (one placeholder: the offset modifier): the date of the first raid of the character's team that logged it, on or after the floor; NULL when none.
-// A scalar subquery on the UPDATE target (named `characters`).
-const FIRST_RAID_SQL = `(SELECT MIN(pr.raid_on) FROM raid_presence rp JOIN raids pr ON pr.guild_id = rp.guild_id AND pr.id = rp.raid_id
-     WHERE rp.guild_id = characters.guild_id AND rp.realm_key = characters.realm_key
-       AND (rp.name_key = characters.name_key
-            OR rp.name_key IN (SELECT nal.name_key FROM character_name_aliases nal WHERE nal.guild_id = characters.guild_id AND nal.character_id = characters.id))
-       AND ${PRESENCE_IS_CHARACTER} AND pr.team_id = characters.team_id AND pr.raid_on >= ${FLOOR_SQL})`;
+// SQL (one placeholder: the offset modifier) on the UPDATE target (named `characters`): the guild-local date the clock starts on.
+const START_SQL = `date(MAX(COALESCE(characters.team_since, characters.created_at), COALESCE(characters.trial_since, 0)) / 1000, 'unixepoch', ?)`;
 
 const CLOCK_SQL = `UPDATE characters
-   SET trial_start = ${FIRST_RAID_SQL},
-       trial_end = date(${FIRST_RAID_SQL}, '+' || (SELECT t.trial_days FROM teams t WHERE t.id = characters.team_id AND t.guild_id = characters.guild_id) || ' days')
- WHERE guild_id = ? AND core_rank = 'trial' AND team_id IS NOT NULL AND left_on IS NULL AND trial_end IS NULL
-   AND ${FIRST_RAID_SQL} IS NOT NULL`;
+   SET trial_start = COALESCE(trial_start, ${START_SQL}),
+       trial_end = date(COALESCE(trial_start, ${START_SQL}), '+' || (SELECT t.trial_days FROM teams t WHERE t.id = characters.team_id AND t.guild_id = characters.guild_id) || ' days')
+ WHERE guild_id = ? AND core_rank = 'trial' AND team_id IS NOT NULL AND left_on IS NULL AND trial_end IS NULL`;
 
-// One statement for a db.batch: starts the clock of every Trial character of the guild that has none and has a qualifying raid. guards: [{ sql, params }] appended
-// with AND (the batch guards of the caller). offsetMinutes: the guild zone's UTC offset (zoneOffsetMinutes).
-export function trialClockStatement(db, guildId, { offsetMinutes = 0, guards = [] } = {}) {
+// One statement for a db.batch: starts the clock of every Trial character of the guild that has none. offsetMinutes: the guild zone's UTC offset (zoneOffsetMinutes).
+// personId / characterId: only that person's / that character's clock (the writers that start one). guards: [{ sql, params }] appended with AND (the batch guards of
+// the caller).
+export function trialClockStatement(db, guildId, { offsetMinutes = 0, guards = [], personId = null, characterId = null } = {}) {
   const modifier = offsetModifier(offsetMinutes);
-  const sql = guards.length ? `${CLOCK_SQL} AND ${guards.map((guard) => guard.sql).join(' AND ')}` : CLOCK_SQL;
-  return db.prepare(sql).bind(modifier, modifier, guildId, modifier, ...guards.flatMap((guard) => guard.params));
+  const scope = [];
+  if (personId) scope.push({ sql: 'player_id = ?', params: [personId] });
+  if (characterId) scope.push({ sql: 'id = ?', params: [characterId] });
+  const extra = [...scope, ...guards];
+  const sql = extra.length ? `${CLOCK_SQL} AND ${extra.map((guard) => guard.sql).join(' AND ')}` : CLOCK_SQL;
+  return db.prepare(sql).bind(modifier, modifier, guildId, ...extra.flatMap((guard) => guard.params));
 }

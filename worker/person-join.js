@@ -337,7 +337,7 @@ export async function joinPersonsStatements(db, {
   );
 
   // 4. Characters: one Main (the survivor's stays), one character per team (the survivor's stays, the loser's goes teamless), then all of them move.
-  // (characters.updated_at stays as it is: the Trial clock reads it as the day a rank was last written, and a join writes no rank.)
+  // (A character that goes teamless here loses team_since and, as a Trial, its trial dates by trigger, migration 0040; a join writes no rank, so trial_since stays.)
   if (survivorHasMain) {
     guarded(`UPDATE characters ${BY_PERSON} SET is_main = 0 WHERE guild_id = ? AND player_id = ? AND is_main = 1`, [guildId, L]);
   } else if (survivorHasHiddenMain) {

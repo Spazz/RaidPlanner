@@ -14,6 +14,7 @@ import { LIMITS } from '../limits.js';
 import { findRealm } from '../realms.js';
 import { linkSignupsStatement, markPersonRaidsStale, markRaidsStale, weekFreeze } from '../attendance-store.js';
 import { assertSenior, seniorityDeleteOk, seniorityOk } from '../seniority.js';
+import { trialClockStatement, zoneOffsetMinutes } from '../trial-clock.js';
 import {
   guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
 } from '../roster-view.js';
@@ -500,6 +501,9 @@ export async function patchPerson(ctx) {
         params: [player.id, guildContext.guild.id, player.version, player.id, home.id, ...senior.params],
       };
       statements.push(setCharacterRanksStatement(db, guildContext.guild.id, player.id, characterRankColumns(next), unchanged, now));
+      // The Trial clock of the person's characters (worker/trial-clock.js): ranked to Trial with no dates given, it starts at the later of the team entry and today; the
+      // alts, which the statement above leaves without dates, get theirs again; dates the officer typed stay. Before the players UPDATE: it reads the same version guard.
+      statements.push(trialClockStatement(db, guildContext.guild.id, { offsetMinutes: zoneOffsetMinutes(guildContext.guild.time_zone, now), guards: [unchanged], personId: player.id }));
     }
     const playersAt = statements.length;
     statements.push(
@@ -628,6 +632,8 @@ export async function characterMoved(ctx, guildContext, personId, characterId) {
 export function newMainStatements(db, { playerId, characterId, previousMain, teamId, now, senior }) {
   const statements = makeMainStatements(db, playerId, characterId, now, { homeTeamId: previousMain.team_id, targetTeamId: null, senior });
   const swapAt = statements.length - 1;
+  // The trial dates sit on the Main character: they move with it, BEFORE the previous Main steps off its team (a Trial that leaves a team loses its dates by trigger, migration 0040).
+  statements.push(...trialDatesFollowMainStatements(db, previousMain.id, characterId));
   if (teamId) {
     if (previousMain.team_id === teamId) {
       statements.push(db.prepare('UPDATE characters SET team_id = NULL, updated_at = ? WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id IS ?')
@@ -685,8 +691,6 @@ export async function addCharacter(ctx) {
     statements.push(
       ...main.statements,
       audit(ctx, guildContext, 'character.main', 'character', characterId, { mainCharacterId: previous.id }, { mainCharacterId: characterId }),
-      // The trial dates sit on the Main character: they move with it.
-      ...trialDatesFollowMainStatements(db, previous.id, characterId),
     );
   }
   statements.push(markRaidsStale(db, guild.id, [nameKey(name)], null, team ? [team.id] : [], null, weekFreeze(guild.time_zone, ctx.now())));
@@ -763,6 +767,8 @@ export async function patchCharacter(ctx) {
         // A rename or a move changes which raids' results depend on this character.
         ...(changed.includes('name') || changed.includes('teamId')
           ? [markRaidsStale(db, guild.id, [nameKey(current.name), nameKey(name)], null, [current.team_id, teamId].filter(Boolean), null, weekFreeze(guild.time_zone, ctx.now()))] : []),
+        // A Trial moved to another team restarts its clock there (worker/trial-clock.js).
+        trialClockStatement(db, guild.id, { offsetMinutes: zoneOffsetMinutes(guild.time_zone, now), characterId: current.id }),
       ]);
     } catch (error) {
       if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realmColumns(guild, current.realm));

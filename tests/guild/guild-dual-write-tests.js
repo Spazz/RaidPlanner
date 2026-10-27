@@ -179,17 +179,18 @@ check('attendance "add as a person" and "add as an alt": the new character takes
   const asPerson = await s.ok('gm', 'POST', `/raids/${raid.id}/unmatched`, { key: 'walkindual|nightslayer', action: 'person', status: 'trial', joinedOn: '2026-12-20', class: 'MAGE' }, 200);
   assert(asPerson.raid);
   const owner = (await s.rows("SELECT player_id FROM characters WHERE name = 'Walkindual'"))[0].player_id;
-  assert.deepEqual(cols((await s.chars(owner)).Walkindual), ['trial', null, null, '2026-12-20', null]);
+  // The typed start stays; the recompute that follows runs the Trial clock, which fills the end from it (start + the team's 14 trial days).
+  assert.deepEqual(cols((await s.chars(owner)).Walkindual), ['trial', null, null, '2026-12-20', '2027-01-03']);
   await s.playersInert('unmatched -> person');
 
   await s.ok('gm', 'POST', `/raids/${raid.id}/unmatched`, { key: 'walkintwo|nightslayer', action: 'alt', personId: owner, class: 'ROGUE' }, 200);
   let chars = await s.chars(owner);
-  assert.deepEqual([cols(chars.Walkindual), cols(chars.Walkintwo)], [['trial', null, null, '2026-12-20', null], ['trial', null, null, null, null]]);
+  assert.deepEqual([cols(chars.Walkindual), cols(chars.Walkintwo)], [['trial', null, null, '2026-12-20', '2027-01-03'], ['trial', null, null, null, null]]);
   await s.playersInert('unmatched -> alt');
 
   await s.ok('gm', 'POST', `/raids/${raid.id}/unmatched`, { key: 'walkinthree|nightslayer', action: 'alt', personId: owner, class: 'WARLOCK', makeMain: true }, 200);
   chars = await s.chars(owner);
-  assert.deepEqual([cols(chars.Walkinthree), cols(chars.Walkindual)], [['trial', null, null, '2026-12-20', null], ['trial', null, null, null, null]], 'the dates follow the new main');
+  assert.deepEqual([cols(chars.Walkinthree), cols(chars.Walkindual)], [['trial', null, null, '2026-12-20', '2027-01-03'], ['trial', null, null, null, null]], 'the dates follow the new main');
   await s.playersInert('unmatched -> alt as main');
 });
 

@@ -19,7 +19,7 @@
 //      withdrawn (it asked for a place on a team as the old person's character);
 //   3. the character moves. It becomes the new person's Main only when the new person has no VISIBLE Main (a retired placeholder Main steps down first, in the
 //      same batch: the person must keep a Main the lists can see); a team the new person already has a character on is cleared (one character per team and
-//      person); characters.updated_at stays (the Trial clock reads it);
+//      person); characters.updated_at stays; a moved character that goes teamless loses team_since by trigger (migration 0040);
 //   4. when the old person has no Main left another visible character takes over (not yet Former first, best core rank, a team-less one last);
 //   5. the old person ALWAYS gets a retired PLACEHOLDER (worker/character-visibility.js): Former (left_on = today in the guild's zone), Social, no identity key, no
 //      team, hidden from every list and count; Main only when the person has no other Main left;

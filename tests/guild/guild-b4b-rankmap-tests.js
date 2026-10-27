@@ -409,7 +409,7 @@ check('applyRankMap: a rank change sets updated_at, clears the trial dates (ente
   const promoted = await s.rankOf('Btrial');
   assert.deepEqual([promoted.core_rank, promoted.trial_start, promoted.trial_end, promoted.updated_at], ['raider', null, null, s.w.clock.now]);
   const entered = await s.rankOf('Craider');
-  assert.deepEqual([entered.core_rank, entered.trial_start, entered.trial_end, entered.updated_at], ['trial', null, null, s.w.clock.now], 'entering Trial: both dates empty, the clock starts at the next logged raid');
+  assert.deepEqual([entered.core_rank, entered.trial_start, entered.trial_end, entered.updated_at], ['trial', '2027-01-15', '2027-01-29', s.w.clock.now], 'entering Trial on its team: the apply clears the dates and its clock starts them today (the later of team entry and the rank change)');
   assert.ok(trial && raider);
 });
 

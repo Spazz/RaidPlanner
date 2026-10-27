@@ -65,6 +65,7 @@ async function scenario() {
       return id;
     },
     teamless: (characterId) => w.db.sqlite.exec(`UPDATE characters SET team_id = NULL WHERE id = '${characterId}'`),
+    exec: (sql) => w.db.sqlite.exec(sql),
     async me(who) { return (await s.ok(who, 'GET', '')).me; },
   };
   return s;
@@ -166,6 +167,8 @@ check('the guild export reads the notes of a person whose main has no team for w
   const p = await s.newPerson({ name: 'Exportnull', status: 'trial', trialEnd: '2027-02-10' });
   await s.ok('gm', 'PUT', `/roster/${p.pid}/notes`, { text: 'Good player', expectedNotesVersion: 0 }, 200);
   s.teamless(p.cid);
+  // (Leaving a team ends a Trial's dates, migration 0040: a teamless Trial carries the dates an officer types.)
+  s.exec(`UPDATE characters SET trial_start = '2027-01-12', trial_end = '2027-02-10' WHERE id = '${p.cid}'`);
   const file = await s.ok('gm', 'GET', '/export');
   const entry = file.people.find((x) => x.id === p.pid);
   assert.equal(entry.notes, 'Good player');

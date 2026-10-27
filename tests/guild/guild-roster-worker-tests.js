@@ -590,7 +590,8 @@ check('update person: status, dates and trial history; no-op writes change nothi
   const extend = await patch({ expectedVersion: 3, trialEnd: '2027-02-20' });
   assert.deepEqual([extend.json.person.trialFlag, extend.json.rosterFlags[s.teamId], extend.json.person.version], [null, 0, 4], 'moving the end date clears the flag');
   const cleared = await patch({ expectedVersion: 4, joinedOn: null, trialStart: null, trialEnd: null });
-  assert.deepEqual([cleared.json.person.joinedOn, cleared.json.person.trialStart, cleared.json.person.trialEnd], [null, null, null]);
+  // Cleared dates start again from the team entry at once (the officer edit runs the Trial clock: the person entered the team when it was created, 2027-01-15).
+  assert.deepEqual([cleared.json.person.joinedOn, cleared.json.person.trialStart, cleared.json.person.trialEnd], [null, '2027-01-15', '2027-01-29']);
   const noop = await patch({ expectedVersion: 5, status: 'trial' });
   assert.equal(noop.status, 200);
   assert.equal(noop.json.person.version, 5, 'nothing changed: no version bump');

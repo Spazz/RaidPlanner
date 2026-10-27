@@ -16,7 +16,7 @@ import { isId, newId } from '../ids.js';
 import { isOwnPlayer } from '../membership.js';
 import { winnerNameKeySql } from '../name-alias.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
-import { characterRankColumns, trialDatesFollowMainStatements } from '../person-legacy.js';
+import { characterRankColumns } from '../person-legacy.js';
 import { characterOfRow, homeTeamId } from '../person-rank.js';
 import { assertSenior, seniorityOk } from '../seniority.js';
 import { CLASS_IDS, CREATE_STATUSES, cleanCharacterName, DEFAULT_WCL_FLAVOUR, isRealDate, nameKey } from '../roster-data.js';
@@ -516,8 +516,6 @@ export async function postUnmatched(ctx) {
           guildId: guild.id, actorUserId: ctx.session.user.id, action: 'character.main', entityType: 'character', entityId: characterId,
           before: { mainCharacterId: home.main_id }, after: { mainCharacterId: characterId },
         }),
-        // The trial dates sit on the Main character: they move with it.
-        ...trialDatesFollowMainStatements(db, home.main_id, characterId),
       );
     }
   }
