@@ -229,16 +229,23 @@ check('Battle.net page: linked (Continue setup for the Owner), switched (Sync no
   const linked = page(gdOf(), LINKED());
   assert(linked.includes('data-state="linked"') && linked.includes('Continue setup') && !linked.includes('Set up the in-game guild'));
   assert(text(linked).includes('Writers on Dreamscythe (US)') && text(linked).includes('Not switched yet: Writers still follows Discord roles.'));
-  assert(text(linked).includes('64 members') && text(linked).includes('Last read Tue Oct 27, 9:12 AM ET'), text(linked));
+  assert(text(linked).includes('64 members') && text(linked).includes('Last read Oct 27, 9:12 AM ET'), text(linked));
   assert(!page(gdOf({ owner: { name: 'Brandon', you: false } }), LINKED()).includes('Continue setup'), 'only the Owner continues');
   assert(page(gdOf(), LINKED({ pinOpen: false })).includes('Continue setup'), 'a linked guild continues whatever the allowlist says: only the pin itself is gated');
   const switched = page(gdOf(), SWITCHED());
   assert(switched.includes('data-state="ingame"') && switched.includes('Sync now') && switched.includes('data-action="bnet-sync-now"') && !switched.includes('Continue setup'));
-  assert(text(switched).includes('Members and ranks come from the guild roster.') && text(switched).includes('Last checked Tue Oct 27, 9:12 AM ET'));
+  assert(text(switched).includes('Members and ranks come from the guild roster.') && text(switched).includes('Last checked Oct 27, 9:12 AM ET'));
   assert(!page(gdOf({ me: OFFICER }), SWITCHED()).includes('Sync now'), 'Sync now is the Guild Master\'s (the Worker refuses the others)');
   const manual = page(gdOf(), bnetOf({ pin: { pinned: false, complete: false, rankSource: 'manual', guildSlug: null, realmSlug: null, namespace: null } }));
   assert(manual.includes('data-state="manual"') && text(manual).includes('Members and ranks are set by hand in this guild.') && !manual.includes('Set up the in-game guild'));
   assert(text(page(gdOf(), LINKED({ roster: { members: 0, fetchedAt: null } }))).includes('Not read yet'));
+  // The spec's time: a date like "Oct 27", the guild's zone, no weekday, the year only when it is not this year.
+  assert(!/(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/.test(text(linked).slice(text(linked).indexOf('Last read'))), 'no weekday in the Roster row');
+  const lastYear = Date.UTC(new Date().getFullYear() - 1, 9, 27, 13, 12);
+  assert.equal(G.ui.formatStamp(T0, 'America/New_York'), 'Oct 27, 9:12 AM ET');
+  assert.equal(G.ui.formatStamp(lastYear, 'America/New_York'), `Oct 27, ${new Date().getFullYear() - 1}, 9:12 AM ET`);
+  assert.equal(G.ui.formatStamp(NaN, 'America/New_York'), '');
+  assert.equal(G.ui.formatDateTime(T0, 'America/New_York'), 'Tue Oct 27, 9:12 AM ET', 'the app-wide time keeps its weekday');
 });
 
 check('Battle.net page: once pinned the guild name and realm are read-only and stay out of the PUT; the rank names are still saved', async () => {
@@ -763,7 +770,7 @@ check('Guild setup, step 4: the flip sends the token and the ticked ids; a missi
   const t = text(done.html());
   assert(done.html().includes('gs-banner-success') && t.includes('Writers now follows the in-game guild.') && t.includes('29 accounts are members: 27 stayed, 2 gained access and 12 lost it. 24 characters changed core rank, 7 of them are on Trial.'), t.slice(0, 500));
   assert(t.includes('Writers now') && t.includes('Roles 6 roles from Discord are now hand-set, 3 new permissions from ranks') && t.includes('Claims 5 people wait for their player to claim them with This is me') && t.includes('Name matches 3 characters are matched to the roster by name'));
-  assert(t.includes('Roster 64 members Last checked Tue Oct 27, 9:12 AM ET') && done.html().includes('href="#/g/g1/roster"') && !done.html().includes('gs-commitbar'));
+  assert(t.includes('Roster 64 members Last checked Oct 27, 9:12 AM ET') && done.html().includes('href="#/g/g1/roster"') && !done.html().includes('gs-commitbar'));
   assert.deepEqual(stepperOf(done.html()), ['done', 'done', 'done', 'done']);
   assert(text(done.html()).includes('Writers follows its in-game guild.') && !/Open Users/.test(t) === !done.html().includes('href="#/g/g1/users"'));
 });

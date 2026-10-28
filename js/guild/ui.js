@@ -121,9 +121,9 @@
     return p.hour + ':' + p.minute + ' ' + String(p.dayPeriod || '').toUpperCase();
   }
 
-  function dayText(ms, zone) {
+  function dayText(ms, zone, noWeekday) {
     const p = zonedParts(ms, zone, { weekday: 'short', month: 'short', day: 'numeric' });
-    return p.weekday + ' ' + p.month + ' ' + p.day;
+    return (noWeekday ? '' : p.weekday + ' ') + p.month + ' ' + p.day;
   }
 
   function zoneOf(timeZone) { return validZone(timeZone) || validZone(viewerZone()); }
@@ -145,7 +145,7 @@
   };
 
   // "Wed Oct 21, 8:00 PM ET". opts.year: true adds the year ("Wed Oct 21, 2026, 8:00 PM ET"), 'auto' adds it when it is not the current year
-  // (opts.now is the moment "now", for a test), opts.noZone leaves the zone label off.
+  // (opts.now is the moment "now", for a test), opts.noZone leaves the zone label off, opts.noWeekday the weekday ("Oct 21, 8:00 PM ET").
   ui.dateTimeInZone = function (ms, timeZone, opts) {
     if (typeof ms !== 'number' || !isFinite(ms)) return '';
     const o = opts || {};
@@ -156,8 +156,14 @@
       const thisYear = zonedParts(typeof o.now === 'number' ? o.now : Date.now(), zone, { year: 'numeric' }).year;
       const withYear = o.year === true || (o.year === 'auto' && year !== thisYear);
       const label = o.noZone ? '' : ui.zoneLabel(zone, ms);
-      return dayText(ms, zone) + (withYear ? ', ' + year : '') + ', ' + clockText(ms, zone) + (label ? ' ' + label : '');
+      return dayText(ms, zone, o.noWeekday) + (withYear ? ', ' + year : '') + ', ' + clockText(ms, zone) + (label ? ' ' + label : '');
     } catch (e) { return ''; }
+  };
+
+  // The design spec's time ("Oct 27, 9:12 AM ET": a date like "Oct 23", the guild's zone, the year only when it is not this year).
+  ui.formatStamp = function (ms, timeZone) {
+    if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    return ui.dateTimeInZone(ms, timeZone, { year: 'auto', noWeekday: true }) || ui.formatDateTime(ms, timeZone);
   };
 
   // The calendar day (YYYY-MM-DD) of a moment in a zone.

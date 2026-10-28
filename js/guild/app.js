@@ -880,6 +880,7 @@
       return x && x.rid === r.rid && x.data && x.data.raid ? G.ui.weekdayDay(x.data.raid.raidOn) : '';
     }
     if (r.name === 'personatt') return G.pages.personAtt.nameFor(r);
+    if (r.name === 'user') return G.pages.user.nameFor(r);
     if (r.name === 'lootperson') return G.pages.personLoot.nameFor(r);
     if (r.name === 'lootnight') return G.pages.lootNight.nameFor(r);
     if (r.name === 'lootitem') return G.pages.lootItem.nameFor(r);

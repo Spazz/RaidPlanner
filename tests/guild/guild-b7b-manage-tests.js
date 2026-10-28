@@ -39,6 +39,7 @@ const scenario = async (options) => unlimited(await baseScenario(options));
 const BLOCK = '/users/block';
 const UNBLOCK = '/users/unblock';
 const ADD = '/users/add-to-person';
+const SKIP_NAME_ONLY = 'A name seen in a log has no account or roster person: nothing to block. Add it to a person or leave it.';
 const keyOfName = (name) => `n_${Buffer.from(name.toLowerCase(), 'utf8').toString('hex')}`;
 const reasons = (res) => Object.fromEntries(res.skipped.map((entry) => [entry.key, entry.reason]));
 const doneKeys = (res) => res.done.map((entry) => entry.key);
@@ -329,6 +330,33 @@ check('block: each name gets the single route\'s guards - yourself, the Guild Ma
   assert.deepEqual(reasons(gm), { [s.uids.gm]: 'owner' });
   // A blocked Officer lost the access: the next call of theirs is refused like any call of a blocked account.
   assert.equal((await s.call('off', 'POST', BLOCK, { keys: [s.uids.m5] })).status, 403);
+});
+
+check('block: names seen in a log only (no account, no person) answer 200 with every name skipped as name_only and its message, writing nothing; with a person they are skipped beside it; an empty list is a 400; unblock of names only answers the same', async () => {
+  const s = await world({ members: 2 });
+  const somebody = keyOfName('Somebody');
+  const another = keyOfName('Another');
+  const writes = () => ({
+    blocks: rowsOf(s, 'SELECT COUNT(*) AS n FROM guild_blocks')[0].n,
+    persons: rowsOf(s, 'SELECT COUNT(*) AS n FROM person_blocks')[0].n,
+    audit: rowsOf(s, "SELECT COUNT(*) AS n FROM audit_log WHERE action IN ('access.remove', 'person.block', 'access.restore', 'person.unblock')")[0].n,
+  });
+  const before = writes();
+  for (const [tail, action] of [[BLOCK, 'block'], [UNBLOCK, 'unblock']]) {
+    const res = await s.ok('off', 'POST', tail, { keys: [somebody, another] }, 200);
+    assert.equal(res.action, action);
+    assert.deepEqual(res.done, [], `${action}: nothing done`);
+    assert.deepEqual(res.skipped.map((entry) => [entry.key, entry.reason, entry.message]), [
+      [somebody, 'name_only', SKIP_NAME_ONLY], [another, 'name_only', SKIP_NAME_ONLY],
+    ], `${action}: each name is skipped with its message, in the request's order`);
+  }
+  assert.deepEqual(writes(), before, 'names only write nothing');
+  const mixed = await s.ok('off', 'POST', BLOCK, { keys: [somebody, s.uids.m1, another] }, 200);
+  assert.deepEqual(doneKeys(mixed), [s.uids.m1]);
+  assert.deepEqual(reasons(mixed), { [somebody]: 'name_only', [another]: 'name_only' });
+  const empty = await s.call('off', 'POST', BLOCK, { keys: [] });
+  assert.equal(empty.status, 400, empty.text);
+  assert.deepEqual([empty.json.error, empty.json.field], ['bad_request', 'keys']);
 });
 
 check('block: in an in-game guild - the live Owner is the Owner, a derived Guild Master is the Guild Master, a person whose in-game rank maps to Officer is out of an Officer\'s reach but not the Owner\'s, a suspended Owner is blockable', async () => {

@@ -42,7 +42,7 @@
       if (info.state === 'linked' && you) head = G.ui.buttonHtml({ label: 'Continue setup', variant: 'primary', href: setupHref });
       if (info.state === 'ingame' && G.shell.isGuildMaster(gd.me && gd.me.roles)) head = G.ui.buttonHtml({ label: 'Sync now', attrs: { 'data-action': 'bnet-sync-now', 'data-key': 'bnet-sync-now' } });
     }
-    const when = roster.fetchedAt ? G.ui.formatDateTime(roster.fetchedAt, zone) : '';
+    const when = roster.fetchedAt ? G.ui.formatStamp(roster.fetchedAt, zone) : '';
     const rosterRow = roster.members > 0 ? esc(plain(roster.members, 'member', 'members')) + (when ? ingameSub((info.state === 'ingame' ? 'Last checked ' : 'Last read ') + when) : '') : '<span class="gs-muted">Not read yet</span>';
     return '<div class="gs-hd-panel gs-card-sec gs-su-panel" id="bnet-ingame" data-state="' + info.state + '"><div class="gs-card-sec-head"><h2 class="gs-h2">In-game guild</h2>' + head + '</div><dl class="gs-ro-list gs-su-facts">' +
       ingameFact('Guild', guildRow) + ingameFact('Roster', rosterRow) + '</dl></div>';

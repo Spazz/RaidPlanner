@@ -22,7 +22,7 @@ function check(name, fn) { checks.push({ name, fn }); }
 const usageError = (argv, pattern) => assert.throws(() => smoke.parseArgs(argv), (error) => error.usage === true && pattern.test(error.message), argv.join(' '));
 
 check('up: a name alone gives the defaults (first free port later, discord + sources)', () => {
-  assert.deepEqual(smoke.parseArgs(['up', '--name', 'proof']), { command: 'up', name: 'proof', port: null, fakes: ['discord', 'sources'], open: false, script: null, scriptArgs: [] });
+  assert.deepEqual(smoke.parseArgs(['up', '--name', 'proof']), { command: 'up', name: 'proof', port: null, fakes: ['discord', 'sources'], open: false, pinOpen: false, script: null, scriptArgs: [] });
 });
 
 check('up: --port and --with, also in the --flag=value form; discord is always on and the order is fixed', () => {
@@ -41,6 +41,22 @@ check('up: --open means no creator allowlist and takes no value, only on up; the
   const value = (args) => Object.fromEntries(args.filter((_, index) => index % 2 === 1).map((arg) => [arg.slice(0, arg.indexOf(':')), arg.slice(arg.indexOf(':') + 1)])).GUILD_CREATOR_ALLOWLIST;
   assert.equal(value(smoke.workerVars(8792, ['discord'], '110000000000000001')), '110000000000000001');
   assert.equal(value(smoke.workerVars(8792, ['discord'], '110000000000000001', true)), ',');
+});
+
+check('up: --pin-open opens the setup pin for the seeded guild (SETUP_PIN_GUILDS '*': the guild id does not exist when the Worker starts), takes no value, only on up; without it the pin stays closed (a comma, nobody)', () => {
+  const pin = (args) => Object.fromEntries(args.filter((_, index) => index % 2 === 1).map((arg) => [arg.slice(0, arg.indexOf(':')), arg.slice(arg.indexOf(':') + 1)])).SETUP_PIN_GUILDS;
+  assert.equal(smoke.parseArgs(['up', '--name', 'x']).pinOpen, false);
+  assert.equal(smoke.parseArgs(['up', '--name', 'x', '--pin-open']).pinOpen, true);
+  assert.equal(smoke.parseArgs(['up', '--pin-open', '--name', 'x', '--open', '--port', '8792']).pinOpen, true, 'with the other flags');
+  usageError(['up', '--name', 'x', '--pin-open=1'], /--pin-open takes no value/);
+  usageError(['down', '--name', 'x', '--pin-open'], /unknown option --pin-open/);
+  usageError(['run', '--name', 'x', '--pin-open', 'a.js'], /unknown option --pin-open/);
+  assert.equal(pin(smoke.workerVars(8792, ['discord'], '1')), ',', 'closed by default');
+  assert.equal(pin(smoke.workerVars(8792, ['discord'], '1', false, false)), ',');
+  assert.equal(pin(smoke.workerVars(8792, ['discord'], '1', false, true)), '*');
+  assert.equal(pin(smoke.workerVars(8792, ['discord'], '1', true, true)), '*', 'independent of --open');
+  const header = require('node:fs').readFileSync(path.join(__dirname, '..', '..', 'tools', 'guild-smoke.js'), 'utf8').split('*/')[0];
+  assert(header.includes('--pin-open') && header.includes('SETUP_PIN_GUILDS'), 'the header documents it');
 });
 
 check('up: the port must be 8790-8799, so 8787 (the live localhost) and anything else is refused', () => {

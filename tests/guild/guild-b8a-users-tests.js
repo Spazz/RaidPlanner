@@ -663,7 +663,7 @@ check('user page: a block that waits for review is a decision (Keep block / Rest
   assert(html.includes('data-action="users-keep"') && html.includes('data-action="users-restore"') && html.includes('gs-btn gs-btn-molten'), 'Keep block is the primary');
   assert(html.includes('gs-hd-chip is-rose">Needs review<') && text(html).includes('Blocked · last seen Oct 26'));
   const panel = text(html.slice(html.indexOf('id="block"')));
-  assert(panel.includes('Blocked on Oct 3, 2026') && panel.includes('Reason Matched an earlier block of the same person') && !panel.includes('Blocked by'));
+  assert(panel.includes('Blocked on Oct 3 Reason') && panel.includes('Reason Matched an earlier block of the same person') && !panel.includes('Blocked by'));
   assert(!html.includes('Block user'), 'already blocked');
   assert(!userPage(blocked, gdOf({ 'guild.roles': 'guild' })).includes('gs-nextstep'), 'a viewer who cannot decide does not see the bar');
   assert(text(userPage(account({ segment: 'blocked', block: { blocked: true, pendingReview: false, blockedOn: '2026-10-03', blockedBy: 'Officer', reason: 'Rude' } }))).includes('Blocked by Officer'));
@@ -715,6 +715,62 @@ check('user page: a person without an account says so, a name shows where it was
   const failed = G.pages.user.main({ name: 'user', gid: 'g1', key: 'u_nobody' }, gd);
   assert(failed.includes('data-action="users-user-retry"') && text(failed).includes('We couldn\'t load this user.'));
   assert(/Loading the user/.test(G.pages.user.main({ name: 'user', gid: 'g1', key: 'u_other' }, gd)) && /<h1[^>]*>User<\/h1>/.test(G.pages.user.main({ name: 'user', gid: 'g1', key: 'u_other' }, gd)));
+});
+
+check('user page: the trail\'s last crumb is the user\'s name once the page has read them (the app\'s context carries it), nothing for another user', async () => {
+  resetBrowser();
+  const gd = gdOf(); G.app.state.guilds.g1 = gd; G.app.state.currentGid = 'g1'; G.app.state.section = 'guild';
+  const route = { name: 'user', gid: 'g1', key: key(1) };
+  const crumbs = () => G.shell.breadcrumbItems(G.app.buildCtx(route)).map((crumb) => crumb.label);
+  assert.equal(G.app.buildCtx(route).leafName, '', 'nothing read yet');
+  assert.equal(crumbs().slice(-2).join(' / '), 'Users / User', 'until then the placeholder');
+  useApi(() => account());
+  await G.pages.user.load(route, gd);
+  assert.equal(G.app.buildCtx(route).leafName, 'Ashgrove');
+  assert.equal(crumbs().slice(-2).join(' / '), 'Users / Ashgrove');
+  assert.equal(G.app.buildCtx({ name: 'user', gid: 'g1', key: key(2) }).leafName, '', 'the page holds another user');
+  assert.equal(G.pages.user.nameFor({ name: 'user', gid: 'g2', key: key(1) }), '', 'another guild');
+});
+
+check('user page: Blocked on is a date like "Oct 3" and carries the year only when it is not this year', () => {
+  resetBrowser();
+  const year = new Date().getFullYear();
+  const panelOf = (blockedOn) => text(userPage(account({ segment: 'blocked', block: { blocked: true, pendingReview: false, blockedOn, blockedBy: 'Officer', reason: 'Rude' } })).replace(/^[\s\S]*?id="block"/, ''));
+  assert(panelOf(`${year}-10-03`).includes('Blocked on Oct 3 Reason Rude Blocked by Officer'), panelOf(`${year}-10-03`));
+  assert(!panelOf(`${year}-10-03`).includes(String(year)), 'this year: no year');
+  assert(panelOf(`${year - 1}-12-24`).includes(`Blocked on Dec 24, ${year - 1} Reason`), 'another year keeps it');
+});
+
+// The Users block of guild.css, whole and its phone parts (the phone tab bar is 64 px at 600 px and below).
+const usersCss = () => {
+  const css = read('guild.css');
+  const block = css.slice(css.indexOf('/* Users list (T1'), css.indexOf('/* == end B8a Users == */'));
+  const phone = (query) => { const at = block.indexOf(`@media (${query}) {`); return at < 0 ? '' : block.slice(at, block.indexOf('\n}\n', at)); };
+  return { css, block, p760: phone('width <= 760px'), p600: phone('width <= 600px') };
+};
+
+check('phone: the selection bar sits above the 64 px tab bar (bottom: 64px at 600 px and below), the desktop bar stays at the bottom', () => {
+  resetBrowser();
+  const { css, block, p600 } = usersCss();
+  assert(/\.gs-tabs \{ display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: 64px/.test(css), 'the tab bar is 64 px and fixed to the bottom');
+  assert(/\n\.gs-us-selbar \{ position: sticky; bottom: 0;/.test(block), 'desktop: bottom 0');
+  assert(/\n  \.gs-us-selbar \{ bottom: 64px; \}/.test(p600), 'phone: above the tab bar, like the other sticky bars');
+  assert(/\.gs-savebar, \.gs-commitbar \{ bottom: 64px;/.test(css), 'the same offset the Save bar uses');
+});
+
+check('phone: "Show all N" is a 44 px target, and so is every row of Edit permission (one label over the whole row, box included)', () => {
+  resetBrowser();
+  const { block, p600, p760 } = usersCss();
+  const more = listHtml([row(1), row(2)], { more: true });
+  assert(/<p class="gs-fine gs-us-pfoot">[^<]*<button type="button" class="gs-linkbtn" data-action="users-all"[^>]*>Show all 53<\/button><\/p>/.test(more.replace(/\n/g, '')), 'the phone foot holds the button');
+  assert(/\.gs-us-pfoot \.gs-linkbtn \{ min-height: 44px; display: inline-flex; align-items: center; \}/.test(p600), 'Show all: 44 px high');
+  const html = G.pages.user.editPermissionDialogHtml({ guildData: gdOf(), data: account(), customRoles: [], meId: ME });
+  assert(/^<form class="gs-dialog-form gs-forge gs-dialog-settings gs-us-perm"/.test(html), 'the dialog is the scope of the rule');
+  const boxes = [...html.matchAll(/<div class="gs-check"><input type="checkbox" id="([^"]+)"[^>]*><label for="\1">/g)];
+  assert(boxes.length >= 2 && boxes.length === count(html, /class="gs-check"/g), `every tick row is a box with its own label (${boxes.length})`);
+  assert(/\.gs-us-perm \.gs-check \{ position: relative; min-height: 44px; \}/.test(p760), 'the row is 44 px and the anchor of the label');
+  assert(/\.gs-us-perm \.gs-check label \{ flex: 1 1 auto; \}/.test(p760) && /\.gs-us-perm \.gs-check label::after \{ content: ""; position: absolute; inset: 0; \}/.test(p760), 'the label stretches over the whole row');
+  assert(!block.replace(p760, '').includes('.gs-us-perm'), 'only on the phone');
 });
 
 // ---------------------------------------------------------------------------

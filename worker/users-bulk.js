@@ -165,14 +165,16 @@ async function readFacts(ctx, guildContext, { accounts, persons }, { withPlaced 
   if (persons.length) { at.persons = statements.length; statements.push(personFactsStatement(db, ctx, guildContext, persons, guildContext.userId)); }
   if (accounts.length) { at.accountKeys = statements.length; statements.push(...accountKeysStatements(db, accounts, guildId)); }
   if (persons.length) { at.personKeys = statements.length; statements.push(...personKeysStatements(db, persons, guildId)); }
-  if (withPlaced) { at.placed = statements.length; statements.push(placedStatement(db, guildId, accounts, persons)); }
+  // A request of nothing but names seen in a log has no account or person to look up: placedStatement would build FROM ().
+  const placedWanted = withPlaced && (accounts.length > 0 || persons.length > 0);
+  if (placedWanted) { at.placed = statements.length; statements.push(placedStatement(db, guildId, accounts, persons)); }
   const results = statements.length ? await ctx.db.batch(statements) : [];
   const rowsOf = (index) => new Map(results[index].results.map((row) => [row.id, row]));
   const keys = new Map();
   if (accounts.length) for (const [id, value] of keysOfMany([results[at.accountKeys], results[at.accountKeys + 1]])) keys.set(id, value);
   if (persons.length) for (const [id, value] of keysOfMany([results[at.personKeys], results[at.personKeys + 1]])) keys.set(id, value);
   const placed = new Map();
-  if (withPlaced) {
+  if (placedWanted) {
     for (const row of results[at.placed].results) {
       if (!placed.has(row.target)) placed.set(row.target, []);
       placed.get(row.target).push({ name: row.name, teamId: row.team_id });

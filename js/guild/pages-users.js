@@ -636,7 +636,7 @@
     }
     if (block.blocked) {
       right.push(panelHtml({ id: 'block', title: 'Block', flush: true,
-        bodyHtml: (block.blockedOn ? kvHtml('Blocked on', esc(G.ui.formatDay(block.blockedOn) || shortDay(block.blockedOn))) : '') + (block.reason ? kvHtml('Reason', esc(block.reason)) : '') + (block.blockedBy ? kvHtml('Blocked by', esc(block.blockedBy)) : '') }));
+        bodyHtml: (block.blockedOn ? kvHtml('Blocked on', esc(shortDay(block.blockedOn))) : '') + (block.reason ? kvHtml('Reason', esc(block.reason)) : '') + (block.blockedBy ? kvHtml('Blocked by', esc(block.blockedBy)) : '') }));
     }
     const identity = data.identity || {};
     const methods = (Array.isArray(identity.signInMethods) ? identity.signInMethods : []).slice().sort(function (a, b) { return a === 'battlenet' ? -1 : (b === 'battlenet' ? 1 : 0); }).map(function (s) { return has(SIGN_IN_LABELS, s) ? SIGN_IN_LABELS[s] : s; });
@@ -666,6 +666,11 @@
       return page('User', G.ui.errorRegionHtml({ title: 'We couldn\'t load this user.', text: user.error, safe: 'Nothing you saved was lost.', retry: { variant: 'primary', size: undefined, attrs: { 'data-action': 'users-user-retry', 'data-key': 'users-user-retry' } } }));
     }
     return userHtml({ guildData: gd, data: user.data, meId: myId(), flash: flash });
+  }
+
+  // The user's name for the trail's last crumb ('' until the page has read them).
+  function userNameFor(r) {
+    return user && r && user.gid === r.gid && user.key === r.key && user.data && typeof user.data.name === 'string' ? user.data.name : '';
   }
 
   function reloadUser() {
@@ -1051,7 +1056,7 @@
       (discordGives.length ? '<p class="gs-fine gs-from-discord" id="dlg-from-discord">From Discord: ' + esc(labelsOf(discordGives, gd)) + '. A role from Discord lasts only while Discord gives it. Tick its box to keep it.</p>' : '');
     const seat = canHandOver(gd, data, opts.meId)
       ? '<div class="gs-gm"><h3 class="gs-legend">Owner seat</h3><button type="button" class="gs-btn" id="dlg-gm-ask" data-action="users-handover-open" data-key="users-handover-ask">Hand over the Owner seat</button></div>' : '';
-    return '<form class="gs-dialog-form gs-forge gs-dialog-settings" data-submit="users-roles-form"' + (custom.length ? ' data-custom="1"' : '') + ' novalidate>' +
+    return '<form class="gs-dialog-form gs-forge gs-dialog-settings gs-us-perm" data-submit="users-roles-form"' + (custom.length ? ' data-custom="1"' : '') + ' novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Edit permission for ' + esc(data.name) + '</h2>' +
       '<fieldset class="gs-fieldset"><legend class="gs-legend">Roles</legend>' + checks + '</fieldset>' + others + fromLines +
       '<p class="gs-fine" id="dlg-help">Officers manage the whole guild. Team Leads manage their team\'s roster, raids and attendance, including officer notes.</p>' + seat +
@@ -1188,6 +1193,7 @@
   G.pages.user = {
     load: loadUser,
     main: userMain,
+    nameFor: userNameFor,
     userHtml: userHtml,
     editPermissionDialogHtml: editPermissionDialogHtml,
     handOverDialogHtml: handOverDialogHtml,

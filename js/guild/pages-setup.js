@@ -412,7 +412,7 @@
     const guildRow = info.state === 'none'
       ? '<span class="gs-muted">Not linked yet</span>'
       : esc(pinnedGuildName(d, gd, null) + ' on ' + realmLabel(d, gd));
-    return factPanel('In-game guild', fact('Guild', guildRow) + fact('Roster', members ? esc(plural(members, 'member', 'members')) + (d.roster.fetchedAt ? sub('Last read ' + G.ui.formatDateTime(d.roster.fetchedAt, gd.guild.timeZone)) : '') : '<span class="gs-muted">Not read yet</span>'));
+    return factPanel('In-game guild', fact('Guild', guildRow) + fact('Roster', members ? esc(plural(members, 'member', 'members')) + (d.roster.fetchedAt ? sub('Last read ' + G.ui.formatStamp(d.roster.fetchedAt, gd.guild.timeZone)) : '') : '<span class="gs-muted">Not read yet</span>'));
   }
 
   // ── step 2: Ranks (boards G2, G6 #1) ──
@@ -671,7 +671,7 @@
     const a = v.result;
     const guild = gd.guild.name;
     const members = num(d && d.roster && d.roster.members);
-    const rosterRow = fact('Roster', members ? esc(plural(members, 'member', 'members')) + (d.roster.fetchedAt ? sub('Last checked ' + G.ui.formatDateTime(d.roster.fetchedAt, gd.guild.timeZone)) : '') : '<span class="gs-muted">Not read yet</span>');
+    const rosterRow = fact('Roster', members ? esc(plural(members, 'member', 'members')) + (d.roster.fetchedAt ? sub('Last checked ' + G.ui.formatStamp(d.roster.fetchedAt, gd.guild.timeZone)) : '') : '<span class="gs-muted">Not read yet</span>');
     const actions = (G.shell.canSeeUsers(gd.me && gd.me.can) ? [{ label: 'Open Users', href: G.router.format({ name: 'users', gid: v.gid, segment: null }) }] : []).concat([{ label: 'Open the roster', href: G.router.format({ name: 'section', gid: v.gid, section: 'roster' }) }]);
     if (!a) {
       return G.ui.bannerHtml({ tone: 'success', title: guild + ' follows the in-game guild.', text: 'Members and ranks come from the guild roster.', actions: actions, dismissible: false, id: 'setup-result' }) +
