@@ -298,7 +298,7 @@ function formFor(teamId, values) {
     // The page lists exactly the kinds the Worker produces.
     const kinds = plain(G.pages.attention.KINDS.map(k => k.id));
     const worker = fs.readFileSync(path.join(ROOT, 'worker/attention.js'), 'utf8');
-    const listed = /ATTENTION_KINDS = \[([^\]]*)\]/.exec(worker)[1].match(/'([a-z_]+)'/g).map(s => s.slice(1, -1)).filter(k => k !== 'watch' && k !== 'rank' && k !== 'unmapped_ranks' && k !== 'block_review' && k !== 'claim_review'); // the watch list and rank suggestions are no Home to-dos any more (OFF_HOME_KINDS); team_requests (lane B3, D6) is rendered since the B3 UI lane (Team requests rows on Home); block_review (lane B7a) is rendered by the Users lane (B8a), which drops its exception too; claim_review (lane B6b part 2b) is rendered by the lane that builds the claim review page (B8), likewise
+    const listed = /ATTENTION_KINDS = \[([^\]]*)\]/.exec(worker)[1].match(/'([a-z_]+)'/g).map(s => s.slice(1, -1)).filter(k => k !== 'watch' && k !== 'rank'); // the watch list and rank suggestions are no Home to-dos any more (OFF_HOME_KINDS); team_requests (lane B3, D6) is rendered since the B3 UI lane (Team requests rows on Home); unmapped_ranks, block_review and claim_review are rendered since lane B8a-owner
     assert.deepEqual(kinds, listed, 'KINDS in pages-attention.js and ATTENTION_KINDS in worker/attention.js agree, in order');
   }));
 

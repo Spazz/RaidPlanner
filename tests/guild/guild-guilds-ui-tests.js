@@ -99,7 +99,7 @@ function withState(fn) {
     const links = [...out.matchAll(/<a class="gs-onboard-link" href="([^"]*)">([^<]*)(?:<span class="gs-sr"> \(done\)<\/span>)?<\/a>/g)].map(m => [m[1], m[2]]);
     assert.deepEqual(links, [
       ['#/g/g1/settings/teams', 'Set up your teams'], ['#/g/g1/roster', 'Import your roster'], ['#/g/g1/settings/attendance', 'Set the attendance rules'],
-      ['#/g/g1/raids/new', 'Add your first raid'], ['#/g/g1/settings/people', 'Invite your officers'], ['#/g/g1/loot', 'Import loot'],
+      ['#/g/g1/raids/new', 'Add your first raid'], ['#/g/g1/users', 'Invite your officers'], ['#/g/g1/loot', 'Import loot'],
     ]);
     assert.equal((out.match(/class="gs-onboard-step is-done"/g) || []).length, 2, 'two steps are ticked');
     assert.equal((out.match(/<span class="gs-sr"> \(done\)<\/span>/g) || []).length, 2, 'a ticked step says so for a screen reader');

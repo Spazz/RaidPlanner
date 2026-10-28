@@ -3175,4 +3175,47 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 /* == end B8a Links and keys == */
 
 /* == B8a Owner (lane owner) == */
+/* The Owner seat (boards O1, O2, O4, O5, P1): the claim offer on Home, the suspended-Owner strip under the top bar of every guild page, the claim dialog's fact panel and the Owner
+   review page of Guild settings. Banners keep their own look (.gs-banner); this block only places them. */
+.gs-ow-strip { box-sizing: border-box; padding: var(--sp-6) var(--sp-8) 0; }
+.gs-ow-strip .gs-banner { max-width: 1200px; margin: 0; }
+.gs-ow-offer { margin: 0 0 var(--sp-6); }
+.gs-ow-offer .gs-banner { margin: 0; }
+.gs-ow-what { padding: 12px 0 4px; display: flex; flex-direction: column; }
+.gs-ow-what .gs-fg-lbl { margin: 0 20px 8px; }
+.gs-ow-what .gs-pr-kv:first-of-type { border-top: 1px solid var(--hd-hair); }
+
+.gs-ow-review { display: flex; flex-direction: column; gap: 28px; }
+.gs-ow-review .gs-banner { margin: 0; }
+.gs-ow-sec { display: flex; flex-direction: column; gap: 8px; }
+.gs-ow-sec > .gs-fine { margin: 0; }
+.gs-ow-sechead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gs-ow-sechead .gs-fg-gh { margin: 0; }
+.gs-ow-grid { table-layout: auto; min-width: 0; width: 100%; }
+.gs-ow-grid th, .gs-ow-grid td { padding-left: 16px; padding-right: 12px; }
+.gs-ow-grid td, .gs-ow-grid th[scope="row"] { height: 48px; padding-top: 6px; padding-bottom: 6px; font-size: 14px; }
+.gs-ow-grid th.gs-cell-strong { font: 600 14px/1.3 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--text-primary); }
+.guild-page a.gs-ow-link { color: var(--text-primary); text-decoration: none; }
+.guild-page a.gs-ow-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.guild-page .gs-fine a.gs-ow-link { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+.guild-page .gs-fine a.gs-ow-link:hover { color: var(--text-primary); }
+.gs-ow-facts .gs-ro-list { padding: 4px 20px 8px; gap: 0; }
+.gs-settings-page.gs-forge .gs-ow-fact { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-ow-fact:first-child { border-top: 0; }
+.gs-ow-fact-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-ow-fact .gs-ro-label, .gs-ow-fact .gs-ro-value { margin: 0; }
+.gs-ow-fact .gs-btn { flex: none; }
+.gs-ow-done { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.gs-ow-done .gs-alert { margin: 0; }
+@media screen and (max-width: 600px) {
+  .gs-ow-strip { padding: var(--sp-4) var(--sp-4) 0; }
+  .gs-ow-offer { margin-bottom: var(--sp-4); }
+  .gs-ow-offer .gs-banner-actions .gs-btn, .gs-ow-strip .gs-banner-actions .gs-btn { min-height: 44px; flex: 1 1 100%; justify-content: center; }
+  .gs-ow-grid td, .gs-ow-grid th[scope="row"] { height: auto; padding-left: 0; padding-right: 0; }
+  .gs-settings-page.gs-forge .gs-ow-fact { flex-direction: column; align-items: stretch; gap: 12px; }
+  .gs-ow-fact .gs-btn, .gs-ow-sechead .gs-btn { min-height: 44px; justify-content: center; }
+  .gs-ow-sechead { flex-wrap: wrap; }
+  .gs-ow-done { align-items: stretch; }
+  .gs-settings-page.gs-forge .gs-ow-done .gs-btn { min-height: 48px; justify-content: center; }
+}
 /* == end B8a Owner == */

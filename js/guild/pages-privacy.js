@@ -1,7 +1,8 @@
 // ── PAGE: PRIVACY & MY DATA ─────────────────────────────────────
 // The policy copy (board copy with the spec's fixes), plus Delete my data for signed-in users. The delete box
-// reads /auth/me deleteImpact: a sole Guild Master with other members must hand over first; a solo Guild Master
-// also deletes the guild, named in the confirm and echoed back as deleteGuildIds.
+// reads /auth/me deleteImpact: a sole Guild Master with other members must hand over first (on the Users page: Edit permission, Owner seat); a solo Guild Master
+// also deletes the guild, named in the confirm and echoed back as deleteGuildIds. A suspended Owner cannot hand over: deleteImpact.succession says where the seat goes
+// (the Guild Master in game, the longest-standing Officer, or nobody until the Guild Master in game claims it).
 (function (G) {
   'use strict';
 
@@ -21,7 +22,7 @@
 
   function guildLinks(list) {
     const names = (Array.isArray(list) ? list : []).map(function (g) {
-      return '<a href="' + esc(G.router.format({ name: 'settings', gid: g.id, tab: 'people' })) + '"><strong>' + esc(g.name) + '</strong></a>';
+      return '<a href="' + esc(G.router.format({ name: 'users', gid: g.id, segment: null })) + '"><strong>' + esc(g.name) + '</strong></a>';
     });
     if (names.length <= 1) return names.join('');
     return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
@@ -37,11 +38,26 @@
     }).join('') + '</ul>';
   }
 
-  // impact: /auth/me deleteImpact { handOverFirst: [{id,name}], guildsDeleted: [{id,name}], autoPromote: [{id,name,to}] }
+  // One line per guild whose Owner seat moves when a SUSPENDED Owner's account is deleted (deleteImpact.succession: [{ guild: { id, name }, to: { userId, name } | null, rule }]).
+  const SUCCESSION_RULES = { ingame_gm: 'the Guild Master in game', manual_officer: 'the longest-standing Officer', officer: 'the longest-standing Officer' };
+  function successionHtml(list) {
+    if (!list.length) return '';
+    return '<ul class="gs-sentences" id="delete-succession">' + list.map(function (e) {
+      const guild = '<strong>' + esc(e && e.guild && e.guild.name) + '</strong>';
+      if (e && e.to && e.to.name) {
+        const rule = Object.prototype.hasOwnProperty.call(SUCCESSION_RULES, e.rule) ? ' (' + SUCCESSION_RULES[e.rule] + ')' : '';
+        return '<li>Your Owner seat in ' + guild + ' passes to <strong>' + esc(e.to.name) + '</strong>' + rule + '.</li>';
+      }
+      return '<li>Your Owner seat in ' + guild + ' stays vacant until the Guild Master claims it.</li>';
+    }).join('') + '</ul>';
+  }
+
+  // impact: /auth/me deleteImpact { handOverFirst: [{id,name}], guildsDeleted: [{id,name}], autoPromote: [{id,name,to}], succession: [{guild,to,rule}] }
   function deleteBoxHtml(impact, message) {
     const hand = impact && Array.isArray(impact.handOverFirst) ? impact.handOverFirst : [];
     const gone = impact && Array.isArray(impact.guildsDeleted) ? impact.guildsDeleted : [];
     const promote = impact && Array.isArray(impact.autoPromote) ? impact.autoPromote : [];
+    const succession = impact && Array.isArray(impact.succession) ? impact.succession : [];
     const blocked = hand.length > 0;
     const intro = paragraphs([
       'Deletes your account, the name you chose and every sign-in linked to it, and all Discord data Raidsmith holds: your Discord ID, username and avatar, the Discord ID and nickname on your Raid-Helper sign-ups, and the notes you wrote on sign-ups made in Raidsmith. It also deletes your Battle.net link and character list, and the character claims you made.',
@@ -55,8 +71,8 @@
     ]);
     let impactHtml = '';
     if (blocked) {
-      impactHtml += '<p class="gs-warn" id="delete-blocked" role="alert">You are the only Guild Master of ' + guildLinks(hand) +
-        ', and other people have joined. Hand over first: open Accounts in Guild settings, edit another person\'s roles and choose Make Guild Master. Then you can delete your data.</p>';
+      impactHtml += '<p class="gs-warn" id="delete-blocked" role="alert">You hold the Owner seat of ' + guildLinks(hand) +
+        ', and other people have joined. Hand over first: open Users, choose another person, then Edit permission and the Owner seat. Then you can delete your data.</p>';
     }
     if (gone.length) {
       impactHtml += '<p class="gs-warn" id="delete-guilds">Nobody else has joined ' + G.ui.joinNames(gone) + '. Deleting your data also deletes ' + (gone.length === 1 ? 'that guild' : 'those guilds') + ', with its teams and roles.</p>';
@@ -64,7 +80,7 @@
     const confirm = blocked ? '' :
       '<div id="delete-confirm" role="group" aria-label="Confirm deleting your data" hidden>' +
       '<p class="gs-confirm-text">This deletes your sign-in, your Discord data and your Battle.net data now.' + (gone.length ? ' It also deletes ' + G.ui.joinNames(gone) + '.' : '') + ' Roster records stay with the guild, unlinked. To remove those, ask your guild\'s officers.</p>' +
-      autoPromoteHtml(promote) +
+      autoPromoteHtml(promote) + successionHtml(succession) +
       G.ui.checkFieldHtml({ id: 'delete-understand', label: 'I understand', attrs: { 'data-change': 'delete-understand' } }) +
       '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Cancel', attrs: { 'data-action': 'delete-cancel' } }) +
       G.ui.buttonHtml({ label: 'Delete my data', variant: 'danger', disabled: true, attrs: { id: 'delete-go', 'data-action': 'delete-go', 'data-key': 'delete-go' } }) + '</div></div>';
@@ -161,5 +177,5 @@
     });
   };
 
-  G.pages.privacy = { CONTACT: CONTACT, privacyHtml: privacyHtml, deleteBoxHtml: deleteBoxHtml, autoPromoteHtml: autoPromoteHtml };
+  G.pages.privacy = { CONTACT: CONTACT, privacyHtml: privacyHtml, deleteBoxHtml: deleteBoxHtml, autoPromoteHtml: autoPromoteHtml, successionHtml: successionHtml };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));
