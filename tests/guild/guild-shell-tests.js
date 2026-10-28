@@ -610,36 +610,18 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(env.fetched('/roster?team=t1'), 3, 'force runs again');
   });
 
-  await check('Roster load: the list is the roster plus the inactive people read beside it (one companion read per load); a failed inactive read leaves the list without them', async () => {
-    const person = (id, name, status) => ({ id, status, shown: { id: 'c_' + id, name, class: 'MAGE' }, main: { id: 'c_' + id, name, class: 'MAGE', team: { id: 't1', name: 'Main' } }, names: [name], altCount: 0, version: 1 });
-    const rosterBody = { team: { id: 't1', name: 'Main' }, today: '2026-10-17', people: [person('p1', 'Aldric', 'raider')], can: { edit: true }, teams: [] };
-    const inactiveBody = { team: { id: 't1', name: 'Main' }, today: '2026-10-17', filter: 'inactive', people: [person('p2', 'Oldtimer', 'inactive')], can: { edit: true } };
-    const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(OFFICER_CAN, {
-      '/api/guild/g1/roster?team=t1': { status: 200, body: rosterBody },
-      '/api/guild/g1/roster?team=t1&status=inactive': { status: 200, body: inactiveBody },
-    }) });
+  await check('Roster load: the list is the roster alone (one read per load): no inactive companion read, no Show inactive people; Manage team and Add to team are in the head', async () => {
+    const person = (id, name, status) => ({ id, status, shown: { id: 'c_' + id, name, class: 'MAGE', coreRank: status, inGameRank: null, trialFlag: null }, main: { id: 'c_' + id, name, class: 'MAGE', team: { id: 't1', name: 'Main' } }, names: [name], altCount: 0, version: 1 });
+    const rosterBody = { team: { id: 't1', name: 'Main' }, today: '2026-10-17', people: [person('p1', 'Aldric', 'raider')], can: { edit: true }, rankSegments: ['raider', 'trial'], teams: [] };
+    const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(OFFICER_CAN, { '/api/guild/g1/roster?team=t1': { status: 200, body: rosterBody } }) });
     await settle();
     assert.equal(env.fetched('/roster?team=t1'), 1);
-    assert.equal(env.fetched('/roster?team=t1&status=inactive'), 1, 'one companion read per roster load');
-    assert.deepEqual(plain(env.G.app.state.roster.data.people.map(p => [p.shown.name, p.status])), [['Aldric', 'raider'], ['Oldtimer', 'inactive']], 'one list again');
-    assert.equal(env.G.app.state.roster.data.filter, undefined, 'the list keeps the roster answer\'s own fields');
-    // The page, through the app: inactive people appear only under the Inactive filter, and the count matches.
+    assert.equal(env.fetched('/roster?team=t1&status=inactive'), 0, 'the inactive companion read is gone (U R6-Q2: Social and Former are on no roster view)');
+    assert.deepEqual(plain(env.G.app.state.roster.data.people.map(p => [p.shown.name, p.status])), [['Aldric', 'raider']]);
     const main = () => env.html('gs-main');
-    assert(main().includes('Aldric') && !main().includes('Oldtimer'), 'the default view lists the roster only');
-    assert(main().includes('Show inactive people (1)'), 'the More item counts the inactive people read');
-    assert(main().includes('1 inactive person is hidden.'), 'and so does the footer');
-    env.click({ 'data-action': 'roster-show-inactive' });
-    await settle();
-    assert(main().includes('Oldtimer') && main().includes('Aldric'), 'Show inactive people brings them in beside the roster');
+    assert(main().includes('Aldric') && !main().includes('Show inactive') && !main().includes('inactive person'));
+    assert(main().includes('data-action="roster-add-team"') && main().includes('data-action="roster-manage"'));
     assert.equal(env.G.app.state.rosterUi.status, 'everyone');
-    // A failed inactive read never fails the page.
-    const failing = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(OFFICER_CAN, {
-      '/api/guild/g1/roster?team=t1': { status: 200, body: rosterBody },
-      '/api/guild/g1/roster?team=t1&status=inactive': { status: 500, body: { error: 'server_error' } },
-    }) });
-    await settle();
-    assert.deepEqual(plain(failing.G.app.state.roster.data.people.map(p => p.shown.name)), ['Aldric']);
-    assert.equal(failing.G.app.state.roster.error, undefined);
   });
 
   await check('routeAll: every former route() call site goes through it (go() on the same hash, retry, the #/ re-route, the import team switch)', async () => {

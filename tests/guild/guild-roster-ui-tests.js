@@ -106,7 +106,8 @@ function rp(id, name, cls, mainSpec, offSpec, status, extra) {
   const main = { id: 'c_' + id, name: e.mainName || name, class: e.mainClass || cls, team: home };
   return {
     id: 'p_' + id, status, joinedOn: e.joinedOn === undefined ? '2026-06-14' : e.joinedOn, trialStart: null, trialEnd: e.trialEnd || null, trialFlag: e.flag || null,
-    shown: { id: 'c_' + id + (e.alt ? 'a' : ''), name, class: cls, mainSpec, offSpec, role: e.role === undefined ? (ROSTER_OPTIONS.roles[cls] || {})[mainSpec] || null : e.role, isMain: !e.alt },
+    shown: { id: 'c_' + id + (e.alt ? 'a' : ''), name, class: cls, mainSpec, offSpec, role: e.role === undefined ? (ROSTER_OPTIONS.roles[cls] || {})[mainSpec] || null : e.role, isMain: !e.alt,
+      coreRank: e.coreRank || status, inGameRank: e.ig === undefined ? null : e.ig, trialFlag: e.shownFlag !== undefined ? e.shownFlag : (e.flag || null) },
     main: e.alt ? { id: 'c_' + id, name: e.mainName || 'Mainchar', class: e.mainClass || 'PALADIN', team: home } : main,
     altCount: e.alts || 0, signIn: e.signIn || 'not_yet', isMe: !!e.isMe,
     raidRole: e.raidRole !== undefined ? e.raidRole : raidRoleOf(cls, mainSpec),
@@ -124,7 +125,6 @@ const PEOPLE = [
   rp(9, 'Stormjaw', 'SHAMAN', 'Enhancement', 'Restoration', 'raider', { alts: 1 }),
   rp(10, 'Solder', 'HUNTER', 'Marksmanship', 'Survival', 'reserve'),
   rp(11, 'Sorin', 'PRIEST', 'Shadow', 'Holy', 'raider'),
-  rp(12, 'Oldtimer', 'WARRIOR', 'Arms', 'Fury', 'inactive'),
 ];
 function rosterData(over) {
   return Object.assign({ team: { id: 't_main', name: 'Main team', archived: false }, today: '2026-10-15', can: { edit: true }, people: PEOPLE.map(p => plain(p)) }, over || {});
@@ -164,7 +164,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
 
   await check('roster sort: status order is Raider, Trial, Reserve, Inactive; empty dates and off specs sort last in both directions', () => {
     const byStatus = G.rosterSort.sortPeople(PEOPLE, { column: 'status', dir: 'asc' }).map(p => p.status);
-    assert.deepEqual([...new Set(byStatus)], ['raider', 'trial', 'reserve', 'inactive']);
+    assert.deepEqual([...new Set(byStatus)], ['raider', 'trial', 'reserve']);
     assert.equal(G.rosterSort.sortPeople(PEOPLE, { column: 'joined', dir: 'asc' }).pop().shown.name, 'Quickshade');
     assert.equal(G.rosterSort.sortPeople(PEOPLE, { column: 'joined', dir: 'desc' }).pop().shown.name, 'Quickshade');
     assert.equal(G.rosterSort.sortPeople(PEOPLE, { column: 'offSpec', dir: 'desc' }).pop().shown.name, 'Quickshade');
@@ -175,15 +175,22 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.equal(G.rosterSort.ariaSort({ column: 'status', dir: 'desc' }, 'joined'), null);
   });
 
-  await check('roster filter: Active hides Inactive, Everyone shows all, and "Trials to decide" is the flagged people of this home team', () => {
+  await check('roster filter: Everyone shows all, a rank pill the characters of that rank, and "Trials to decide" the flagged Trial characters of this team (the shown character\'s own flag)', () => {
     const f = (status, extra) => names(G.rosterSort.filterPeople(PEOPLE, Object.assign({ role: 'all', query: '' }, extra || {}, { status }), 't_main'));
-    assert(!f('active').includes('Oldtimer') && f('active').length === 10);
-    assert.equal(f('everyone').length, 11);
-    assert.deepEqual(f('inactive'), ['Oldtimer']);
+    assert.equal(f('active').length, 10);
+    assert.equal(f('everyone').length, 10);
     assert.deepEqual(f('trial').sort(), ['Corvane', 'Frostwhisper', 'Sølvhand']);
     assert.deepEqual(f('decide').sort(), ['Frostwhisper', 'Sølvhand']);
-    const otherHome = plain(PEOPLE).map(p => (p.shown.name === 'Frostwhisper' ? Object.assign(p, { main: Object.assign({}, p.main, { team: TEAM_WEEKEND }) }) : p));
-    assert.deepEqual(names(G.rosterSort.trialsToDecide(otherHome, 't_main')), ['Sølvhand'], 'a trial whose home team is another team is not this team\'s to decide');
+    // Rank is per character (H-Q18): a Trial alt on this team is this team's to decide although its Main sits on another team; a Raider alt of a Trial Main is not.
+    const trialAlt = rp(21, 'Altpal', 'MAGE', 'Fire', null, 'raider', { alt: true, mainName: 'Elsewhere', homeTeam: TEAM_WEEKEND, coreRank: 'trial', shownFlag: { kind: 'ends', days: 3 } });
+    const raiderAlt = rp(22, 'Quietalt', 'MAGE', 'Fire', null, 'trial', { alt: true, mainName: 'Elsewhere', homeTeam: TEAM_MAIN, coreRank: 'raider', flag: { kind: 'ends', days: 3 }, shownFlag: null });
+    assert.deepEqual(names(G.rosterSort.trialsToDecide([trialAlt, raiderAlt], 't_main')), ['Altpal']);
+    assert.equal(G.rosterSort.rankOf(trialAlt), 'trial');
+    // An older answer without the character-level fields reads as before: the person's status and flag, for the team of the Main.
+    const legacy = plain(PEOPLE).map(p => { delete p.shown.coreRank; delete p.shown.trialFlag; delete p.shown.inGameRank; return p; });
+    assert.deepEqual(names(G.rosterSort.trialsToDecide(legacy, 't_main')).sort(), ['Frostwhisper', 'Sølvhand']);
+    const otherHome = legacy.map(p => (p.shown.name === 'Frostwhisper' ? Object.assign(p, { main: Object.assign({}, p.main, { team: TEAM_WEEKEND }) }) : p));
+    assert.deepEqual(names(G.rosterSort.trialsToDecide(otherHome, 't_main')), ['Sølvhand'], 'without the character fields a trial whose Main is on another team is not this team\'s to decide');
     assert.deepEqual(f('active', { role: 'tank' }).sort(), ['Kaelith', 'Sølvhand']);
     assert.deepEqual(f('active', { query: 'frost' }), ['Frostwhisper']);
   });
@@ -192,7 +199,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const c = G.rosterSort.roleCounts(PEOPLE);
     assert.deepEqual(plain(c), { all: 10, tank: 2, healer: 1, dps: 7 });
     assert.equal(G.rosterSort.activeCount(PEOPLE), 10);
-    assert.equal(G.rosterSort.inactiveCount(PEOPLE), 1);
+    assert.equal(G.rosterSort.inactiveCount(PEOPLE), 0);
   });
 
   await check('roster filter: the search finds a person by their Main name when an Alt is shown', () => {
@@ -232,21 +239,19 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   const phoneOf = out => out.slice(out.indexOf('class="gs-rs-phone"'));
   const rowNames = html => [...html.matchAll(/<span class="gs-rs-name [^"]*">([^<]*)</g)].map(m => m[1]);
 
-  await check('roster page: head and context, the One More menu (imports and Show inactive people), Add person as the one primary, search and Active / Everyone', () => {
+  await check('roster page: head and context, Add to team as the one primary, the One More menu (Manage team, Add person, imports), search, no Active / Everyone pair and no inactive list', () => {
     const out = rosterPage(guildData(), rosterData());
     assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Roster</h1>'));
     assert(out.includes('Main team ' + DOT + ' 9 raiders and trials ' + DOT + ' 1 reserve'), 'the context line counts raiders, trials and reserve');
-    // The imports are items of the page's one More menu; Add person is the one primary.
     assert(out.includes('id="roster-more"') && out.includes('aria-haspopup="menu"') && !out.includes('roster-import-menu'));
+    assert(out.includes('data-action="roster-manage"') && out.includes('>Manage team<') && out.includes('data-action="roster-add"') && out.includes('>Add person<'), 'Manage team and Add person are More items');
     assert(out.includes('Import from a Raid-Helper event') && out.includes('href="#/g/g1/roster/import/raid-helper"'));
     assert(out.includes('Import from a Warcraft Logs report') && out.includes('href="#/g/g1/roster/import/wcl"'));
-    assert(out.includes('data-action="roster-show-inactive"') && out.includes('Show inactive people (1)'), 'the inactive people are behind a More item');
-    assert(out.includes('data-action="roster-add"') && out.includes('>Add person<') && count(out, /gs-btn-molten/g) === 1, 'one primary');
+    assert(out.includes('data-action="roster-add-team"') && out.includes('>Add to team<') && count(out, /gs-btn-molten/g) === 1, 'one primary');
+    assert(!out.includes('roster-show-inactive') && !out.includes('Show inactive') && !out.includes('inactive person') && !out.includes('gs-rs-dsegs') && !out.includes('data-seg="active"'), 'no inactive list, no Active / Everyone pair');
     assert(out.includes('id="roster-search"') && out.includes('Search people or characters'));
-    assert(/data-seg="active"[^>]*aria-pressed="true">Active <span class="gs-fg-segn">10<\/span>/.test(out) && /data-seg="everyone"[^>]*aria-pressed="false">Everyone <span class="gs-fg-segn">11<\/span>/.test(out));
+    assert(/data-seg="everyone"[^>]*aria-pressed="true">Everyone <span class="gs-fg-segn">10<\/span>/.test(out));
     assert(!out.includes('<table') && !out.includes('Sign-in') && !out.includes('gs-trial-strip') && !out.includes('<select'), 'no table, no Sign-in column, no trial strip, no status select');
-    assert(!out.includes('Oldtimer'), 'Active hides Inactive');
-    assert(out.includes('1 inactive person is hidden.') && out.includes('>Show them<'), 'the footer link says who is hidden');
   });
 
   await check('group heads and labels (design spec 2.1): CSS of .gs-fg-gh/.gs-fg-ght/.gs-fg-ghn/.gs-fg-lbl, no `.gs-fg-gh b`, every head over rows is title + count, every tile/step/field word is a label', () => {
@@ -319,7 +324,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const out = G.pages.roster.tilesHtml({ guildData: guildData(), data: rosterData(), view: {}, shape });
     assert.deepEqual([...out.matchAll(/data-have="(\d+)" data-want="(\d+)"/g)].map(m => m[1] + '/' + m[2]), ['3/3', '7/6', '5/8', '7/8']);
     assert.deepEqual([...out.matchAll(/gs-hd-chip is-(\w+)">([^<]*)</g)].map(m => m[1] + ':' + m[2]), ['green:Full', 'grey:1 over', 'rose:Need 3', 'rose:Need 1']);
-    assert(out.includes('Counts Raider and Trial mains. Missing: Buff 1, Buff 2, Buff 3 and 1 more buff; Debuff A.') && out.includes('>See coverage<'));
+    assert(out.includes('Counts Raider and Trial characters on this team. Missing: Buff 1, Buff 2, Buff 3 and 1 more buff; Debuff A.') && out.includes('>See coverage<'));
     const loading = G.pages.roster.tilesHtml({ guildData: guildData(), data: rosterData(), view: {}, shape: { status: 'loading' } });
     assert(loading.includes('aria-busy="true"') && loading.includes('gs-hd-sk') && !loading.includes('data-have'));
     assert.equal(G.pages.roster.tilesHtml({ guildData: guildData(), data: rosterData(), view: {}, shape: { status: 'error' } }), '', 'a failed read leaves the tiles out');
@@ -327,16 +332,16 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.equal(G.pages.roster.tilesHtml({ guildData: guildData({ can: MEMBER_CAN, flags: {} }), data: rosterData({ can: { edit: false } }), view: {}, shape }), '', 'members have no tiles');
   });
 
-  await check('roster page: chips only for an exception - rose for a trial to decide, blue Trial, grey Reserve and You; a trial of another home team shows no flag', () => {
+  await check('roster page: chips only for an exception - rose for a trial to decide, blue Trial, grey Reserve and You; only the shown character own trial flag counts', () => {
     const out = rosterPage(guildData(), rosterData());
     const desk = deskOf(out);
     assert(desk.includes('gs-hd-chip is-rose">Ends in 5 days</span>') && desk.includes('gs-hd-chip is-rose">Trial ended</span>'));
     assert(desk.includes('gs-hd-chip is-blue">Trial</span>') && desk.includes('gs-hd-chip is-grey">Reserve</span>'));
     assert.equal(count(desk, /gs-hd-chip/g), 4, 'Raiders show nothing: Corvane (Trial), the two flags and Solder (Reserve)');
     assert(!/gs-trial-end/.test(out), 'the old gold and orange chips are gone');
-    const away = plain(PEOPLE).map(p => (p.shown.name === 'Frostwhisper' ? Object.assign(p, { main: Object.assign({}, p.main, { team: TEAM_WEEKEND }) }) : p));
+    const away = plain(PEOPLE).map(p => (p.shown.name === 'Frostwhisper' ? Object.assign(p, { shown: Object.assign({}, p.shown, { trialFlag: null }) }) : p));
     const other = deskOf(rosterPage(guildData(), rosterData({ people: away })));
-    assert(!other.includes('Ends in 5 days') && other.includes('Trial ended'), 'a trial of another home team shows no flag');
+    assert(!other.includes('Ends in 5 days') && other.includes('Trial ended'), 'the shown character has no flag of its own: none is drawn, whatever the Main says');
   });
 
   await check('roster page: an Alt shown for a person whose Main is on another team says "Alt of <Main>"; the context line names the team', () => {
@@ -352,11 +357,24 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
 
   await check('roster page: the row links to the record; the name is in the class colour and carries the spec icon; the class and spec words are neutral', () => {
     const out = rosterPage(guildData(), rosterData());
-    const row = out.match(/<a class="gs-rs-row" href="#\/g\/g1\/roster\/p\/p_8">[\s\S]*?<\/a>/)[0];
+    const row = out.match(/<a class="gs-rs-row" href="#\/g\/g1\/roster\/p\/p_8"[^>]*>[\s\S]*?<\/a>/)[0];
     assert(row.includes('<span class="gs-rs-name gs-class-paladin">S' + OSLASH + 'lvhand</span>'));
     assert(/<img class="gs-spec-icon" src="\/icons\/[a-z_]+\.jpg" alt="" width="20" height="20"/.test(row), 'the spec icon is decorative');
     assert(row.includes('<span class="gs-rs-spec">Protection</span>') && !row.includes('gs-class-paladin">Paladin'), 'the spec word is neutral');
     assert(!out.includes('gs-role-dot') && !out.includes('has-mark') && !out.includes('gs-char-link'), 'no role dot, no class edge');
+  });
+
+  await check('roster page: a row says the shown character\'s OWN ranks - core rank chip, in-game rank in the title and in the touch sub line - and not the Main\'s', () => {
+    const alt = rp(30, 'Marrowind', 'MAGE', 'Arcane', null, 'raider', { alt: true, mainName: 'Emberlyn', homeTeam: TEAM_WEEKEND, coreRank: 'trial', ig: 'Raider', shownFlag: null });
+    const raider = rp(31, 'Ashfang', 'ROGUE', 'Combat', null, 'raider', { ig: 'Core Raider' });
+    const plainRow = rp(32, 'Nogame', 'ROGUE', 'Combat', null, 'raider');
+    const out = rosterPage(guildData(), rosterData({ people: [alt, raider, plainRow] }));
+    const rowOf = name => out.match(new RegExp('<a class="gs-rs-row"[^>]*>(?:(?!</a>)[\\s\\S])*gs-rs-name [^"]*">' + name + '<[\\s\\S]*?</a>'))[0];
+    const marrow = rowOf('Marrowind');
+    assert(marrow.includes('title="In-game rank: Raider ' + DOT + ' Core rank: Trial"') && marrow.includes('<span class="gs-rs-ig">in-game Raider</span>') && marrow.includes('gs-hd-chip is-blue">Trial<') && marrow.includes('Alt of Emberlyn'), 'a Trial alt whose Main is a Raider elsewhere: the chip is the alt\'s own');
+    assert(rowOf('Ashfang').includes('title="In-game rank: Core Raider ' + DOT + ' Core rank: Raider"') && !rowOf('Ashfang').includes('gs-hd-chip'));
+    const nogame = rowOf('Nogame');
+    assert(nogame.includes('title="Core rank: Raider"') && !nogame.includes('gs-rs-ig'), 'a character with no in-game rank says only its core rank');
   });
 
   await check('roster page: archived team shows the info strip and offers no Add person or Import', () => {
@@ -366,10 +384,10 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(!out.includes('roster-add') && !out.includes('roster-more') && !out.includes('Import from') && !out.includes('Team shape') && !out.includes('gs-rs-needs'));
   });
 
-  await check('roster states: the empty roster (officer: Add person and Import; member: officers have not added anyone), no active team, loading, error with Try again, no matches with Clear search', () => {
+  await check('roster states: the empty roster (officer: Add to team and a More menu with Manage team, Add person and Import; member: officers have not added anyone), no active team, loading, error with Try again, no matches with Clear search', () => {
     const empty = { people: [] };
     const editor = rosterPage(guildData(), rosterData(empty));
-    assert(editor.includes('No one on the roster yet') && editor.includes('id="roster-import"') && editor.includes('Import from a Raid-Helper event') && editor.includes('href="#/g/g1/roster/import/csv"') && count(editor, /gs-btn-molten/g) === 1 && editor.includes('>Add person<'));
+    assert(editor.includes('No one on the roster yet') && editor.includes('id="roster-empty-more"') && editor.includes('Import from a Raid-Helper event') && editor.includes('href="#/g/g1/roster/import/csv"') && count(editor, /gs-btn-molten/g) === 1 && editor.includes('>Add to team<') && editor.includes('data-action="roster-add-team"') && editor.includes('>Manage team<') && editor.includes('>Add person<'));
     assert(!editor.includes('roster-search') && !editor.includes('id="roster-more"'), 'the head has no second Add person or More');
     const member = rosterPage(guildData({ can: MEMBER_CAN, flags: {} }), rosterData({ people: [], can: { edit: false } }));
     assert(member.includes('Your officers haven' + String.fromCharCode(38) + '#39;t added anyone yet.') && !member.includes('Import from') && !member.includes('Add person'));
@@ -396,11 +414,18 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assertNoRawAttrs(out);
   });
 
-  await check('phone roster: the segments (an officer has six, the Applicants one with the gold count; a member Active and Everyone) and the directory list - NEEDS A DECISION, then everyone (You sits in the normal groups)', () => {
+  await check('phone roster: the pills (Everyone, the ranks the guild uses, Applicants with the gold count for an officer) and the directory list - NEEDS A DECISION, then everyone (You sits in the normal groups)', () => {
     const gd = Object.assign(guildData(), { applicationFlags: { t_main: 2 } });
     const out = rosterPage(gd, rosterData());
     const pills = html => [...html.matchAll(/class="gs-fg-pill" data-action="roster-seg" data-seg="(\w+)" data-key="pseg-\w+" aria-pressed="(\w+)">(\w+) <span class="([\w-]+)">(\d+)<\/span>/g)].map(m => m[1] + ':' + m[3] + ':' + m[5] + ':' + m[4] + ':' + m[2]);
-    assert.deepEqual(pills(out), ['active:Active:10:gs-fg-segn:true', 'raider:Raiders:6:gs-fg-segn:false', 'trial:Trials:3:gs-fg-segn:false', 'reserve:Reserve:1:gs-fg-segn:false', 'applicants:Applicants:2:gs-fg-cnt:false', 'inactive:Inactive:1:gs-fg-segn:false']);
+    // No rankSegments in the answer: the ranks the listed people hold.
+    assert.deepEqual(pills(out), ['everyone:Everyone:10:gs-fg-segn:true', 'raider:Raiders:6:gs-fg-segn:false', 'trial:Trials:3:gs-fg-segn:false', 'reserve:Reserve:1:gs-fg-segn:false', 'applicants:Applicants:2:gs-fg-cnt:false']);
+    // The Worker's answer decides when it is there: a guild that maps no Reserve shows none (H-Q44), even when one character holds it.
+    const mapped = pills(rosterPage(gd, rosterData({ rankSegments: ['raider', 'trial'] }))).map(x => x.split(':')[0]);
+    assert.deepEqual(mapped, ['everyone', 'raider', 'trial', 'applicants']);
+    assert.deepEqual(pills(rosterPage(gd, rosterData({ rankSegments: [] }))).map(x => x.split(':')[0]), ['everyone', 'applicants'], 'a guild with no ranks of its own: Everyone');
+    // A pill that is not offered falls back to Everyone.
+    assert(/data-seg="everyone"[^>]*aria-pressed="true"/.test(rosterPage(gd, rosterData({ rankSegments: ['raider', 'trial'] }), { status: 'reserve' })));
     const phone = phoneOf(out);
     assert.deepEqual([...phone.matchAll(/<h2 class="gs-hd-sl gs-rs-pgroup">([^<]*)</g)].map(m => m[1]), ['Needs a decision', 'Everyone']);
     assert.deepEqual(rowNames(phone), ['Frostwhisper', 'S' + OSLASH + 'lvhand', 'Ashcaller', 'Brightmane', 'Corvane', 'Kaelith', 'Quickshade', 'Solder', 'Sorin', 'Stormjaw']);
@@ -411,9 +436,9 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(phone.includes('gs-rs-plist'), 'one panel of rows');
     const raiders = phoneOf(rosterPage(gd, rosterData(), { status: 'raider' }));
     assert.equal(rowNames(raiders).length, 6);
-    assert(!raiders.includes('gs-rs-pgroup'), 'only the Active list is grouped');
+    assert(!raiders.includes('gs-rs-pgroup'), 'only the Everyone list is grouped');
     const member = rosterPage(guildData({ can: MEMBER_CAN, flags: {} }), rosterData({ can: { edit: false } }));
-    assert.deepEqual(pills(member).map(s => s.split(':').slice(0, 3).join(':')), ['active:Active:10', 'everyone:Everyone:11']);
+    assert.deepEqual(pills(member).map(s => s.split(':').slice(0, 3).join(':')), ['everyone:Everyone:10', 'raider:Raiders:6', 'trial:Trials:3', 'reserve:Reserve:1']);
     assert(!phoneOf(member).includes('gs-rs-pgroup') && !phoneOf(member).includes('Applicants'), 'a member has no group and no Applicants');
     const apps = [{ id: 'ap1', name: 'Brightwater', class: 'SHAMAN', spec: 'Restoration' }, { id: 'ap2', name: 'Cinderlight', class: 'PRIEST', spec: 'Holy' }];
     const list = phoneOf(rosterPage(gd, rosterData(), { status: 'applicants' }, { apps: { status: 'ready', list: apps } }));
@@ -618,6 +643,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.equal(G.pages.person.personHtml({ guildData: gd, record: rec, linkable: [] }).includes('t_main'), false, 'teamless characters are not placed under a real team');
     // roster-sort: a teamless main is flagged under no team, and a null selected team flags nobody
     const p = plain(rp(40, 'Nomad', 'MAGE', 'Frost', 'Fire', 'trial', { flag: { kind: 'ends', days: 3 }, homeTeam: NONE }));
+    delete p.shown.trialFlag; delete p.shown.coreRank; delete p.shown.inGameRank; // an answer without the character-level fields reads the person's flag, for the team of the Main
     assert.equal(G.rosterSort.isFlaggedHere(p, null), false);
     assert.equal(G.rosterSort.isFlaggedHere(p, 't_main'), false);
     assert.deepEqual(G.rosterSort.trialsToDecide([p], 't_main'), []);
@@ -1368,16 +1394,16 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(/closeOverlays\(\);[^\n]*\n\s*render\(true\);/.test(src), 'the guild route closes dialogs just before it renders');
   });
 
-  await check('trial flags are for officers: the rose flag chips need can.edit and the home team; members see the blue Trial chip only', () => {
+  await check('trial flags are for officers: the rose flag chips need can.edit and the shown character own flag; members see the blue Trial chip only', () => {
     const gd = guildData();
     const editor = rosterPage(gd, rosterData());
     assert(editor.includes('Ends in 5 days'));
     const member = rosterPage(guildData({ can: MEMBER_CAN, flags: {} }), rosterData({ can: { edit: false } }));
     assert(!member.includes('Ends in 5 days') && !member.includes('Trial ended') && !member.includes('is-rose') && member.includes('gs-hd-chip is-blue">Trial</span>'));
     assert(!member.includes('Trials to decide') && !editor.includes('Trials to decide'), 'the status select (and its Trials to decide choice) is gone; Needs you replaces it');
-    const away = plain(PEOPLE).map(p => (p.shown.name === 'Frostwhisper' ? Object.assign(p, { main: Object.assign({}, p.main, { team: TEAM_WEEKEND }) }) : p));
+    const away = plain(PEOPLE).map(p => (p.shown.name === 'Frostwhisper' ? Object.assign(p, { shown: Object.assign({}, p.shown, { trialFlag: null }) }) : p));
     const other = rosterPage(gd, rosterData({ people: away }));
-    assert(!other.includes('Ends in 5 days') && other.includes('Trial ended'), 'a trial of another home team shows no flag');
+    assert(!other.includes('Ends in 5 days') && other.includes('Trial ended'), 'no flag on the shown character: none is drawn');
   });
 
   await check('inactive: the Reason and Left on fields show only for Inactive (default today, or the stored values) and the status reads "Inactive - Kicked, left Oct 12, 2026"', async () => {
@@ -1423,9 +1449,6 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.equal(text('left', '2026-10-12'), 'Inactive - Left guild, left Oct 12, 2026');
     assert.equal(G.ui.statusText({ status: 'raider', leftReason: 'kicked', leftOn: '2026-10-12' }), 'Raider', 'only Inactive carries the detail');
     assert.equal(text('<b>', null), 'Inactive', 'an unknown reason shows nothing');
-    const old = Object.assign({}, PEOPLE[10], { leftReason: 'kicked', leftOn: '2026-10-12' });
-    const out = rosterPage(guildData(), rosterData({ people: [old] }), { status: 'inactive' });
-    assert(phoneOf(out).includes('gs-hd-chip is-grey">Inactive</span>'), 'the roster list shows a grey Inactive chip (the reason and the day live on the person record)');
   });
 
   await check('details save sends leftOn / leftReason only for Inactive: both when entering it, the changed one while in it, none otherwise', async () => {

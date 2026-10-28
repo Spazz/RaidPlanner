@@ -4,6 +4,8 @@
 //   Columns: player | mainSpec | offSpec | status | joined | alts | signIn. Attendance is not sortable until Phase 3.
 //   Default: Player A-Z with localeCompare, so Solvhand with an o-slash sorts with "So".
 //   Status sorts Raider, Trial, Reserve, Inactive. Empty values (no off spec, no date) sort last either way.
+//   Rank is per CHARACTER (H-Q18): a row's rank and trial flag are the shown character's own (shown.coreRank, shown.trialFlag); a row without them (an older answer)
+//   falls back to the person's (status, trialFlag of the Main's team).
 (function (G) {
   'use strict';
 
@@ -22,23 +24,35 @@
   function mainOf(p) { return (p && p.main) || {}; }
   function nameOf(p) { return text(shownOf(p).name); }
 
-  // Home team = the team of the person's Main. The trial strip, the badge and "Trials to decide" use it.
+  // The core rank of the character the row shows.
+  function rankOf(p) {
+    const own = shownOf(p).coreRank;
+    return own !== undefined && own !== null ? own : p && p.status;
+  }
+
+  // The trial flag of the character the row shows ({ kind, days } or null). A row that carries no character-level fields is read as before: the person's flag, for the team of the Main.
+  function trialFlagOf(p, teamId) {
+    if (p && p.shown && Object.prototype.hasOwnProperty.call(p.shown, 'trialFlag')) return p.shown.trialFlag || null;
+    return p && p.trialFlag && !!teamId && !!mainOf(p).team && mainOf(p).team.id === teamId ? p.trialFlag : null;
+  }
+
+  // "Trials to decide", the trial strip and the badge: a Trial character whose trial ends soon or ended, on the team the row is listed on.
   function isFlaggedHere(p, teamId) {
-    return !!(p && p.trialFlag) && !!teamId && !!mainOf(p).team && mainOf(p).team.id === teamId;
+    return !!teamId && !!trialFlagOf(p, teamId);
   }
 
   function trialsToDecide(people, teamId) {
     return (Array.isArray(people) ? people : []).filter(function (p) { return isFlaggedHere(p, teamId); });
   }
 
-  function isActive(p) { return !!p && p.status !== 'inactive'; }
+  function isActive(p) { return !!p && rankOf(p) !== 'inactive'; }
 
   function statusMatches(p, status, teamId) {
     switch (status) {
       case 'everyone': return true;
       case 'active': return isActive(p);
       case 'decide': return isFlaggedHere(p, teamId);
-      case 'raider': case 'trial': case 'reserve': case 'inactive': return p.status === status;
+      case 'raider': case 'trial': case 'reserve': case 'inactive': return rankOf(p) === status;
       default: return isActive(p);
     }
   }
@@ -110,7 +124,7 @@
         else if (!kb) return -1;
         else r = sign * compareText(ka, kb);
       } else if (column === 'status') {
-        r = sign * ((STATUS_RANK[a.status] != null ? STATUS_RANK[a.status] : 9) - (STATUS_RANK[b.status] != null ? STATUS_RANK[b.status] : 9));
+        r = sign * ((STATUS_RANK[rankOf(a)] != null ? STATUS_RANK[rankOf(a)] : 9) - (STATUS_RANK[rankOf(b)] != null ? STATUS_RANK[rankOf(b)] : 9));
       } else if (column === 'joined') {
         const ka = text(a.joinedOn);
         const kb = text(b.joinedOn);
@@ -150,6 +164,8 @@
     ROLES: ROLES,
     STATUS_FILTERS: STATUS_FILTERS,
     fold: fold,
+    rankOf: rankOf,
+    trialFlagOf: trialFlagOf,
     isFlaggedHere: isFlaggedHere,
     trialsToDecide: trialsToDecide,
     filterPeople: filterPeople,

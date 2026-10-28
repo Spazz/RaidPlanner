@@ -36,6 +36,7 @@
     '/js/guild/pages-roster-tabs.js',
     '/js/guild/pages-team-requests.js',
     '/js/guild/pages-roster.js',
+    '/js/guild/pages-roster-team.js',
     '/js/guild/pages-person.js',
     '/js/guild/pages-this-is-me.js',
     '/js/guild/pages-intent.js',

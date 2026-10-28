@@ -494,7 +494,7 @@ check('create person: the record shape, defaults, the Main in the same batch, tr
   assert.match(cid, /^c_[A-Za-z0-9_-]{22}$/);
   assert.deepEqual(main, {
     name: 'Aldric', realm: 'Nightslayer', class: 'WARRIOR', mainSpec: 'Arms', offSpec: 'Fury', role: 'dps', isMain: true,
-    team: { id: s.teamId, name: 'Main team', archived: false },
+    team: { id: s.teamId, name: 'Main team', archived: false }, coreRank: 'raider', inGameRank: null, mayRelease: true,
   });
   assert.deepEqual(record.notes, { text: '', version: 0, updatedBy: null, updatedAt: null });
   assert.deepEqual(record.rosterFlags, { [s.teamId]: 0 });
@@ -752,9 +752,9 @@ check('update person: Inactive records an optional reason and a left-on date; re
   assert.deepEqual([gone.json.person.status, gone.json.person.leftOn, gone.json.person.leftReason, gone.json.person.version], ['inactive', null, null, 2]);
   const listed = (await s.call('bob', 'GET', `/roster?team=${s.teamId}`)).json.people.find((p) => p.id === pid);
   assert.equal(listed, undefined, 'an inactive person is Social: the default team list does not mix them in (U R6-Q2)');
-  // The Inactive filter keeps working until the Users page ships (R4): the same rows as before, with both fields.
-  const inactiveListed = (await s.call('bob', 'GET', `/roster?team=${s.teamId}&status=inactive`)).json.people.find((p) => p.id === pid);
-  assert.deepEqual([inactiveListed.leftOn, inactiveListed.leftReason, inactiveListed.status], [null, null, 'inactive'], 'the Inactive list carries both fields');
+  // The Inactive filter went with B8b (Social and Former people are on Users): the old query is refused, so a page from before the deploy shows the list without it.
+  const oldFilter = await s.call('bob', 'GET', `/roster?team=${s.teamId}&status=inactive`);
+  assert.deepEqual([oldFilter.status, oldFilter.json.field], [400, 'status']);
 
   // Changing them while inactive: reason alone keeps the date; an explicit null clears the date.
   const kicked = await patch({ expectedVersion: 2, leftReason: 'kicked' });
@@ -925,10 +925,13 @@ check('GET /roster: one row per person with a character on the team, the shown c
   assert.deepEqual(alphaList.json.can, { edit: false });
   const [first, second] = alphaList.json.people;
   assert.deepEqual(alphaList.json.people.map((p) => p.shown.name), ['Aldric', 'Charis'], 'Aldric is a Main on Alpha; P2 shows its first Alt on Alpha by name');
-  assert.deepEqual(first.shown, { id: p1.characters[0].id, name: 'Aldric', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, role: 'dps', isMain: true });
+  // The shown character carries its OWN rank, in-game rank and trial flag (H-Q18); Aldric is a Trial whose trial ends in 2 days.
+  assert.deepEqual(first.shown, { id: p1.characters[0].id, name: 'Aldric', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, role: 'dps', isMain: true,
+    coreRank: 'trial', inGameRank: null, trialStart: first.shown.trialStart, trialEnd: first.shown.trialEnd, trialFlag: { kind: 'ends', days: 2 } });
   assert.deepEqual([first.status, first.trialFlag, first.altCount, first.signIn, first.isMe, first.main.team], ['trial', { kind: 'ends', days: 2 }, 1, 'signed_in', true, { id: alpha, name: 'Alpha' }]);
   assert.deepEqual([first.version, second.version], [1, 1], 'list rows carry the person version (the same one the person record has)');
-  assert.deepEqual(second.shown, { id: second.shown.id, name: 'Charis', class: 'ROGUE', mainSpec: null, offSpec: null, role: null, isMain: false });
+  assert.deepEqual(second.shown, { id: second.shown.id, name: 'Charis', class: 'ROGUE', mainSpec: null, offSpec: null, role: null, isMain: false,
+    coreRank: second.shown.coreRank, inGameRank: null, trialStart: second.shown.trialStart, trialEnd: second.shown.trialEnd, trialFlag: second.shown.trialFlag });
   assert.deepEqual([second.main.name, second.main.class, second.main.team, second.altCount, second.signIn, second.isMe], ['Cassia', 'PRIEST', { id: bravo, name: 'Bravo' }, 3, 'not_yet', false]);
   assert.equal(JSON.stringify(alphaList.json).includes('nickname'), false);
 
@@ -936,8 +939,7 @@ check('GET /roster: one row per person with a character on the team, the shown c
   assert.deepEqual(bravoList.json.can, { edit: true });
   assert.deepEqual(bravoList.json.people.map((p) => [p.shown.name, p.status, p.altCount]), [['Brindle', 'trial', 1], ['Cassia', 'raider', 3]],
     'an inactive person (Fenwick) is Social and is not mixed into the default list (U R6-Q2)');
-  const bravoInactive = await s.call('bob', 'GET', `/roster?team=${bravo}&status=inactive`);
-  assert.deepEqual(bravoInactive.json.people.map((p) => [p.shown.name, p.status, p.altCount]), [['Fenwick', 'inactive', 0]], 'the Inactive filter still lists them, as the page did');
+  assert.equal((await s.call('bob', 'GET', `/roster?team=${bravo}&status=inactive`)).status, 400, 'the Inactive filter is gone (B8b)');
   assert.equal((await s.call('carol', 'GET', `/roster?team=${bravo}`)).json.can.edit, false);
   for (const bad of ['', '?team=', '?team=nope', `?team=t_AAAAAAAAAAAAAAAAAAAAAA`]) {
     const r = await s.call('erin', 'GET', `/roster${bad}`);
@@ -1246,7 +1248,7 @@ check('delete my data: links go (every guild), rows stay, the nickname is cleare
 // ---------------------------------------------------------------------------
 // Guild payload, People and roles, Teams, archived teams, routing
 
-check('guild payload: rosterOptions and rosterFlags (per HOME team, only for teams the viewer can edit); mutation replies refresh the counts', async () => {
+check('guild payload: rosterOptions and rosterFlags (per team, only for teams the viewer can edit); mutation replies refresh the counts', async () => {
   const s = await scenario({ teams: 2 });
   const [A, B] = s.teams;
   const { rosterOptions } = await load('worker/roster-data.js');

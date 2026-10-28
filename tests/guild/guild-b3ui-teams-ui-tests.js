@@ -458,7 +458,7 @@ function withState(fn) {
     await G.handlers.click['team-request-approve'](el({ 'data-trid': 'tq_1', 'data-gid': 'g1', 'data-ctx': 'roster' }));
     await settle();
     s.restore();
-    assert.deepEqual(s.calls.map(c => c.m + ' ' + c.url.replace(/\?.*$/, '')), ['post /api/guild/g1/team-requests/tq_1/approve', 'get /api/guild/g1/roster', 'get /api/guild/g1/roster']);
+    assert.deepEqual(s.calls.map(c => c.m + ' ' + c.url.replace(/\?.*$/, '')), ['post /api/guild/g1/team-requests/tq_1/approve', 'get /api/guild/g1/roster']);
     assert.deepEqual(G.pages.teamRequests.pendingOf('g1').map(r => r.id), ['tq_2']);
     assert.equal(els['roster-status'].textContent, 'Approved Wyndra for Team KJ.');
     s = stub(() => Promise.resolve({ request: { id: 'tq_2', status: 'rejected' }, teamRequestFlags: { t1: 0 } }));

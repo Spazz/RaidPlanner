@@ -380,7 +380,7 @@ class ApiErr extends Error {
     const rows = [...out.matchAll(/<div class="gs-rc-need"><span class="gs-rc-role">([^<]+)<\/span><span class="gs-rc-n">(\d+)<span class="gs-rc-d"> \/ (\d+)<\/span><\/span><span class="gs-hd-chip is-(\w+)">([^<]+)<\/span>/g)].map(m => [m[1], +m[2], +m[3], m[4], m[5]]);
     assert.deepEqual(rows, [['Tanks', 1, 2, 'rose', 'Need 1'], ['Healers', 5, 5, 'green', 'Full'], ['Melee DPS', 7, 7, 'green', 'Full'], ['Ranged DPS', 6, 6, 'green', 'Full']]);
     assert(out.includes('>Recruiting needs</h2>') && out.includes('data-action="recruiting-edit"') && !out.includes('name="tank"'), 'targets are edited in a dialog, not inline');
-    assert(stripTags(out).includes('2 mains have no spec set and are not counted') && stripTags(out).includes('The usual targets for a 20-man raid'));
+    assert(stripTags(out).includes('2 characters have no spec set and are not counted') && stripTags(out).includes('The usual targets for a 20-man raid'));
     assert(out.includes('Missing buffs and debuffs') && stripTags(out).includes('2 missing') && stripTags(out).includes('Buffs 1 of 2') && stripTags(out).includes('Windfury Totem') && out.includes('<details class="gs-rc-covered">') && !out.includes('gs-btn-molten'), 'no orange on the Recruiting tab');
     const text = G.pages.recruiting.postText(data, COVERAGE, 'https://raidsmith.example', { realmLine: 'Normal', timeZone: 'America/Chicago' });
     assert.equal(text, [

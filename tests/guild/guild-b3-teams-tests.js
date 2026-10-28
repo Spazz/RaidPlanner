@@ -198,7 +198,7 @@ check('unassigned: the characters on no team (what Add to team offers) for whoev
   assert.deepEqual(all.characters.map((c) => c.name), ['Altone', 'Alttwo', 'Looseone']);
   assert.equal(all.more, false);
   const entry = all.characters.find((c) => c.name === 'Looseone');
-  assert.deepEqual([entry.id, entry.class, entry.isMain, entry.person, entry.requestedTeamId, entry.status, entry.left], [loose, 'ROGUE', false, { id: other.pid, name: 'Otherguy' }, null, 'raider', false]);
+  assert.deepEqual([entry.id, entry.class, entry.isMain, entry.person, entry.requestedTeamId, entry.status, entry.inGameRank, entry.trialEnd], [loose, 'ROGUE', false, { id: other.pid, name: 'Otherguy' }, null, 'raider', null, null]);
   assert.deepEqual((await s.ok('tla', 'GET', '/roster/unassigned?q=alt')).characters.map((c) => c.name), ['Altone', 'Alttwo']);
   assert.deepEqual((await s.ok('tla', 'GET', '/roster/unassigned?q=ALTO')).characters.map((c) => c.name), ['Altone']);
   assert.deepEqual((await s.ok('tla', 'GET', '/roster/unassigned?q=%25')).characters, [], 'a percent sign is a letter, not a wildcard');
