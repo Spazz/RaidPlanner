@@ -89,6 +89,8 @@ async function makeWorld({ allowlist = [], env = {}, migrationsDir } = {}) {
   const db = createD1Fake(migrationsDir ? { migrationsDir } : undefined);
   const discord = makeDiscord();
   const bnet = createFakeBattlenet();
+  // These suites test the manual Add, so the fake's characters sit one level below the cap: the max-level rule (worker/bnet-auto-add.js, tests/guild/guild-b8b-mychars-tests.js) leaves them alone.
+  bnet.state.data.tbc = bnet.state.data.tbc.map((row) => [row[0], row[1], Math.min(row[2], 69), ...row.slice(3)]);
   await new Promise((resolve) => bnet.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${bnet.server.address().port}`;
   const clock = { now: 1_800_000_000_000 };

@@ -81,6 +81,8 @@ async function makeWorld({ allowlist = [], env = {} } = {}) {
   const db = createD1Fake();
   const discord = makeDiscord();
   const bnet = createFakeBattlenet();
+  // These suites test the manual Add, so the fake's characters sit one level below the cap: the max-level rule (worker/bnet-auto-add.js, tests/guild/guild-b8b-mychars-tests.js) leaves them alone.
+  bnet.state.data.tbc = bnet.state.data.tbc.map((row) => [row[0], row[1], Math.min(row[2], 69), ...row.slice(3)]);
   await new Promise((resolve) => bnet.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${bnet.server.address().port}`;
   const clock = { now: 1_800_000_000_000 };
@@ -388,7 +390,7 @@ check('callback: stores the account id, BattleTag and the character snapshot, us
   assert.equal(entry.fetchedAt, s.w.clock.now);
   assert.deepEqual(entry.characters.map((c) => c.name), ['Aldric', 'Brindle', 'Cassia', 'Dunmar', 'Eliora', 'Fenwick', 'Galdor', 'Quillfeather', 'Stranger'], 'the Death Knight is dropped');
   // The identity key (B6a sign-in match) rides along: the fake serves ids 7000 + position, on realm 4001.
-  assert.deepEqual(entry.characters[0], { name: 'Aldric', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'WARRIOR', level: 70, characterId: 7000, realmId: 4001, namespace: 'profile-classicann-us' });
+  assert.deepEqual(entry.characters[0], { name: 'Aldric', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'WARRIOR', level: 69, characterId: 7000, realmId: 4001, namespace: 'profile-classicann-us' });
   assert.deepEqual(entry.characters.find((c) => c.name === 'Cassia'), { name: 'Cassia', realm: 'Nightslayer', realmSlug: 'nightslayer', class: 'PRIEST', level: 68, characterId: 7002, realmId: 4002, namespace: 'profile-classicann-us' });
   assert.equal(entry.characters.find((c) => c.name === 'Stranger').realm, 'Faraway Isle', 'an unlisted realm is named from its slug');
   // The calls: the code for a token (Basic auth), user info, one profile call for the one namespace; nothing else.
@@ -438,7 +440,7 @@ check('callback: linking again replaces the snapshot and the time; the 30 days s
   const s = await scenario();
   await link(s, 'erin');
   s.w.advance(20 * DAY);
-  s.w.bnet.state.data.tbc = [['Aldric', 1, 70, 0]];
+  s.w.bnet.state.data.tbc = [['Aldric', 1, 69, 0]];
   await link(s, 'erin');
   const rows = await s.w.rows('SELECT linked_at, snapshot_at, snapshot FROM bnet_links');
   assert.equal(rows.length, 1);
@@ -541,7 +543,7 @@ check('GET /auth/bnet: signed out is 401; not linked says so; the characters car
   assert.equal(byName.Eliora.claimable, true);
   assert.equal(byName.Galdor.claimable, false, 'a claim is already waiting');
   assert.equal(byName.Galdor.claim.status, 'pending');
-  assert.deepEqual(guild.characters.map((c) => c.level).slice(0, 3), [70, 70, 70], 'highest level first');
+  assert.deepEqual(guild.characters.map((c) => c.level).slice(0, 3), [70, 69, 69], 'highest level first (Stranger, on another realm, is the level 70 one)');
   assert(!JSON.stringify(res.json).includes('discord'), 'no Discord data about other people');
 });
 
@@ -619,7 +621,7 @@ check('claims: a conflict - the character is on a person nobody linked while the
   assert.deepEqual(res.json.claims.map((c) => [c.name, c.status, c.outcome, c.reason || null]), [['Brindle', 'pending', 'needs_officer', 'other_person'], ['Eliora', 'applied', 'add_alt', null]]);
   const rows = await s.w.rows('SELECT guild_id, user_id, name, name_key, realm, realm_key, class, level, status, team_id, decided_by, decided_at, created_at FROM character_claims');
   assert.deepEqual(rows, [
-    { guild_id: s.guildId, user_id: s.ids.erin, name: 'Brindle', name_key: 'brindle', realm: 'Dreamscythe', realm_key: 'dreamscythe', class: 'MAGE', level: 70, status: 'pending', team_id: null, decided_by: null, decided_at: null, created_at: s.w.clock.now },
+    { guild_id: s.guildId, user_id: s.ids.erin, name: 'Brindle', name_key: 'brindle', realm: 'Dreamscythe', realm_key: 'dreamscythe', class: 'MAGE', level: 69, status: 'pending', team_id: null, decided_by: null, decided_at: null, created_at: s.w.clock.now },
   ]);
   assert.equal(res.json.claims[0].id, (await s.w.rows('SELECT id FROM character_claims'))[0].id);
   assert.equal(await s.w.count('audit_log', "action = 'claim.create'"), 1);

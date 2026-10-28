@@ -247,6 +247,7 @@ const countOf = (text, token) => text.split(token).length - 1;
 //   none      must not mention it at all
 const SERVER_ID_FILES = {
   'worker/attendance-view.js': { how: 'guard', count: 1 },
+  'worker/bnet-auto-add.js': { how: 'data', count: 1 }, // the SELECT list of the guild rows the max-level rule hands to applyPicks (planClaims passes the id to memberSql)
   'worker/bnet-store.js': { how: 'fragment', count: 1 },
   'worker/block-tombstones.js': { how: 'data', count: 1 },
   'worker/discord-guard.js': { how: 'data', count: 3 },

@@ -262,38 +262,35 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     assert(remove.includes('gs-dialog-destructive') && remove.includes('class="gs-btn gs-btn-danger"') && remove.includes('Remove this notice?'));
   });
 
-  const BNET_GUILD = (over) => Object.assign({ guildId: 'g1', guildName: 'Ember', gameVersion: 'tbc', region: 'US', realm: 'Dreamscythe', realmKind: 'realm', supportLabel: 'TBC Anniversary', status: 'not_linked', message: null, onRoster: false, characters: [] }, over || {});
+  const BNET_GUILD = (over) => Object.assign({ guildId: 'g1', guildName: 'Ember', gameVersion: 'tbc', region: 'US', realm: 'Dreamscythe', realmKind: 'realm', supportLabel: 'TBC Anniversary', status: 'not_linked', message: null, onRoster: false, maxLevel: 70, profile: [], characters: [] }, over || {});
   const BNET = (over) => Object.assign({ configured: true, link: null, guilds: [BNET_GUILD()] }, over || {});
   const chars = (data, extra) => G.pages.bnet.charactersHtml(Object.assign({ data: data }, extra || {}));
 
   await check('10. My characters: somebody already on the roster is told what Battle.net adds, not to connect it to see their roster entry', () => {
     const on = chars(BNET({ guilds: [BNET_GUILD({ onRoster: true })] }));
     const t = stripTags(on);
-    assert(t.includes('You are on the roster already') && t.includes('so you do not need Battle.net to raid there') && t.includes('add your alts') && t.includes('a second way to sign in'), t);
+    assert(t.includes('You are on the roster already') && t.includes('so you do not need Battle.net to raid there') && t.includes('your other characters (alts)') && t.includes('a second way to sign in'), t);
     assert(!t.includes('Connect Battle.net to see your characters') && !/Connect Battle\.net/.test(t), 'no "Connect Battle.net" anywhere: ' + t);
     assert(t.includes('Add Battle.net') && on.includes('href="/auth/bnet/login"') && molten(on) === 0, 'a quiet Add Battle.net link');
     const off = chars(BNET());
     assert(stripTags(off).includes('Connect Battle.net to see your characters') && off.includes('gs-btn-molten'), 'somebody on no roster still gets the invitation, as the page primary');
     const mixed = chars(BNET({ guilds: [BNET_GUILD({ onRoster: true }), BNET_GUILD({ guildId: 'g2', guildName: 'Owls', onRoster: false })] }));
     const m = stripTags(mixed);
-    assert(m.includes('Find your characters with Battle.net') && m.includes('You are on the roster of Ember. In Owls, Battle.net finds your characters so you can add them. For Ember it adds your other characters (alts) and a second way to sign in.'), m);
-    // The per-guild card of a not-connected guild says the same thing in a line.
-    const guildCard = G.pages.bnet.guildCardHtml(BNET_GUILD({ onRoster: true }));
-    assert(stripTags(guildCard).includes('You are already on this roster. Adding Battle.net lists your other characters here, so you can add your alts.') && !/Connect Battle\.net/.test(stripTags(guildCard)));
+    assert(m.includes('Find your characters with Battle.net') && m.includes('You are on the roster of Ember. In Owls, Battle.net finds your characters: those at level 70 join your profile when you connect, you pick the lower ones. For Ember it brings your other characters (alts) and a second way to sign in.'), m);
   });
 
-  await check('10. My characters (connected): your own characters keep the delivered order, status as chips, Add is a quiet button, no orange, and the intro is an info banner', () => {
+  await check('10. My characters (connected): the cards keep the Worker\'s order, Add is a quiet line, Withdraw a ghost button, nothing is orange, and the foot line is the one Battle.net link', () => {
     const rows = [
       { name: 'Cassia', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'PRIEST', level: 68, state: 'new', claim: null, claimable: true },
       { name: 'Aldric', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'WARRIOR', level: 70, state: 'yours', claim: null, claimable: false },
       { name: 'Eliora', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'PALADIN', level: 61, state: 'new', claim: { id: 'cl_1', status: 'pending' }, claimable: false },
     ];
-    const out = chars(BNET({ link: { battletag: 'T#1', linkedAt: 1, fetchedAt: 1, expiresAt: 2e12 }, guilds: [BNET_GUILD({ status: 'ok', onRoster: true, characters: rows })] }));
-    assert(out.indexOf('>Cassia<') < out.indexOf('>Aldric<') && out.indexOf('>Aldric<') < out.indexOf('>Eliora<'), 'delivered order kept, yours not moved first');
-    assert(out.includes('gs-schip gs-schip-success') && out.includes('On your record') && out.includes('gs-schip-warning') && out.includes('Needs an officer'), 'status = tint + icon + word');
-    assert(/class="gs-btn gs-btn-sm" aria-label="Add Cassia" data-action="bnet-claim"/.test(out) && /aria-label="Withdraw the request for Eliora"/.test(out));
+    const profile = [{ id: 'c1', name: 'Zed', class: 'MAGE', mainSpec: null, isMain: true, level: 70, team: null, request: null }, { id: 'c2', name: 'Aldric', class: 'WARRIOR', mainSpec: null, isMain: false, level: 70, team: null, request: null }];
+    const out = chars(BNET({ link: { battletag: 'T#1', linkedAt: 1, fetchedAt: 1, expiresAt: 2e12 }, guilds: [BNET_GUILD({ status: 'ok', onRoster: true, maxLevel: 70, profile, characters: rows })] }));
+    assert(out.indexOf('>Zed<') < out.indexOf('>Aldric<'), 'the Worker\'s order is kept: the Main first');
+    assert(out.includes('gs-hd-chip is-rose') && out.includes('Needs an officer') && /aria-label="Withdraw the request for Eliora"/.test(out) && out.includes('data-action="chars-add-open"'));
     assert.equal(count(out, /gs-btn-molten/g), 0);
-    assert(out.includes('id="chars-intro"') && out.includes('gs-banner-info') && out.includes('<span>Refresh characters</span>'));
+    assert(!out.includes('id="chars-intro"') && out.includes('id="chars-foot"') && out.includes('Refresh from Battle.net'));
   });
 
   await check('10. Linked accounts is a T3 form page: the name form has the Save bar, connecting is quiet, nothing on the page is orange but the hidden bar, Disconnect is a danger outline', () => {

@@ -682,7 +682,7 @@ check('/auth/me create.options: sent to allowlisted creators only, from worker/r
   assert.deepEqual(Object.keys(mine).sort(), ['allowed', 'claimable', 'limit', 'options', 'servers', 'stale']);
   assert.deepEqual(Object.keys(mine.options).sort(), ['realms', 'regions', 'rulesets', 'versions']);
   assert.deepEqual(mine.options.versions, [
-    { key: 'tbc', label: 'TBC Anniversary' }, { key: 'classic', label: 'Classic Era' }, { key: 'forever', label: 'WoW Forever' },
+    { key: 'tbc', label: 'TBC Anniversary', maxLevel: 70 }, { key: 'classic', label: 'Classic Era', maxLevel: 60 }, { key: 'forever', label: 'WoW Forever', maxLevel: 60 },
   ]);
   assert.deepEqual(mine.options.regions, ['US', 'EU', 'KR', 'TW']);
   assert.deepEqual(mine.options.rulesets, ['Normal', 'PvP', 'RP', 'Hardcore']);

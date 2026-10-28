@@ -3409,6 +3409,53 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 /* == end B8b Roster and team changes == */
 
 /* == B8b My characters (lane mychars) == */
+/* My characters (boards MC1-MC5, T1 list on Forge): one gold group head per guild, the 1B cards (equal size, tinted by class: the accepted spec 2.2 exception), the waiting rows,
+   the quiet lines and the Add dialog's rows. Chips are .gs-hd-chip; the waiting rows are the built .gs-tim-row. */
+.gs-chars-page .gs-chars-guilds { display: flex; flex-direction: column; gap: 32px; }
+.gs-chars-guild { display: flex; flex-direction: column; gap: 12px; }
+.gs-chars-gh { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.gs-chars-gh .gs-fg-gh { margin: 0; }
+.gs-chars-gline { flex: 1 1 auto; font-size: 13px; }
+.gs-chars-gact { margin-left: auto; align-self: center; }
+.gs-chars-guild .gs-tim-ingame { margin: 0; }
+.gs-chars-page .gs-tim-h { margin-top: 4px; }
+.gs-chars-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.gs-chars-card { display: flex; flex-direction: column; gap: 12px; min-height: 44px; padding: 16px; text-decoration: none; color: var(--text-primary); cursor: pointer; }
+.guild-page a.gs-chars-card:hover { text-decoration: none; background-image: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05)); border-color: var(--border-field); }
+.gs-chars-card:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-chars-card-h { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; }
+.gs-chars-card-id { display: flex; flex-direction: column; min-width: 0; }
+.gs-chars-card-name { font: 700 20px/24px var(--font-body); overflow-wrap: anywhere; }
+.gs-chars-card-sub { font-size: 13px; color: var(--text-secondary); }
+.gs-chars-card-h .gs-chars-lvl { align-self: center; letter-spacing: 0; }
+.gs-chars-card-b { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 24px; }
+.gs-chars-note { font-size: 13px; color: var(--text-muted); }
+.gs-chars-chip-none { background: transparent; border-style: dashed; border-color: var(--border-field); color: var(--text-muted); }
+.gs-chars-cc-warrior { background: color-mix(in srgb, var(--class-warrior) 9%, var(--bg-panel)); border-color: color-mix(in srgb, var(--class-warrior) 38%, transparent); }
+.gs-chars-cc-paladin { background: color-mix(in srgb, var(--class-paladin) 9%, var(--bg-panel)); border-color: color-mix(in srgb, var(--class-paladin) 38%, transparent); }
+.gs-chars-cc-hunter { background: color-mix(in srgb, var(--class-hunter) 9%, var(--bg-panel)); border-color: color-mix(in srgb, var(--class-hunter) 38%, transparent); }
+.gs-chars-cc-rogue { background: color-mix(in srgb, var(--class-rogue) 9%, var(--bg-panel)); border-color: color-mix(in srgb, var(--class-rogue) 38%, transparent); }
+.gs-chars-cc-priest { background: color-mix(in srgb, var(--class-priest) 9%, var(--bg-panel)); border-color: color-mix(in srgb, var(--class-priest) 38%, transparent); }
+.gs-chars-cc-shaman { background: color-mix(in srgb, var(--class-shaman) 9%, var(--bg-panel)); border-color: color-mix(in srgb, var(--class-shaman) 38%, transparent); }
+.gs-chars-cc-mage { background: color-mix(in srgb, var(--class-mage) 9%, var(--bg-panel)); border-color: color-mix(in srgb, var(--class-mage) 38%, transparent); }
+.gs-chars-cc-warlock { background: color-mix(in srgb, var(--class-warlock) 9%, var(--bg-panel)); border-color: color-mix(in srgb, var(--class-warlock) 38%, transparent); }
+.gs-chars-cc-druid { background: color-mix(in srgb, var(--class-druid) 9%, var(--bg-panel)); border-color: color-mix(in srgb, var(--class-druid) 38%, transparent); }
+.gs-chars-quiet { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.gs-chars-foot { margin: 0; }
+.gs-chars-page .gs-listbody > .gs-chars-guilds + .gs-empty2 { margin-top: 32px; }
+.gs-chars-pick { max-height: 50vh; overflow-y: auto; }
+.gs-tr-row:has(.gs-chars-chk:checked) { border-color: var(--border-field); background: var(--seg-on-bg); }
+.gs-tr-row:has(.gs-chars-chk:focus-visible) { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-chars-chk { flex: none; width: 16px; height: 16px; margin: 0; accent-color: #d8dadb; cursor: pointer; }
+.gs-chars-picklvl { flex: none; margin-left: auto; font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+@media (width <= 900px) { .gs-chars-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (width <= 600px) {
+  .gs-chars-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .gs-chars-gact { flex: 1 1 100%; margin-left: 0; }
+  .gs-chars-gact .gs-btn { width: 100%; }
+  .gs-chars-quiet .gs-linkbtn { min-height: 44px; }
+  .gs-chars-foot .gs-fg-u { display: inline-block; padding: 12px 0; }
+}
 /* == end B8b My characters == */
 
 /* == B8b Character page (lane character) == */

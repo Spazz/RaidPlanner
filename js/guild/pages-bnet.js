@@ -1,14 +1,17 @@
-// ── PAGES: LINKED ACCOUNTS, MY CHARACTERS (Battle.net, Phase 5; accounts, Phase 7a) ──
+// ── PAGES: LINKED ACCOUNTS, MY CHARACTERS (Battle.net, Phase 5; accounts, Phase 7a; My characters on Forge, B8b boards MC1-MC5) ──
 // Linked accounts (#/linked) is a T3 form page: the name the account shows (a form with the Save bar) and Discord (pages-accounts.js), then connect or disconnect
-// Battle.net. The last sign-in of an account cannot be disconnected: its button is off and says why. My characters (#/characters) is a T1 list page: the characters
-// Battle.net lists for the person, grouped by the guilds they belong to, the ones already on their record first, each with an Add button. Battle.net is proof the
-// character is theirs, so Add puts it on their record at once (even a roster entry nobody had linked); only a conflict (another account holds it, or another roster
-// entry of theirs) is "Needs an officer", with Withdraw (user decisions 2026-10-26, board 7). Somebody who is already on a guild's roster is told what Battle.net adds
-// (their alts, a second sign-in), never to connect it to "see" what the roster already shows.
-// Above the Battle.net list of every guild whose characters are not decided by Battle.net sits "Find your character on the roster" (pages-this-is-me.js, board 9): a
-// roster entry that nobody linked is claimed by name, and an officer confirms it. It renders without Battle.net too. An in-game guild says its characters come from Battle.net only.
-// GET /auth/bnet -> { configured, link, guilds: [{ guildId, onRoster, battlenetOnly, status, characters }] }.
-// Pure parts: linkedHtml, charactersHtml, characterRowHtml, stateText. Connecting is a plain link to /auth/bnet/login (a full-page redirect).
+// Battle.net. The last sign-in of an account cannot be disconnected: its button is off and says why. My characters (#/characters) is a T1 list page: one gold group head per
+// guild (version and realm, the Request team button), then the characters on the viewer's profile as equal cards (Main = a tag and first; a card has no buttons and is one
+// link to the Character page), then "Waiting for an officer" (the conflicts: another account or roster entry holds the character; Withdraw), then one quiet line that
+// opens the Add dialog for the Battle.net characters that did not join by themselves. The Worker adds the characters at the version's level cap when Battle.net connects and
+// at every refresh (worker/bnet-auto-add.js); the member picks the lower ones ("N characters below 70 - Add"). The page's one Battle.net link is the line at its foot.
+// Battle.net is proof the character is theirs, so Add puts it on their record at once (even a roster entry nobody had linked); only a conflict (another account holds it, or
+// another roster entry of theirs) is "Needs an officer", with Withdraw (user decisions 2026-10-26, board 7). Somebody who is already on a guild's roster is told what Battle.net
+// adds (their alts, a second sign-in), never to connect it to "see" what the roster already shows.
+// In a guild whose characters are not decided by Battle.net sits "Find your character on the roster" (pages-this-is-me.js, board 9): a roster entry that nobody linked is claimed
+// by name, and an officer confirms it. It renders without Battle.net too. An in-game guild says its characters come from Battle.net only.
+// GET /auth/bnet -> { configured, link, guilds: [{ guildId, onRoster, battlenetOnly, status, maxLevel, profile, characters }] } (tasks/open/b8b-mychars-contract.md).
+// Pure parts: linkedHtml, charactersHtml, cardHtml, guildSectionHtml, addDialogHtml, stateText. Connecting is a plain link to /auth/bnet/login (a full-page redirect).
 (function (G) {
   'use strict';
 
@@ -126,7 +129,7 @@
   }
 
   // ── My characters ──
-  // state (the Worker's) -> the words next to a character
+  // The Worker's words for a Battle.net character's standing, used on the lists below (state: new | on_roster | yours | taken | other_realm).
   const STATE_TEXT = {
     yours: 'On your record',
     taken: 'On someone else\'s record',
@@ -156,100 +159,202 @@
     return G.ui.chipHtml({ tone: tone, label: text, icon: icon });
   }
 
-  function rowKey(gid, c) { return 'claim-' + gid + '-' + c.realmSlug + '-' + String(c.name).toLowerCase(); }
-
-  // Add (a quiet button: there can be dozens of rows) or Withdraw; nothing for a character that cannot be added.
-  function characterActionHtml(gid, c) {
-    const key = rowKey(gid, c);
-    const attrs = { 'data-gid': gid, 'data-name': c.name, 'data-realm': c.realmSlug, 'data-key': key };
-    if (c.claim && c.claim.status === 'pending') {
-      return G.ui.buttonHtml({ label: 'Withdraw', size: 'sm', ariaLabel: 'Withdraw the request for ' + c.name, attrs: Object.assign({ 'data-action': 'bnet-withdraw', 'data-claim': c.claim.id }, attrs) });
-    }
-    if (c.claimable) {
-      return G.ui.buttonHtml({ label: 'Add', size: 'sm', ariaLabel: 'Add ' + c.name, attrs: Object.assign({ 'data-action': 'bnet-claim' }, attrs) });
-    }
-    return '';
-  }
-
-  // Why a request needs an officer, under its chip: the character is on another account, or on a roster entry other than the member's own.
+  // One POST /claims takes at most this many characters (the Worker's CLAIM_BATCH_MAX); the Add dialog sends longer picks in several requests.
+  const MAX_PER_REQUEST = 10;
   const WHY = { taken: 'On another account', on_roster: 'On a different roster entry than yours' };
-  function whyHtml(c) {
-    return c.claim && c.claim.status === 'pending' && Object.prototype.hasOwnProperty.call(WHY, c.state) ? '<span class="gs-bnet-why">' + esc(WHY[c.state]) + '</span>' : '';
+
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+  function guildOf(gid) {
+    const data = bnetState() ? bnetState().data : null;
+    return data && Array.isArray(data.guilds) ? data.guilds.filter(function (g) { return g.guildId === gid; })[0] || null : null;
+  }
+  function profileOf(g) { return Array.isArray(g.profile) ? g.profile : []; }
+  function listedOf(g) { return Array.isArray(g.characters) ? g.characters : []; }
+  // The Battle.net characters waiting for an officer (a conflict: another account or another roster entry holds them) and the ones that can be added now.
+  function waitingOf(g) { return listedOf(g).filter(function (c) { return c.claim && c.claim.status === 'pending'; }); }
+  function addableOf(g) { return listedOf(g).filter(function (c) { return c.claimable; }); }
+  // True while every character to add is known to be below the version's level cap (the usual case: the ones at the cap joined by themselves).
+  function allBelowMax(g, list) {
+    return !!g.maxLevel && list.length > 0 && list.every(function (c) { return typeof c.level === 'number' && c.level < g.maxLevel; });
+  }
+  // "Oct 27", with the year when it is not this year.
+  function shortDate(ms) {
+    if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    try {
+      const same = new Date(ms).getFullYear() === new Date().getFullYear();
+      return new Date(ms).toLocaleDateString('en-US', same ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch (e) { return ''; }
   }
 
-  // A character as a data-table row: the ones on the viewer's own record are flagged so the table can put them first.
-  function characterRow(gid, c) {
-    return {
-      id: rowKey(gid, c), ariaLabel: c.name, mark: c.class,
-      cells: {
-        name: G.ui.classNameHtml(c.name, c.class), class: esc(G.ui.className(c.class)), realm: esc(c.realm),
-        level: c.level == null ? '<span class="gs-muted gs-dash">-</span>' : esc(c.level), status: stateChip(c) + whyHtml(c), actions: characterActionHtml(gid, c),
-      },
-    };
+  // ── the cards (board MC1, concept 1B): equal size, tinted by class, no buttons; the whole card is the link to the Character page ──
+  function ccClass(classId) {
+    const css = G.ui.classClass(classId);
+    return css ? ' gs-chars-cc-' + css.replace('gs-class-', '') : '';
   }
 
-  const CHARACTER_COLUMNS = [
-    { key: 'name', label: 'Character', primary: true }, { key: 'class', label: 'Class' }, { key: 'realm', label: 'Realm' },
-    { key: 'level', label: 'Level', align: 'right' }, { key: 'status', label: 'Status' }, { key: 'actions', label: 'Action', srLabel: true, hideLabel: true },
-  ];
+  function cardHtml(c) {
+    const spec = (c.mainSpec ? c.mainSpec + ' ' : '') + G.ui.className(c.class);
+    const level = typeof c.level === 'number' ? '<span class="gs-hd-chip is-grey gs-chars-lvl" aria-label="Level ' + esc(c.level) + '">' + esc(c.level) + '</span>' : '';
+    let chips = c.isMain ? '<span class="gs-hd-chip is-grey">Main</span>' : '';
+    if (c.team && c.team.name) chips += '<span class="gs-hd-chip is-grey">' + esc(c.team.name) + '</span>';
+    else if (c.request) {
+      const ago = G.ui.agoText(c.request.createdAt);
+      chips += '<span class="gs-hd-chip is-todo">Requested</span><span class="gs-chars-note">' + esc(c.request.team.name) + (ago ? ' &middot; ' + esc(ago) : '') + '</span>';
+    } else chips += '<span class="gs-hd-chip is-grey gs-chars-chip-none">No team</span>';
+    return '<a class="gs-hd-panel gs-chars-card' + ccClass(c.class) + '" href="' + esc(G.router.format({ name: 'character', cid: c.id })) + '" aria-label="Open ' + esc(c.name) + '" data-key="chars-card-' + esc(c.id) + '">' +
+      '<span class="gs-chars-card-h">' + G.ui.specIconHtml(c.class, c.mainSpec, 40) + '<span class="gs-chars-card-id"><span class="gs-chars-card-name ' + G.ui.classClass(c.class) + '">' + esc(c.name) + '</span><span class="gs-chars-card-sub">' + esc(spec) + '</span></span>' + level + '</span>' +
+      '<span class="gs-chars-card-b">' + chips + '</span></a>';
+  }
 
-  function guildBodyHtml(g) {
-    const again = function (label) { return '<div class="gs-actions">' + connectButton(label) + '</div>'; };
+  function cardsHtml(g) {
+    const list = profileOf(g);
+    return list.length ? '<div class="gs-chars-cards">' + list.map(cardHtml).join('') + '</div>' : '';
+  }
+
+  // ── Request team (board MC3): the head button opens the built dialog (pages-team-requests.js) with this guild's characters ──
+  // The person's record in the shape that dialog reads (the person page's): the characters on no team can ask, the teams they hold are not offered.
+  function recordOf(g) {
+    return { person: { isMe: true }, characters: profileOf(g).map(function (c) { return { id: c.id, name: c.name, class: c.class, mainSpec: c.mainSpec, team: c.team }; }) };
+  }
+  function requestsOf(g) {
+    return profileOf(g).filter(function (c) { return c.request; }).map(function (c) { return { id: c.request.id, status: 'pending', character: { id: c.id }, team: c.request.team }; });
+  }
+  function guildData(gid) { const s = st(); return s.guilds && s.guilds[gid] ? s.guilds[gid] : null; }
+  function canAsk(g) {
+    const tr = G.pages.teamRequests;
+    const gd = guildData(g.guildId);
+    return !!(tr && gd && profileOf(g).length && tr.canRequest(gd, recordOf(g), requestsOf(g)));
+  }
+  // The built dialog, its form handed to this page's own submit (the built one reads the person page's record, which this page does not have).
+  function requestDialogHtml(g) {
+    const html = G.pages.teamRequests.dialogHtml(guildData(g.guildId), recordOf(g), requestsOf(g));
+    return html.replace('data-submit="team-request-form"', 'data-submit="chars-request-form" data-gid="' + esc(g.guildId) + '"');
+  }
+
+  // ── the guild section ──
+  function guildHeadHtml(g) {
+    const n = profileOf(g).length;
+    const ask = canAsk(g) ? G.ui.buttonHtml({ label: 'Request team', ariaLabel: 'Request a team for one of your characters in ' + g.guildName,
+      attrs: { 'data-action': 'chars-request-open', 'data-gid': g.guildId, 'data-key': 'chars-request-' + g.guildId } }) : '';
+    return '<div class="gs-chars-gh"><h2 class="gs-fg-gh"><span class="gs-fg-ght">' + esc(g.guildName) + '</span>' + (n ? '<span class="gs-fg-ghn">' + n + '</span>' : '') + '</h2>' +
+      '<span class="gs-fg-mut gs-chars-gline">' + esc(g.supportLabel) + ' &middot; ' + esc(G.ui.realmLine({ realm: g.realm, realmKind: g.realmKind })) + '</span>' +
+      (ask ? '<span class="gs-chars-gact">' + ask + '</span>' : '') + '</div>';
+  }
+
+  // "Waiting for an officer": the characters Battle.net proves are yours but that another account or roster entry holds (the usual conflict row, with Withdraw).
+  function waitingRowHtml(gid, c) {
+    const sub = [G.ui.className(c.class)].concat(typeof c.level === 'number' ? ['level ' + c.level] : [], Object.prototype.hasOwnProperty.call(WHY, c.state) ? [WHY[c.state]] : []);
+    return '<li class="gs-tim-row">' + G.ui.specIconHtml(c.class, null, 20) + '<span class="gs-tim-id">' + G.ui.classNameHtml(c.name, c.class) + '<span class="gs-tim-sub">' + sub.map(esc).join(' &middot; ') + '</span></span>' +
+      '<span class="gs-tim-end"><span class="gs-hd-chip is-rose">Needs an officer</span>' +
+      G.ui.buttonHtml({ label: 'Withdraw', variant: 'ghost', size: 'sm', ariaLabel: 'Withdraw the request for ' + c.name,
+        attrs: { 'data-action': 'bnet-withdraw', 'data-gid': gid, 'data-name': c.name, 'data-claim': c.claim.id, 'data-key': 'claim-' + gid + '-' + c.realmSlug + '-' + String(c.name).toLowerCase() } }) + '</span></li>';
+  }
+
+  function waitingHtml(g) {
+    const list = waitingOf(g);
+    return list.length ? '<h3 class="gs-tim-h">Waiting for an officer</h3><ul class="gs-tim-list" aria-label="Waiting for an officer">' + list.map(function (c) { return waitingRowHtml(g.guildId, c); }).join('') + '</ul>' : '';
+  }
+
+  // The quiet line under the cards: the Battle.net characters that did not join by themselves, and the one way to add them (the Add dialog).
+  function addAttrs(g) { return { 'data-action': 'chars-add-open', 'data-gid': g.guildId, 'data-key': 'chars-add-' + g.guildId }; }
+  function addLabelOf(g, list) { return allBelowMax(g, list) ? 'Add characters below ' + g.maxLevel : 'Add characters from Battle.net'; }
+
+  function quietLineHtml(g, list) {
+    const below = allBelowMax(g, list);
+    const words = below ? plural(list.length, 'character', 'characters') + ' below ' + g.maxLevel + ' on your Battle.net' : plural(list.length, 'character', 'characters') + ' on your Battle.net not on your profile yet';
+    const attrs = addAttrs(g);
+    return '<p class="gs-fine gs-chars-quiet">' + esc(words) + ' &middot; <button type="button" class="gs-linkbtn" aria-label="' + esc(addLabelOf(g, list)) + ' (' + esc(g.guildName) + ')" data-action="' + attrs['data-action'] +
+      '" data-gid="' + esc(g.guildId) + '" data-key="' + esc(attrs['data-key']) + '">Add</button></p>';
+  }
+
+  function connectAgain(label) { return '<div class="gs-actions">' + connectButton(label) + '</div>'; }
+
+  // What a guild says about its Battle.net list when it cannot show one (and, connected, what it says when there is nothing to add).
+  function statusBodyHtml(g, connected) {
     if (g.status === 'unsupported') return '<p class="gs-empty" data-status="unsupported">' + esc(g.message || ('Battle.net doesn\'t offer character data for ' + g.supportLabel + ' yet.')) + '</p>';
-    if (g.status === 'not_linked') return g.onRoster
-      ? '<p class="gs-empty" data-status="not_linked">You are already on this roster. Adding Battle.net lists your other characters here, so you can add your alts.</p>' + again('Add Battle.net')
-      : '<p class="gs-empty" data-status="not_linked">Connect Battle.net to see your characters here.</p>' + again('Connect Battle.net');
-    if (g.status === 'expired') return '<p class="gs-empty" data-status="expired">Your character list was deleted after 30 days, as Battle.net\'s rules ask. Connect again to load it.</p>' + again('Connect again');
-    if (g.status === 'needs_refresh') return '<p class="gs-empty" data-status="needs_refresh">You joined this guild after you connected Battle.net. Connect again to load your characters for it.</p>' + again('Connect again');
-    if (g.status === 'unavailable') return '<p class="gs-empty" data-status="unavailable">Battle.net did not give your characters for this guild when you connected. Connect again to try once more.</p>' + again('Connect again');
-    if (!g.characters.length) {
+    if (!connected) return '';
+    if (g.status === 'expired') return '<p class="gs-empty" data-status="expired">Your character list was deleted after 30 days, as Battle.net\'s rules ask. Connect again to load it.</p>' + connectAgain('Connect again');
+    if (g.status === 'needs_refresh') return '<p class="gs-empty" data-status="needs_refresh">You joined this guild after you connected Battle.net. Connect again to load your characters for it.</p>' + connectAgain('Connect again');
+    if (g.status === 'unavailable') return '<p class="gs-empty" data-status="unavailable">Battle.net did not give your characters for this guild when you connected. Connect again to try once more.</p>' + connectAgain('Connect again');
+    const addable = addableOf(g);
+    const profile = profileOf(g);
+    const waiting = waitingHtml(g);
+    if (addable.length && !profile.length && allBelowMax(g, addable)) {
+      // Nothing joined by itself (none is at the cap): the quiet line becomes the action.
+      return waiting + G.ui.emptyStateHtml({
+        kind: 'first', icon: 'roster', title: 'None of your characters is level ' + g.maxLevel + ' yet',
+        text: 'Characters at ' + g.maxLevel + ' join your profile when you connect or refresh. Pick lower ones to add them now.',
+        actions: [{ label: addLabelOf(g, addable), variant: 'secondary', attrs: addAttrs(g) }],
+      });
+    }
+    if (addable.length) return waiting + quietLineHtml(g, addable);
+    if (profile.length || waiting) return waiting;
+    if (!listedOf(g).length) {
       return '<p class="gs-empty" data-status="empty">Battle.net lists no ' + esc(g.supportLabel) + ' characters for you. If you made one recently, log out of the game completely and connect again: Battle.net updates this list after a full log out.</p>';
     }
-    return G.ui.dataTableHtml({ label: 'Your ' + g.supportLabel + ' characters', columns: CHARACTER_COLUMNS, rows: g.characters.map(function (c) { return characterRow(g.guildId, c); }), showAll: true, noun: 'characters' });
+    return '<p class="gs-empty" data-status="nothing_to_add">None of the characters Battle.net lists for you can be added to this guild.</p>';
   }
 
-  // The card of one guild: "Find your character on the roster" first (or, for an in-game guild, the line that its characters come from Battle.net only), then the
-  // Battle.net list. onlyFind: the card with the find block alone (Battle.net is not connected, so there is no list yet).
-  function guildCardHtml(g, onlyFind) {
-    const find = g.battlenetOnly ? G.pages.thisIsMe.battlenetOnlyHtml(g.guildName) : G.pages.thisIsMe.blockHtml(g);
-    return G.ui.objectSectionHtml({
-      id: 'chars-' + g.guildId, title: g.guildName,
-      chipHtml: '<span class="gs-fine">' + esc(g.supportLabel) + ' &middot; ' + esc(G.ui.realmLine({ realm: g.realm, realmKind: g.realmKind })) + '</span>',
-      bodyHtml: find + (onlyFind ? '' : guildBodyHtml(g)),
+  // The line an in-game guild carries (its characters come from Battle.net only) or, where somebody types a character in, "Find your character on the roster".
+  function findHtml(g) { return g.battlenetOnly ? G.pages.thisIsMe.battlenetOnlyHtml(g.guildName) : G.pages.thisIsMe.blockHtml(g); }
+
+  function guildSectionHtml(g, connected) {
+    return '<section class="gs-chars-guild" id="chars-' + esc(g.guildId) + '" aria-label="' + esc(g.guildName) + '">' + guildHeadHtml(g) + findHtml(g) + cardsHtml(g) + statusBodyHtml(g, connected) + '</section>';
+  }
+
+  function sectionsHtml(guilds, connected) {
+    return guilds.length ? '<div class="gs-chars-guilds">' + guilds.map(function (g) { return guildSectionHtml(g, connected); }).join('') + '</div>' : '';
+  }
+
+  // The words for the level cap a version has, for what Battle.net adds at once: "level 70", or "the level cap (70 in TBC Anniversary, 60 in Classic Era)" when the guilds differ.
+  function capWords(guilds) {
+    const seen = {};
+    const caps = [];
+    guilds.forEach(function (g) {
+      if (g.status === 'unsupported' || !g.maxLevel || seen[g.maxLevel + '|' + g.supportLabel]) return;
+      seen[g.maxLevel + '|' + g.supportLabel] = true;
+      caps.push({ level: g.maxLevel, label: g.supportLabel });
     });
+    if (!caps.length) return 'the level cap';
+    if (caps.every(function (c) { return c.level === caps[0].level; })) return 'level ' + caps[0].level;
+    return 'the level cap (' + caps.map(function (c) { return c.level + ' in ' + c.label; }).join(', ') + ')';
   }
 
-  // The guilds that take a typed name keep the find block even when there is no Battle.net list to show next to it.
-  function findCardsHtml(data) {
-    const guilds = (Array.isArray(data.guilds) ? data.guilds : []).filter(function (g) { return !g.battlenetOnly; });
-    return guilds.length ? '<div class="gs-chars-guilds">' + guilds.map(function (g) { return guildCardHtml(g, true); }).join('') + '</div>' : '';
-  }
-
-  // What the page says when Battle.net is not connected yet. Somebody on a roster already is told what Battle.net adds, not to connect it to see what is there.
+  // What the page says when Battle.net is not connected yet (board MC4). Somebody on a roster already is told what Battle.net adds, not to connect it to see what is there.
   function notConnectedHtml(data) {
     const guilds = Array.isArray(data.guilds) ? data.guilds : [];
     const on = guilds.filter(function (g) { return g.onRoster; });
     const off = guilds.filter(function (g) { return !g.onRoster; });
     const names = function (list) { return list.map(function (g) { return g.guildName; }).join(', '); };
+    const cap = capWords(guilds);
+    const rule = 'Characters at ' + cap + ' join your profile when you connect; you pick the lower ones.';
     if (on.length && !off.length) {
       return G.ui.emptyStateHtml({
         kind: 'first', icon: 'link', title: 'You are on the roster already',
-        text: 'You are on the roster of ' + names(on) + ', so you do not need Battle.net to raid there. Adding it lists the other characters on your account, so you can add your alts. It also gives you a second way to sign in.',
+        text: 'You are on the roster of ' + names(on) + ', so you do not need Battle.net to raid there. Adding it brings your other characters (alts) onto your profile: those at ' + cap + ' join when you connect, you pick the lower ones. It also gives you a second way to sign in.',
         actions: [{ label: 'Add Battle.net', variant: 'secondary', href: CONNECT_HREF, icon: 'link', attrs: { 'data-key': 'bnet-connect' } }],
       });
     }
     if (on.length) {
       return G.ui.emptyStateHtml({
         kind: 'first', icon: 'link', title: 'Find your characters with Battle.net',
-        text: 'You are on the roster of ' + names(on) + '. In ' + names(off) + ', Battle.net finds your characters so you can add them. For ' + names(on) + ' it adds your other characters (alts) and a second way to sign in.',
+        text: 'You are on the roster of ' + names(on) + '. In ' + names(off) + ', Battle.net finds your characters: those at ' + cap + ' join your profile when you connect, you pick the lower ones. For ' + names(on) + ' it brings your other characters (alts) and a second way to sign in.',
         actions: [{ label: 'Connect Battle.net', href: CONNECT_HREF, icon: 'link', attrs: { 'data-key': 'bnet-connect' } }],
       });
     }
     return G.ui.emptyStateHtml({
       kind: 'first', icon: 'link', title: 'Connect Battle.net to see your characters',
-      text: 'Raidsmith lists the characters on your Battle.net account for each of your guilds. You pick the ones that are yours and add them to your profile.',
+      text: 'Raidsmith lists the characters on your Battle.net account for each of your guilds. ' + rule,
       actions: [{ label: 'Connect Battle.net', href: CONNECT_HREF, icon: 'link', attrs: { 'data-key': 'bnet-connect' } }],
     });
+  }
+
+  // The one Battle.net line of the page, at its foot: where the list came from, and the one way to load it again.
+  function footHtml(link) {
+    const again = '<a class="gs-fg-u" href="' + esc(CONNECT_HREF) + '" data-key="bnet-reconnect">' + (link.expired ? 'Load from Battle.net' : 'Refresh from Battle.net') + '</a>';
+    return '<p class="gs-fine gs-chars-foot" id="chars-foot">' + (link.expired
+      ? 'Battle.net is connected as ' + esc(link.battletag) + '; the list was deleted after 30 days. ' + again
+      : 'From Battle.net as ' + esc(link.battletag) + ', loaded ' + esc(shortDate(link.fetchedAt)) + '. ' + again) + '</p>';
   }
 
   // opts: { data (GET /auth/bnet or null), notice, alert }
@@ -257,27 +362,71 @@
     const o = opts || {};
     const data = o.data;
     let body;
-    let notices = '';
     if (!data) body = G.pages.signin.loadingHtml();
-    else if (!data.configured) body = '<p class="gs-warn" id="bnet-not-set-up" role="status">' + esc(NOT_SET_UP) + '</p>' + findCardsHtml(data);
-    else if (!data.link) body = notConnectedHtml(data) + findCardsHtml(data);
-    else if (!data.guilds.length) {
-      body = G.ui.emptyStateHtml({ kind: 'first', icon: 'roster', title: 'You are not in a Raidsmith guild yet', text: 'There is nothing to add a character to until you are in a guild.' });
-    } else {
-      notices = G.ui.bannerHtml({ tone: 'info', dismissible: false, id: 'chars-intro', text: 'Add the characters that are yours. They go on your profile at once. Loaded ' + G.ui.formatDate(data.link.fetchedAt) +
-        ' from Battle.net as ' + data.link.battletag + '; deleted on ' + G.ui.formatDate(data.link.expiresAt) + ' unless you connect again.',
-        actions: [{ label: 'Refresh characters', href: CONNECT_HREF, attrs: { 'data-key': 'bnet-reconnect' } }] });
-      body = '<div class="gs-chars-guilds">' + data.guilds.map(guildCardHtml).join('') + '</div>';
+    else {
+      const guilds = Array.isArray(data.guilds) ? data.guilds : [];
+      if (!data.configured) body = '<p class="gs-warn" id="bnet-not-set-up" role="status">' + esc(NOT_SET_UP) + '</p>' + sectionsHtml(guilds, false);
+      else if (!data.link) body = sectionsHtml(guilds, false) + notConnectedHtml(data);
+      else if (!guilds.length) body = G.ui.emptyStateHtml({ kind: 'first', icon: 'roster', title: 'You are not in a Raidsmith guild yet', text: 'There is nothing to add a character to until you are in a guild.' });
+      else body = sectionsHtml(guilds, true) + footHtml(data.link);
     }
     return G.ui.listPageHtml({
       head: { title: 'My characters', contextHtml: 'From Battle.net, for your guilds. <a href="' + esc(G.router.format({ name: 'linked' })) + '">Linked accounts</a>' },
-      noticesHtml: noticeHtml(o.notice) + G.ui.alertHtml(o.alert || '', 'gs-page-alert') + notices,
+      pageClass: 'gs-forge gs-chars-page',
+      noticesHtml: noticeHtml(o.notice) + G.ui.alertHtml(o.alert || '', 'gs-page-alert'),
       bodyHtml: body,
     });
   }
 
+  // ── Add below the cap (board MC2): one list of the Battle.net characters to add, a box each ──
+  function addLabel(n) { return n > 0 ? 'Add ' + plural(n, 'character', 'characters') : 'Add characters'; }
+
+  function pickRowHtml(g, c) {
+    const sub = G.ui.className(c.class) + (c.claim && c.claim.status === 'rejected' ? ' \u00b7 An officer turned this down before' : '');
+    return '<li><label class="gs-tr-row"><input type="checkbox" class="gs-chars-chk" name="pick" value="' + esc(c.realmSlug + '|' + c.name) + '" data-name="' + esc(c.name) + '" data-realm="' + esc(c.realmSlug) + '" data-change="chars-pick">' +
+      G.ui.specIconHtml(c.class, null, 20) + '<span class="gs-tr-id"><span>' + G.ui.classNameHtml(c.name, c.class) + '</span><span class="gs-tr-sub">' + esc(sub) + '</span></span>' +
+      '<span class="gs-chars-picklvl">' + (typeof c.level === 'number' ? 'Level ' + esc(c.level) : 'Level unknown') + '</span></label></li>';
+  }
+
+  function addDialogHtml(g) {
+    const list = addableOf(g);
+    const below = allBelowMax(g, list);
+    return G.ui.dialogHtml({
+      kind: 'form', title: below ? 'Add characters below ' + g.maxLevel : 'Add characters from Battle.net', className: 'gs-forge',
+      text: below ? 'Characters at level ' + g.maxLevel + ' join your profile by themselves. Tick the lower ones you want on it.' : 'Tick the characters you want on your profile.',
+      bodyHtml: '<ul class="gs-tr-pick gs-chars-pick" aria-label="' + esc(below ? 'Characters below ' + g.maxLevel : 'Characters to add') + '">' + list.map(function (c) { return pickRowHtml(g, c); }).join('') + '</ul>',
+      primary: { label: addLabel(0), attrs: { 'data-key': 'chars-add-submit' } },
+      formAttrs: { 'data-submit': 'chars-add-form', 'data-gid': g.guildId },
+    });
+  }
+
+  // What the page says after the Add dialog: one line per kind of answer (an officer decides the conflicts; a change under the request is tried again).
+  function addedNotice(claims) {
+    const list = Array.isArray(claims) ? claims : [];
+    if (list.length === 1) return claimNotice(list[0].name, list[0]);
+    const done = list.filter(function (r) { return r && r.status === 'applied'; }).length;
+    const waiting = list.filter(function (r) { return r && r.status === 'pending'; }).length;
+    const failed = list.filter(function (r) { return r && r.status === 'failed'; }).length;
+    const parts = [];
+    if (done) parts.push('Added ' + plural(done, 'character', 'characters') + ' to your profile.');
+    if (waiting) parts.push(plural(waiting, 'character is', 'characters are') + ' held by someone else, so an officer has to decide. Nothing changes until one does.');
+    if (failed) parts.push(plural(failed, 'character', 'characters') + ' changed while you were adding. Try again.');
+    return parts.join(' ');
+  }
+
   // ── data and behaviour ──
   // GET /auth/bnet into app state; rejects with the ApiError (the route's catch shows it).
+  // The teams of each guild that has a character able to ask for one (GET /api/guild/:gid, kept in app state): the Request team button needs them. Never rejects.
+  function loadTeams(data) {
+    const fetchGuild = G.app && G.app.fetchGuild;
+    const guilds = data && Array.isArray(data.guilds) ? data.guilds : [];
+    if (!fetchGuild) return Promise.resolve(null);
+    const wanted = guilds.filter(function (g) { return !guildData(g.guildId) && profileOf(g).some(function (c) { return !(c.team && c.team.id) && !c.request; }); });
+    return Promise.all(wanted.map(function (g) {
+      return Promise.resolve().then(function () { return fetchGuild(g.guildId); }).then(null, function () { /* the Request team button stays away */ });
+    })).then(function () { return null; });
+  }
+
   function load() {
     const s = st();
     const notice = flashNotice;
@@ -285,7 +434,7 @@
     s.bnet = { data: null, notice: notice, alert: '' };
     return G.api.get('/auth/bnet').then(function (data) {
       s.bnet = { data: data, notice: notice, alert: '' };
-      return data;
+      return loadTeams(data).then(function () { return data; });
     });
   }
 
@@ -293,7 +442,7 @@
     const s = st();
     return G.api.get('/auth/bnet').then(function (data) {
       s.bnet = { data: data, notice: notice || '', alert: '' };
-      G.app.render();
+      return loadTeams(data).then(function () { G.app.render(); });
     }, function (err) { G.app.handleError(err, { pageAlert: true }); });
   }
 
@@ -315,14 +464,77 @@
     return r && r.outcome === 'link_person' ? 'Added ' + name + '. It was on the roster already and is linked to you now.' : 'Added ' + name + ' to your characters.';
   }
 
-  G.handlers.click['bnet-claim'] = function (el) {
-    if (el.disabled) return;
-    const gid = el.getAttribute('data-gid');
-    const name = el.getAttribute('data-name');
-    el.disabled = true;
-    G.api.post('/api/guild/' + encodeURIComponent(gid) + '/claims', { characters: [{ name: name, realmSlug: el.getAttribute('data-realm') }] }).then(function (res) {
-      return reload(claimNotice(name, res && Array.isArray(res.claims) ? res.claims[0] : null));
-    }, function (err) { el.disabled = false; fail(err); });
+  // The Add dialog (board MC2): the primary says how many are ticked; the picks go to POST /claims, ten to a request.
+  G.handlers.click['chars-add-open'] = function (el) {
+    const g = guildOf(el.getAttribute('data-gid'));
+    if (!g || !addableOf(g).length) return;
+    G.ui.openDialog(addDialogHtml(g), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+  };
+
+  G.handlers.change['chars-pick'] = function (el) {
+    const form = el && (el.form || (el.closest ? el.closest('form') : null));
+    if (!form) return;
+    const label = form.querySelector('[data-key="chars-add-submit"] span');
+    if (label) label.textContent = addLabel(form.querySelectorAll('input[name="pick"]:checked').length);
+  };
+
+  // POST /claims for the picks, MAX_PER_REQUEST at a time, in order. -> the answers of every request; a request that fails after earlier ones worked ends the run with what was added.
+  function postPicks(gid, picks) {
+    const chunks = [];
+    for (let i = 0; i < picks.length; i += MAX_PER_REQUEST) chunks.push(picks.slice(i, i + MAX_PER_REQUEST));
+    const claims = [];
+    return chunks.reduce(function (done, chunk) {
+      return done.then(function (stop) {
+        if (stop) return stop;
+        return G.api.post('/api/guild/' + encodeURIComponent(gid) + '/claims', { characters: chunk }).then(function (res) {
+          Array.prototype.push.apply(claims, res && Array.isArray(res.claims) ? res.claims : []);
+          return null;
+        }, function (err) {
+          if (!claims.length) throw err;
+          return err;
+        });
+      });
+    }, Promise.resolve(null)).then(function (stopped) { return { claims: claims, stopped: stopped }; });
+  }
+
+  G.handlers.submit['chars-add-form'] = function (form) {
+    const gid = form.getAttribute('data-gid');
+    const boxes = Array.prototype.slice.call(form.querySelectorAll('input[name="pick"]:checked'));
+    G.ui.setText('dlg-error', '');
+    if (!boxes.length) { G.ui.setText('dlg-error', 'Tick at least one character.'); return; }
+    const picks = boxes.map(function (box) { return { name: box.getAttribute('data-name'), realmSlug: box.getAttribute('data-realm') }; });
+    G.ui.runDialog(form, postPicks(gid, picks), function (res) {
+      const text = addedNotice(res.claims) + (res.stopped ? ' The rest did not go through: ' + G.api.classify(res.stopped).text : '');
+      reload(text);
+    });
+  };
+
+  // Request team (board MC3): the built dialog, sent from here (the built submit reads the person page's record).
+  G.handlers.click['chars-request-open'] = function (el) {
+    const g = guildOf(el.getAttribute('data-gid'));
+    if (!g || !canAsk(g)) return;
+    G.ui.openDialog(requestDialogHtml(g), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+    const first = typeof document !== 'undefined' ? document.querySelector('.gs-tr-radio') : null;
+    if (first && first.focus) first.focus();
+  };
+
+  G.handlers.submit['chars-request-form'] = function (form) {
+    const gid = form.getAttribute('data-gid');
+    const g = guildOf(gid);
+    if (!g) return;
+    const character = form.querySelector('input[name="characterId"]:checked');
+    const team = form.querySelector('input[name="teamId"]:checked');
+    G.ui.setText('dlg-error', '');
+    G.ui.setText('dlg-err-characterId', '');
+    G.ui.setText('dlg-err-teamId', '');
+    if (!character) { G.ui.setText('dlg-err-characterId', 'Pick a character.'); return; }
+    if (!team) { G.ui.setText('dlg-err-teamId', 'Pick a team.'); return; }
+    const gd = guildData(gid);
+    const picked = profileOf(g).filter(function (c) { return c.id === character.value; })[0];
+    const named = gd && Array.isArray(gd.teams) ? gd.teams.filter(function (t) { return t.id === team.value; })[0] : null;
+    G.ui.runDialog(form, G.api.post('/api/guild/' + encodeURIComponent(gid) + '/team-requests', { characterId: character.value, teamId: team.value }), function () {
+      reload('Asked for ' + (named ? named.name : 'the team') + ' for ' + (picked ? picked.name : 'your character') + '. A Team Lead decides; you can withdraw the request until then.');
+    });
   };
 
   G.handlers.click['bnet-withdraw'] = function (el) {
@@ -380,8 +592,14 @@
     battlenetCardHtml: battlenetCardHtml,
     charactersHtml: charactersHtml,
     notConnectedHtml: notConnectedHtml,
-    guildCardHtml: guildCardHtml,
+    guildSectionHtml: guildSectionHtml,
+    cardHtml: cardHtml,
+    footHtml: footHtml,
+    addDialogHtml: addDialogHtml,
+    requestDialogHtml: requestDialogHtml,
+    addedNotice: addedNotice,
     claimNotice: claimNotice,
+    MAX_PER_REQUEST: MAX_PER_REQUEST,
     disconnectDialogHtml: disconnectDialogHtml,
     freshRequiredHtml: freshRequiredHtml,
     setFlash: setFlash,
