@@ -3130,3 +3130,19 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
   .gs-at-solo .gs-at-dh a.gs-at-dhl, .gs-at-solo .gs-at-dh span.gs-at-dhl { width: 28px; }
   .gs-pa-list { padding: 12px 8px; }
 }
+
+/* Fresh sign-in (B8a): the #/fresh card the sign-in comes back to (js/guild/pages-fresh.js, board O3) and the "Confirm it is you" step of a dialog (js/guild/fresh.js, board O6). The step is a confirm dialog and uses the dialog and fieldset parts as they are. */
+.gs-fresh-page { max-width: 760px; }
+.gs-fresh-page .gs-alert { margin: 0; }
+
+/* == B8a Guild setup (lane setup) == */
+/* == end B8a Guild setup == */
+
+/* == B8a Users (lane users) == */
+/* == end B8a Users == */
+
+/* == B8a Links and keys (lane links) == */
+/* == end B8a Links and keys == */
+
+/* == B8a Owner (lane owner) == */
+/* == end B8a Owner == */

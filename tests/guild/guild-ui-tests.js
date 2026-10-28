@@ -332,9 +332,9 @@ function assertEscaped(out, label) {
   await check('visibility: Guild settings tabs follow the actions (Teams and Battle.net: guild.teams; People: guild.access or guild.roles)', () => {
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
     assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['general', 'teams', 'notifications', 'applications', 'battlenet']);
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'guests', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'links', 'guests', 'dataaccess']);
     assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people', 'roles', 'discord', 'public']);
-    assert.deepEqual(tabs(ALL_CAN), ['general', 'teams', 'people', 'roles', 'discord', 'guests', 'public', 'dataaccess', 'notifications', 'applications', 'battlenet']);
+    assert.deepEqual(tabs(ALL_CAN), ['general', 'teams', 'people', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess', 'notifications', 'applications', 'battlenet']);
     assert.deepEqual(tabs({}), []);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData({ 'guild.access': 'guild' }) }, 'people', '<p>x</p>');
     assert(frame.includes('Accounts'));
@@ -797,8 +797,9 @@ function assertEscaped(out, label) {
     const { ACTIONS } = await import(pathToFileURL(path.join(ROOT, 'worker', 'permissions.js')).href);
     for (const def of defs) {
       assert(def.label && /^[A-Z]/.test(def.label), def.tab + ' has a label');
-      // The Guild Master's tab is shown by role (export and delete are not an action a role can be given), so it names no action.
+      // The Guild Master's tab is shown by role (export and delete are not an action a role can be given), the Owner review tab by the guild payload's owner.reviewOpen: neither names an action.
       if (def.guildMasterOnly) assert.deepEqual(plain(def.needs), [], def.tab + ' is shown by role, not by action');
+      else if (def.ownerReviewOnly) assert.deepEqual(plain(def.needs), [], def.tab + ' is shown while the Owner has a claim to review, not by action');
       else assert(def.needs.length > 0, def.tab + ' needs at least one action');
       for (const action of def.needs) assert(ACTIONS.includes(action), `${def.tab} needs ${action}, which is not a Worker action`);
     }
@@ -806,9 +807,10 @@ function assertEscaped(out, label) {
     const master = [{ role: 'guild_master' }];
     const shown = defs => plain(defs.map(def => ({ tab: def.tab, label: def.label })));
     const seen = list => plain(list.map(t => ({ tab: t.tab, label: t.label })));
-    assert.deepEqual(seen(G.shell.settingsTabs(everything)), shown(defs.filter(def => !def.guildMasterOnly)), 'the Guild Master tab needs the role, whatever the actions');
-    assert.deepEqual(seen(G.shell.settingsTabs(everything, [{ role: 'officer' }])), shown(defs.filter(def => !def.guildMasterOnly)));
-    assert.deepEqual(seen(G.shell.settingsTabs(everything, master)), shown(defs), 'the Guild Master sees every tab, in array order');
+    assert.deepEqual(seen(G.shell.settingsTabs(everything)), shown(defs.filter(def => !def.guildMasterOnly && !def.ownerReviewOnly)), 'the Guild Master tab needs the role and the Owner review tab an open claim review, whatever the actions');
+    assert.deepEqual(seen(G.shell.settingsTabs(everything, [{ role: 'officer' }])), shown(defs.filter(def => !def.guildMasterOnly && !def.ownerReviewOnly)));
+    assert.deepEqual(seen(G.shell.settingsTabs(everything, master)), shown(defs.filter(def => !def.ownerReviewOnly)), 'the Guild Master sees every tab but the Owner review, in array order');
+    assert.deepEqual(seen(G.shell.settingsTabs(everything, master, { reviewOpen: true })), shown(defs), 'the Owner with a claim to review sees every tab, in array order');
     for (const def of defs) assert(G.shell.SETTINGS_GROUPS.includes(def.group) && def.purpose && /\.$/.test(def.purpose), def.tab + ' is in one of the five groups and has a one-line purpose');
     assert.deepEqual(plain(G.shell.settingsTabs({})), []);
     assert.deepEqual(plain(G.shell.settingsTabs({}, master).map(t => t.tab)), plain(defs.filter(def => def.guildMasterOnly).map(def => def.tab)));

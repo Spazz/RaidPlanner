@@ -24,12 +24,43 @@
     has_discord: 'A different Discord account is already connected here. Disconnect it first.',
     has_bnet: 'A different Battle.net account is already connected here. Disconnect it first, then connect the other one.',
     roster_conflict: 'That Discord account is already on another roster entry in a guild where one of your roster entries is linked to you. Ask an officer to sort out the roster first.',
+    fresh_required: 'Confirm it is you first: sign in again, then connect.',
   };
+  // The sign-in a protected account (Owner, Officer, Team Lead) must confirm before it links a first Discord or Battle.net (identity_change; the Worker sends the browser to
+  // #/linked?error=fresh_required): the change is the identity the account lacks, the sign-in is the one it has. fresh.js keeps the act and the callback repeats the connect.
+  const LINK_CHANGES = { link_discord: { label: 'Discord', kind: 'discord_link' }, link_bnet: { label: 'Battle.net', kind: 'bnet_link' } };
   const CONNECT_HREF = '/auth/bnet/login';
   const NOT_SET_UP = 'Battle.net isn\'t set up on this server.';
 
   function st() { return G.app.state; }
   function bnetState() { return st().bnet; }
+
+  // A notice for the next Linked accounts page (an act that finished on #/fresh sends the person here; the page's own load reads it once).
+  let flashNotice = '';
+  function setFlash(text) { flashNotice = text || ''; }
+
+  // The change a refused link wants confirmed, from the identities the account holds: it links the one it lacks. null when it lacks neither.
+  function linkChangeOf(me) {
+    const ids = me && me.user ? G.pages.accounts.identitiesOf(me) : null;
+    if (!ids) return null;
+    if (!ids.bnet) return 'link_bnet';
+    if (!ids.discord) return 'link_discord';
+    return null;
+  }
+
+  // The banner of #/linked?error=fresh_required: one button, the sign-in the account has (Battle.net or Discord), then the connect goes on by itself.
+  function freshRequiredHtml(me) {
+    const change = linkChangeOf(me);
+    const options = change ? G.fresh.optionsFor('identity_change', G.fresh.linkedOf(me)) : [];
+    const what = change ? LINK_CHANGES[change].label : '';
+    if (!options.length) return '<p class="gs-alert" id="bnet-link-error" role="alert">' + esc(LINK_ERROR_TEXT.fresh_required) + '</p>';
+    const actions = options.map(function (p) {
+      return { label: 'Sign in with ' + G.fresh.PROVIDER_LABEL[p], attrs: { 'data-action': 'identity-fresh-start', 'data-key': 'identity-fresh-' + p, 'data-change': change, 'data-provider': p } };
+    });
+    return G.ui.bannerHtml({ tone: 'warning', dismissible: false, id: 'fresh-required-banner', title: 'Confirm it is you first.',
+      text: 'Connecting ' + what + ' changes how you sign in, so Raidsmith asks you to sign in again first. Then ' + what + ' connects.', actions: actions }) +
+      '<p class="gs-alert" id="fresh-start-error" role="alert" hidden></p>';
+  }
 
   // A link to the Battle.net sign-in. Secondary unless the page has nothing else to do (primary), because connecting is never the only way to be in a guild.
   function connectButton(label, primary) {
@@ -71,7 +102,8 @@
   // opts: { data (GET /auth/bnet or null), me (the /auth/me answer: adds the name and Discord cards), error (route error key), notice, alert }
   function linkedHtml(opts) {
     const o = opts || {};
-    const err = o.error && Object.prototype.hasOwnProperty.call(LINK_ERROR_TEXT, o.error) ? '<p class="gs-alert" id="bnet-link-error" role="alert">' + esc(LINK_ERROR_TEXT[o.error]) + '</p>' : '';
+    const err = o.error === 'fresh_required' ? freshRequiredHtml(o.me)
+      : (o.error && Object.prototype.hasOwnProperty.call(LINK_ERROR_TEXT, o.error) ? '<p class="gs-alert" id="bnet-link-error" role="alert">' + esc(LINK_ERROR_TEXT[o.error]) + '</p>' : '');
     const ids = o.me && o.me.user ? G.pages.accounts.identitiesOf(o.me) : null;
     return G.ui.formPageHtml({
       head: { title: 'Linked accounts', context: 'How you sign in to Raidsmith. Your account can hold Discord and Battle.net; either one signs you in to the same account.' },
@@ -248,9 +280,11 @@
   // GET /auth/bnet into app state; rejects with the ApiError (the route's catch shows it).
   function load() {
     const s = st();
-    s.bnet = { data: null, notice: '', alert: '' };
+    const notice = flashNotice;
+    flashNotice = '';
+    s.bnet = { data: null, notice: notice, alert: '' };
     return G.api.get('/auth/bnet').then(function (data) {
-      s.bnet = { data: data, notice: '', alert: '' };
+      s.bnet = { data: data, notice: notice, alert: '' };
       return data;
     });
   }
@@ -304,10 +338,34 @@
     G.ui.openDialog(disconnectDialogHtml(), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
   };
 
+  const BNET_DISCONNECTED = 'Battle.net disconnected. Your BattleTag and character list are deleted.';
   G.handlers.submit['bnet-disconnect-form'] = function (form) {
-    G.ui.runDialog(form, G.api.del('/auth/bnet', {}), function () {
+    // A protected account is asked to sign in again first (403 fresh_required, purpose identity_change): the dialog's second step.
+    G.fresh.runDialog(form, G.api.del('/auth/bnet', {}), { act: { kind: 'bnet_unlink' }, stepLabel: 'Disconnect Battle.net - step 2 of 2', primaryLabel: 'Sign in and disconnect', returnTo: G.router.format({ name: 'linked' }) }, function () {
       // The account's sign-ins changed too (Discord may be its last one now), so /auth/me is read again with the page.
-      G.pages.accounts.refresh('Battle.net disconnected. Your BattleTag and character list are deleted.');
+      G.pages.accounts.refresh(BNET_DISCONNECTED);
+    });
+  };
+
+  // Repeats after the fresh sign-in (#/fresh?done=identity_change): the disconnect, then the Linked accounts page with its notice; or the connect, which is a page load.
+  G.fresh.registerAct('bnet_unlink', function () {
+    return G.api.del('/auth/bnet', {}).then(function () { setFlash(BNET_DISCONNECTED); return G.router.format({ name: 'linked' }); });
+  });
+  G.fresh.registerAct('bnet_link', function () { return Promise.resolve(CONNECT_HREF); });
+  G.fresh.registerAct('discord_link', function () { return Promise.resolve(G.pages.accounts.CONNECT_DISCORD_HREF); });
+
+  // The banner's button on #/linked?error=fresh_required: start the sign-in for the link the account was refused.
+  G.handlers.click['identity-fresh-start'] = function (el) {
+    if (el.disabled) return;
+    const change = el.getAttribute('data-change');
+    const provider = el.getAttribute('data-provider');
+    if (!Object.prototype.hasOwnProperty.call(LINK_CHANGES, change)) return;
+    el.disabled = true;
+    G.ui.setText('fresh-start-error', '');
+    G.fresh.start({ purpose: 'identity_change', params: { change: change }, provider: provider, act: { kind: LINK_CHANGES[change].kind }, returnTo: G.router.format({ name: 'linked' }) }).then(null, function (err) {
+      el.disabled = false;
+      if (G.api.classify(err).view === 'signin') { G.app.requireSignin(); return; }
+      G.ui.setText('fresh-start-error', G.fresh.errorText(err, 'identity_change', 1));
     });
   };
 
@@ -325,6 +383,8 @@
     guildCardHtml: guildCardHtml,
     claimNotice: claimNotice,
     disconnectDialogHtml: disconnectDialogHtml,
+    freshRequiredHtml: freshRequiredHtml,
+    setFlash: setFlash,
     load: load,
     reload: reload,
     state: bnetState,

@@ -25,6 +25,9 @@
     this.field = typeof b.field === 'string' ? b.field : null;
     this.index = typeof b.index === 'number' ? b.index : null;
     this.retryAfter = typeof b.retryAfter === 'number' ? b.retryAfter : null;
+    // 403 fresh_required names the act it wants a fresh sign-in for (worker/fresh.js freshRequiredError): fresh.js starts the step from these two.
+    this.purpose = typeof b.purpose === 'string' ? b.purpose : null;
+    this.params = b.params && typeof b.params === 'object' && !Array.isArray(b.params) ? b.params : null;
     this.body = b;
   }
   ApiError.prototype = Object.create(Error.prototype);
@@ -180,6 +183,10 @@
     exportUrl: function (gid) { return guildPath(gid, '/export'); },
     remove: function (gid, confirmName) { return G.api.del(guildPath(gid, ''), { confirmName: confirmName }); },
     dismissOnboarding: function (gid) { return G.api.post(guildPath(gid, '/onboarding/dismiss'), {}); },
+  };
+  // Fresh sign-in (worker/routes/fresh.js): the start step of an act that wants one. A guild act goes under the guild, an account act under /api. -> { authorizeUrl, provider, purpose, validForSeconds }.
+  G.api.fresh = {
+    start: function (gid, body) { return G.api.post(gid ? guildPath(gid, '/fresh/start') : '/api/fresh/start', body); },
   };
   function rosterPath(gid, pid, tail) { return guildPath(gid, '/roster/' + encodeURIComponent(pid) + (tail || '')); }
   G.api.trial = {

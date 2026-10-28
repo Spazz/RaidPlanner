@@ -28,7 +28,7 @@ import { displayCharacter, groupBy } from '../attendance-view.js';
 import { ATTENTION_VIEW_ACTIONS, LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, WEEK_OFFSET_MAX, DISMISS_RULES, buildAttention, dismissalUntil, findAttentionItem } from '../attention.js';
 import { winnerNameKeySql } from '../name-alias.js';
 import { onboardingStatement, shapeOnboarding } from '../onboarding.js';
-import { ownerSql } from '../owner.js';
+import { claimReviewSql, ownerSql } from '../owner.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { characterOfRow } from '../person-rank.js';
 import { personRankSql } from '../person-rank-sql.js';
@@ -59,10 +59,8 @@ const UNMAPPED_RANKS_SQL = `SELECT g.rank AS rank, COUNT(*) AS members FROM guil
 const BLOCK_REVIEW_SQL = `SELECT
     (SELECT COUNT(*) FROM guild_blocks WHERE guild_id = ?1 AND pending_review = 1 AND ?2 = 1) AS pending,
     (SELECT COUNT(DISTINCT entity_id) FROM audit_log WHERE guild_id = ?1 AND action = 'block.match_held' AND created_at > ?3 AND ?2 = 1) AS held,
-    (SELECT c.id FROM audit_log c WHERE c.guild_id = ?1 AND c.action = 'guild.claim' AND c.actor_user_id = ?4 AND json_extract(c.after, '$.via') = 'gm_claim' AND ${ownerSql('?1', '?4')}
-      ORDER BY c.created_at DESC, c.id DESC LIMIT 1) AS claim_id,
-    (SELECT c.created_at FROM audit_log c WHERE c.guild_id = ?1 AND c.action = 'guild.claim' AND c.actor_user_id = ?4 AND json_extract(c.after, '$.via') = 'gm_claim' AND ${ownerSql('?1', '?4')}
-      ORDER BY c.created_at DESC, c.id DESC LIMIT 1) AS claim_at`;
+    ${claimReviewSql('id', '?1', '?4')} AS claim_id,
+    ${claimReviewSql('created_at', '?1', '?4')} AS claim_at`;
 const BLOCK_REVIEW_DAYS = 30;
 
 // Everyone who gets the page: the viewer holds at least one of the editing rights somewhere.

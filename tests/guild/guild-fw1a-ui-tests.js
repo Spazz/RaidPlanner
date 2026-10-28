@@ -320,19 +320,19 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
   });
 
   // ═══ 7. Guild settings on T3 ═══
-  await check('settings: five groups in order, 16 pages for the Guild Master, General first; an officer has no Guild data; a Team Lead only reaches Raid schedule', () => {
+  await check('settings: five groups in order, 17 pages for the Guild Master, General first; an officer has no Guild data; a Team Lead only reaches Raid schedule', () => {
     const everything = Object.fromEntries(['guild.teams', 'guild.access', 'guild.roles', 'raids.edit', 'attendance.policy', 'loot.policy', 'audit.view'].map(a => [a, 'guild']));
     const groups = plain(G.shell.settingsGroups(everything, GM));
     assert.deepEqual(groups.map(g => g.label), ['Guild', 'People and access', 'Sharing', 'Raid rules', 'Connections and data']);
     assert.deepEqual(groups.map(g => g.items.map(i => i.tab)), [
-      ['general', 'teams', 'schedule'], ['people', 'roles', 'discord'], ['guests', 'public', 'dataaccess'], ['attendance', 'loot', 'notifications', 'applications'], ['battlenet', 'activity', 'data'],
+      ['general', 'teams', 'schedule'], ['people', 'roles', 'discord'], ['links', 'guests', 'public', 'dataaccess'], ['attendance', 'loot', 'notifications', 'applications'], ['battlenet', 'activity', 'data'],
     ]);
-    assert.equal(groups.reduce((n, g) => n + g.items.length, 0), 16);
+    assert.equal(groups.reduce((n, g) => n + g.items.length, 0), 17);
     assert.deepEqual(groups[0].items.map(i => i.label), ['General', 'Teams', 'Raid schedule']);
     assert.equal(groups[1].items[0].label, 'Accounts', 'the sign-in accounts page is called Accounts; its address stays people');
     assert.equal(groups[0].items[0].isNew, true);
     const officer = plain(G.shell.settingsGroups(everything, [{ role: 'officer' }]));
-    assert.equal(officer.reduce((n, g) => n + g.items.length, 0), 15);
+    assert.equal(officer.reduce((n, g) => n + g.items.length, 0), 16);
     assert(!officer[4].items.some(i => i.tab === 'data'));
     const lead = plain(G.shell.settingsGroups({ 'raids.edit': ['t1'] }, [{ role: 'team_lead' }]));
     assert.deepEqual(lead.map(g => [g.label, g.items.map(i => i.tab)]), [['Guild', ['schedule']]], 'groups with no page for the viewer are left out');
@@ -362,7 +362,7 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const guild = gd(EVERYTHING, [{ role: 'officer' }]);
     const frame = G.shell.settingsFrameHtml({ guildData: guild }, 'teams', '<p id="body">x</p>');
     assert.equal(count(frame, /<h2 class="gs-sgroup-h"/g), 5);
-    assert(frame.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Guild settings</h1>') && frame.includes('Ravens - 15 pages in 5 groups'));
+    assert(frame.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Guild settings</h1>') && frame.includes('Ravens - 16 pages in 5 groups'));
     assert(/<a class="gs-sitem is-active" href="#\/g\/g1\/settings\/teams" aria-current="page">Teams<\/a>/.test(frame));
     assert(frame.includes('id="settings-title" tabindex="-1">Teams</h2>') && frame.includes('The raid teams of the guild.'));
     assert(frame.includes('is-view-detail') && frame.includes('class="gs-back-link gs-sback" href="#/g/g1/settings"'));
@@ -371,7 +371,7 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const saved = G.shell.settingsFrameHtml({ guildData: guild, settingsSavedAt: Date.UTC(2026, 9, 18, 1, 14) }, 'teams', '');
     assert(/Saved at \d{1,2}:14 [AP]M CT/.test(saved), 'Saved at 8:14 PM CT, in the guild zone');
     const list = G.shell.settingsListHtml({ guildData: guild });
-    assert(list.includes('is-view-list') && count(list, /class="gs-sitem/g) === 15 && !list.includes('aria-current="page"'));
+    assert(list.includes('is-view-list') && count(list, /class="gs-sitem/g) === 16 && !list.includes('aria-current="page"'));
     assert(!list.includes('<form'), 'the list screen has no form');
   });
 

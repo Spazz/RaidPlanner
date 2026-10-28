@@ -403,7 +403,7 @@ check('router and shell: the viewer routes round-trip, the new Guild settings ta
     const P = loadPages(s.world, jar);
     return plain(P.shell.settingsTabs((await P.api.get(s.base)).me.can).map((t) => t.tab));
   };
-  assert.deepEqual(await tabsFor(s.jar), ['general', 'teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'dataaccess', 'attendance', 'loot', 'notifications', 'applications', 'battlenet', 'activity']);
+  assert.deepEqual(await tabsFor(s.jar), ['general', 'teams', 'schedule', 'people', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess', 'attendance', 'loot', 'notifications', 'applications', 'battlenet', 'activity']);
   assert.deepEqual(await tabsFor(s.daveJar), []);
 });
 

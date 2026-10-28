@@ -409,11 +409,35 @@
       G.app.afterGuildClaimed(res, name);
     }, function (err) {
       for (let i = 0; i < btns.length; i++) btns[i].disabled = false;
+      // 403 claim_closed: the guild takes its Guild Master from the in-game roster, so a server administrator cannot claim it. The Worker's sentence says who can; the way on is that claim.
+      if (err && err.code === 'claim_closed' && box) { showClaimClosed(box, gid, err.message); return; }
       G.app.handleError(err, { pageAlert: true });
     });
   };
 
+  // The claim box after claim_closed: the Worker's sentence and the claim an in-game Guild Master makes with Battle.net (purpose gm_claim; the callback decides, #/fresh answers).
+  function showClaimClosed(box, gid, message) {
+    box.innerHTML = '<p class="gs-fine" id="claim-closed-text" role="alert">' + esc(message) + '</p><div class="gs-actions">' +
+      G.ui.buttonHtml({ label: 'Claim with Battle.net', attrs: { 'data-action': 'claim-gm-start', 'data-gid': gid, 'data-key': 'claim-gm-' + gid } }) +
+      G.ui.buttonHtml({ label: 'Cancel', variant: 'ghost', attrs: { 'data-action': 'claim-cancel' } }) + '</div><p class="gs-alert" id="claim-gm-error" role="alert" hidden></p>';
+    const first = box.querySelector ? box.querySelector('button') : null;
+    if (first && first.focus) first.focus();
+  }
+
+  G.handlers.click['claim-gm-start'] = function (el) {
+    if (el.disabled) return;
+    const gid = el.getAttribute('data-gid');
+    el.disabled = true;
+    G.ui.setText('claim-gm-error', '');
+    G.fresh.start({ gid: gid, purpose: 'gm_claim', params: {}, act: { kind: 'gm_claim' }, returnTo: G.router.format({ name: 'new' }) }).then(null, function (err) {
+      el.disabled = false;
+      if (G.api.classify(err).view === 'signin') { G.app.requireSignin(); return; }
+      G.ui.setText('claim-gm-error', G.fresh.errorText(err, 'gm_claim', 1));
+    });
+  };
+
   G.pages.create = {
+    showClaimClosed: showClaimClosed,
     claimHtml: claimHtml,
     claimableList: claimableList,
     cannotCreateHtml: cannotCreateHtml,

@@ -69,10 +69,20 @@
     G.ui.setText('dlg-error', '');
     G.ui.setText('dlg-err-confirmName', '');
     const typed = form.elements.confirmName ? String(form.elements.confirmName.value) : '';
-    G.ui.runDialog(form, G.api.guildData.remove(gd.guild.id, typed), function () {
+    // The Owner is asked to sign in again first (403 fresh_required, purpose guild_delete): the dialog's second step, with the typed name kept for the repeat.
+    G.fresh.runDialog(form, G.api.guildData.remove(gd.guild.id, typed), {
+      gid: gd.guild.id, act: { kind: 'guild_delete', data: { confirmName: typed } }, stepLabel: 'Delete guild - step 2 of 2', primaryLabel: 'Sign in and delete',
+      returnTo: G.router.format({ name: 'settings', gid: gd.guild.id, tab: 'data' }),
+    }, function () {
       G.app.afterGuildDeleted(gd.guild.id);
     });
   };
+
+  // Repeats after the fresh sign-in (#/fresh?done=guild_delete): the delete with the name the person typed, then the start page.
+  G.fresh.registerAct('guild_delete', function (act) {
+    const name = act.data && typeof act.data.confirmName === 'string' ? act.data.confirmName : '';
+    return G.api.guildData.remove(act.gid, name).then(function () { return G.app.forgetGuild(act.gid); }).then(function () { return '#/'; });
+  });
 
   G.pages.settingsData = { EXPORT_TEXT: EXPORT_TEXT, EXPORT_LEAVES_OUT: EXPORT_LEAVES_OUT, DELETE_TEXT: DELETE_TEXT, isGuildMaster: isGuildMaster, dataHtml: dataHtml, deleteDialogHtml: deleteDialogHtml, main: main };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

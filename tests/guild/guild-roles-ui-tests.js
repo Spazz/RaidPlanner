@@ -259,12 +259,12 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
     const labels = can => plain(G.shell.settingsTabs(can).map(t => t.label));
     assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people', 'roles', 'discord', 'public']);
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'guests', 'dataaccess']);
-    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'guests', 'public', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'links', 'guests', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess']);
     assert.deepEqual(tabs({ 'guild.roles': [] , 'guild.access': [] }), [], 'an empty team list is no permission');
     assert.deepEqual(tabs({}), []);
     assert.deepEqual(labels({ 'guild.roles': 'guild' }), ['Accounts', 'Roles', 'Discord roles', 'Public page']);
-    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['Accounts', 'Guest links', 'Data access']);
+    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['Accounts', 'Links and keys', 'Guest links', 'Data access']);
     assert.equal(G.shell.canSeeSettings({ 'guild.roles': 'guild' }), true);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData() }, 'guests', '<p>x</p>');
     assert(/aria-current="page">Guest links</.test(frame) && frame.includes('href="#/g/g1/settings/guests"') && frame.includes('href="#/g/g1/settings/public"'));

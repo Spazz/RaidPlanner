@@ -76,7 +76,7 @@
     notifications: { state: 'notifySettings', page: 'settingsNotify' },
   };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
-  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', lootstandings: 'lootStandings', lootnight: 'lootNight', lootitem: 'lootItem', lootaward: 'lootAward', lootfix: 'lootFix', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'recruiting', launch: 'launch' };
+  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', lootstandings: 'lootStandings', lootnight: 'lootNight', lootitem: 'lootItem', lootaward: 'lootAward', lootfix: 'lootFix', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'recruiting', launch: 'launch', users: 'users', user: 'user', setup: 'setup' };
   function attPageKey(r) {
     if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : (r.section === 'home' ? 'attention' : null)));
     if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : (r.tab === 'activity' ? 'settingsActivity' : (r.tab === 'applications' ? 'settingsApply' : null))));
@@ -566,6 +566,14 @@
         return null;
       });
     }
+    if (r.name === 'fresh') {
+      // Where a fresh sign-in comes back to (board O3). The page reads the saved act and repeats it; the nav is the act's guild.
+      return G.pages.fresh.load(r).then(function () { return ensureChromeGuild(); }).then(function () { return null; }).catch(function (err) {
+        if (token !== routeToken) return null;
+        handleLoadError(err);
+        return null;
+      });
+    }
     if (!r.gid) return null;
 
     state.currentGid = r.gid;
@@ -583,10 +591,12 @@
       if (r.name === 'section' && r.section === 'roster') return loadRoster(r, gd, token);
       if (r.name === 'person') return loadPerson(r, gd, token);
       if (r.name === 'import') return loadImport(r, gd, token);
+      if ((r.name === 'users' || r.name === 'user') && !G.shell.canSeeUsers(gd.me && gd.me.can)) { failWith('You cannot open this', 'Users is for the people who run the guild.', false); return null; }
+      if (r.name === 'setup' && !G.shell.canSeeSettings(gd.me && gd.me.can)) { failWith('You cannot open this', 'Guild setup is for the people who run the guild.', false); return null; }
       const attKey = attPageKey(r);
       if (attKey && r.name !== 'settings') return loadAttendance(attKey, r, gd);
       if (r.name !== 'settings') return null;
-      const tabs = G.shell.settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles);
+      const tabs = G.shell.settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles, gd.owner);
       if (!tabs.length) { failWith('You cannot open this', 'Guild settings are for the people who run the guild.', false); return null; }
       let tab = r.tab;
       if (!tab) {
@@ -602,6 +612,8 @@
       if (tab === 'schedule') return loadAttendance('settingsSchedule', r, gd);
       if (tab === 'activity') return loadAttendance('settingsActivity', r, gd);
       if (tab === 'applications') return loadAttendance('settingsApply', r, gd);
+      if (tab === 'links') return loadAttendance('settingsLinks', r, gd);
+      if (tab === 'claimreview') return loadAttendance('settingsClaimReview', r, gd);
       if (Object.prototype.hasOwnProperty.call(ROLE_TABS, tab)) return G.pages[ROLE_TABS[tab].page].load(r.gid).then(function () { return null; });
       if (tab !== 'people') return null;
       const jobs = [G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) { state.people[r.gid] = res; })];
@@ -730,6 +742,10 @@
     else if (r.name === 'roadmap') page = 'Future enhancements';
     else if (r.name === 'linked') page = 'Linked accounts';
     else if (r.name === 'characters') page = 'My characters';
+    else if (r.name === 'fresh') page = G.pages.fresh.titleOf(r);
+    else if (r.name === 'users') page = 'Users';
+    else if (r.name === 'user') page = 'User';
+    else if (r.name === 'setup') page = 'Guild setup';
     else if (r.name === 'new') page = 'Create a guild';
     else if (r.name === 'section') page = { home: 'Home', roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || '';
     else if (r.name === 'raidnew') page = 'New raid';
@@ -805,6 +821,11 @@
       case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson': case 'lootstandings': case 'lootnight': case 'lootitem': case 'lootaward': case 'lootfix': case 'away': case 'intent': case 'recruiting': case 'applications': case 'launch':
         if (!gd) return P.signin.loadingHtml();
         return P[attPageKey(r)].main(r, gd, ctx);
+      case 'users': case 'user': case 'setup':
+        if (!gd) return P.signin.loadingHtml();
+        return P[attPageKey(r)].main(r, gd, ctx);
+      case 'fresh':
+        return P.fresh.main(r, gd, ctx);
       case 'person': {
         if (!gd || !state.person || state.person.gid !== gd.guild.id || state.person.pid !== r.pid) return P.signin.loadingHtml();
         return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid), trial: P.personTrial.cardState(gd.guild.id, r.pid), away: P.away.personSectionOf({ guildData: gd, record: state.person.record, state: P.attendance.attState().awayPerson }), saved: state.personSaved && state.personSaved.gid === gd.guild.id && state.personSaved.pid === r.pid ? state.personSaved : null, requests: P.teamRequests.bucketOf(gd.guild.id) });
@@ -846,6 +867,8 @@
         if (tab === 'schedule') return P.settingsSchedule.main(r, gd, ctx);
         if (tab === 'activity') return P.settingsActivity.main(r, gd, ctx);
         if (tab === 'applications') return P.settingsApply.main(r, gd, ctx);
+        if (tab === 'links') return P.settingsLinks.main(r, gd, ctx);
+        if (tab === 'claimreview') return P.settingsClaimReview.main(r, gd, ctx);
         if (tab === 'data') return P.settingsData.main(r, gd, ctx);
         if (Object.prototype.hasOwnProperty.call(ROLE_TABS, tab)) {
           const x = state[ROLE_TABS[tab].state];
@@ -912,7 +935,7 @@
     // The read-only pages (guest link, guest view, public page) draw no guild nav, whoever is looking.
     if (me && !G.router.isViewerRoute(r)) {
       // The roadmap has no guild of its own: like the planner and the help pages it draws the nav of the viewer's last guild.
-      const own = r && (r.name === 'roadmap' || r.name === 'linked' || r.name === 'characters') ? chromeGuildId() : (r && r.gid);
+      const own = r && (r.name === 'roadmap' || r.name === 'linked' || r.name === 'characters' || r.name === 'fresh') ? chromeGuildId() : (r && r.gid);
       const gid = state.section === 'guild' ? own : chromeGuildId();
       gd = gid ? state.guilds[gid] || null : null;
     }
@@ -1188,11 +1211,14 @@
 
   // The Guild Master deleted a guild: forget what the page held of it, read the account's guilds again and go to the start (another guild's Home, or the
   // no-guild card).
-  app.afterGuildDeleted = function (gid) {
+  app.forgetGuild = function (gid) {
     delete state.guilds[gid];
     delete state.attention[gid];
     state.pageAlert = '';
-    loadMe().then(function () { go('#/', true); });
+    return loadMe();
+  };
+  app.afterGuildDeleted = function (gid) {
+    app.forgetGuild(gid).then(function () { go('#/', true); });
   };
 
   app.afterAccountDeleted = function () {

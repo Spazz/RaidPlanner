@@ -546,7 +546,7 @@ check('create guild: 201 returns the guild payload; the servers list drops the t
   const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A), manageable(SERVER_B)]);
   const created = await w.call(jar, 'POST', '/api/guild', GUILD_BODY);
   assert.equal(created.status, 201);
-  assert.deepEqual(Object.keys(created.json).sort(), ['applicationFlags', 'attendanceFlags', 'guild', 'me', 'pendingClaims', 'rosterFlags', 'rosterOptions', 'teamRequestFlags', 'teams']);
+  assert.deepEqual(Object.keys(created.json).sort(), ['applicationFlags', 'attendanceFlags', 'guild', 'me', 'owner', 'pendingClaims', 'rosterFlags', 'rosterOptions', 'teamRequestFlags', 'teams']);
   assert.deepEqual(Object.keys(created.json.guild).sort(), ['createdAt', 'discordServerId', 'gameVersion', 'id', 'name', 'realm', 'realmKind', 'realmSlug', 'region', 'timeZone'], 'the Guild Master also gets the Discord server id (Guild settings > General shows it)');
   assert.equal(created.json.guild.gameVersion, 'tbc');
   assert(ID.guild.test(created.json.guild.id));
@@ -1729,7 +1729,7 @@ check('claim: an allowlisted manager takes a guild that has no Guild Master (no 
   assert.equal((await w.call(fresh, 'GET', '/auth/me')).json.create.claimable.length, 1);
   const done = await claim(fresh);
   assert.equal(done.status, 200, JSON.stringify(done.json));
-  assert.deepEqual(Object.keys(done.json).sort(), ['applicationFlags', 'attendanceFlags', 'guild', 'me', 'pendingClaims', 'rosterFlags', 'rosterOptions', 'teamRequestFlags', 'teams']);
+  assert.deepEqual(Object.keys(done.json).sort(), ['applicationFlags', 'attendanceFlags', 'guild', 'me', 'owner', 'pendingClaims', 'rosterFlags', 'rosterOptions', 'teamRequestFlags', 'teams']);
   assert.deepEqual(done.json.me.roles, [{ role: 'guild_master' }]);
   assert.equal(done.json.me.can['guild.roles'], 'guild');
   assert.equal(await w.count('user_servers', 'user_id = (SELECT id FROM users WHERE discord_id = ?) AND server_id = ?', PEOPLE.frank.id, SERVER_A), 1);

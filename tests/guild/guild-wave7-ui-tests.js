@@ -122,7 +122,7 @@ function keyData(extra) {
     assert.deepEqual(plain(G.router.parse('#/g/g1/settings/dataaccess')), { name: 'settings', gid: 'g1', tab: 'dataaccess' });
     assert.equal(G.router.format({ name: 'settings', gid: 'g1', tab: 'dataaccess' }), '#/g/g1/settings/dataaccess');
     const tabs = can => G.shell.settingsTabs(can, []).map(t => t.tab);
-    assert.deepEqual(plain(tabs({ 'guild.access': 'guild' })), ['people', 'guests', 'dataaccess']);
+    assert.deepEqual(plain(tabs({ 'guild.access': 'guild' })), ['people', 'links', 'guests', 'dataaccess']);
     assert.equal(tabs({ 'guild.roles': 'guild' }).includes('dataaccess'), false);
     assert.equal(G.shell.settingsTabs({ 'guild.access': 'guild' }, []).find(t => t.tab === 'dataaccess').label, 'Data access');
     // The tab is wired like the Phase 7 tabs: a state key, a page, the manifest.

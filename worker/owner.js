@@ -55,6 +55,13 @@ export const hasOwnerSql = (guildExpr) => `(EXISTS (SELECT 1 FROM guilds hg WHER
 // and the succession on an account delete); every other reader asks ownerSql. The guild expression is used once.
 export const seatHolderSql = (guildExpr) => `(SELECT sho.owner_user_id FROM guilds sho WHERE sho.id = ${guildExpr})`;
 
+// SQL: one column (`id` or `created_at`) of the newest Guild Master claim (worker/gm-claim.js, audit action 'guild.claim', via 'gm_claim') the account made while it IS the Owner: the claim the
+// new Owner reviews (the `claim_review` attention item, GET .../claim-review, the `owner.reviewOpen` flag of GET /api/guild/:gid). ONE definition for all three readers. The literal action is
+// what lets the partial index of migration 0037 serve it. Both expressions are written several times (ownerSql writes the user twice), so use numbered parameters.
+export const claimReviewSql = (column, guildExpr, userExpr) =>
+  `(SELECT c.${column} FROM audit_log c WHERE c.guild_id = ${guildExpr} AND c.action = 'guild.claim' AND c.actor_user_id = ${userExpr} AND json_extract(c.after, '$.via') = 'gm_claim' AND ${ownerSql(guildExpr, userExpr)}
+      ORDER BY c.created_at DESC, c.id DESC LIMIT 1)`;
+
 // SQL: true when the account holds the SEAT (guilds.owner_user_id) of the guild, suspended or not. Not "is the Owner" (ownerSql is): the seat is what a hand-over moves and what
 // Delete my data has to settle. Both expressions are used once.
 export const seatHeldBySql = (guildExpr, userExpr) => `EXISTS (SELECT 1 FROM guilds sh WHERE sh.id = ${guildExpr} AND sh.owner_user_id = ${userExpr})`;

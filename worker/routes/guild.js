@@ -5,8 +5,8 @@ import { hasDiscord } from '../discord-guard.js';
 import { newId } from '../ids.js';
 import { GUILD_LIMIT_MESSAGE, LIMITS } from '../limits.js';
 import { ownPersonStatement } from '../membership.js';
-import { hasOwnerSql, legacyClaimClosedSql } from '../owner.js';
-import { loadGuildContext } from '../permissions.js';
+import { claimReviewSql, hasOwnerSql, legacyClaimClosedSql, ownerSql, seatHolderSql } from '../owner.js';
+import { isGranted, loadGuildContext } from '../permissions.js';
 import { defaultTeamSize } from '../raid-zones.js';
 import { viewerFor } from '../redact.js';
 import { readManageable } from '../session.js';
@@ -39,6 +39,34 @@ export function guildView(row) {
   };
 }
 
+// The Owner of the guild as the viewer may see it (lane B8a-base: the claim banner, the suspended banner, the Users chip and the Owner review page read it). ONE statement, index lookups only.
+//   name        the seat holder's display name (suspended or not), or the stored Guild Master of a guild before the flip; null when the seat is vacant
+//   you         the viewer holds the seat (a dev "View as" stand-in never does: it shows what a lower role sees)
+//   suspended   the seat holder has no live proof (worker/owner.js): ONLY for the seat holder and for the holders of guild.access, left out for everyone else
+//   reviewOpen  ONLY for the Owner (live): the Guild Master claim that made them the Owner has not been dismissed on Home yet (the `claim_review` attention item, same SQL, owner.js claimReviewSql;
+//               a dismissal is an attention_dismissals row whose fingerprint is the claim's audit id, worker/attention.js dismissalHides)
+async function ownerBlock(db, guildContext, nowMs) {
+  const guildId = guildContext.guild.id;
+  const userId = guildContext.userId;
+  const row = await db.prepare(
+    `SELECT ${seatHolderSql('?1')} AS seat,
+            (SELECT eo.user_id FROM effective_roles_owner eo WHERE eo.guild_id = ?1 LIMIT 1) AS live,
+            (SELECT COALESCE(u.display_name, u.global_name, u.username) FROM users u
+              WHERE u.id = COALESCE(${seatHolderSql('?1')}, (SELECT eh.user_id FROM effective_roles_owner eh WHERE eh.guild_id = ?1 LIMIT 1))) AS name,
+            ${ownerSql('?1', '?2')} AS viewer_is_owner,
+            ${claimReviewSql('id', '?1', '?2')} AS claim_id,
+            (SELECT d.fingerprint FROM attention_dismissals d WHERE d.guild_id = ?1 AND d.item_id = 'claim_review' AND d.kind = 'claim_review' AND (d.until IS NULL OR d.until > ?3)) AS dismissed_claim`,
+  ).bind(guildId, userId, nowMs).first();
+  const seat = row.seat;
+  const holder = seat !== null ? seat : row.live;
+  const standIn = !!guildContext.viewAs;
+  const you = !standIn && holder !== null && holder === userId;
+  const owner = { name: row.name === undefined ? null : row.name, you };
+  if (you || isGranted(guildContext.can['guild.access'])) owner.suspended = seat !== null && row.live !== seat;
+  if (!standIn && row.viewer_is_owner === 1) owner.reviewOpen = row.claim_id !== null && row.dismissed_claim !== row.claim_id;
+  return owner;
+}
+
 // The body of GET /api/guild/:gid (and of the 201 from POST /api/guild).
 export async function guildPayload(db, guildContext, nowMs = Date.now()) {
   // The roster person who is the viewer's (null when the account is on no roster yet): the member Home and "My profile" open their pages.
@@ -61,6 +89,7 @@ export async function guildPayload(db, guildContext, nowMs = Date.now()) {
       mainTeamId: mainRow ? mainRow.team_id : null,
       teamIds: [...new Set(ownCharacters.map((row) => row.team_id).filter(Boolean))],
     },
+    owner: await ownerBlock(db, guildContext, nowMs),
     rosterOptions: rosterOptions(),
     rosterFlags: await loadRosterFlags(db, guildContext, guildToday(guildContext.guild, nowMs)),
     applicationFlags: await loadApplicationFlags(db, guildContext),

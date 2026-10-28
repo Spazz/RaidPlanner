@@ -153,11 +153,18 @@
     G.ui.openDialog(disconnectDiscordDialogHtml(), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
   };
 
+  const DISCORD_DISCONNECTED = 'Discord disconnected. You sign in with Battle.net now.';
   G.handlers.submit['discord-disconnect-form'] = function (form) {
-    G.ui.runDialog(form, G.api.del('/auth/discord', {}), function () {
-      refresh('Discord disconnected. You sign in with Battle.net now.');
+    // A protected account (Owner, Officer, Team Lead) is asked to sign in again first (403 fresh_required, purpose identity_change): the dialog's second step.
+    G.fresh.runDialog(form, G.api.del('/auth/discord', {}), { act: { kind: 'discord_unlink' }, stepLabel: 'Disconnect Discord - step 2 of 2', primaryLabel: 'Sign in and disconnect', returnTo: G.router.format({ name: 'linked' }) }, function () {
+      refresh(DISCORD_DISCONNECTED);
     });
   };
+
+  // Repeats after the fresh sign-in (#/fresh?done=identity_change): the disconnect, then the Linked accounts page with its notice. (Connecting Discord repeats in pages-bnet.js, which owns the landing.)
+  G.fresh.registerAct('discord_unlink', function () {
+    return G.api.del('/auth/discord', {}).then(function () { G.pages.bnet.setFlash(DISCORD_DISCONNECTED); return G.router.format({ name: 'linked' }); });
+  });
 
   G.pages.accounts = {
     CONNECT_DISCORD_HREF: CONNECT_DISCORD_HREF,

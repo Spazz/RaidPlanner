@@ -264,7 +264,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
   await check('nav matrix: officer / GM gets Home first and Guild settings (separated) before the Help item; tabs are Home, Raids, Roster, Attendance, More', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), TOP_KEYS.concat(['head-team-tools', 'planner', 'head-guild-admin', 'settings', 'help|sep']));
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), TOP_KEYS.concat(['head-team-tools', 'planner', 'head-guild-admin', 'users', 'settings', 'help|sep']));
     assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['home', 'raids', 'roster', 'attendance', 'more']);
     const s = G.shell.slots(ctx);
     for (const html of [s.sidebar, s.drawer]) {
@@ -299,7 +299,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const { G } = makeEnv();
     for (const section of ['planner', 'page']) {
       const ctx = { section, page: section === 'page' ? 'faq' : 'app', me: meBody(), route: null, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-      assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))).slice(0, 9), TOP_KEYS.concat(['head-team-tools', 'planner', 'head-guild-admin', 'settings']), section);
+      assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))).slice(0, 10), TOP_KEYS.concat(['head-team-tools', 'planner', 'head-guild-admin', 'users', 'settings']), section);
       assert.equal(G.shell.slots(ctx).tabs, '', section + ': no tabs');
     }
   });

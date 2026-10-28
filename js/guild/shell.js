@@ -25,6 +25,11 @@
     return hasAction(can, 'guild.teams') || hasAction(can, 'guild.access') || hasAction(can, 'guild.roles') || hasAction(can, 'attendance.policy') || hasAction(can, 'loot.policy') || hasAction(can, 'audit.view');
   }
 
+  // Who sees Users in the nav and may open the page: the holders of guild.access (what the Users writes need; GET /users also lets guild.roles read it).
+  function canSeeUsers(can) {
+    return hasAction(can, 'guild.access');
+  }
+
   // Who gets the officer Home (the needs-attention list): anyone who can act on one of its items. Everyone else gets the member Home (their next raid, attendance, loot).
   function canSeeAttention(can) {
     return hasAction(can, 'attendance.review') || hasAction(can, 'roster.edit') || hasAction(can, 'raids.edit') || hasAction(can, 'loot.edit');
@@ -42,10 +47,14 @@
   // and so the sidebar item, is unchanged). Every page here is a route tab in router.js and every action a Worker action: guild-structure-tests.js checks both.
   // `tab` is the address (#/g/:gid/settings/<tab>) and never changes with a label: 'people' is the page called Accounts. `purpose` is the one line under the
   // page's heading. General is the Guild Master's to edit (the Worker says 403 to anyone else); an officer who reaches Guild settings reads it.
+  // Two pages are shown by something other than an action: `guildMasterOnly` (Guild data: the role) and `ownerReviewOnly` (Owner review: only the Owner, only while GET /api/guild/:gid
+  // says owner.reviewOpen; settingsTabs' third argument is that `owner` block).
   const SETTINGS_GROUPS = ['Guild', 'People and access', 'Sharing', 'Raid rules', 'Connections and data'];
   const SETTINGS_TABS = [
     { tab: 'general', label: 'General', group: 'Guild', needs: ['guild.teams'], isNew: true,
       purpose: 'Your guild\'s name, realm and time zone. Raid times everywhere read in this zone.' },
+    { tab: 'claimreview', label: 'Owner review', group: 'Guild', needs: [], ownerReviewOnly: true, isNew: true,
+      purpose: 'What the previous Owner set up and left live.' },
     { tab: 'teams', label: 'Teams', group: 'Guild', needs: ['guild.teams'],
       purpose: 'The raid teams of the guild. Each character is locked to one team.' },
     { tab: 'schedule', label: 'Raid schedule', group: 'Guild', needs: ['raids.edit'],
@@ -56,6 +65,8 @@
       purpose: 'What each role may see and do. Add your own roles, or reset a built-in one.' },
     { tab: 'discord', label: 'Discord roles', group: 'People and access', needs: ['guild.roles'],
       purpose: 'Which Raidsmith role each role of your Discord server gives.' },
+    { tab: 'links', label: 'Links and keys', group: 'Sharing', needs: ['guild.access'], isNew: true,
+      purpose: 'The API keys, guest links and raid join links of the guild.' },
     { tab: 'guests', label: 'Guest links', group: 'Sharing', needs: ['guild.access'],
       purpose: 'Read-only links for people without an account.' },
     { tab: 'public', label: 'Public page', group: 'Sharing', needs: ['guild.roles'],
@@ -81,17 +92,22 @@
 
   function isGuildMaster(roles) { return Array.isArray(roles) && roles.some(function (r) { return r && r.role === 'guild_master'; }); }
 
-  // roles: the viewer's roles in this guild (guildData.me.roles); the Guild Master's tabs need it.
-  function settingsTabs(can, roles) {
+  // roles: the viewer's roles in this guild (guildData.me.roles); the Guild Master's tabs need it. owner: the guild payload's `owner` block (the Owner review tab needs owner.reviewOpen).
+  function settingsTabs(can, roles, owner) {
     const master = isGuildMaster(roles);
+    const reviewing = !!owner && owner.reviewOpen === true;
     return SETTINGS_TABS
-      .filter(function (def) { return def.guildMasterOnly ? master : def.needs.some(function (action) { return hasAction(can, action); }); })
+      .filter(function (def) {
+        if (def.guildMasterOnly) return master;
+        if (def.ownerReviewOnly) return reviewing;
+        return def.needs.some(function (action) { return hasAction(can, action); });
+      })
       .map(function (def) { return { tab: def.tab, label: def.label, group: def.group, purpose: def.purpose, isNew: !!def.isNew }; });
   }
 
   // The same pages as the five groups of the list (a group with no page for this viewer is left out): [{ label, items: [{ tab, label, purpose, isNew }] }].
-  function settingsGroups(can, roles) {
-    const tabs = settingsTabs(can, roles);
+  function settingsGroups(can, roles, owner) {
+    const tabs = settingsTabs(can, roles, owner);
     return SETTINGS_GROUPS.map(function (label) {
       return { label: label, items: tabs.filter(function (t) { return t.group === label; }) };
     }).filter(function (g) { return g.items.length > 0; });
@@ -202,11 +218,13 @@
       { key: 'attendance', label: 'Attendance', short: 'Attendance', icon: 'attendance', href: guildHref(gid, 'attendance', b), badge: a,
         ariaLabel: attendanceLabel(a) },
     ];
-    // Team tools: the Planner, for those who hold raids.edit for at least one team. Guild admin: Guild settings. The bare settings address lets the app
+    // Team tools: the Planner, for those who hold raids.edit for at least one team. Guild admin: Users, then Guild settings. The bare settings address lets the app
     // open the first page on a wide screen and the list of pages on a phone.
     const teamTools = hasAction(can, 'raids.edit') ? [teamPlannerItem(gid, b)] : [];
-    const admin = canSeeSettings(can) ? [{ key: 'settings', label: 'Guild settings', short: 'Settings', icon: 'settings',
-      href: b + G.router.format({ name: 'settings', gid: gid, tab: null }) }] : [];
+    // Guild admin: Users (guild.access), then Guild settings.
+    const admin = [];
+    if (canSeeUsers(can)) admin.push({ key: 'users', label: 'Users', short: 'Users', icon: 'roster', href: b + G.router.format({ name: 'users', gid: gid, segment: null }) });
+    if (canSeeSettings(can)) admin.push({ key: 'settings', label: 'Guild settings', short: 'Settings', icon: 'settings', href: b + G.router.format({ name: 'settings', gid: gid, tab: null }) });
     // A head shows only when more than one section is visible (a member sees the top items alone, with no heads).
     const showHeads = 1 + (teamTools.length ? 1 : 0) + (admin.length ? 1 : 0) > 1;
     const out = top.slice();
@@ -237,7 +255,7 @@
 
   // The nav model, one function (tested as a matrix): the sidebar / drawer list for this viewer.
   // Signed out, or signed in with no guild (or its data not loaded yet): Planner, then the Help item.
-  // With a guild: Home (the officer list or the member's own page), Raids, Loot, Roster, Attendance, then [Team tools: Planner] and [Guild admin: Guild settings] under heads when more than one section shows, then the one Help item.
+  // With a guild: Home (the officer list or the member's own page), Raids, Loot, Roster, Attendance, then [Team tools: Planner] and [Guild admin: Users, Guild settings] under heads when more than one section shows, then the one Help item.
   // Phone tabs are tabItems (Home, Raids, Roster or Loot, Attendance, More); the drawer carries the whole list.
   function sidebarItems(ctx) {
     const gd = guildOf(ctx);
@@ -271,7 +289,8 @@
 
   function isActiveItem(item, route) {
     if (!route) return false;
-    if (item.key === 'settings') return route.name === 'settings';
+    if (item.key === 'settings') return route.name === 'settings' || route.name === 'setup';
+    if (item.key === 'users') return route.name === 'users' || route.name === 'user';
     if (item.key === 'roadmap') return route.name === 'roadmap';
     if (item.key === 'roster' && (route.name === 'person' || route.name === 'import' || route.name === 'intent' || route.name === 'recruiting' || route.name === 'applications' || route.name === 'launch')) return true;
     if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid' || route.name === 'away')) return true;
@@ -472,6 +491,10 @@
     if (ctx.signedOut) return [{ label: 'Sign in' }];
     if (r.name === 'linked') return [{ label: 'Linked accounts' }];
     if (r.name === 'characters') return [{ label: 'My characters' }];
+    if (r.name === 'fresh') {
+      const title = G.pages && G.pages.fresh ? G.pages.fresh.titleOf(r) : 'Confirm it is you';
+      return gd && gd.guild ? [{ label: gd.guild.name, href: guildHref(gd.guild.id, 'home', baseOf(ctx)) }, { label: title }] : [{ label: title }];
+    }
     if (!gd || !gd.guild) return [{ label: 'Raidsmith' }];
     crumbs.push({ label: gd.guild.name, href: guildHref(gd.guild.id, 'roster', baseOf(ctx)) });
     if (r.name === 'section' || r.name === 'person' || r.name === 'import' || ATT_LEAF[r.name]) {
@@ -493,11 +516,20 @@
         crumbs.push({ label: r.name === 'person' ? (ctx.personName || 'Person') : IMPORT_LABELS[r.source] || 'Import' });
       }
     } else if (r.name === 'settings') {
-      const tabs = settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles);
+      const tabs = settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles, gd.owner);
       const first = tabs[0];
       crumbs.push({ label: 'Guild settings', href: baseOf(ctx) + G.router.format({ name: 'settings', gid: gd.guild.id, tab: first ? first.tab : null }) });
       const cur = tabs.filter(function (t) { return t.tab === r.tab; })[0];
       if (cur) crumbs.push({ label: cur.label });
+    } else if (r.name === 'setup') {
+      const tabs = settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles, gd.owner);
+      crumbs.push({ label: 'Guild settings', href: baseOf(ctx) + G.router.format({ name: 'settings', gid: gd.guild.id, tab: tabs[0] ? tabs[0].tab : null }) });
+      crumbs.push({ label: 'Guild setup' });
+    } else if (r.name === 'users') {
+      crumbs.push({ label: 'Users' });
+    } else if (r.name === 'user') {
+      crumbs.push({ label: 'Users', href: baseOf(ctx) + G.router.format({ name: 'users', gid: gd.guild.id, segment: null }) });
+      crumbs.push({ label: ctx.leafName || 'User' });
     }
     return crumbs;
   }
@@ -533,6 +565,12 @@
       const label = toList ? 'Settings' : 'Home';
       const href = toList ? baseOf(ctx) + G.router.format({ name: 'settings', gid: gd.guild.id, tab: null }) : guildHref(gd.guild.id, 'home', baseOf(ctx));
       return '<a class="gs-back" href="' + esc(href) + '" aria-label="Back to ' + label + '">&lsaquo; ' + label + '</a>';
+    }
+    if (r.name === 'user') {
+      return '<a class="gs-back" href="' + esc(baseOf(ctx) + G.router.format({ name: 'users', gid: gd.guild.id, segment: null })) + '" aria-label="Back to Users">&lsaquo; Users</a>';
+    }
+    if (r.name === 'setup') {
+      return '<a class="gs-back" href="' + esc(baseOf(ctx) + G.router.format({ name: 'settings', gid: gd.guild.id, tab: 'battlenet' })) + '" aria-label="Back to Battle.net">&lsaquo; Battle.net</a>';
     }
     if (r.name !== 'person' && r.name !== 'import') return '';
     return '<a class="gs-back" href="' + esc(guildHref(gd.guild.id, 'roster', baseOf(ctx))) + '" aria-label="Back to Roster">&lsaquo; Roster</a>';
@@ -612,7 +650,7 @@
     const roles = gd.me && gd.me.roles;
     const gid = gd.guild.id;
     const base = baseOf(ctx);
-    const groups = settingsGroups(can, roles);
+    const groups = settingsGroups(can, roles, gd.owner);
     const total = groups.reduce(function (n, g) { return n + g.items.length; }, 0);
     return {
       groups: groups.map(function (g) {
@@ -627,7 +665,7 @@
   function settingsFrameHtml(ctx, activeTab, innerHtml) {
     const gd = ctx.guildData;
     const model = settingsFrameModel(ctx);
-    const tabs = settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles);
+    const tabs = settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles, gd.owner);
     const cur = tabs.filter(function (t) { return t.tab === activeTab; })[0] || { label: 'Guild settings', purpose: '' };
     const saved = typeof ctx.settingsSavedAt === 'number' ? G.ui.savedStatusHtml('Saved at ' + G.ui.timeInZone(ctx.settingsSavedAt, gd.guild.timeZone)) : G.ui.savedStatusHtml('');
     return G.ui.settingsPageHtml({ groups: model.groups, activeKey: activeTab, view: 'detail', listHref: model.listHref, heading: model.heading, subline: model.subline,
@@ -709,6 +747,7 @@
     FOLD_KEY_PREFIX: FOLD_KEY_PREFIX,
     hasAction: hasAction,
     canSeeSettings: canSeeSettings,
+    canSeeUsers: canSeeUsers,
     canSeeAttention: canSeeAttention,
     homeBadge: homeBadge,
     SETTINGS_TABS: SETTINGS_TABS,
