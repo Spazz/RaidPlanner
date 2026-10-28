@@ -110,8 +110,9 @@
   }
 
   // The Request team dialog: a character (teamless, no request waiting) and a team (name and people only). The first of each is picked.
-  function dialogHtml(gd, record, mine) {
-    const chars = askers(record, mine);
+  // firstId (the Character page): that character leads the list, so it is the one picked; the others follow in their own order.
+  function dialogHtml(gd, record, mine, firstId) {
+    const chars = askers(record, mine).sort(function (a, b) { return (b.id === firstId) - (a.id === firstId); });
     const teams = freeTeams(gd, record);
     const characterRows = chars.map(function (c, i) {
       return pickRowHtml({ name: 'characterId', value: c.id, checked: i === 0, iconHtml: G.ui.specIconHtml(c.class, c.mainSpec, 20), titleHtml: G.ui.classNameHtml(c.name, c.class),
@@ -165,6 +166,9 @@
 
   // ── behaviour ──
   function currentPerson() { return G.pages.person && G.pages.person.ops ? G.pages.person.ops.cur() : null; }
+  // The Character page opens the same dialog for its own character (openFor): its context { gid, gd, rec (the person's characters as a record), firstId (the one that leads), after (what
+  // follows a sent request) } is kept while that dialog is open, so the dialog's submit follows the page that opened it. The person page's button clears it.
+  let opened = null;
 
   // The page that shows a request tells what follows a decision: hooks[ctx] = { done(gid, verb, request), fail(gid, text) }.
   function setHooks(ctx, h) { hooks[ctx] = h; }
@@ -219,16 +223,25 @@
   G.handlers.click['team-request-approve'] = function (el) { return decide(el, 'approve'); };
   G.handlers.click['team-request-reject'] = function (el) { return decide(el, 'reject'); };
 
-  G.handlers.click['team-request-open'] = function () {
-    const c = currentPerson();
+  function openDialog(c) {
     if (!c || !canRequest(c.gd, c.rec, mineOf(c.gid))) return;
-    G.ui.openDialog(dialogHtml(c.gd, c.rec, mineOf(c.gid)), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+    G.ui.openDialog(dialogHtml(c.gd, c.rec, mineOf(c.gid), c.firstId), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
     const first = typeof document !== 'undefined' ? document.querySelector('.gs-tr-radio') : null;
     if (first && first.focus) first.focus();
+  }
+
+  G.handlers.click['team-request-open'] = function () {
+    opened = null;
+    openDialog(currentPerson());
   };
 
+  function openFor(c) {
+    opened = c;
+    openDialog(c);
+  }
+
   G.handlers.submit['team-request-form'] = function (form) {
-    const c = currentPerson();
+    const c = opened || currentPerson();
     if (!c) return;
     const character = form.querySelector('input[name="characterId"]:checked');
     const team = form.querySelector('input[name="teamId"]:checked');
@@ -238,7 +251,7 @@
     if (!character) { G.ui.setText('dlg-err-characterId', 'Pick a character.'); return; }
     if (!team) { G.ui.setText('dlg-err-teamId', 'Pick a team.'); return; }
     G.ui.runDialog(form, G.api.post(url(c.gid), { characterId: character.value, teamId: team.value }), function () {
-      read(c.gid).then(function () { G.app.render(); });
+      read(c.gid).then(function () { return c.after ? c.after() : G.app.render(); });
     });
   };
 
@@ -269,6 +282,7 @@
     askers: askers,
     freeTeams: freeTeams,
     canRequest: canRequest,
+    openFor: openFor,
     headButtonHtml: headButtonHtml,
     rowStatusHtml: rowStatusHtml,
     withdrawHtml: withdrawHtml,

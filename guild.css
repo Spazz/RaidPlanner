@@ -3412,4 +3412,45 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 /* == end B8b My characters == */
 
 /* == B8b Character page (lane character) == */
+/* == B8b Character page (lane character) == */
+/* Boards CH1-CH6. The desktop head has no back link (the breadcrumb is the trail); a phone shows it. */
+.gs-char-page .gs-pagehead > .gs-back-link { display: none; }
+.gs-ch-team { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; }
+.gs-ch-team-t { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; min-width: 0; }
+.gs-ch-team-t .gs-fg-lbl { min-width: 56px; }
+.gs-ch-team-v { font: 700 20px/24px var(--font-body); color: var(--hd-white); }
+.gs-ch-team-v.is-none { color: var(--text-muted); font-weight: 600; }
+.gs-ch-team-sub { font-size: 13px; color: var(--text-muted); }
+.gs-ch-team .gs-btn { flex: none; }
+.gs-ch-raids { display: flex; flex-direction: column; }
+.gs-ch-raid { display: grid; grid-template-columns: 88px minmax(0, 1.6fr) minmax(0, 1fr) 72px; align-items: center; gap: 12px; min-height: 44px; padding: 0 20px; border-top: 1px solid var(--hd-hair); font-size: 14px; }
+.gs-ch-raid.is-head { min-height: 36px; border-top: 0; }
+.gs-ch-raid-d { color: var(--text-muted); white-space: nowrap; }
+.gs-ch-raid-n a { color: var(--hd-white); text-decoration: none; }
+.guild-page .gs-ch-raid-n a:hover { text-decoration: underline; }
+.gs-ch-raid-t { color: var(--text-secondary); }
+.gs-ch-raid-b { text-align: right; font-variant-numeric: tabular-nums; }
+.gs-ch-raid.is-head > span { min-width: 0; }
+.gs-ch-raid.is-head .gs-sort { min-height: 36px; padding: 0; color: var(--text-muted); font: inherit; letter-spacing: inherit; text-transform: inherit; }
+.gs-ch-raid.is-head .gs-sort:hover, .gs-ch-raid.is-head [aria-sort="ascending"] .gs-sort, .gs-ch-raid.is-head [aria-sort="descending"] .gs-sort { color: var(--text-primary); }
+.gs-ch-raid.is-head .gs-ch-raid-b { display: flex; justify-content: flex-end; }
+.gs-ch-pfoot { display: flex; align-items: center; gap: 12px; margin: 0; padding: 8px 20px 12px; border-top: 1px solid var(--hd-hair); }
+.gs-ch-loot .gs-loot-row { grid-template-columns: 100px minmax(0, 1fr) auto; padding: 10px 0; }
+.gs-ch-loot .gs-loot-who, .gs-ch-loot .gs-loot-flags { display: none; }
+@media screen and (max-width: 600px) {
+  .gs-char-page .gs-pagehead > .gs-back-link { display: inline-flex; min-height: 44px; }
+  .gs-ch-raid { grid-template-columns: 64px minmax(0, 1fr) 56px; padding: 0 16px; gap: 8px; min-height: 48px; }
+  .gs-ch-raid.is-head .gs-sort { min-height: 44px; }
+  .gs-ch-raid-t { display: none; }
+  .gs-ch-pfoot { padding: 8px 16px 12px; }
+  .gs-ch-pfoot .gs-linkbtn { min-height: 44px; }
+  .gs-ch-team { flex-wrap: wrap; padding: 12px 16px; }
+  .gs-ch-loot .gs-loot-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .gs-ch-loot .gs-loot-when { grid-column: 1 / -1; }
+  /* The head's actions get their own row under the context line (as the guild head on My characters does), so the name, chip and context keep the full width. */
+  .gs-char-page.gs-forge .gs-pagehead-row { flex-wrap: wrap; align-items: flex-start; }
+  .gs-char-page.gs-forge .gs-pagehead-icon + .gs-pagehead-title { flex: 1 1 0; min-width: 0; }
+  .gs-char-page.gs-forge .gs-pagehead-actions { flex: 1 1 100%; justify-content: flex-start; gap: 8px; margin-top: 4px; }
+  .gs-char-page.gs-forge .gs-pagehead-actions > .gs-btn:not(.gs-menu-trigger) { flex: 1 1 auto; }
+}
 /* == end B8b Character page == */

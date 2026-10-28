@@ -1,6 +1,6 @@
 // ── HASH ROUTES ─────────────────────────────────────────────────
 // Pure parse/format for the guild page. Routes:
-//   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
+//   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters  #/characters/:cid  (My characters, and one of them: the Character page, owner only; the route is { name: 'character', cid })
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list for officers, the member's own page for everyone else)
 //   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{general,teams,schedule,roles,discord,links,public,applications,notifications,attendance,loot,battlenet,activity,data}]
@@ -140,6 +140,7 @@
       }
       return { name: 'notfound' };
     }
+    if (head === 'characters' && parts.length === 2) return ID.test(parts[1]) ? { name: 'character', cid: parts[1] } : { name: 'notfound' };
     if (head === 'guest' && parts.length === 2) return GUEST_TOKEN.test(parts[1]) ? { name: 'guest', token: parts[1] } : { name: 'notfound' };
     if (head === 'public' && parts.length === 2) return ID.test(parts[1]) ? { name: 'public', gid: parts[1] } : { name: 'notfound' };
     // Dev "View as" previews (the Guild Master on a local run): #/dev/viewer/:gid/guest|public
@@ -217,6 +218,7 @@
       case 'roadmap': return '#/roadmap';
       case 'linked': return '#/linked' + (LINKED_ERRORS.indexOf(r.error) >= 0 ? '?error=' + r.error : '');
       case 'characters': return '#/characters';
+      case 'character': return isId(r.cid) ? '#/characters/' + encodeURIComponent(r.cid) : '#/characters';
       case 'view': return '#/view';
       case 'guest': return typeof r.token === 'string' && GUEST_TOKEN.test(r.token) ? '#/guest/' + r.token : '#/';
       case 'public': return isId(r.gid) ? '#/public/' + encodeURIComponent(r.gid) : '#/';

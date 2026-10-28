@@ -42,6 +42,7 @@
     rosterApps: null,  // { gid, teamId, status, list } - the New applications, read when the phone's Applicants segment is picked
     rosterNotice: '',
     person: null,      // { gid, pid, record } - GET /roster/p_... for the open person record
+    character: null,   // { cid, data } - GET /api/me/characters/:cid for the open Character page (see pages-character.js)
     linkable: {},      // gid -> [person] from GET /roster/linkable
     imports: {},       // 'rh' | 'wcl' -> the import page's state (see pages-import.js)
     att: {},           // the attendance pages' state, one key per page module (see pages-attendance.js and its siblings)
@@ -570,6 +571,7 @@
         return null;
       });
     }
+    if (r.name === 'character') return loadCharacter(r, token);
     if (!r.gid) return null;
 
     state.currentGid = r.gid;
@@ -694,6 +696,25 @@
     });
   }
 
+  // The Character page has no guild in its address: the character names it. The read is the owner's (404 for anyone else); the guild around it is the character's.
+  function loadCharacter(r, token) {
+    return G.pages.character.load(r.cid).then(function (data) {
+      if (token !== routeToken) return null;
+      const gid = data.guild.id;
+      state.currentGid = gid;
+      state.lastGid = gid;
+      return Promise.all([state.guilds[gid] ? null : fetchGuild(gid), G.pages.teamRequests.read(gid)]).then(function () {
+        ensureAttention(gid, false); // the nav's Home count
+        return null;
+      });
+    }).catch(function (err) {
+      if (token !== routeToken) return null;
+      state.character = null;
+      if (err && err.status === 404) failWith('Character not found', 'That character is not on your profile.', false); else handleLoadError(err);
+      return null;
+    });
+  }
+
   function loadImport(r, gd, token) {
     const gid = gd.guild.id;
     const teamId = teamFor(gd);
@@ -732,6 +753,7 @@
     else if (r.name === 'roadmap') page = 'Future enhancements';
     else if (r.name === 'linked') page = 'Linked accounts';
     else if (r.name === 'characters') page = 'My characters';
+    else if (r.name === 'character') page = G.pages.character.nameFor(r) || 'Character';
     else if (r.name === 'fresh') page = G.pages.fresh.titleOf(r);
     else if (r.name === 'users') page = 'Users';
     else if (r.name === 'user') page = 'User';
@@ -800,6 +822,9 @@
         return P.bnet.linkedHtml({ data: state.bnet ? state.bnet.data : null, me: state.me, error: r.error, notice: state.bnet ? state.bnet.notice : '', alert: state.bnet ? state.bnet.alert : '' });
       case 'characters':
         return P.bnet.charactersHtml({ data: state.bnet ? state.bnet.data : null, notice: state.bnet ? state.bnet.notice : '', alert: state.bnet ? state.bnet.alert : '' });
+      case 'character':
+        if (!gd || !state.character || state.character.cid !== r.cid) return P.signin.loadingHtml();
+        return P.character.pageHtml({ guildData: gd, state: state.character, alert: state.pageAlert });
       case 'section':
         if (!gd) return P.signin.loadingHtml();
         if (r.section === 'home') return P.attention.main(r, gd, ctx);
@@ -879,6 +904,7 @@
       const x = state.att.raid;
       return x && x.rid === r.rid && x.data && x.data.raid ? G.ui.weekdayDay(x.data.raid.raidOn) : '';
     }
+    if (r.name === 'character') return G.pages.character.nameFor(r);
     if (r.name === 'personatt') return G.pages.personAtt.nameFor(r);
     if (r.name === 'user') return G.pages.user.nameFor(r);
     if (r.name === 'lootperson') return G.pages.personLoot.nameFor(r);
@@ -922,7 +948,7 @@
     // The read-only pages (guest link, guest view, public page) draw no guild nav, whoever is looking.
     if (me && !G.router.isViewerRoute(r)) {
       // The roadmap has no guild of its own: like the planner and the help pages it draws the nav of the viewer's last guild.
-      const own = r && (r.name === 'roadmap' || r.name === 'linked' || r.name === 'characters' || r.name === 'fresh') ? chromeGuildId() : (r && r.gid);
+      const own = r && (r.name === 'roadmap' || r.name === 'linked' || r.name === 'characters' || r.name === 'character' || r.name === 'fresh') ? chromeGuildId() : (r && r.gid);
       const gid = state.section === 'guild' ? own : chromeGuildId();
       gd = gid ? state.guilds[gid] || null : null;
     }

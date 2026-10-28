@@ -56,6 +56,7 @@
     '/js/guild/pages-ranks.js',
     '/js/guild/pages-loot.js',
     '/js/guild/pages-person-loot.js',
+    '/js/guild/pages-character.js',
     '/js/guild/pages-loot-hub.js',
     '/js/guild/pages-loot-night.js',
     '/js/guild/pages-loot-award.js',

@@ -10,6 +10,7 @@ import { lookupAccounts, patchMe, putReminderOptOut, setPersonAccount, unlinkDis
 import { bnetCallback, bnetLogin, createClaims, disconnectBnet, getBnet, withdrawClaim } from './routes/bnet.js';
 import { applyPendingClaims, approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
 import { addMyCharacter } from './routes/me-characters.js';
+import { getMyCharacter, patchMyCharacter, removeMyCharacter } from './routes/character-page.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
 import { postBnetPin } from './routes/bnet-pin.js';
 import { getRosterSyncStatus, postRosterSync } from './routes/roster-sync.js';
@@ -283,6 +284,10 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/claims', auth: true, handler: createClaims },
   // Lane B3 (D2): a member adds a character to their own record by hand, applied at once; and the one-off for claims that were waiting before claims applied at once (D2e).
   { method: 'POST', path: '/api/guild/:gid/me/characters', auth: true, handler: addMyCharacter },
+  // The Character page (B8b): an owner's own character, its specs and the removal of an Alt; the character id names the guild.
+  { method: 'GET', path: '/api/me/characters/:cid', auth: true, handler: getMyCharacter },
+  { method: 'PATCH', path: '/api/me/characters/:cid', auth: true, handler: patchMyCharacter },
+  { method: 'DELETE', path: '/api/me/characters/:cid', auth: true, handler: removeMyCharacter },
   { method: 'POST', path: '/api/guild/:gid/claims/apply', auth: true, handler: applyPendingClaims },
   { method: 'DELETE', path: '/api/guild/:gid/claims/:clid', auth: true, handler: withdrawClaim },
   { method: 'POST', path: '/api/guild/:gid/claims/:clid/approve', auth: true, handler: approveClaim },

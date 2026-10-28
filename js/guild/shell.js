@@ -485,6 +485,7 @@
     if (ctx.signedOut) return [{ label: 'Sign in' }];
     if (r.name === 'linked') return [{ label: 'Linked accounts' }];
     if (r.name === 'characters') return [{ label: 'My characters' }];
+    if (r.name === 'character') return [{ label: 'My characters', href: baseOf(ctx) + G.router.format({ name: 'characters' }) }, { label: ctx.leafName || 'Character' }];
     if (r.name === 'fresh') {
       const title = G.pages && G.pages.fresh ? G.pages.fresh.titleOf(r) : 'Confirm it is you';
       return gd && gd.guild ? [{ label: gd.guild.name, href: guildHref(gd.guild.id, 'home', baseOf(ctx)) }, { label: title }] : [{ label: title }];

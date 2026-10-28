@@ -119,7 +119,8 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert.deepEqual(p('#/characters'), { name: 'characters' });
     assert.deepEqual(p('#/g/g1/roster/import/bnet'), { name: 'import', gid: 'g1', source: 'bnet' });
     assert.deepEqual(p('#/g/g1/settings/battlenet'), { name: 'settings', gid: 'g1', tab: 'battlenet' });
-    for (const h of ['#/linked/x', '#/characters/x', '#/g/g1/roster/import/battlenet', '#/g/g1/settings/bnet']) assert.deepEqual(p(h), { name: 'notfound' }, h);
+    assert.deepEqual(p('#/characters/x'), { name: 'character', cid: 'x' }, 'one character of My characters (B8b)');
+    for (const h of ['#/linked/x', '#/characters/x/y', '#/g/g1/roster/import/battlenet', '#/g/g1/settings/bnet']) assert.deepEqual(p(h), { name: 'notfound' }, h);
     for (const route of [{ name: 'linked', error: null }, { name: 'linked', error: 'taken' }, { name: 'characters' }, { name: 'import', gid: 'g1', source: 'bnet' }, { name: 'settings', gid: 'g1', tab: 'battlenet' }]) {
       assert.deepEqual(p(G.router.format(route)), route, JSON.stringify(route));
     }
