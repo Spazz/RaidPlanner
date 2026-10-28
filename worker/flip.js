@@ -22,7 +22,7 @@
 // WHAT THE FLIP DOES NOT DO. It links nobody: a Discord ID recorded on a person is bookkeeping and the person's account claims it (user decision 2026-10-26, migration 0039; the dry run's
 // `needsClaim` section lists them). It writes no pin column (the guild was pinned by the setup pin before: worker/guild-pin.js) and sends nothing to Blizzard or Discord.
 import { auditManyStatement, auditStatement } from './audit.js';
-import { consumeApprovalStatement, markerGuard, markerStatement, newMarkerId } from './dry-run.js';
+import { approvalProblem, consumeApprovalStatement, markerGuard, markerStatement, newMarkerId } from './dry-run.js';
 import { boundIdsTextSql, rankMapCompleteSql, transitionsTextSql } from './flip-binding.js';
 import { provenAfterSql } from './flip-preview.js';
 import { HttpError } from './http.js';
@@ -57,6 +57,21 @@ export const rolesMissingError = (missing) => new HttpError(
 export const approvalInvalidError = () => new HttpError(409, 'approval_invalid', 'That approval is not valid any more. Run the dry run again.');
 export const approvalStaleError = () => new HttpError(409, 'approval_stale', 'The roster, the characters or the guild changed since the dry run. Run the dry run again.');
 export const alreadyIngameError = () => new HttpError(409, 'already_ingame', 'This guild already takes its members from the in-game roster.');
+export const confirmationChangedError = () => new HttpError(
+  409, 'confirmation_changed', 'The characters you ticked are not the ones the preview was made for. Update the preview, then switch over.', { field: 'confirmedCharacterIds' },
+);
+
+// Why the presented approval does not fit this request, or null when it does: approvalProblem's 'invalid' | 'stale', plus 'ticks' = the guild is as the Owner previewed it and only the
+// selection of characters to match differs from the one the token was minted for (worker/flip-preview.js previewFlipFor: the state hash's second segment). 'stale' wins when the
+// roster or the lists moved too.
+export function flipApprovalProblem(row, args) {
+  const problem = approvalProblem(row, args);
+  if (problem !== 'stale' || row.roster_sync_id !== args.rosterSyncId) return problem;
+  const had = String(row.map_hash).split(':');
+  const wants = String(args.stateHash).split(':');
+  if (had.length !== wants.length || had[1] !== wants[1]) return 'stale';
+  return had[2] !== wants[2] ? 'ticks' : 'stale';
+}
 
 // ---------------------------------------------------------------------------
 // The refusals that come from the facts alone (shared by the dry run's `blockers` and the flip route, in this order).
@@ -113,8 +128,9 @@ export function preflightStatement(db, { guildId, checkId, tokenHash, now, roste
 
 // -> { statements, flippedAt, applied }. checkId: the preflight marker's id, which the fresh act's consuming UPDATE must already carry (worker/routes/flip.js passes it to beginFreshAct).
 // `act` is beginFreshAct's answer (its two statements and its guard). preview: previewFlip's answer for THIS request, the whole dry-run state the approval covers. effective: the same
-// lines for the characters the Owner confirmed (the second pass of previewFlip; the preview itself when they confirmed every candidate). confirmedIds: the ids to bind.
-export function flipStatements(ctx, { guildId, approverUserId, timeZone, preview, effective, confirmedIds, tokenHash, checkId, act }) {
+// lines for the characters the Owner confirmed (the second pass of previewFlip; the preview itself when they confirmed every candidate). confirmedIds: the ids to bind. stateHash: what
+// the approval was minted for (previewFlipFor: the lists AND the selection).
+export function flipStatements(ctx, { guildId, approverUserId, timeZone, preview, effective, confirmedIds, stateHash, tokenHash, checkId, act }) {
   const { db } = ctx;
   const now = ctx.now();
   const { rosterSyncId } = preview.guild;
@@ -124,7 +140,7 @@ export function flipStatements(ctx, { guildId, approverUserId, timeZone, preview
   const transitionsText = JSON.stringify(effective.payload.ranks.transitions.map((entry) => [entry.from, entry.to, entry.count]));
   const markerId = newMarkerId(ctx.randomBytes);
   const marker = markerGuard(markerId);
-  const approval = { tokenHash, guildId, approverUserId, stateHash: preview.stateHash, rosterSyncId, now };
+  const approval = { tokenHash, guildId, approverUserId, stateHash, rosterSyncId, now };
   const { access, ranks, needsClaim } = effective.payload;
   const { permissions, owner } = preview.payload;
   // What the result banner shows. The access and rank lines are those of the confirmed binding; the batch itself re-checks the rank changes (the preflight statement).
@@ -147,7 +163,7 @@ export function flipStatements(ctx, { guildId, approverUserId, timeZone, preview
   const applied = { ...counts, owner: { userId: approverUserId, live: owner.live === true } };
 
   const statements = [
-    preflightStatement(db, { guildId, checkId, tokenHash, now, rosterSyncId, approverUserId, stateHash: preview.stateHash, idsText: approvedIdsText, transitionsText, confirmedJson: idsJson }),
+    preflightStatement(db, { guildId, checkId, tokenHash, now, rosterSyncId, approverUserId, stateHash, idsText: approvedIdsText, transitionsText, confirmedJson: idsJson }),
     ...act.statements,
   ];
   // S1: the compare-and-set of the rank source.

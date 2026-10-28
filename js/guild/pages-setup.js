@@ -4,10 +4,12 @@
 // who opens the page sees the facts and no button.
 //   1 In-game guild  the guild name is typed, the realm shown from the guild; the Battle.net sign-in carries the name (Guild.fresh purpose `pin`), then POST /bnet/pin (the act `pin`).
 //   2 Ranks          GET /rank-map: every in-game rank with its name, core rank and permission; "Not mapped" ranks are left out of the PUT. Next = POST /rank-map/dry-run, then PUT.
-//   3 Preview        POST /flip/dry-run: Owner panel, summary, count tiles and the Access / Ranks / Permissions / Characters panels. The characters bound by name only carry a tick each
-//                    (default ticked); the flip confirms the ticked ids.
+//   3 Preview        POST /flip/dry-run: Owner panel, summary, count tiles and the Access / Ranks / Permissions / Characters panels. The characters matched by name only carry a tick each
+//                    (default ticked). The preview and its token are for ONE selection of ticks (the answer's confirmedCharacterIds): a changed tick dims the counts that depend on it, shows
+//                    "Update preview" (the dry run again with the ticked ids) and keeps Next / Switch over off until the preview matches the ticks.
 //   4 Switch over    the facts again; the primary opens a confirm, its step 2 is the Battle.net sign-in (purpose `source_switch`, the act `source_switch` repeats POST /flip with the
-//                    token and the ticked ids). The preview token lives 10 minutes: an older one, or the answer approval_invalid / approval_stale, shows "out of date" and runs the preview again.
+//                    token and the ids the token was made for). The preview token lives 10 minutes: an older one, or the answer approval_invalid / approval_stale, shows "out of date" and
+//                    runs the preview again (with the same ticks).
 //   done             the result banner from the flip's `applied` counts.
 // Pure parts (tests): refusalOf, rowsOf, mapBody, gapsOf, confirmedIds, pinnedGuildName, realmLabel. State: one module `view`; `handoff` carries what a repeated act (run on #/fresh) leaves for this page.
 (function (G) {
@@ -19,9 +21,11 @@
   const FLIP_PURPOSE = 'source_switch';
   const CORE_LABEL = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', social: 'Social' };
   const OWNER_ONLY = 'Only the Owner of the guild can set up the in-game guild.';
-  const LEAD = 'Raidsmith reads the guild roster from Battle.net. Name the in-game guild to follow, then confirm it is you.';
+  // The lead of step 1 (board G1): Raidsmith's own guild name, the in-game guild comes with the form. The linked step (G1b) has none.
+  function leadOf(gd) { return 'Raidsmith reads ' + gd.guild.name + '\'s guild roster from Battle.net. Confirm it is you, then name the guild to follow.'; }
   const RANKS_LEAD = 'Battle.net gives guild ranks as numbers only. Name each rank for the site, say what it counts as, and give it a permission if it needs one. Ranks nobody holds can stay unmapped.';
   const OUT_OF_DATE = 'This preview is out of date: the guild changed since you ran it. Run it again to see what would change now.';
+  const TICKS_CHANGED = 'You changed which characters are matched. The counts and lists above are for the earlier ticks.';
   const SIGN_IN_TEXT = 'Sign in with Battle.net, then the switch runs. You come back to this page.';
 
   let view = null;    // the page's state (see newView)
@@ -54,10 +58,11 @@
   }
 
   // "Dreamscythe (US)": the realm the guild is read from. The pin's slug when linked, else the guild's own realm (a ruleset guild: the realm saved in Battle.net settings).
-  function realmLabel(d, gd) {
+  // withoutRegion: "Dreamscythe" (the linked banner of board G1b).
+  function realmLabel(d, gd, withoutRegion) {
     const guild = gd && gd.guild ? gd.guild : {};
     const slug = d && d.pin && d.pin.realmSlug ? d.pin.realmSlug : (d ? d.realmSlug : '');
-    const region = guild.region ? ' (' + String(guild.region).toUpperCase() + ')' : '';
+    const region = guild.region && !withoutRegion ? ' (' + String(guild.region).toUpperCase() + ')' : '';
     if (guild.realm && (!slug || loose(guild.realm) === loose(slug))) return guild.realm + region;
     return slug ? titleOfSlug(slug) + region : (guild.realm ? guild.realm + region : '');
   }
@@ -121,6 +126,14 @@
     const b = bindingOf(v.preview);
     return b.ids.filter(function (id) { return b.rest.indexOf(id) >= 0 ? v.restTicked : !v.unticked[id]; });
   }
+  // The preview and its token are for ONE selection of characters: the answer's `confirmedCharacterIds` (an answer without it is for every candidate). The switch sends exactly these.
+  function previewIds(v) {
+    const p = v && v.preview;
+    return p && Array.isArray(p.confirmedCharacterIds) ? p.confirmedCharacterIds : bindingOf(p).ids;
+  }
+  function sameIds(a, b) { return a.length === b.length && a.slice().sort().join('\n') === b.slice().sort().join('\n'); }
+  // The ticks on the page are not the ones the preview was made for: its counts are out of date until "Update preview" runs it again with these ticks.
+  function ticksChanged(v) { return !!(v && v.preview) && !sameIds(confirmedIds(v), previewIds(v)); }
 
   // ── refusals (pure): one title and one sentence per code ──
   // refusalOf(err, ctx) -> { tone, title, text, actions }; ctx: { guildName (the in-game guild typed), ownerName, rows }. The Worker's own message is used where it carries the facts (a count, a list of ranks).
@@ -173,6 +186,7 @@
     approval_stale: { title: 'This preview is out of date.', text: 'The guild changed since you ran it. Run it again to see what would change now.', stale: true },
     confirmation_required: { title: 'Say which characters to match by name.', text: 'Run the preview again, then tick the ones to match.' },
     bad_confirmation: { title: 'Some ticked characters are not on the preview.', text: 'Run the preview again, then tick the ones to match.' },
+    confirmation_changed: { title: 'The ticked characters changed.', text: 'Update the preview, then switch over.' },
     source_not_legacy: { title: 'This guild does not take its members from the Discord server.', text: 'Only a guild that follows Discord roles can be switched to the in-game guild here.' },
     not_pinned: { title: 'Link the guild first.', text: 'Link the guild to its in-game guild in step 1, then switch.' },
     no_good_sync: { title: 'The guild roster has not been read yet.', text: 'Read it in step 1, then switch.' },
@@ -206,7 +220,7 @@
     const c = carried || {};
     return {
       gid: gid, gd: gd, owner: isOwner(gd), loading: true, step: 1, bnet: null, pinResult: c.pin || null, banner: c.banner || null, error: null, fieldError: {}, busy: false,
-      pinName: '', pinRealm: '', map: null, rows: [], preview: null, previewAt: 0, previewLoading: false, unticked: {}, restTicked: true, expanded: {},
+      pinName: '', pinRealm: '', map: null, rows: [], preview: null, previewAt: 0, previewLoading: false, updating: false, unticked: {}, restTicked: true, expanded: {},
       result: c.flip || null, switched: !!c.switched, dialogStale: false, syncError: '',
     };
   }
@@ -251,29 +265,42 @@
     });
   }
 
-  function applyTicks(v, preview) {
-    const ids = bindingOf(preview).ids;
-    Object.keys(v.unticked).forEach(function (id) { if (ids.indexOf(id) < 0) delete v.unticked[id]; });
+  // The page's ticks are the ones the answer was made for (a new answer starts in sync).
+  function adoptTicks(v, preview) {
+    const b = bindingOf(preview);
+    const ids = previewIds({ preview: preview });
+    v.unticked = {};
+    b.ids.forEach(function (id) { if (ids.indexOf(id) < 0) v.unticked[id] = true; });
+    v.restTicked = b.rest.every(function (id) { return ids.indexOf(id) >= 0; });
   }
 
-  function runPreview(v) {
-    v.previewLoading = true; v.error = null;
+  // The flip dry run. ids: the characters to count as matched (the ticks), or null = every candidate. keep: an update of a preview that is on the page (it stays, dimmed, until the answer).
+  function runPreview(v, ids, keep) {
+    if (keep) v.updating = true; else v.previewLoading = true;
+    v.error = null;
     render();
-    return G.api.post(path(v.gid, '/flip/dry-run'), {}).then(function (res) {
+    return G.api.post(path(v.gid, '/flip/dry-run'), ids ? { confirmedCharacterIds: ids } : {}).then(function (res) {
       if (view !== v) return;
-      v.previewLoading = false; v.preview = res; v.previewAt = nowMs(); applyTicks(v, res);
+      v.previewLoading = false; v.updating = false; v.preview = res; v.previewAt = nowMs(); adoptTicks(v, res);
       render();
     }, function (err) {
       if (view !== v) return;
-      v.previewLoading = false; v.preview = null;
-      if (err && err.code === 'already_ingame') { markSwitched(v, null); return; }
+      v.previewLoading = false; v.updating = false;
+      if (err && err.code === 'already_ingame') { v.preview = null; markSwitched(v, null); return; }
+      if (err && err.code === 'bad_confirmation' && ids) {
+        // A ticked character is no candidate any more (the roster moved): start again from every candidate ticked.
+        v.preview = null; v.banner = { tone: 'info', title: 'The list of characters to match changed.', text: 'Every one is ticked again.' };
+        return runPreview(v, null, false);
+      }
+      if (!keep) v.preview = null;
       fail(v, err, { actions: [{ label: 'Run the preview again', attrs: { 'data-action': 'setup-preview-again', 'data-key': 'setup-preview-again' } }] });
     });
   }
+  // A preview on the page keeps its ticks when it runs again (the step was left and entered, or the token was too old).
   function enterPreview(v) {
     v.step = 3; v.error = null; v.banner = null; v.dialogStale = false; v.previewAt = 0;
     settle();
-    return runPreview(v);
+    return runPreview(v, v.preview ? confirmedIds(v) : null, false);
   }
   // The guild follows the in-game guild now (a switch just done, or found done): the result step.
   function markSwitched(v, applied) {
@@ -297,7 +324,7 @@
     const members = d && d.roster ? num(d.roster.members) : num(res.sync && res.sync.members);
     const read = res.sync && (res.sync.status === 'applied' || res.sync.status === 'unchanged') || members > 0;
     return read
-      ? { tone: 'success', title: 'Linked to ' + name + ' on ' + realmLabel(d, v.gd) + '.', text: plural(members, 'member', 'members') + ' read from the guild roster.' }
+      ? { tone: 'success', title: 'Linked to ' + name + ' on ' + realmLabel(d, v.gd, true) + '.', text: plural(members, 'member', 'members') + ' read from the guild roster.' }
       : { tone: 'warning', title: 'Linked to ' + name + '.', text: v.syncError || 'The guild roster could not be read just now.', actions: readAgainActions(v) };
   }
 
@@ -316,7 +343,7 @@
       if (carried.rerun && num(d.roster && d.roster.members) > 0) {
         // A repeated switch could not run (the preview was out of date, or the flip refused): the Preview step again, with the reason above it.
         v.step = 3;
-        return ensureMap(v).then(function () { return runPreview(v); }, function () { return null; });
+        return ensureMap(v).then(function () { return runPreview(v, Array.isArray(carried.ids) ? carried.ids : null, false); }, function () { return null; });
       }
       return null;
     }, function (err) {
@@ -344,6 +371,16 @@
   }
   function nameOf(sample) { return sample && sample.name ? sample.name : 'Unnamed account'; }
   function boldName(text) { return '<span class="gs-su-name">' + esc(text) + '</span>'; }
+  // The Owner is named one way on every screen of the flow (boards G3 to G5): the account's name from the guild's Owner block, not the person the preview lists them under.
+  function ownerName(v, gd) {
+    const o = v && v.preview && v.preview.owner ? v.preview.owner : {};
+    return gd && gd.owner && gd.owner.name ? gd.owner.name : (o.name || 'The Owner');
+  }
+  // "3 stay, 1 gains access, 0 lose it": the three counts of who is a member after the switch, each with its own verb.
+  function movesText(s) { return plural(s.stay, 'stays', 'stay') + ', ' + plural(s.gains, 'gains access', 'gain access') + ', ' + plural(s.loses, 'loses it', 'lose it'); }
+  function trialText(n) { return n + ' of them ' + (n === 1 ? 'becomes' : 'become') + ' Trial'; }
+  // "2 roles from Discord become hand-set" (withNoun) / "2 from Discord become hand-set" (the dialog, board G4).
+  function handSetText(n, withNoun) { return (withNoun ? plural(n, 'role', 'roles') : String(n)) + ' from Discord ' + (n === 1 ? 'becomes' : 'become') + ' hand-set'; }
 
   // ── step 1: In-game guild (boards G1, G1b, G6 #4) ──
   function pinPanelHtml(v, gd) {
@@ -380,7 +417,7 @@
       const who = gd && gd.owner && gd.owner.name ? gd.owner.name : 'the Owner';
       return banner({ tone: 'info', title: 'Only ' + who + ' can set up the in-game guild.', text: 'You can see how far it is here.' }) + readOnlyFacts(v, gd);
     }
-    html += lead(LEAD) + pinPanelHtml(v, gd);
+    html += (info.complete ? '' : lead(leadOf(gd))) + pinPanelHtml(v, gd);
     if (info.complete && members === 0 && !v.banner) {
       html += banner({ tone: 'warning', title: 'The guild roster has not been read yet.', text: v.syncError || 'Battle.net did not give it just now.', actions: readAgainActions(v) });
     }
@@ -494,14 +531,15 @@
     } else if (count > rows.length) {
       more = '<p class="gs-su-showall gs-fine">Showing ' + rows.length + ' of ' + count + '.</p>';
     }
-    return '<div class="gs-su-group" data-group="' + esc(key) + '"><h3 class="gs-fg-gh"><span class="gs-fg-ght">' + esc(title) + '</span><span class="gs-fg-ghn">' + count + '</span></h3>' + (x.leadHtml || '') +
+    return '<div class="gs-su-group' + (x.cls ? ' ' + x.cls : '') + '" data-group="' + esc(key) + '"><h3 class="gs-fg-gh"><span class="gs-fg-ght">' + esc(title) + '</span><span class="gs-fg-ghn">' + count + '</span></h3>' + (x.leadHtml || '') +
       (rows.length ? '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-prev" aria-label="' + esc(title) + '"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' : '') + more + (x.noteHtml || '') + '</div>';
   }
   function noneGroup(title, text) {
     return '<div class="gs-su-group"><h3 class="gs-fg-gh"><span class="gs-fg-ght">' + esc(title) + '</span><span class="gs-fg-ghn">0</span></h3><p class="gs-su-none gs-fine">' + esc(text) + '</p></div>';
   }
-  function previewPanel(title, innerHtml) {
-    return '<section class="gs-hd-panel gs-su-list" aria-label="' + esc(title) + '"><h2 class="gs-h2 gs-su-list-h">' + esc(title) + '</h2>' + innerHtml + '</section>';
+  // stale: the counts of this panel are for earlier ticks (dimmed until the preview is updated).
+  function previewPanel(title, innerHtml, stale) {
+    return '<section class="gs-hd-panel gs-su-list' + (stale ? ' is-stale' : '') + '" aria-label="' + esc(title) + '"><h2 class="gs-h2 gs-su-list-h">' + esc(title) + '</h2>' + innerHtml + '</section>';
   }
   function coreName(id) { return has(CORE_LABEL, id) ? CORE_LABEL[id] : (id ? String(id).charAt(0).toUpperCase() + String(id).slice(1) : 'Social'); }
   function teamOf(sample) { return sample.teamName ? sample.teamName : '<span class="gs-muted">Whole guild</span>'; }
@@ -509,7 +547,7 @@
 
   function ownerPanelHtml(v, gd) {
     const o = v.preview.owner || {};
-    const name = o.name || 'The Owner';
+    const name = ownerName(v, gd);
     if (o.exists === false) return factPanel('Owner', fact('Nobody', chip('rose', 'No Owner') + sub('This guild has no Owner yet, so there is nobody to switch it over.')), { cls: 'gs-su-owner is-bad' });
     if (o.live) {
       const via = o.via && o.via.characterName ? o.via.characterName + ' (rank ' + o.via.rank + ', ' + rankName(v, o.via.rank) + ')' : 'A character of this account';
@@ -520,8 +558,9 @@
       G.ui.buttonHtml({ label: 'Sign in with Battle.net', href: '/auth/bnet/login' })), { cls: 'gs-su-owner is-bad' });
   }
 
-  function tickHtml(id, label, on, key) {
-    return '<label class="gs-su-chkbox"><input type="checkbox" class="gs-su-chk" id="bn-' + esc(key) + '" data-change="setup-bind" data-id="' + esc(id) + '" data-key="setup-bind-' + esc(key) + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(label) + '"></label>';
+  function tickHtml(id, label, on, key, off) {
+    return '<label class="gs-su-chkbox"><input type="checkbox" class="gs-su-chk" id="bn-' + esc(key) + '" data-change="setup-bind" data-id="' + esc(id) + '" data-key="setup-bind-' + esc(key) + '"' + (on ? ' checked' : '') +
+      (off ? ' disabled' : '') + ' aria-label="' + esc(label) + '"></label>';
   }
 
   function accessPanelHtml(v) {
@@ -532,20 +571,26 @@
     const loseRows = list(loses.samples).map(function (s) { return [boldName(nameOf(s)), esc(has(WHY_LOSE, s.reason) ? WHY_LOSE[s.reason] : s.reason)]; });
     const gainRows = list(gains.samples).map(function (s) { return [boldName(nameOf(s)), esc(has(WHY_GAIN, s.reason) ? WHY_GAIN[s.reason] : s.reason)]; });
     const claimRows = list(claim.samples).map(function (s) { return [boldName(nameOf(s)), s.onRoster ? 'Yes' : '<span class="gs-muted">No</span>']; });
-    const claimNote = num(claim.count) ? '<p class="gs-su-none gs-fine">' + esc(num(claim.onRoster) + ' of the ' + num(claim.count) + ' are on the roster. The switch links nobody: each player claims theirs with This is me.') + '</p>' : '';
+    const claimNote = num(claim.count) ? '<p class="gs-su-none gs-fine">' + esc(num(claim.onRoster) + ' of the ' + num(claim.count) + (num(claim.count) === 1 ? ' is' : ' are') + ' on the roster. The switch links nobody: each player claims theirs with This is me.') + '</p>' : '';
     return previewPanel('Access',
       (num(loses.count) ? groupHtml(v, 'lose', 'Lose access', num(loses.count), [{ label: 'Account' }, { label: 'Why' }], loseRows) : noneGroup('Lose access', 'Nobody loses access.')) +
       (num(gains.count) ? groupHtml(v, 'gain', 'Gain access', num(gains.count), [{ label: 'Account' }, { label: 'Why' }], gainRows) : noneGroup('Gain access', 'Nobody gains access.')) +
-      (num(claim.count) ? groupHtml(v, 'claim', 'Waiting for their claim', num(claim.count), [{ label: 'Person' }, { label: 'On the roster' }], claimRows, { noteHtml: claimNote }) : noneGroup('Waiting for their claim', 'Nobody is waiting for a claim.')));
+      (num(claim.count) ? groupHtml(v, 'claim', 'Waiting for their claim', num(claim.count), [{ label: 'Person' }, { label: 'On the roster' }], claimRows, { noteHtml: claimNote }) : noneGroup('Waiting for their claim', 'Nobody is waiting for a claim.')),
+      ticksChanged(v));
   }
 
   function ranksPanelHtml(v) {
     const r = v.preview.ranks || {};
     const transitions = list(r.transitions).map(function (t) { return [esc(coreName(t.from)), esc(coreName(t.to)), String(num(t.count))]; });
-    const samples = list(r.samples).map(function (s) { return [G.ui.classNameHtml(s.name, s.class), esc(coreName(s.from)), esc(coreName(s.to))]; });
+    // Board G3: the characters that become Trial (the Worker lists them first), each with the in-game rank that makes them Trial.
+    const trial = list(r.samples).filter(function (s) { return s.to === 'trial'; }).map(function (s) {
+      const rank = s.rosterRank === null || s.rosterRank === undefined ? '<span class="gs-muted">-</span>' : esc(rankName(v, s.rosterRank));
+      return [G.ui.classNameHtml(s.name, s.class), esc(coreName(s.from)), rank];
+    });
     return previewPanel('Ranks',
       (num(r.changed) ? groupHtml(v, 'trans', 'Core rank changes', num(r.changed), [{ label: 'Today' }, { label: 'After the switch' }, { label: 'Characters', num: true }], transitions, { noteHtml: '' }) : noneGroup('Core rank changes', 'No character changes core rank.')) +
-      (samples.length ? groupHtml(v, 'rankchg', 'Characters that change rank', num(r.changed), [{ label: 'Character' }, { label: 'Today' }, { label: 'After the switch' }], samples) : ''));
+      (num(r.becomesTrial) ? groupHtml(v, 'trial', 'Become Trial', num(r.becomesTrial), [{ label: 'Character' }, { label: 'Today' }, { label: 'In-game rank' }], trial) : noneGroup('Become Trial', 'No character becomes Trial.')),
+      ticksChanged(v));
   }
 
   function permissionsPanelHtml(v) {
@@ -567,17 +612,25 @@
     const off = v.preview.notOnRoster || {};
     const bind = bindingOf(v.preview);
     const offRows = list(off.samples).map(function (s) { return [G.ui.classNameHtml(s.character, s.class), s.person ? esc(s.person) : '<span class="gs-muted">-</span>', s.after === 'former' ? 'Former' : 'Social']; });
+    const stale = ticksChanged(v);
     const bindRows = bind.samples.map(function (s, i) {
-      return [tickHtml(s.characterId, 'Match ' + s.name + ' to the roster', !v.unticked[s.characterId], String(i)), G.ui.classNameHtml(s.name, s.class), esc(rankLabelOfRoster(v, s.rosterRank))];
+      return [tickHtml(s.characterId, 'Match ' + s.name + ' to the roster', !v.unticked[s.characterId], String(i), v.updating), G.ui.classNameHtml(s.name, s.class), esc(rankLabelOfRoster(v, s.rosterRank))];
     });
     if (bind.rest.length) {
-      bindRows.push([tickHtml('*rest*', 'Match the other ' + bind.rest.length + ' characters to the roster', v.restTicked, 'rest'), '<span class="gs-muted">' + esc(plural(bind.rest.length, 'more character', 'more characters')) + '</span>', '']);
+      bindRows.push([tickHtml('*rest*', 'Match the other ' + bind.rest.length + ' characters to the roster', v.restTicked, 'rest', v.updating), '<span class="gs-muted">' + esc(plural(bind.rest.length, 'more character', 'more characters')) + '</span>', '']);
     }
+    // The ticks moved since the preview ran: say so right where they are set, with the way out. The counts and lists that depend on them are dimmed until it is updated.
+    const ticksNote = stale || v.updating
+      ? '<div class="gs-su-ticknote">' + G.ui.bannerHtml({
+        tone: 'info', text: TICKS_CHANGED, dismissible: false, id: 'setup-ticks-changed',
+        actions: [{ label: 'Update preview', busy: !!v.updating, busyLabel: 'Updating the preview...', attrs: { 'data-action': 'setup-preview-update', 'data-key': 'setup-preview-update' } }],
+      }) + '</div>'
+      : '';
     const note = '<p class="gs-su-none gs-fine">' + esc('Unticked characters are not matched: they stay Social and off the roster.' +
       (bind.classMismatch ? ' ' + plural(bind.classMismatch, 'more has', 'more have') + ' the right name with another class and ' + (bind.classMismatch === 1 ? 'is' : 'are') + ' not matched.' : '')) + '</p>';
     return previewPanel('Characters',
-      (num(off.count) ? groupHtml(v, 'notonroster', 'Not on the guild roster', num(off.count), [{ label: 'Character' }, { label: 'Person' }, { label: 'After the switch' }], offRows) : noneGroup('Not on the guild roster', 'Every character is on the guild roster.')) +
-      (bind.count ? groupHtml(v, 'bound', 'Bound by name only', bind.count, [{ label: 'Match' }, { label: 'Character' }, { label: 'Roster rank' }], bindRows, { noteHtml: note, all: true }) : ''));
+      (num(off.count) ? groupHtml(v, 'notonroster', 'Not on the guild roster', num(off.count), [{ label: 'Character' }, { label: 'Person' }, { label: 'After the switch' }], offRows, { cls: stale ? 'is-stale' : '' }) : noneGroup('Not on the guild roster', 'Every character is on the guild roster.')) +
+      (bind.count ? groupHtml(v, 'bound', 'Matched by name only', bind.count, [{ label: 'Match' }, { label: 'Character' }, { label: 'Roster rank' }], bindRows, { noteHtml: note, leadHtml: ticksNote, all: true }) : ''));
   }
 
   function statHtml(n, label) { return '<div class="gs-hd-panel gs-su-stat"><span class="gs-fg-lbl">' + esc(label) + '</span><span class="gs-su-stat-n">' + n + '</span></div>'; }
@@ -605,20 +658,24 @@
     const blockBanner = blockers.filter(function (b) { return b.code !== 'owner_would_be_suspended'; }).slice(0, 1).map(function (b) {
       return banner({ tone: 'warning', title: refusalOf({ code: b.code, message: b.message, body: b }, { rows: v.rows }).title, text: refusalOf({ code: b.code, message: b.message, body: b }, { rows: v.rows }).text });
     }).join('');
-    const summary = '<p class="gs-su-summary"><strong>' + esc(plural(s.after, 'account is a member', 'accounts are members') + ' of ' + gd.guild.name + ' after the switch.') + '</strong> ' +
-      esc(s.stay + ' stay, ' + s.gains + ' gain access, ' + s.loses + ' lose it.') + '</p>';
-    const tiles = '<div class="gs-su-stats">' + statHtml(s.loses, 'Lose access') + statHtml(s.gains, 'Gain access') + statHtml(s.changed, 'Core rank changes') + statHtml(s.trial, 'Become Trial') + statHtml(s.perms, 'New permissions') + '</div>';
+    const stale = ticksChanged(v);
+    const summary = '<p class="gs-su-summary' + (stale ? ' is-stale' : '') + '"><strong>' + esc(plural(s.after, 'account is a member', 'accounts are members') + ' of ' + gd.guild.name + ' after the switch.') + '</strong> ' +
+      esc(movesText(s) + '.') + '</p>';
+    const tiles = '<div class="gs-su-stats' + (stale ? ' is-stale' : '') + '">' + statHtml(s.loses, 'Lose access') + statHtml(s.gains, 'Gain access') + statHtml(s.changed, 'Core rank changes') + statHtml(s.trial, 'Become Trial') + statHtml(s.perms, 'New permissions') + '</div>';
     return banner(v.banner) + banner(v.error) + blockBanner + ownerPanelHtml(v, gd) + summary + tiles + accessPanelHtml(v) + ranksPanelHtml(v) + permissionsPanelHtml(v) + charactersPanelHtml(v);
   }
   function barTextOf(v, gd) {
     const s = summaryOf(v, gd);
-    return s.after + ' members after the switch, ' + s.changed + ' core ranks change.';
+    return plural(s.after, 'member', 'members') + ' after the switch, ' + plural(s.changed, 'core rank changes', 'core ranks change') + '.';
   }
+  const UPDATE_FIRST = 'The ticks changed. Update the preview to go on.';
   function step3Bar(v, gd) {
     const back = { label: 'Back', attrs: { 'data-action': 'setup-back', 'data-key': 'setup-back' } };
     if (v.previewLoading || !v.preview) return { text: v.previewLoading ? 'Checking what the switch would change.' : 'The preview did not run.', back: back, commit: { label: 'Next', disabled: true } };
     const blockers = blockersOf(v);
     if (blockers.length) return { text: blockerText(blockers[0]), back: back, commit: { label: 'Next', disabled: true } };
+    // The counts are for other ticks than the page shows: nothing goes on until the preview matches them.
+    if (ticksChanged(v)) return { text: UPDATE_FIRST, back: back, commit: { label: 'Next', disabled: true } };
     return { text: barTextOf(v, gd), back: back, commit: { label: 'Next', attrs: { 'data-action': 'setup-preview-next', 'data-key': 'setup-preview-next' } } };
   }
 
@@ -626,8 +683,8 @@
   function bindLine(v) {
     const total = bindingOf(v.preview).ids.length;
     if (!total) return '';
-    const on = confirmedIds(v).length;
-    return fact('Name matches', esc(on === total ? plural(total, 'character is', 'characters are') + ' matched to the roster by name' : on + ' of ' + total + ' characters are matched to the roster by name'));
+    const on = previewIds(v).length; // the selection the preview (and its token) is for
+    return fact('Name matches', esc(on === total ? plural(total, 'character is', 'characters are') + ' matched to the roster by name' : on + ' of ' + plural(total, 'character is', 'characters are') + ' matched to the roster by name'));
   }
   function step4Html(v, gd) {
     if (!v.preview) return banner(v.error) + G.ui.loadingHtml({ label: 'Loading the preview', rows: 3 });
@@ -636,11 +693,11 @@
     const claim = p.needsClaim || {};
     const discord = p.permissions && p.permissions.discordRoles ? p.permissions.discordRoles : { count: 0 };
     const o = p.owner || {};
-    const ownerLine = o.exists === false ? 'Nobody yet' : esc((o.name || 'The Owner') + (o.live && o.via ? ', live through ' + o.via.characterName : ', would be suspended'));
-    const facts = fact('Members', esc(plural(s.after, 'account is a member', 'accounts are members') + ' after the switch: ' + s.stay + ' stay, ' + s.gains + ' gain access, ' + s.loses + ' lose it')) +
+    const ownerLine = o.exists === false ? 'Nobody yet' : esc(ownerName(v, gd) + (o.live && o.via ? ', live through ' + o.via.characterName : ', would be suspended'));
+    const facts = fact('Members', esc(plural(s.after, 'account is a member', 'accounts are members') + ' after the switch: ' + movesText(s))) +
       (num(claim.count) ? fact('Claims', esc(plural(num(claim.count), 'person waits', 'people wait') + ' for their player to claim them with This is me; the switch links nobody')) : '') +
-      fact('Ranks', esc(plural(s.changed, 'character changes', 'characters change') + ' core rank, ' + s.trial + ' of them become Trial')) +
-      (num(discord.count) ? fact('Roles', esc(plural(num(discord.count), 'role', 'roles') + ' from Discord become hand-set; Discord stops giving roles')) : '') +
+      fact('Ranks', esc(plural(s.changed, 'character changes', 'characters change') + ' core rank, ' + trialText(s.trial))) +
+      (num(discord.count) ? fact('Roles', esc(handSetText(num(discord.count), true) + '; Discord stops giving roles')) : '') +
       bindLine(v) + fact('Owner', ownerLine);
     return banner(v.error) + ownerPanelHtml(v, gd) + factPanel('What the switch does', facts);
   }
@@ -649,6 +706,7 @@
     if (!v.preview) return { text: 'The preview did not run.', back: back, commit: { label: 'Switch over', disabled: true } };
     const blockers = blockersOf(v);
     if (blockers.length) return { text: blockerText(blockers[0]), back: back, commit: { label: 'Switch over', disabled: true } };
+    if (ticksChanged(v)) return { text: UPDATE_FIRST, back: back, commit: { label: 'Switch over', disabled: true } };
     return { text: barTextOf(v, gd), back: back, commit: { label: 'Switch over', attrs: { 'data-action': 'setup-switch', 'data-key': 'setup-switch' } } };
   }
 
@@ -656,9 +714,9 @@
     const x = o || {};
     const s = summaryOf(v, gd);
     const body = '<div class="gs-hd-panel gs-su-joins"><h3 class="gs-fg-lbl">What changes</h3>' +
-      kv('Members', esc(s.after + ' after the switch: ' + s.stay + ' stay, ' + s.gains + ' gain access, ' + s.loses + ' lose it')) + kv('Ranks', esc(plural(s.changed, 'character changes', 'characters change') + ' core rank')) +
-      (v.preview && v.preview.permissions && num(v.preview.permissions.discordRoles && v.preview.permissions.discordRoles.count) ? kv('Roles', esc(v.preview.permissions.discordRoles.count + ' from Discord become hand-set')) : '') +
-      kv('Owner', esc(v.preview && v.preview.owner && v.preview.owner.name ? v.preview.owner.name : 'The Owner')) + '</div>' + (x.error ? '<p class="gs-alert" role="alert">' + esc(x.error) + '</p>' : '');
+      kv('Members', esc(s.after + ' after the switch: ' + movesText(s))) + kv('Ranks', esc(plural(s.changed, 'character changes', 'characters change') + ' core rank')) +
+      (v.preview && v.preview.permissions && num(v.preview.permissions.discordRoles && v.preview.permissions.discordRoles.count) ? kv('Roles', esc(handSetText(num(v.preview.permissions.discordRoles.count)))) : '') +
+      kv('Owner', esc(ownerName(v, gd))) + '</div>' + (x.error ? '<p class="gs-alert" role="alert">' + esc(x.error) + '</p>' : '');
     return G.ui.dialogHtml({
       kind: 'confirm', title: 'Switch ' + gd.guild.name + ' to its in-game guild?', text: 'From now on the guild roster decides who is a member and what rank they hold. You cannot switch back from the app.',
       bodyHtml: body, primary: { label: x.primaryLabel || 'Switch over' }, className: 'gs-forge', formAttrs: { 'data-submit': 'setup-switch-form' },
@@ -677,14 +735,14 @@
       return G.ui.bannerHtml({ tone: 'success', title: guild + ' follows the in-game guild.', text: 'Members and ranks come from the guild roster.', actions: actions, dismissible: false, id: 'setup-result' }) +
         factPanel(guild + ' now', fact('Guild', esc(pinnedGuildName(d, gd, null) + ' on ' + realmLabel(d, gd))) + rosterRow);
     }
-    const text = num(a.membersAfter) + ' accounts are members: ' + num(a.stay) + ' stayed, ' + num(a.gains) + ' gained access and ' + num(a.loses) + ' lost it. ' +
+    const text = plural(num(a.membersAfter), 'account is a member', 'accounts are members') + ': ' + num(a.stay) + ' stayed, ' + num(a.gains) + ' gained access and ' + num(a.loses) + ' lost it. ' +
       plural(num(a.rankChanges), 'character changed', 'characters changed') + ' core rank, ' + num(a.becameTrial) + ' of them ' + (num(a.becameTrial) === 1 ? 'is' : 'are') + ' on Trial.';
     const o = a.owner || {};
     const facts = fact('Members', esc(plural(num(a.membersAfter), 'account', 'accounts') + ' after the switch')) +
       (num(a.needsClaim) ? fact('Claims', esc(plural(num(a.needsClaim), 'person waits', 'people wait') + ' for their player to claim them with This is me')) : '') +
-      fact('Roles', esc(plural(num(a.discordRolesMadeManual), 'role', 'roles') + ' from Discord are now hand-set, ' + plural(num(a.newPermissions), 'new permission', 'new permissions') + ' from ranks')) +
+      fact('Roles', esc(plural(num(a.discordRolesMadeManual), 'role from Discord is', 'roles from Discord are') + ' now hand-set, ' + plural(num(a.newPermissions), 'new permission', 'new permissions') + ' from ranks')) +
       (num(a.boundByName) ? fact('Name matches', esc(plural(num(a.boundByName), 'character is', 'characters are') + ' matched to the roster by name')) : '') +
-      fact('Owner', esc(gd.owner && gd.owner.name ? gd.owner.name : 'The Owner') + (o.live === false ? ' ' + chip('rose', 'Suspended') : '')) + rosterRow;
+      fact('Owner', esc(ownerName(null, gd)) + (o.live === false ? ' ' + chip('rose', 'Suspended') : '')) + rosterRow;
     return G.ui.bannerHtml({ tone: 'success', title: guild + ' now follows the in-game guild.', text: text, actions: actions, dismissible: false, id: 'setup-result' }) + factPanel(guild + ' now', facts);
   }
 
@@ -822,8 +880,14 @@
   G.handlers.click['setup-preview-again'] = function () { const v = cur(); if (v && !v.previewLoading) enterPreview(v); };
   G.handlers.click['setup-preview-next'] = function () {
     const v = cur();
-    if (!v || !v.preview || blockersOf(v).length) return;
+    if (!v || !v.preview || blockersOf(v).length || v.updating || ticksChanged(v)) return;
     go(v, 4);
+  };
+  // The ticks changed: run the dry run again for exactly them (the counts of the page are for the old ticks until it answers).
+  G.handlers.click['setup-preview-update'] = function () {
+    const v = cur();
+    if (!v || !v.preview || v.previewLoading || v.updating || !ticksChanged(v)) return;
+    runPreview(v, confirmedIds(v), true);
   };
   G.handlers.click['setup-show-all'] = function (el) {
     const v = cur();
@@ -844,7 +908,7 @@
   // Step 4: the confirm. Its step 2 is the Battle.net sign-in (Guild.fresh); the act `source_switch` repeats the flip when the person comes back.
   G.handlers.click['setup-switch'] = function () {
     const v = cur();
-    if (!v || !v.preview || blockersOf(v).length) return;
+    if (!v || !v.preview || blockersOf(v).length || v.updating || ticksChanged(v)) return;
     v.dialogStale = false;
     G.ui.openDialog(switchDialogHtml(v, v.gd), { labelledBy: 'dlg-title' });
   };
@@ -865,7 +929,8 @@
       return new Promise(function () { /* the dialog took over */ });
     };
     if (nowMs() - v.previewAt >= PREVIEW_TTL_MS) { showStale(); return; }
-    const body = { token: v.preview.token, confirmedCharacterIds: confirmedIds(v) };
+    // The ids the token was minted for (the Worker refuses any other selection).
+    const body = { token: v.preview.token, confirmedCharacterIds: previewIds(v).slice() };
     const request = G.api.post(path(v.gid, '/flip'), body).then(null, function (err) {
       if (err && staleCode(err.code)) return showStale();
       if (err && err.code === 'already_ingame') {
@@ -907,14 +972,15 @@
     const gid = pending.gid;
     if (!gid || typeof data.token !== 'string') return Promise.resolve(null);
     const staleNote = { tone: 'warning', title: 'This preview is out of date.', text: 'The guild changed since you ran it. This is the preview as it is now.' };
-    if (nowMs() - num(data.tokenAt) >= PREVIEW_TTL_MS) { handoff = { gid: gid, rerun: true, banner: staleNote }; return Promise.resolve(setupHref(gid)); }
-    return G.api.post(path(gid, '/flip'), { token: data.token, confirmedCharacterIds: list(data.confirmedCharacterIds) }).then(function (res) {
+    const ticks = list(data.confirmedCharacterIds); // the preview that runs again keeps the ticks
+    if (nowMs() - num(data.tokenAt) >= PREVIEW_TTL_MS) { handoff = { gid: gid, rerun: true, ids: ticks, banner: staleNote }; return Promise.resolve(setupHref(gid)); }
+    return G.api.post(path(gid, '/flip'), { token: data.token, confirmedCharacterIds: ticks }).then(function (res) {
       handoff = { gid: gid, flip: res && res.applied ? res.applied : null, switched: true };
       return setupHref(gid);
     }, function (err) {
       if (giveUp(err)) throw err;
       if (err && err.code === 'already_ingame') { handoff = { gid: gid, switched: true }; return setupHref(gid); }
-      handoff = { gid: gid, rerun: true, banner: staleCode(err && err.code) ? staleNote : refusalOf(err) };
+      handoff = { gid: gid, rerun: true, ids: ticks, banner: staleCode(err && err.code) ? staleNote : refusalOf(err) };
       return setupHref(gid);
     });
   });

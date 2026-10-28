@@ -14,7 +14,7 @@
 //        character), Nameleft (left the guild) and Nametaken (the roster row's key is held by another character) are not bound; Namemissing has no roster row at all;
 //        Trialone sits on a rank the map calls Trial; Offroster is keyed but not on the roster.
 //   mapped false leaves roster rank 9 without a map row. memRank is Memberone's roster rank (5 = Social in the map). bulk N adds N persons with an id-less character each that the flip binds by name (a big roster).
-//   dryRun(s, who), flipWith(s, token, who, { grant }), grant(s, who, extra), stateOf(s)
+//   dryRun(s, who, confirmed), flipWith(s, token, who, { grant }), grant(s, who, extra), stateOf(s)
 const assert = require('node:assert/strict');
 const { STEP } = require('./guild-b3-world');
 const { freshScenario } = require('./guild-fresh');
@@ -124,7 +124,8 @@ function addNamedBulk(s, count) {
   sqlite.exec('COMMIT');
 }
 
-const dryRun = (s, who = 'gm') => s.call(who, 'POST', '/flip/dry-run', {});
+// confirmed: the ids to count as matched (the dry run is then read for exactly those); left out = every candidate.
+const dryRun = (s, who = 'gm', confirmed) => s.call(who, 'POST', '/flip/dry-run', confirmed === undefined ? {} : { confirmedCharacterIds: confirmed });
 
 // The fresh grant of the source switch, written on the session row (no OAuth: this is about the act).
 const grant = (s, who = 'gm', extra = {}) => s.grant(who, { purpose: 'source_switch', guildId: s.gid, params: SWITCH, ...extra });

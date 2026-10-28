@@ -2,8 +2,11 @@
 /**
  * A local fake of Battle.net's OAuth and the two Blizzard API calls Raidsmith makes, for the browser check. Everything it serves is
  * invented (no real BattleTags, characters or guilds). OAuth and the API share one port, like BNET_API_BASE expects.
- *   node tools/fake-battlenet.js [--port 8792] [--account-id 123456789] [--battletag "Tester#1234"]
+ *   node tools/fake-battlenet.js [--port 8792] [--account-id 123456789] [--battletag "Tester#1234"] [--owner-on-roster]
  * Environment fallbacks: FAKE_BATTLENET_PORT, FAKE_BATTLENET_ACCOUNT_ID, FAKE_BATTLENET_BATTLETAG.
+ * --owner-on-roster (createFakeBattlenet({ ownerOnRoster: true })): the account's TBC profile also holds the guild master of the generated roster, Thornwick (the first roster row), with
+ *   the SAME id the roster gives him (8000; the generated profile characters use 7000 + n, which never match a roster id). A guild whose Guild Master is called Thornwick (the
+ *   tools/guild-smoke.js seed) then has a character that Battle.net proves and that is on the in-game roster. tools/guild-smoke.js passes it for its --owner-on-roster option.
  *
  * Point the Worker at it with: npm run guild:dev -- --var BNET_API_BASE:http://127.0.0.1:8792
  *   plus --var BNET_CLIENT_ID:x --var BNET_CLIENT_SECRET:y --var BNET_REDIRECT_URI:http://localhost:<port>/auth/bnet/callback (any values; the fake accepts anything).
@@ -45,6 +48,8 @@ const TBC_CHARACTERS = [
   ['Galdor', 9, 70, 0], ['Quillfeather', 3, 70, 0],
 ];
 const ERA_CHARACTERS = [['Aldric', 1, 60, 0], ['Hestia', 5, 60, 1], ['Ivarr', 7, 43, 0]];
+// The roster's first row (ROSTER[0], generated id 8000 + 0) as a profile character: [name, class id, level, realm index, id]. The optional fifth value of a profile row is its id (else 7000 + n).
+const ROSTER_ID_BASE = 8000;
 // A character on a realm that is in no Raidsmith realm list.
 const FAR_REALM = { id: 9999, name: 'Faraway Isle', slug: 'faraway-isle' };
 
@@ -54,6 +59,9 @@ const ROSTER = [
   ['Wanderfell', 11, 70, 3], ['Brewmaw', 11, 70, 3], ['Sunmark', 2, 70, 3], ['Lumenfall', 5, 70, 3], ['Ashgrove', 5, 64, 4], ['Zorgax', 9, 58, 4],
   ['Tinkerpop', 8, 22, 4], ['Newtooth', 4, 8, 4],
 ];
+
+// The profile character that is the same person as the roster's first row: same name, class and level, realm index 0 (the first realm of the region), and the roster's id.
+const ownerOnRosterCharacter = () => [ROSTER[0][0], ROSTER[0][1], ROSTER[0][2], 0, ROSTER_ID_BASE];
 
 function characterEntry(name, classId, level, realm, id) {
   return {
@@ -76,7 +84,7 @@ function createFakeBattlenet(options = {}) {
     deny: false,
     // The data it serves; a test (or you, in a node REPL) can replace any of these. Rows: [name, class id, level, realm index] and
     // [name, class id, level, rank, realm slug?] for the roster.
-    data: { tbc: TBC_CHARACTERS.map((row) => row.slice()), era: ERA_CHARACTERS.map((row) => row.slice()), roster: ROSTER.map((row) => row.slice()), expiresIn: 86399 },
+    data: { tbc: [...TBC_CHARACTERS.map((row) => row.slice()), ...(options.ownerOnRoster ? [ownerOnRosterCharacter()] : [])], era: ERA_CHARACTERS.map((row) => row.slice()), roster: ROSTER.map((row) => row.slice()), expiresIn: 86399 },
     // fail.<call> = an HTTP status makes that call answer with it (0 = no failure): token, userinfo, profile, roster.
     fail: { token: 0, userinfo: 0, profile: 0, roster: 0 },
     // override.profile / override.roster: a JSON body (or a function of { account, namespace } / { realmSlug, guildSlug, namespace } that returns one) served INSTEAD of the generated
@@ -164,7 +172,7 @@ function createFakeBattlenet(options = {}) {
           return send(res, 200, body);
         }
         const realms = REALMS[match[2]];
-        const list = (match[1] === 'classicann' ? state.data.tbc : state.data.era).map(([name, classId, level, realm], i) => characterEntry(name, classId, level, realms[realm], 7000 + i));
+        const list = (match[1] === 'classicann' ? state.data.tbc : state.data.era).map(([name, classId, level, realm, id], i) => characterEntry(name, classId, level, realms[realm], id === undefined ? 7000 + i : id));
         // One character the account owns on a realm no list names, and one of a class Raidsmith does not know (a Death Knight).
         list.push(characterEntry('Stranger', 8, 70, FAR_REALM, 7100), characterEntry('Gravewalk', 6, 70, realms[0], 7101));
         return send(res, 200, { id: Number(token.account.id), wow_accounts: [{ id: 555, characters: list }] });
@@ -185,7 +193,7 @@ function createFakeBattlenet(options = {}) {
         const realm = { id: 4001, slug: realmSlug };
         const members = state.data.roster.map(([name, classId, level, rank, slug], i) => ({
           character: {
-            key: { href: 'https://x.invalid/c' }, name, id: 8000 + i, realm: { key: { href: 'https://x.invalid/r' }, id: realm.id, slug: slug || realm.slug },
+            key: { href: 'https://x.invalid/c' }, name, id: ROSTER_ID_BASE + i, realm: { key: { href: 'https://x.invalid/r' }, id: realm.id, slug: slug || realm.slug },
             level, playable_class: { key: { href: 'https://x.invalid/class' }, id: classId }, playable_race: { key: { href: 'https://x.invalid/race' }, id: 2 }, faction: { type: 'HORDE' },
           },
           rank,
@@ -223,8 +231,9 @@ if (require.main === module) {
   const fake = createFakeBattlenet({
     accountId: args['account-id'] || env.FAKE_BATTLENET_ACCOUNT_ID,
     battletag: args.battletag || env.FAKE_BATTLENET_BATTLETAG,
+    ownerOnRoster: args['owner-on-roster'] === 'true' || env.FAKE_BATTLENET_OWNER_ON_ROSTER === '1',
   });
   fake.server.listen(port, '127.0.0.1', () => console.log(`fake Battle.net on http://127.0.0.1:${port} (account ${fake.state.account.id}, ${fake.state.account.battletag})`));
 }
 
-module.exports = { createFakeBattlenet, TBC_CHARACTERS, ERA_CHARACTERS, ROSTER };
+module.exports = { createFakeBattlenet, TBC_CHARACTERS, ERA_CHARACTERS, ROSTER, ROSTER_ID_BASE };

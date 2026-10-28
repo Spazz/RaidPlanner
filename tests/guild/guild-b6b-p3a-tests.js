@@ -925,7 +925,7 @@ check('dry run, permissions: who gains and loses a role at the flip - derived Of
   const res = await dryRun(s);
   assert.equal(res.status, 200, res.text);
   const { permissions, owner } = res.json;
-  assert.deepEqual(Object.keys(res.json).sort(), ['access', 'blockers', 'boundByName', 'expiresAt', 'needsClaim', 'notOnRoster', 'owner', 'permissions', 'rankSource', 'ranks', 'rosterSyncId', 'token'], 'additive: the older sections are still there (lane B9 adds boundByName, ranks, notOnRoster and blockers)');
+  assert.deepEqual(Object.keys(res.json).sort(), ['access', 'blockers', 'boundByName', 'confirmedCharacterIds', 'expiresAt', 'needsClaim', 'notOnRoster', 'owner', 'permissions', 'rankSource', 'ranks', 'rosterSyncId', 'token'], 'additive: the older sections are still there (lane B9 adds boundByName, ranks, notOnRoster and blockers)');
   const byName = (a, b) => a[0].localeCompare(b[0]);
   assert.deepEqual(sampleKeys(permissions.gains).sort(byName), [
     ['Derivedgm', 'guild_master', null],

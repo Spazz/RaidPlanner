@@ -3202,8 +3202,12 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 .gs-su-joins .gs-fg-lbl { margin: 0 20px 8px; }
 .gs-su-joins .gs-pr-kv:first-of-type { border-top: 1px solid var(--hd-hair); }
 .gs-su-group .gs-linkbtn { min-height: 0; }
+/* The ticks changed after the preview ran: the counts and lists that depend on them are dimmed until "Update preview" has run it again for those ticks. */
+.gs-su-summary.is-stale, .gs-su-stats.is-stale, .gs-su-list.is-stale, .gs-su-group.is-stale { opacity: 0.45; }
+.gs-su-ticknote { margin: 4px 20px 8px; }
 
 @media (width <= 600px) {
+  .gs-su-ticknote { margin-left: 16px; margin-right: 16px; }
   .gs-su-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gs-table-ranks th:nth-child(n) { width: auto; }
   .gs-table-ranks td, .gs-table-ranks th[scope="row"] { height: auto; padding-left: 0; padding-right: 0; }

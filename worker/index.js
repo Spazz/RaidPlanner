@@ -87,7 +87,7 @@ import { getPlanDoc, getRaidForEvent, putPlanDoc } from './routes/plan-doc.js';
 import { PLAN_DOC_MAX_BODY } from './plan-doc.js';
 
 const COMMIT_MAX_BODY = 64 * 1024;
-// POST /flip carries the ticked character ids of the name binding (27 bytes each, at most 2,000).
+// POST /flip and the dry run carry the ticked character ids of the name binding (27 bytes each, at most 2,000).
 const FLIP_MAX_BODY = 64 * 1024;
 const PLAN_MAX_BODY = 32 * 1024;
 // The body limits of the CSV roster commit (500 rows) and of a public application (eight long answers).
@@ -292,7 +292,7 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/rank-map', auth: true, handler: getRankMap },
   { method: 'POST', path: '/api/guild/:gid/rank-map/dry-run', auth: true, handler: dryRunRankMap },
   { method: 'PUT', path: '/api/guild/:gid/rank-map', auth: true, handler: putRankMap },
-  { method: 'POST', path: '/api/guild/:gid/flip/dry-run', auth: true, handler: dryRunFlip },
+  { method: 'POST', path: '/api/guild/:gid/flip/dry-run', auth: true, handler: dryRunFlip, maxBody: FLIP_MAX_BODY },
   { method: 'POST', path: '/api/guild/:gid/flip', auth: true, handler: flipGuild, maxBody: FLIP_MAX_BODY },
   { method: 'GET', path: '/api/guild/:gid/bnet', auth: true, handler: getBnetSettings },
   { method: 'PUT', path: '/api/guild/:gid/bnet', auth: true, handler: putBnetSettings },

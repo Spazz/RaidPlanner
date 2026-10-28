@@ -149,7 +149,7 @@ const rankMapOf = ({ mapped = true } = {}) => ({
 });
 
 const previewOf = (o = {}) => ({
-  token: 'tok1', expiresAt: T0 + 600000, rankSource: null, rosterSyncId: 'rs1',
+  token: 'tok1', expiresAt: T0 + 600000, rankSource: null, rosterSyncId: 'rs1', confirmedCharacterIds: ['c_1', 'c_2', 'c_3', 'c_4'],
   access: {
     members: { today: 39, afterFlip: 29 },
     loses: { count: 12, reasons: { discord_only: 3, needs_claim: 5, no_roster_character: 3, all_former: 1 }, samples: [
@@ -170,7 +170,7 @@ const previewOf = (o = {}) => ({
       { userId: 'u_q', personId: 'p3', name: 'Quill', roleId: 'team_lead', roleName: 'Team Lead', teamId: 't1', teamName: 'Team KJ', handTwin: false },
     ] },
   },
-  owner: { exists: true, userId: 'u_o', personId: 'p_o', name: 'Brandon', source: 'stored_guild_master', live: true, willBeSuspended: false, reason: 'live', via: { characterName: 'Thornwick', rank: 0 }, rosterStored: true, rosterFetchedAt: T0 },
+  owner: { exists: true, userId: 'u_o', personId: 'p_o', name: 'Thornwick', source: 'stored_guild_master', live: true, willBeSuspended: false, reason: 'live', via: { characterName: 'Thornwick', rank: 0 }, rosterStored: true, rosterFetchedAt: T0 },
   boundByName: {
     count: 4, ids: ['c_1', 'c_2', 'c_3', 'c_4'], byProof: { officer: 4 }, classMismatch: 1, samples: [
       { characterId: 'c_1', name: 'Pyrewick', class: 'MAGE', rosterRank: 3, personId: 'p9', userId: null, proof: 'officer' }, { characterId: 'c_2', name: 'Marrowind', class: 'ROGUE', rosterRank: 3, personId: 'p8', userId: null, proof: 'officer' },
@@ -179,7 +179,7 @@ const previewOf = (o = {}) => ({
   },
   ranks: {
     changed: 24, becomesTrial: 7, becomesSocial: 12, transitions: [{ from: 'raider', to: 'trial', count: 7 }, { from: 'raider', to: 'social', count: 12 }, { from: 'trial', to: 'social', count: 5 }],
-    samples: [{ name: 'Quillfeather', class: 'HUNTER', from: 'social', to: 'trial' }, { name: 'Rookmantle', class: 'ROGUE', from: 'social', to: 'trial' }], unmapped: [],
+    samples: [{ name: 'Quillfeather', class: 'HUNTER', from: 'social', to: 'trial', rosterRank: 4 }, { name: 'Rookmantle', class: 'ROGUE', from: 'social', to: 'trial', rosterRank: 4 }, { name: 'Skyward', class: 'SHAMAN', from: 'reserve', to: 'trial', rosterRank: 4 }, { name: 'Dunmere', class: 'SHAMAN', from: 'raider', to: 'social', rosterRank: null }], unmapped: [],
   },
   notOnRoster: { count: 12, former: 7, social: 5, samples: [
     { character: 'Dunmere', class: 'SHAMAN', person: 'Dunmere', after: 'former' }, { character: 'Gravelpriest', class: 'PRIEST', person: 'Gravelkin', after: 'social' },
@@ -432,7 +432,7 @@ check('Guild setup, step 1: the pin act posts the name on the way back and lands
   assert.deepEqual(sent, [{ guildName: 'Writers', realmSlug: 'dreamscythe' }]);
   const { html, view } = await openSetup({ bnet: LINKED() });
   const page = html();
-  assert(text(page).includes('Linked to Writers on Dreamscythe (US).') && text(page).includes('64 members read from the guild roster.') && page.includes('gs-banner-success'), 'the success banner with the count');
+  assert(text(page).includes('Linked to Writers on Dreamscythe.') && !text(page).includes('Linked to Writers on Dreamscythe (US)') && text(page).includes('64 members read from the guild roster.') && page.includes('gs-banner-success'), 'the success banner with the count');
   assert(/id="pin-name"[^>]*readonly/.test(page) && /id="pin-name"[^>]*value="Writers"/.test(page), 'the name is the pin\'s now');
   assert(text(page).includes('Confirmed just now.') && page.includes('is-done'));
   assert(text(bar(page)).includes('Writers, Dreamscythe (US): 64 members.') && primaryOf(page, 'Next') && !/disabled/.test(bar(page).match(/<[^>]*>Next/)[0]), 'Next is the primary');
@@ -620,13 +620,15 @@ check('Guild setup, step 3 (G3): the Owner panel, the summary, five tiles and th
   assert(t.includes('Gain access 2') && t.includes('Tamsin Their person is on the roster'));
   assert(t.includes('Waiting for their claim 5') && t.includes('4 of the 5 are on the roster. The switch links nobody: each player claims theirs with This is me.'));
   // Ranks: the aggregated changes in words, then the characters.
-  assert(t.includes('Core rank changes 24') && /Raider Trial 7/.test(t) && /Raider Social 12/.test(t) && t.includes('Quillfeather Social Trial'));
+  assert(t.includes('Core rank changes 24') && /Raider Trial 7/.test(t) && /Raider Social 12/.test(t));
+  assert(t.includes('Become Trial 7') && t.includes('Quillfeather Social Raider') && t.includes('Skyward Reserve Raider') && !t.includes('Dunmere Raider Social'), 'the Trial characters with their in-game rank; the group is not the list of every change');
+  assert(!t.includes('Characters that change rank'));
   // Permissions and characters.
   assert(t.includes('New permissions 3') && t.includes('Ashgrove Officer Whole guild') && t.includes('Cinderlow Team Lead Team KJ'));
   assert(t.includes('Roles from Discord that become hand-set 6') && t.includes('Ashgrove Officer Also set by hand: the copy is removed') && t.includes('Quill Team Lead, Team KJ Kept'));
   assert(t.includes('Lose permissions 0 No permission is taken away.'));
   assert(t.includes('Not on the guild roster 12') && t.includes('Dunmere Dunmere Former') && t.includes('Gravelpriest Gravelkin Social'));
-  assert(t.includes('Bound by name only 4') && t.includes('Pyrewick Core Raider') && t.includes('Hexwhistle Raider') && t.includes('Zephyrion Member'), 'the roster rank is the rank\'s name');
+  assert(t.includes('Matched by name only 4') && t.includes('Pyrewick Core Raider') && t.includes('Hexwhistle Raider') && t.includes('Zephyrion Member'), 'the roster rank is the rank\'s name');
   assert(t.includes('Unticked characters are not matched: they stay Social and off the roster. 1 more has the right name with another class and is not matched.'));
   assert(text(bar(page)).includes('29 members after the switch, 24 core ranks change.') && primaryOf(page, 'Next') && bar(page).includes('data-action="setup-back"'));
   noRawAttrs(page, 'step 3');
@@ -649,7 +651,7 @@ check('Guild setup, step 3: groups show the first rows and "Show all" opens the 
 check('Guild setup, step 3: a tick per character bound by name, default ticked; the beyond-the-samples candidates share one tick; the flip takes what is ticked', async () => {
   const ids = Array.from({ length: 30 }, (_, i) => `c_${i + 1}`);
   const samples = ids.slice(0, 25).map((id, i) => ({ characterId: id, name: `Bound${String(i).padStart(2, '0')}`, class: 'MAGE', rosterRank: 3, personId: `p${i}`, userId: null, proof: 'officer' }));
-  const { html, view } = await atPreview({ preview: previewOf({ boundByName: { count: 30, ids, byProof: {}, classMismatch: 0, samples } }) });
+  const { html, view } = await atPreview({ preview: previewOf({ confirmedCharacterIds: ids, boundByName: { count: 30, ids, byProof: {}, classMismatch: 0, samples } }) });
   const page = html();
   assert.equal((page.match(/class="gs-su-chk"/g) || []).length, 26, '25 samples and one for the rest');
   assert.equal((page.match(/class="gs-su-chk"[^>]*checked/g) || []).length, 26, 'all ticked');
@@ -712,22 +714,32 @@ async function atSwitch(o = {}) {
   await settle();
   return opened;
 }
+// Unticks characters on the preview step and updates the preview for those ticks, the way the page asks for it: the Worker's answer is the preview for exactly them, under a new token.
+async function untickAndUpdate(off, token = 'tok2') {
+  for (const id of off) G.handlers.change['setup-bind'](el({ 'data-id': id }, { checked: false }));
+  const calls = scriptApi({ 'POST /api/guild/g1/flip/dry-run': (body) => previewOf({ token, confirmedCharacterIds: body.confirmedCharacterIds }) });
+  G.handlers.click['setup-preview-update']();
+  await settle();
+  return calls;
+}
 const FLIP_OK = { ok: true, rankSource: 'ingame', ownerUserId: 'u_o', applied: APPLIED };
 const needFresh = () => apiError(403, { error: 'fresh_required', message: 'Confirm it is you first.', purpose: 'source_switch', params: { from: null, to: 'ingame' } });
 
 check('Guild setup, step 4 (G4): the page restates the facts; the primary opens a confirm; Back goes to the preview', async () => {
-  const { html, view } = await atSwitch();
+  const { html, view } = await atPreview();
+  await untickAndUpdate(['c_4']);
+  G.handlers.click['setup-preview-next']();
+  await settle();
   assert.equal(view.step, 4);
   const page = html();
   const t = text(page);
   assert.deepEqual(stepperOf(page), ['done', 'done', 'done', 'current']);
   assert(t.includes('What the switch does') && t.includes('Members 29 accounts are members after the switch: 27 stay, 2 gain access, 12 lose it'));
   assert(t.includes('Claims 5 people wait for their player to claim them with This is me; the switch links nobody') && t.includes('Ranks 24 characters change core rank, 7 of them become Trial'));
-  assert(t.includes('Roles 6 roles from Discord become hand-set; Discord stops giving roles') && t.includes('Name matches 4 characters are matched to the roster by name') && t.includes('Owner Brandon, live through Thornwick'));
+  assert(t.includes('Roles 6 roles from Discord become hand-set; Discord stops giving roles') && t.includes('Owner Brandon, live through Thornwick'));
   assert(text(bar(page)).includes('29 members after the switch, 24 core ranks change.') && primaryOf(page, 'Switch over') && bar(page).includes('data-action="setup-back"'));
   noRawAttrs(page, 'step 4');
-  G.handlers.change['setup-bind'](el({ 'data-id': 'c_4' }, { checked: false }));
-  assert(text(html()).includes('Name matches 3 of 4 characters are matched to the roster by name'), 'the ticks count');
+  assert(t.includes('Name matches 3 of 4 characters are matched to the roster by name'), 'the ticks the preview is for');
   G.handlers.click['setup-switch']();
   assert.equal(dialogs.length, 1);
   const dialog = dialogs[0].innerHTML;
@@ -739,15 +751,18 @@ check('Guild setup, step 4 (G4): the page restates the facts; the primary opens 
 });
 
 check('Guild setup, step 4: the flip sends the token and the ticked ids; a missing sign-in is step 2 of the same dialog and the pending act repeats the flip (G4)', async () => {
-  const { view } = await atSwitch();
-  G.handlers.change['setup-bind'](el({ 'data-id': 'c_4' }, { checked: false }));
+  const { view } = await atPreview();
+  await untickAndUpdate(['c_4']);
+  G.handlers.click['setup-preview-next']();
+  await settle();
+  assert.equal(view.step, 4);
   G.handlers.click['setup-switch']();
   const { dlg, form } = fakeDialog(dialogs[0].innerHTML);
   // 1. no grant yet: the flip answers 403 fresh_required and the dialog turns into the sign-in step
   let calls = scriptApi({ 'POST /api/guild/g1/flip': () => { throw needFresh(); } });
   G.handlers.submit['setup-switch-form'](form);
   await settle();
-  assert.deepEqual(calls[0], { method: 'POST', path: '/api/guild/g1/flip', body: { token: 'tok1', confirmedCharacterIds: ['c_1', 'c_2', 'c_3'] } });
+  assert.deepEqual(calls[0], { method: 'POST', path: '/api/guild/g1/flip', body: { token: 'tok2', confirmedCharacterIds: ['c_1', 'c_2', 'c_3'] } });
   assert(dlg.innerHTML.includes('Switch over - step 2 of 2') && dlg.innerHTML.includes('Confirm it is you') && dlg.innerHTML.includes('Sign in with Battle.net, then the switch runs. You come back to this page.'), dlg.innerHTML.slice(0, 300));
   assert(dlg.innerHTML.includes('Brandon#1482') && !dlg.innerHTML.includes('type="radio"'), 'Battle.net only');
   assert.equal(view.step, 4, 'the page stays');
@@ -759,13 +774,13 @@ check('Guild setup, step 4: the flip sends the token and the ticked ids; a missi
   assert.deepEqual(navigations, [AUTHORIZE]);
   const saved = plain(G.fresh.pending());
   assert.deepEqual([saved.kind, saved.gid, saved.purpose, saved.params, saved.returnTo], ['source_switch', 'g1', 'source_switch', { from: null, to: 'ingame' }, '#/g/g1/setup']);
-  assert.deepEqual([saved.data.token, saved.data.confirmedCharacterIds], ['tok1', ['c_1', 'c_2', 'c_3']]);
+  assert.deepEqual([saved.data.token, saved.data.confirmedCharacterIds], ['tok2', ['c_1', 'c_2', 'c_3']]);
   // 3. back from Battle.net: #/fresh?done=source_switch repeats the flip with the stored token and ids, then the page shows the result
   const sent = [];
   scriptApi({ 'POST /api/guild/g1/flip': (body) => { sent.push(plain(body)); return FLIP_OK; } });
   const address = await G.fresh.repeat(G.fresh.takePending());
   assert.equal(address, '#/g/g1/setup');
-  assert.deepEqual(plain(sent), [{ token: 'tok1', confirmedCharacterIds: ['c_1', 'c_2', 'c_3'] }]);
+  assert.deepEqual(plain(sent), [{ token: 'tok2', confirmedCharacterIds: ['c_1', 'c_2', 'c_3'] }]);
   const done = await openSetup({ bnet: SWITCHED() });
   const t = text(done.html());
   assert(done.html().includes('gs-banner-success') && t.includes('Writers now follows the in-game guild.') && t.includes('29 accounts are members: 27 stayed, 2 gained access and 12 lost it. 24 characters changed core rank, 7 of them are on Trial.'), t.slice(0, 500));
@@ -885,6 +900,239 @@ check('Guild setup: the act `source_switch` after an old token or a refusal land
 });
 
 // ---------------------------------------------------------------------------
+// 7b. The preview and its ticks (lane B8a-fix3): what the Owner reads is what the switch does
+
+const staleOf = (page) => ({
+  summary: /class="gs-su-summary is-stale"/.test(page),
+  tiles: /class="gs-su-stats is-stale"/.test(page),
+  access: /class="gs-hd-panel gs-su-list is-stale" aria-label="Access"/.test(page),
+  ranks: /class="gs-hd-panel gs-su-list is-stale" aria-label="Ranks"/.test(page),
+  permissions: /class="gs-hd-panel gs-su-list is-stale" aria-label="Permissions"/.test(page),
+  offRoster: /class="gs-su-group is-stale" data-group="notonroster"/.test(page),
+});
+
+check('Guild setup, step 3: a changed tick dims the counts and lists that depend on it, says so with an "Update preview" button, and Next stays off until the preview matches the ticks', async () => {
+  const { html, view } = await atPreview();
+  const clean = html();
+  assert(!clean.includes('is-stale') && !clean.includes('setup-preview-update') && primaryOf(clean, 'Next') && !/<button[^>]*disabled[^>]*>(?:<span>)?Next/.test(clean), 'in sync: nothing dimmed, no button');
+  G.handlers.change['setup-bind'](el({ 'data-id': 'c_2' }, { checked: false }));
+  const page = html();
+  assert.deepEqual(staleOf(page), { summary: true, tiles: true, access: true, ranks: true, permissions: false, offRoster: true }, 'the counts and lists the ticks move are dimmed; the Owner and the permissions are not');
+  assert(!/class="gs-hd-panel gs-su-owner[^"]*is-stale/.test(page));
+  assert(text(page).includes('You changed which characters are matched. The counts and lists above are for the earlier ticks.'));
+  assert(/<button type="button" class="gs-btn gs-btn-sm"[^>]*data-action="setup-preview-update"[^>]*><span>Update preview<\/span>/.test(page), 'a secondary (not the primary) button');
+  assert(text(bar(page)).includes('The ticks changed. Update the preview to go on.') && /<button[^>]*disabled[^>]*>(?:<span>)?Next/.test(page), 'the reason beside the disabled Next');
+  G.handlers.click['setup-preview-next']();
+  assert.equal(view.step, 3, 'Next does nothing');
+  // Ticking it back: the page is the preview again.
+  G.handlers.change['setup-bind'](el({ 'data-id': 'c_2' }, { checked: true }));
+  const back = html();
+  assert(!back.includes('is-stale') && !back.includes('setup-preview-update') && primaryOf(back, 'Next'));
+  // The rest tick counts too.
+  const ids = Array.from({ length: 30 }, (_, i) => `c_${i + 1}`);
+  const samples = ids.slice(0, 25).map((id, i) => ({ characterId: id, name: `Bound${String(i).padStart(2, '0')}`, class: 'MAGE', rosterRank: 3, personId: `p${i}`, userId: null, proof: 'officer' }));
+  const many = await atPreview({ preview: previewOf({ confirmedCharacterIds: ids, boundByName: { count: 30, ids, byProof: {}, classMismatch: 0, samples } }) });
+  G.handlers.change['setup-bind'](el({ 'data-id': '*rest*' }, { checked: false }));
+  assert(staleOf(many.html()).summary && many.html().includes('setup-preview-update'));
+});
+
+check('Guild setup, step 3: Update preview sends the ticked ids, keeps the old preview dimmed and the ticks locked while it runs, then shows the answer for exactly those ticks', async () => {
+  const { html, view } = await atPreview();
+  G.handlers.change['setup-bind'](el({ 'data-id': 'c_2' }, { checked: false }));
+  G.handlers.change['setup-bind'](el({ 'data-id': 'c_4' }, { checked: false }));
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const promised = previewOf({
+    token: 'tok2', confirmedCharacterIds: ['c_1', 'c_3'],
+    access: { ...previewOf().access, members: { today: 39, afterFlip: 28 }, loses: { ...previewOf().access.loses, count: 13 } }, ranks: { ...previewOf().ranks, changed: 25, becomesTrial: 6 },
+  });
+  const calls = scriptApi({ 'POST /api/guild/g1/flip/dry-run': () => gate.then(() => promised) });
+  G.handlers.click['setup-preview-update']();
+  assert.equal(view.updating, true);
+  const while_ = html();
+  assert(text(while_).includes('29 accounts are members of Writers after the switch. 27 stay, 2 gain access, 12 lose it.') && staleOf(while_).summary, 'the old numbers stay, dimmed');
+  assert(/<button[^>]*disabled[^>]*data-action="setup-preview-update"/.test(while_) && text(while_).includes('Updating the preview...'), 'the button is busy');
+  assert((while_.match(/class="gs-su-chk"[^>]*disabled/g) || []).length === 4, 'the ticks are locked while it runs');
+  G.handlers.click['setup-preview-update'](); // a second press changes nothing
+  release();
+  await settle();
+  assert.deepEqual(calls.map((c) => [c.method, c.path, c.body]), [['POST', '/api/guild/g1/flip/dry-run', { confirmedCharacterIds: ['c_1', 'c_3'] }]], 'one call, with exactly the ticked ids');
+  assert(!view.updating && view.preview.token === 'tok2');
+  const page = html();
+  assert(!page.includes('is-stale') && !page.includes('setup-preview-update') && !/class="gs-su-chk"[^>]*disabled/.test(page), 'in sync again');
+  assert(text(page).includes('28 accounts are members of Writers after the switch. 26 stay, 2 gain access, 13 lose it.') && /Core rank changes<\/span><span class="gs-su-stat-n">25</.test(page), 'the numbers are the new answer\'s');
+  assert((page.match(/class="gs-su-chk"[^>]*checked/g) || []).length === 2 && /id="bn-1"(?![^>]*checked)/.test(page) && /id="bn-3"(?![^>]*checked)/.test(page), 'the ticks are the ones asked for');
+  assert.deepEqual(plain(G.pages.setup.confirmedIds(view)), ['c_1', 'c_3']);
+  assert(primaryOf(page, 'Next'));
+  // A refused update keeps the old preview on the page, dimmed, with the reason and the ticks as they are.
+  G.handlers.change['setup-bind'](el({ 'data-id': 'c_1' }, { checked: false }));
+  scriptApi({ 'POST /api/guild/g1/flip/dry-run': () => { throw apiError(429, { error: 'rate_limited', message: 'Too many dry runs.', retryAfter: 120 }); } });
+  G.handlers.click['setup-preview-update']();
+  await settle();
+  const refused = html();
+  assert(view.preview.token === 'tok2' && !view.updating && text(refused).includes('Too many tries.') && staleOf(refused).summary && refused.includes('setup-preview-update') && /<button[^>]*disabled[^>]*>(?:<span>)?Next/.test(refused));
+});
+
+check('Guild setup, step 3: when a ticked character is no candidate any more the update starts again from every candidate ticked, and says so', async () => {
+  const { html, view } = await atPreview();
+  G.handlers.change['setup-bind'](el({ 'data-id': 'c_2' }, { checked: false }));
+  const calls = scriptApi({
+    'POST /api/guild/g1/flip/dry-run': (body) => {
+      if (body.confirmedCharacterIds) throw apiError(400, { error: 'bad_confirmation', message: 'Worker words', ids: ['c_1'] });
+      return previewOf({ token: 'tok3' });
+    },
+  });
+  G.handlers.click['setup-preview-update']();
+  await settle();
+  assert.deepEqual(calls.map((c) => c.body), [{ confirmedCharacterIds: ['c_1', 'c_3', 'c_4'] }, {}]);
+  assert(view.preview.token === 'tok3' && G.pages.setup.confirmedIds(view).length === 4, 'every candidate is ticked again');
+  const page = html();
+  assert(text(page).includes('The list of characters to match changed. Every one is ticked again.') && !page.includes('is-stale') && primaryOf(page, 'Next'));
+});
+
+check('Guild setup, step 3: the first dry run asks for no ids; leaving the preview and coming back runs it again for the ticks that were set', async () => {
+  const first = [];
+  const { view } = await atRanks({ extra: { 'POST /api/guild/g1/flip/dry-run': (body) => { first.push(plain(body)); return previewOf(); } } });
+  G.handlers.click['setup-ranks-next']();
+  await settle();
+  assert.deepEqual(first, [{}], 'the first dry run sends an empty body');
+  const calls = scriptApi({ 'POST /api/guild/g1/flip/dry-run': (body) => previewOf({ token: 'tok2', confirmedCharacterIds: body.confirmedCharacterIds || ['c_1', 'c_2', 'c_3', 'c_4'] }) });
+  G.handlers.change['setup-bind'](el({ 'data-id': 'c_3' }, { checked: false }));
+  G.handlers.click['setup-preview-update']();
+  await settle();
+  G.handlers.click['setup-back']();
+  assert.equal(view.step, 2);
+  G.handlers.click['setup-ranks-next']();
+  await settle();
+  assert.deepEqual(calls.map((c) => c.body), [{ confirmedCharacterIds: ['c_1', 'c_2', 'c_4'] }, { confirmedCharacterIds: ['c_1', 'c_2', 'c_4'] }]);
+  assert.deepEqual(plain(G.pages.setup.confirmedIds(view)), ['c_1', 'c_2', 'c_4']);
+});
+
+check('Guild setup, step 4: Switch over is off while the ticks differ from the preview (a changed tick, then the page is on step 4), and the switch sends the ids of the token', async () => {
+  const { html, view } = await atSwitch();
+  assert.equal(view.step, 4);
+  view.unticked.c_1 = true; // a tick moved without an update
+  const page = html();
+  assert(text(bar(page)).includes('The ticks changed. Update the preview to go on.') && /<button[^>]*disabled[^>]*>(?:<span>)?Switch over/.test(page));
+  G.handlers.click['setup-switch']();
+  assert.equal(dialogs.length, 0, 'no dialog');
+  delete view.unticked.c_1;
+  G.handlers.click['setup-switch']();
+  const { form } = fakeDialog(dialogs[0].innerHTML);
+  const calls = scriptApi({ 'POST /api/guild/g1/flip': () => FLIP_OK });
+  G.handlers.submit['setup-switch-form'](form);
+  await settle();
+  assert.deepEqual(calls[0].body, { token: 'tok1', confirmedCharacterIds: ['c_1', 'c_2', 'c_3', 'c_4'] }, 'the ids the token was made for');
+});
+
+check('Guild setup: the act after the sign-in keeps the ticks when the preview has to run again, and the Worker\'s "ticks changed" refusal is its own banner', async () => {
+  const record = (data) => ({ kind: 'source_switch', gid: 'g1', purpose: 'source_switch', params: { from: null, to: 'ingame' }, data: { token: 'tok1', tokenAt: Date.now(), ...data }, provider: 'bnet', returnTo: '#/g/g1/setup', at: Date.now() });
+  const rerun = async (flipError, data) => {
+    resetBrowser();
+    scriptApi({ 'POST /api/guild/g1/flip': () => { throw flipError; } });
+    await G.fresh.repeat(record(data));
+    const bodies = [];
+    const opened = await openSetup({ bnet: LINKED(), extra: { 'POST /api/guild/g1/flip/dry-run': (body) => { bodies.push(plain(body)); return previewOf({ token: 'tok7', confirmedCharacterIds: body.confirmedCharacterIds }); } } });
+    return { opened, bodies };
+  };
+  let { opened, bodies } = await rerun(apiError(409, { error: 'approval_stale', message: 'x' }), { confirmedCharacterIds: ['c_1', 'c_4'] });
+  assert.deepEqual(bodies, [{ confirmedCharacterIds: ['c_1', 'c_4'] }]);
+  assert.deepEqual(plain(G.pages.setup.confirmedIds(opened.view)), ['c_1', 'c_4']);
+  assert(text(opened.html()).includes('This preview is out of date.') && !opened.html().includes('setup-preview-update'), 'the new preview is for those ticks: in sync');
+  ({ opened, bodies } = await rerun(apiError(409, { error: 'confirmation_changed', message: 'x' }), { confirmedCharacterIds: [] }));
+  assert.deepEqual(bodies, [{ confirmedCharacterIds: [] }], 'nothing ticked stays nothing ticked');
+  assert.deepEqual(plain(G.pages.setup.confirmedIds(opened.view)), []);
+  assert(text(opened.html()).includes('The ticked characters changed. Update the preview, then switch over.') && opened.html().includes('gs-banner-warning'));
+  // An old token: the same, without sending the flip.
+  resetBrowser();
+  const sent = scriptApi({ 'POST /api/guild/g1/flip': () => FLIP_OK });
+  await G.fresh.repeat(record({ tokenAt: Date.now() - 11 * 60 * 1000, confirmedCharacterIds: ['c_2'] }));
+  assert.equal(sent.length, 0);
+  const old = await openSetup({ bnet: LINKED(), extra: { 'POST /api/guild/g1/flip/dry-run': (body) => previewOf({ confirmedCharacterIds: body.confirmedCharacterIds }) } });
+  assert.deepEqual(plain(G.pages.setup.confirmedIds(old.view)), ['c_2']);
+});
+
+check('Guild setup: the Owner is named the same way in the preview, on step 4, in the dialog and on the done page (the account\'s name, never the person the preview lists them under)', async () => {
+  const opened = await atPreview();
+  const preview = text(opened.html());
+  assert(preview.includes('Owner Brandon Live Thornwick (rank 0, Guild Master) is on the roster and confirmed by Battle.net, so Brandon keeps every Owner power.'));
+  G.handlers.click['setup-preview-next']();
+  await settle();
+  const four = text(opened.html());
+  assert(four.includes('Owner Brandon Live') && four.includes('Owner Brandon, live through Thornwick'));
+  G.handlers.click['setup-switch']();
+  assert(/Owner<\/span><span class="gs-pr-v">Brandon</.test(dialogs[0].innerHTML), 'the dialog');
+  // The done page after the sign-in round trip knows only the guild: the same name.
+  resetBrowser();
+  scriptApi({ 'POST /api/guild/g1/flip': () => FLIP_OK });
+  await G.fresh.repeat({ kind: 'source_switch', gid: 'g1', purpose: 'source_switch', params: { from: null, to: 'ingame' }, data: { token: 'tok1', tokenAt: Date.now(), confirmedCharacterIds: [] }, provider: 'bnet', returnTo: '#/g/g1/setup', at: Date.now() });
+  const done = await openSetup({ bnet: SWITCHED() });
+  assert(text(done.html()).includes('Owner Brandon') && !text(done.html()).includes('Thornwick'));
+  // Without the guild's Owner block the preview's own name is the fallback.
+  resetBrowser();
+  const bare = await atPreview();
+  bare.view.gd = { ...bare.view.gd, owner: { you: true } };
+  assert(text(G.pages.setup.main({ name: 'setup', gid: 'g1' }, bare.view.gd)).includes('Owner Thornwick Live'));
+});
+
+check('Guild setup: counts of one read as one ("1 member", "1 core rank changes", "1 stays", "1 of them becomes Trial"), zero and many as before', async () => {
+  const one = previewOf({
+    access: {
+      members: { today: 1, afterFlip: 1 }, loses: { count: 1, reasons: { discord_only: 1 }, samples: [{ reason: 'discord_only', name: 'Brightmane' }] },
+      gains: { count: 1, reasons: { linked_person: 1 }, samples: [{ reason: 'linked_person', personId: 'p_t', name: 'Tamsin' }] },
+    },
+    needsClaim: { count: 1, ownerIncluded: false, onRoster: 1, samples: [{ personId: 'p_c', name: 'Cindervale', onRoster: true }] },
+    ranks: { changed: 1, becomesTrial: 1, becomesSocial: 0, transitions: [{ from: 'raider', to: 'trial', count: 1 }], samples: [{ name: 'Quillfeather', class: 'HUNTER', from: 'raider', to: 'trial', rosterRank: 4 }], unmapped: [] },
+    permissions: { ...previewOf().permissions, discordRoles: { count: 1, withHandTwin: 0, samples: [] } },
+  });
+  const opened = await atPreview({ preview: one });
+  const page = opened.html();
+  const t = text(page);
+  assert(t.includes('1 account is a member of Writers after the switch. 0 stay, 1 gains access, 1 loses it.'), t.slice(t.indexOf('account'), t.indexOf('account') + 120));
+  assert(text(bar(page)).includes('1 member after the switch, 1 core rank changes.'));
+  assert(t.includes('1 of the 1 is on the roster.'));
+  G.handlers.click['setup-preview-next']();
+  await settle();
+  const four = text(opened.html());
+  assert(four.includes('Members 1 account is a member after the switch: 0 stay, 1 gains access, 1 loses it'), four);
+  assert(four.includes('Ranks 1 character changes core rank, 1 of them becomes Trial') && four.includes('Roles 1 role from Discord becomes hand-set; Discord stops giving roles'));
+  assert(four.includes('Claims 1 person waits for their player to claim them with This is me; the switch links nobody'));
+  assert(text(bar(opened.html())).includes('1 member after the switch, 1 core rank changes.'));
+  G.handlers.click['setup-switch']();
+  const dialog = text(dialogs[0].innerHTML);
+  assert(dialog.includes('Members 1 after the switch: 0 stay, 1 gains access, 1 loses it') && dialog.includes('Ranks 1 character changes core rank') && dialog.includes('Roles 1 from Discord becomes hand-set'), dialog);
+  // Zero and many.
+  const zero = await atPreview({ preview: previewOf({ access: { members: { today: 0, afterFlip: 0 }, loses: { count: 0, reasons: {}, samples: [] }, gains: { count: 0, reasons: {}, samples: [] } }, ranks: { changed: 0, becomesTrial: 0, becomesSocial: 0, transitions: [], samples: [], unmapped: [] } }) });
+  assert(text(bar(zero.html())).includes('0 members after the switch, 0 core ranks change.') && text(zero.html()).includes('0 accounts are members of Writers after the switch. 0 stay, 0 gain access, 0 lose it.'));
+  assert(text(zero.html()).includes('No character becomes Trial.'));
+  // The done page.
+  resetBrowser();
+  const applied = { ...APPLIED, membersAfter: 1, stay: 1, gains: 1, loses: 1, rankChanges: 1, becameTrial: 1, discordRolesMadeManual: 1, newPermissions: 1, needsClaim: 1, boundByName: 1 };
+  scriptApi({ 'POST /api/guild/g1/flip': () => ({ ok: true, rankSource: 'ingame', ownerUserId: 'u_o', applied }) });
+  await G.fresh.repeat({ kind: 'source_switch', gid: 'g1', purpose: 'source_switch', params: { from: null, to: 'ingame' }, data: { token: 'tok1', tokenAt: Date.now(), confirmedCharacterIds: ['c_1'] }, provider: 'bnet', returnTo: '#/g/g1/setup', at: Date.now() });
+  const done = text((await openSetup({ bnet: SWITCHED() })).html());
+  assert(done.includes('1 account is a member: 1 stayed, 1 gained access and 1 lost it. 1 character changed core rank, 1 of them is on Trial.'), done.slice(0, 400));
+  assert(done.includes('Roles 1 role from Discord is now hand-set, 1 new permission from ranks') && done.includes('Name matches 1 character is matched to the roster by name') && done.includes('Claims 1 person waits for their player'));
+});
+
+check('Guild setup, step 1: the lead names the guild and the order of the steps (G1); once linked there is no lead and the banner names the realm without its region (G1b)', async () => {
+  const fresh = await openSetup({ bnet: bnetOf() });
+  const t = text(fresh.html());
+  assert(t.includes('Raidsmith reads Writers\'s guild roster from Battle.net. Confirm it is you, then name the guild to follow.'), t.slice(0, 300));
+  assert(!t.includes('Name the in-game guild to follow, then confirm it is you.'));
+  resetBrowser();
+  const linked = await openSetup({ bnet: LINKED() });
+  assert(!text(linked.html()).includes('Raidsmith reads') && !linked.html().includes('gs-su-lead'), 'linked: no lead');
+  assert(/id="pin-name"[^>]*readonly/.test(linked.html()));
+});
+
+check('Guild setup, step 3: the in-game rank column of "Become Trial" says what the character is on the roster ("-" when the Worker did not say)', async () => {
+  const noRank = previewOf({ ranks: { ...previewOf().ranks, samples: [{ name: 'Quillfeather', class: 'HUNTER', from: 'social', to: 'trial' }] } });
+  const opened = await atPreview({ preview: noRank });
+  assert(text(opened.html()).includes('Become Trial 7 Character Today In-game rank Quillfeather Social -'), text(opened.html()).slice(text(opened.html()).indexOf('Become Trial'), 400));
+});
+
+// ---------------------------------------------------------------------------
 // 8. The refusals, one sentence each
 
 const REFUSAL_CASES = [
@@ -895,7 +1143,7 @@ const REFUSAL_CASES = [
   [409, 'roster_too_large', 'too large'], [409, 'roster_over_caps', 'too many members'], [403, 'pin_not_on_roster', 'None of your characters'], [409, 'pin_taken', 'Another Raidsmith guild'],
   [409, 'conflict', 'changed while'], [403, 'identity_too_new', 'linked a few days ago'], [409, 'identity_not_linked', 'Link Battle.net'],
   [400, 'rank_zero_only', 'Only rank 0'], [400, 'approval_required', 'approval'], [409, 'approval_invalid', 'out of date'], [409, 'approval_stale', 'out of date'],
-  [503, 'effective_roles_missing', 'cannot run'], [409, 'already_ingame', 'already follows'], [400, 'confirmation_required', 'Say which characters'], [400, 'bad_confirmation', 'not on the preview'],
+  [503, 'effective_roles_missing', 'cannot run'], [409, 'already_ingame', 'already follows'], [400, 'confirmation_required', 'Say which characters'], [400, 'bad_confirmation', 'not on the preview'], [409, 'confirmation_changed', 'ticked characters changed'],
   [409, 'source_not_legacy', 'does not take its members'], [409, 'not_pinned', 'Link the guild first'], [409, 'no_good_sync', 'has not been read'], [409, 'no_owner', 'no Owner'],
   [409, 'owner_would_be_suspended', 'would be suspended'], [409, 'rank_map_incomplete', 'Map every in-game rank'],
 ];
@@ -1010,7 +1258,7 @@ check('the pages against the Worker: step by step on a pinned legacy guild (pin,
   const dry = view.preview;
   assert(dry && dry.token && Array.isArray(dry.blockers));
   assert(text(page).includes(`${dry.access.members.afterFlip} accounts are members of`) && text(page).includes('Gmmain') && text(page).includes('Live'), 'the Owner is live through the proven character');
-  assert(text(page).includes('Namebound') && text(page).includes('Bound by name only'), 'the characters bound by name are listed');
+  assert(text(page).includes('Namebound') && text(page).includes('Matched by name only'), 'the characters bound by name are listed');
   assert(dry.boundByName.classMismatch === 0 || text(page).includes('right name with another class'), 'the class mismatch is counted');
   assert(dry.boundByName.classMismatch > 0, 'the fixture has one (Nameclass)');
   assert(text(page).includes('Nameleft Nameleft Former') && text(page).includes('Not on the guild roster 7') && text(page).includes('Showing 5 of 7'), 'the character that left the guild comes first; the rest is behind Show all');
@@ -1044,6 +1292,49 @@ check('the pages against the Worker: step by step on a pinned legacy guild (pin,
   assert(m, banner.slice(0, 400));
   assert.deepEqual([Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])], [dry.access.members.afterFlip, dry.access.members.today - dry.access.loses.count, dry.access.gains.count, dry.access.loses.count], 'the result says what the preview promised');
   assert.deepEqual([Number(m[5]), Number(m[6])], [dry.ranks.changed, dry.ranks.becomesTrial]);
+});
+
+check('the pages against the Worker: unticking characters, Update preview and the switch - the result is the updated preview, which showed something else than the first one (the defect of the live run)', async () => {
+  const s = await flipWorld();
+  resetBrowser(`#/g/${s.gid}/setup`);
+  const { view, html } = await realPage(s);
+  G.handlers.click['setup-pin-next']();
+  await until(() => view.step === 2);
+  G.handlers.click['setup-ranks-next']();
+  await until(() => view.step === 3 && view.preview);
+  const first = view.preview;
+  // Untick Nbperson (their account keeps its access only through the match) and Trialone (the Trial character).
+  for (const id of [s.people.nb.cid, s.people.trial.cid]) G.handlers.change['setup-bind'](el({ 'data-id': id }, { checked: false }));
+  assert(html().includes('class="gs-su-stats is-stale"') && /<button[^>]*disabled[^>]*>(?:<span>)?Next/.test(html()), 'dimmed, Next off');
+  G.handlers.click['setup-preview-next']();
+  assert.equal(view.step, 3);
+  G.handlers.click['setup-preview-update']();
+  await until(() => !view.updating && view.preview !== first);
+  const second = view.preview;
+  assert(second.token !== first.token);
+  assert.deepEqual(second.confirmedCharacterIds, first.boundByName.ids.filter((id) => id !== s.people.nb.cid && id !== s.people.trial.cid).sort());
+  assert.equal(second.access.loses.count, first.access.loses.count + 1, 'Nbperson\'s account loses its access');
+  assert.equal(second.ranks.becomesTrial, first.ranks.becomesTrial - 1, 'Trialone is no Trial');
+  assert(!html().includes('is-stale') && primaryOf(html(), 'Next'), 'in sync');
+  const tiles = (page) => [...page.matchAll(/gs-su-stat-n">(\d+)/g)].map((m) => Number(m[1]));
+  assert.deepEqual(tiles(html()), [second.access.loses.count, second.access.gains.count, second.ranks.changed, second.ranks.becomesTrial, second.permissions.gains.count]);
+  // Switch: the sign-in is fresh, so the flip applies at once with the token and the ids of the updated preview.
+  G.handlers.click['setup-preview-next']();
+  assert.equal(view.step, 4);
+  await grant(s, 'gm');
+  G.handlers.click['setup-switch']();
+  const { form } = fakeDialog(dialogs[0].innerHTML);
+  G.handlers.submit['setup-switch-form'](form);
+  await until(() => view.step === 5);
+  assert.equal(view.step, 5, text(html()).slice(0, 300));
+  const banner = text(html());
+  const m = /(\d+) accounts? (?:is a member|are members): (\d+) stayed, (\d+) gained access and (\d+) lost it\. (\d+) characters? changed core rank, (\d+) of them (?:is|are) on Trial\./.exec(banner);
+  assert(m, banner.slice(0, 400));
+  assert.deepEqual([Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])],
+    [second.access.members.afterFlip, second.access.members.today - second.access.loses.count, second.access.gains.count, second.access.loses.count, second.ranks.changed, second.ranks.becomesTrial], 'the result is what the updated preview promised');
+  assert.notDeepEqual([Number(m[4]), Number(m[6])], [first.access.loses.count, first.ranks.becomesTrial], 'and not what the first one showed');
+  const kept = await s.rows('SELECT id, blizzard_char_id FROM characters WHERE id IN (?, ?)', s.people.nb.cid, s.people.trial.cid);
+  assert(kept.every((row) => row.blizzard_char_id === null), 'the unticked characters stay unmatched');
 });
 
 check('the pages against the Worker: the pin (the sign-in carries the name, the act posts it) and the map on a fresh legacy guild; the Owner who cannot be proved sees it before switching', async () => {

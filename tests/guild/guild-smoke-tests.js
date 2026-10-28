@@ -22,7 +22,7 @@ function check(name, fn) { checks.push({ name, fn }); }
 const usageError = (argv, pattern) => assert.throws(() => smoke.parseArgs(argv), (error) => error.usage === true && pattern.test(error.message), argv.join(' '));
 
 check('up: a name alone gives the defaults (first free port later, discord + sources)', () => {
-  assert.deepEqual(smoke.parseArgs(['up', '--name', 'proof']), { command: 'up', name: 'proof', port: null, fakes: ['discord', 'sources'], open: false, pinOpen: false, script: null, scriptArgs: [] });
+  assert.deepEqual(smoke.parseArgs(['up', '--name', 'proof']), { command: 'up', name: 'proof', port: null, fakes: ['discord', 'sources'], open: false, pinOpen: false, ownerOnRoster: false, script: null, scriptArgs: [] });
 });
 
 check('up: --port and --with, also in the --flag=value form; discord is always on and the order is fixed', () => {
@@ -191,6 +191,86 @@ check('fromEnv / fromJson: api(who, ...) sends that person\'s cookie and the Ori
     server.close();
   }
   assert.throws(() => smoke.fromEnv({}), /GUILD_SMOKE_JSON is not set/);
+});
+
+check('up: --owner-on-roster makes the Owner a character on the roster; it takes no value, only on up, brings the Battle.net fake along (fixed order) and is documented in the header', () => {
+  assert.equal(smoke.parseArgs(['up', '--name', 'x']).ownerOnRoster, false);
+  const on = smoke.parseArgs(['up', '--name', 'x', '--owner-on-roster']);
+  assert.equal(on.ownerOnRoster, true);
+  assert.deepEqual(on.fakes, ['discord', 'sources', 'bnet'], 'implies bnet; the default fakes stay');
+  assert.deepEqual(smoke.parseArgs(['up', '--name', 'x', '--with', 'discord', '--owner-on-roster']).fakes, ['discord', 'bnet']);
+  assert.deepEqual(smoke.parseArgs(['up', '--owner-on-roster', '--name', 'x', '--with', 'discord,sources,bnet', '--pin-open', '--port', '8799']).fakes, ['discord', 'sources', 'bnet'], 'with the other flags, nothing doubled');
+  assert.equal(smoke.parseArgs(['up', '--owner-on-roster', '--name', 'x', '--pin-open', '--open']).pinOpen, true);
+  usageError(['up', '--name', 'x', '--owner-on-roster=1'], /--owner-on-roster takes no value/);
+  usageError(['down', '--name', 'x', '--owner-on-roster'], /unknown option --owner-on-roster/);
+  usageError(['run', '--name', 'x', '--owner-on-roster', 'a.js'], /unknown option --owner-on-roster/);
+  usageError(['up', '--name', 'x', '--owner-on-roster', '--owner-on-roster'], /--owner-on-roster was given twice/);
+  const header = require('node:fs').readFileSync(path.join(__dirname, '..', '..', 'tools', 'guild-smoke.js'), 'utf8').split('*/')[0];
+  assert(header.includes('--owner-on-roster') && /founding/i.test(header) && header.includes('8000') && header.includes('--with bnet'), 'the header documents it and says why it works');
+  assert(/\[--owner-on-roster\]/.test(header.slice(0, header.indexOf('up    migrates'))), 'the usage lines name it');
+});
+
+// One JSON call with a throw-away connection (agent: false): fetch's keep-alive pool left a handle that made Node on Windows abort ("UV_HANDLE_CLOSING") when the suite exited.
+function callJson(base, route, { method = 'GET', headers = {}, body = null } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(new URL(route, base), { method, headers: { ...headers, Connection: 'close' }, agent: false }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+// The fake Battle.net over HTTP: the account's profile characters and the generated roster's members, for the checks below.
+async function fakeBnetAnswers(options) {
+  const { createFakeBattlenet } = require('../../tools/fake-battlenet.js');
+  const fake = createFakeBattlenet(options);
+  await new Promise((resolve) => fake.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${fake.server.address().port}`;
+  try {
+    const basic = { Authorization: `Basic ${Buffer.from('id:secret').toString('base64')}` };
+    const token = await callJson(base, '/token', {
+      method: 'POST', headers: { ...basic, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', code: 'c', redirect_uri: 'http://127.0.0.1/cb' }).toString(),
+    });
+    const bearer = { Authorization: `Bearer ${token.access_token}` };
+    const profile = await callJson(base, '/profile/user/wow?namespace=profile-classicann-us', { headers: bearer });
+    const roster = await callJson(base, '/data/wow/guild/dreamscythe/smoke-guard/roster?namespace=profile-classicann-us', { headers: bearer });
+    return { profile: profile.wow_accounts[0].characters, roster: roster.members };
+  } finally {
+    await new Promise((resolve) => fake.server.close(resolve));
+  }
+}
+
+check('fake Battle.net --owner-on-roster: the account\'s profile holds Thornwick with the roster\'s own id, class, level and realm; the stock fake has no such character (its ids never match)', async () => {
+  const stock = await fakeBnetAnswers();
+  assert(!stock.profile.some((entry) => entry.name === 'Thornwick'), 'the stock profile has no Thornwick');
+  const stockIds = new Set(stock.profile.map((entry) => entry.id));
+  assert(stock.roster.every((member) => !stockIds.has(member.character.id)), 'no stock profile id is a roster id: that is why the option exists');
+  const on = await fakeBnetAnswers({ ownerOnRoster: true });
+  const mine = on.profile.filter((entry) => entry.name === 'Thornwick');
+  assert.equal(mine.length, 1);
+  const row = on.roster.find((member) => member.character.name === 'Thornwick');
+  assert(row, 'the roster has him');
+  assert.equal(mine[0].id, row.character.id, 'the same id');
+  assert.equal(mine[0].id, 8000);
+  assert.equal(mine[0].realm.id, row.character.realm.id, 'the same realm');
+  assert.equal(mine[0].realm.slug, row.character.realm.slug);
+  assert.equal(mine[0].playable_class.id, row.character.playable_class.id, 'the same class');
+  assert.equal(mine[0].level, row.character.level);
+  assert.equal(row.rank, 0, 'the guild master of the generated roster');
+  // Everything else of the stock answer is unchanged.
+  assert.deepEqual(on.profile.filter((entry) => entry.name !== 'Thornwick').map((entry) => [entry.name, entry.id]), stock.profile.map((entry) => [entry.name, entry.id]));
+  assert.deepEqual(on.roster, stock.roster);
+});
+
+check('tools/fake-battlenet.js: the --owner-on-roster flag and its environment fallback are documented and read', () => {
+  const source = require('node:fs').readFileSync(path.join(__dirname, '..', '..', 'tools', 'fake-battlenet.js'), 'utf8');
+  const header = source.split('*/')[0];
+  assert(header.includes('--owner-on-roster') && header.includes('8000'));
+  assert(/args\['owner-on-roster'\] === 'true'/.test(source) && source.includes('FAKE_BATTLENET_OWNER_ON_ROSTER'));
 });
 
 (async () => {

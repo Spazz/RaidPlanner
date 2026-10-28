@@ -1,21 +1,26 @@
 // The flip (user-hierarchy build, lanes B5 and B9). OWNER ONLY, like the rank map: the flip changes how the whole guild is let in.
 //
-//   POST /api/guild/:gid/flip/dry-run   no body -> { token, expiresAt, rankSource, rosterSyncId, access, needsClaim, permissions, owner, boundByName, ranks, notOnRoster, blockers }
-//                                       READS and mints a token (worker/dry-run.js), bound to this Owner, the previewed lists (state hash 'flip:...' = every section's hashPart), the stored
-//                                       roster's sync id and 10 minutes. `blockers` lists what the flip would refuse today ([] = it can run): the same refusals, codes and texts as below.
-//                                       403 forbidden (not the Owner) | 409 already_ingame | 429 (10 dry runs per 10 minutes)
+//   POST /api/guild/:gid/flip/dry-run   body { confirmedCharacterIds? } -> { token, expiresAt, rankSource, rosterSyncId, confirmedCharacterIds, access, needsClaim, permissions, owner, boundByName, ranks, notOnRoster, blockers }
+//                                       READS and mints a token (worker/dry-run.js), bound to this Owner, the previewed lists, the SELECTION of characters to match (state hash 'flip:...', worker/flip-preview.js
+//                                       previewFlipFor), the stored roster's sync id and 10 minutes. confirmedCharacterIds (optional, same rules as POST /flip's; left out = every `boundByName` candidate): every count and list
+//                                       is read as if exactly those characters were matched, and the answer echoes the selection the token is for. `blockers` lists what the flip would refuse today ([] = it can
+//                                       run): the same refusals, codes and texts as below.
+//                                       400 confirmation_required | bad_confirmation | 403 forbidden (not the Owner) | 409 already_ingame | 429 (10 dry runs per 10 minutes)
 //   POST /api/guild/:gid/flip           body { token, confirmedCharacterIds } -> { ok, rankSource: 'ingame', ownerUserId, applied }   (worker/flip.js: ONE atomic batch)
-//                                       confirmedCharacterIds: the characters of the dry run's `boundByName` list the Owner ticked (a subset of its ids, [] = none); the others stay unbound
+//                                       confirmedCharacterIds: the characters of the dry run's `boundByName` list the Owner ticked (a subset of its ids, [] = none); the others stay unbound. They must be the
+//                                       selection the token was minted for (409 confirmation_changed otherwise: run the dry run again with the new ticks)
 //                                       needs the fresh sign-in of purpose source_switch, params { from: null, to: 'ingame' } (Battle.net, worker/fresh.js)
 //                                       400 approval_required | confirmation_required | bad_confirmation | 403 forbidden | 403 fresh_required | 404 | 503 effective_roles_missing
-//                                       409 already_ingame | source_not_legacy | not_pinned | no_good_sync | no_owner | owner_would_be_suspended | rank_map_incomplete | approval_invalid | approval_stale
+//                                       409 already_ingame | source_not_legacy | not_pinned | no_good_sync | no_owner | owner_would_be_suspended | rank_map_incomplete | approval_invalid | approval_stale | confirmation_changed
 // The order of the refusals: the facts the guild row alone shows (cheap), then the fresh sign-in, then the preview-based ones (the Owner would be suspended, an unmapped rank), then the
 // approval. A guild whose rank_source is already 'ingame' has nothing to preview or flip.
 import { HttpError, jsonResponse } from '../http.js';
-import { APPROVAL_TTL_MS, approvalProblem, insertApprovalStatement, loadApproval, markerGuard, newApprovalToken, newMarkerId } from '../dry-run.js';
+import { APPROVAL_TTL_MS, insertApprovalStatement, loadApproval, markerGuard, newApprovalToken, newMarkerId } from '../dry-run.js';
 import { allOf, beginFreshAct } from '../fresh.js';
-import { FLIP_FRESH_PARAMS, alreadyIngameError, approvalInvalidError, approvalStaleError, blockerError, flipBlockers, flipStatements, missingRoleViews, rolesMissingError } from '../flip.js';
-import { BINDING_DEPENDENT_KEYS, FLIP_SECTIONS, previewFlip } from '../flip-preview.js';
+import {
+  FLIP_FRESH_PARAMS, alreadyIngameError, approvalInvalidError, approvalStaleError, blockerError, confirmationChangedError, flipApprovalProblem, flipBlockers, flipStatements, missingRoleViews, rolesMissingError,
+} from '../flip.js';
+import { previewFlipFor } from '../flip-preview.js';
 import { requireOwnerFirst } from '../owner-gate.js';
 import { ownerGuard } from '../owner.js';
 import { FLIP_DRY_RUN_LIMIT, FLIP_DRY_RUN_WINDOW_MS, enforceRateLimit } from '../ratelimit.js';
@@ -31,14 +36,17 @@ export async function dryRunFlip(ctx) {
   const guildId = ctx.params.gid;
   const approverUserId = ctx.session.user.id;
   await requireOwnerFirst(db, { userId: approverUserId, guildId, viewAs: ctx.session.viewAs }, 'Only the Owner of the guild can run the flip dry run.');
+  // The ticks the Owner wants previewed (same rules as the flip's); left out = every candidate, the default tick state. A malformed list costs no dry-run slot.
+  const ticked = readConfirmed(ctx.body, { optional: true });
   // Nothing to preview once the guild is in-game: refused before the rate limit and the reads (the preview re-checks inside its own snapshot below).
   const row = await db.prepare('SELECT rank_source FROM guilds WHERE id = ?').bind(guildId).first();
   if (row && row.rank_source === 'ingame') throw alreadyIngame();
   await enforceRateLimit(db, approverUserId, ctx.now(), { key: `flip:${approverUserId}`, limit: FLIP_DRY_RUN_LIMIT, windowMs: FLIP_DRY_RUN_WINDOW_MS });
-  const preview = await previewFlip(db, guildId);
+  const preview = await previewFlipFor(db, guildId, ticked);
   // The preview reads the guild row in its own snapshot: a flip that landed between the Owner check and here is seen as it is.
   if (!preview.guild) throw new HttpError(404, 'not_found', 'That guild does not exist.');
   if (preview.guild.rankSource === 'ingame') throw alreadyIngame();
+  if (preview.foreign.length) throw badConfirmation({ ids: preview.foreign.slice(0, 25) });
   const { token, tokenHash } = await newApprovalToken(ctx.randomBytes);
   const now = ctx.now();
   await insertApprovalStatement(db, { tokenHash, guildId, approverUserId, stateHash: preview.stateHash, rosterSyncId: preview.guild.rosterSyncId, now }).run();
@@ -48,16 +56,20 @@ export async function dryRunFlip(ctx) {
     expiresAt: now + APPROVAL_TTL_MS,
     rankSource: preview.guild.rankSource,
     rosterSyncId: preview.guild.rosterSyncId,
+    // The selection the token is for: the flip must be sent exactly these ids.
+    confirmedCharacterIds: preview.confirmed,
     ...preview.payload,
     blockers: blockers.map((blocker) => ({ code: blocker.code, message: blocker.message, ...blocker.extra })),
   });
 }
 
 // The ticked characters: a list of ids, [] allowed (none), duplicates collapsed. Whether they are all on the dry run's list is checked once the state is read.
+// optional (the dry run): an omitted list is null = every candidate; a list that is no list is still refused.
 export const MAX_CONFIRMED = 2000;
 const badConfirmation = (extra = {}) => new HttpError(400, 'bad_confirmation', "Confirm only characters from the dry run's list of characters to match to the roster by name.", { field: 'confirmedCharacterIds', ...extra });
-function readConfirmed(body) {
+function readConfirmed(body, { optional = false } = {}) {
   const list = body && body.confirmedCharacterIds;
+  if (optional && list === undefined) return null;
   if (!Array.isArray(list)) {
     throw new HttpError(400, 'confirmation_required', 'Say which characters to match to the roster by name: send confirmedCharacterIds (an empty list matches none).', { field: 'confirmedCharacterIds' });
   }
@@ -110,29 +122,29 @@ export async function flipGuild(ctx) {
   const freshOptions = { required: true, purpose: 'source_switch', guildId, params: FLIP_FRESH_PARAMS, extra: allOf(ownerGuard(guildId, approverUserId), markerGuard(checkId)) };
   const act = await beginFreshAct(ctx, freshOptions);
 
-  const preview = await previewFlip(db, guildId);
+  // The state for exactly the characters the Owner ticks (previewFlipFor): the lists of the dry run, the selection and the lists as that selection leaves them.
+  const preview = await previewFlipFor(db, guildId, confirmed);
   if (!preview.guild) throw new HttpError(404, 'not_found', 'That guild does not exist.');
   const blockers = flipBlockers({ guild: preview.guild, owner: preview.payload.owner, ranks: preview.payload.ranks });
   if (blockers.length) throw blockerError(blockers[0]);
 
   const now = ctx.now();
-  const problem = approvalProblem(await loadApproval(db, tokenHash), { guildId, approverUserId, stateHash: preview.stateHash, rosterSyncId: preview.guild.rosterSyncId, now });
-  if (problem) {
+  const problem = flipApprovalProblem(await loadApproval(db, tokenHash), { guildId, approverUserId, stateHash: preview.stateHash, rosterSyncId: preview.guild.rosterSyncId, now });
+  if (problem === 'invalid' || problem === 'stale') {
     // A token that was spent a moment ago by a flip that has just landed reads as invalid or stale here; the Owner is told what happened.
     const moved = await db.prepare('SELECT rank_source FROM guilds WHERE id = ?').bind(guildId).first();
     if (moved && moved.rank_source === 'ingame') throw alreadyIngameError();
     throw problem === 'invalid' ? approvalInvalidError() : approvalStaleError();
   }
 
-  // The ticked characters must all be on the list the Owner saw (the token covers it in full, so it is the list of this request too).
-  const listed = new Set(preview.hashParts.boundByName.ids);
-  const foreign = confirmed.filter((id) => !listed.has(id));
-  if (foreign.length) throw badConfirmation({ ids: foreign.slice(0, 25) });
-  // Everything that depends on the binding is counted again for the characters that are really bound (the whole list: the preview already says it).
-  const effective = confirmed.length === listed.size
-    ? preview
-    : await previewFlip(db, guildId, FLIP_SECTIONS.filter((section) => BINDING_DEPENDENT_KEYS.includes(section.key)), { confirmed });
-  const plan = flipStatements(ctx, { guildId, approverUserId, timeZone: row.time_zone, preview, effective, confirmedIds: confirmed, tokenHash, checkId, act });
+  // The ticked characters must all be on the list the Owner saw (the token covers it in full, so it is the list of this request too). A foreign id is a bad request even when the
+  // selection also differs from the token's.
+  if (preview.foreign.length) throw badConfirmation({ ids: preview.foreign.slice(0, 25) });
+  // The selection is part of the approval: a flip for other ticks than the preview was made for is refused, whatever the lists say.
+  if (problem === 'ticks') throw confirmationChangedError();
+  const plan = flipStatements(ctx, {
+    guildId, approverUserId, timeZone: row.time_zone, preview: preview.base, effective: preview.effective, confirmedIds: preview.confirmed, stateHash: preview.stateHash, tokenHash, checkId, act,
+  });
   const results = await db.batch(plan.statements);
   if (!wrote(results[plan.flippedAt])) {
     throw await refusalAfterBatch(ctx, { guildId, approverUserId, tokenHash, now, reassertFresh: () => beginFreshAct(ctx, freshOptions) });

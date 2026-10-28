@@ -7,7 +7,9 @@
  *   - the happy path: the whole end state (rank source, seat, stored Guild Master row, Discord roles, identity keys, core ranks, Trial dates, audit, markers, the spent grant and token);
  *   - the compare-and-set chain: two flips racing leave exactly one applied with the seat intact, a sync (or any other change the token covers) landing between the check and the batch
  *     makes the flip refuse and spends nothing;
- *   - the batch has the same number of statements for a small and for a 506-member roster.
+ *   - the batch has the same number of statements for a small and for a 506-member roster;
+ *   - (lane B8a-fix3) the dry run takes the ticks (confirmedCharacterIds), reads every count as that selection leaves it and mints the token for it; the flip must be sent the same selection
+ *     (409 confirmation_changed otherwise) and applies exactly the numbers the dry run showed.
  * The unflip and the acceptance snapshot are tests/guild/guild-b9-unflip-tests.js.
  */
 const assert = require('node:assert/strict');
@@ -72,7 +74,9 @@ check('the dry run lists the characters the flip binds by name (with owner and p
   assert.deepEqual([ranks.changed, ranks.becomesTrial, ranks.becomesSocial], [9, 1, 8]);
   assert.deepEqual(ranks.transitions, [{ from: 'raider', to: 'social', count: 8 }, { from: 'raider', to: 'trial', count: 1 }]);
   assert.deepEqual(ranks.unmapped, []);
-  assert.deepEqual(ranks.samples.find((entry) => entry.name === 'Trialone'), { name: 'Trialone', class: 'MAGE', from: 'raider', to: 'trial' }, 'a rank sample names the character and its class');
+  assert.deepEqual(ranks.samples.find((entry) => entry.name === 'Trialone'), { name: 'Trialone', class: 'MAGE', from: 'raider', to: 'trial', rosterRank: 6 }, 'a rank sample names the character, its class and its in-game rank');
+  assert.equal(ranks.samples[0].name, 'Trialone', 'the Trial characters come first');
+  assert.equal(ranks.samples.find((entry) => entry.name === 'Namemissing').rosterRank, null, 'a character off the roster has no in-game rank');
   // Not on the roster even after the binding: Nameleft (it left: Former) and six characters that are Social; the list says which is which.
   const { notOnRoster } = res.json;
   assert.deepEqual([notOnRoster.count, notOnRoster.former, notOnRoster.social], [7, 1, 6]);
@@ -343,17 +347,19 @@ check('POST /flip needs the ticked list: no list, a list that is no list, an ent
   assert(/dry run/.test(refusal.message));
   // The token is judged first: a list that would be refused does not make a bad token look fine.
   await refused(s, 'no-such-token', 409, 'approval_invalid', { body: { token: 'no-such-token', confirmedCharacterIds: foreign } });
-  // The same ticked list with the right ids goes through.
-  const ok = await s.call('gm', 'POST', '/flip', body([s.people.bound.cid]));
+  // The same ticked list with the right ids goes through (with a token made for exactly that list).
+  const forOne = (await dryRun(s, 'gm', [s.people.bound.cid])).json;
+  const ok = await s.call('gm', 'POST', '/flip', { token: forOne.token, confirmedCharacterIds: [s.people.bound.cid] });
   assert.equal(ok.status, 200, ok.text);
 });
 
 check('the Owner ticks a subset: the unticked characters stay unbound (and Social), the ranks, the access lines and the banner counts are those of the ticked binding, the batch has the same size', async () => {
   const s = await flipWorld();
-  const dry = (await dryRun(s)).json;
-  // Tick Namebound and Namenoproof; leave Trialone (would become Trial) and Nbperson (their account's only character) unticked.
+  // Tick Namebound and Namenoproof; leave Trialone (would become Trial) and Nbperson (their account's only character) unticked. `full` is the preview with every candidate ticked.
   const ticked = [s.people.bound.cid, s.people.none.cid];
   const left = [s.people.trial.cid, s.people.nb.cid];
+  const full = (await dryRun(s)).json;
+  const dry = (await dryRun(s, 'gm', ticked)).json;
   let size = null;
   beforeBatch(s, isFlipBatch, async (statements) => { size = statements.length; });
   const res = await flipWith(s, dry, 'gm', { confirmed: ticked });
@@ -371,13 +377,17 @@ check('the Owner ticks a subset: the unticked characters stay unbound (and Socia
   // The banner: the ticked binding's lines. Nbperson's account loses its access (its only character is unbound); the full list would have kept it.
   const applied = res.json.applied;
   assert.equal(applied.boundByName, 2);
-  assert.equal(applied.loses, dry.access.loses.count + 1);
-  assert.equal(applied.membersAfter, dry.access.members.afterFlip - 1);
+  assert.equal(applied.loses, full.access.loses.count + 1);
+  assert.equal(applied.membersAfter, full.access.members.afterFlip - 1);
   assert.equal(applied.stay, applied.membersBefore - applied.loses);
   assert.equal(applied.membersAfter, applied.stay + applied.gains);
   assert.equal(applied.becameTrial, 0);
-  assert.equal(applied.rankChanges, dry.ranks.changed + 1, 'Trialone becomes Social instead of Trial (still a change), Nbperson becomes Social instead of staying');
-  assert.equal(applied.becameSocial, dry.ranks.becomesSocial + 2);
+  assert.equal(applied.rankChanges, full.ranks.changed + 1, 'Trialone becomes Social instead of Trial (still a change), Nbperson becomes Social instead of staying');
+  assert.equal(applied.becameSocial, full.ranks.becomesSocial + 2);
+  // The preview of the ticked binding promised exactly these numbers.
+  assert.equal(dry.access.loses.count, applied.loses);
+  assert.equal(dry.access.members.afterFlip, applied.membersAfter);
+  assert.deepEqual([dry.ranks.changed, dry.ranks.becomesTrial, dry.ranks.becomesSocial], [applied.rankChanges, applied.becameTrial, applied.becameSocial]);
   const seen = [];
   for (const key of ['gm', 'mem', 'off', 'dis', 'nb', 'out']) {
     const me = await s.call(key, 'GET', '/auth/me');
@@ -390,14 +400,14 @@ check('the Owner ticks a subset: the unticked characters stay unbound (and Socia
 
 check('ticking nothing binds nothing: [] is a valid list, the flip applies and every candidate stays unbound; duplicates in the list collapse', async () => {
   const s = await flipWorld();
-  const dry = (await dryRun(s)).json;
+  const dry = (await dryRun(s, 'gm', [])).json;
   const res = await flipWith(s, dry, 'gm', { confirmed: [] });
   assert.equal(res.status, 200, res.text);
   assert.equal(res.json.applied.boundByName, 0);
   assert.equal(await s.w.count('characters', 'guild_id = ? AND blizzard_char_id IS NOT NULL AND id IN (?, ?, ?, ?)', s.gid, s.people.bound.cid, s.people.none.cid, s.people.trial.cid, s.people.nb.cid), 0);
   assert.equal(await s.w.count('audit_log', "guild_id = ? AND action = 'character.match_roster'", s.gid), 0);
   const t = await flipWorld();
-  const dryT = (await dryRun(t)).json;
+  const dryT = (await dryRun(t, 'gm', [t.people.bound.cid])).json;
   const twice = await flipWith(t, dryT, 'gm', { confirmed: [t.people.bound.cid, t.people.bound.cid] });
   assert.equal(twice.status, 200, twice.text);
   assert.equal(twice.json.applied.boundByName, 1);
@@ -560,6 +570,157 @@ check('the batch has the same number of statements for a small roster and for a 
   assert.equal(counts.small.size, counts.big.size, JSON.stringify(counts));
   assert.equal(counts.small.size, FLIP_BATCH_STATEMENTS);
   assert(counts.big.roster >= 506);
+});
+
+// ---------------------------------------------------------------------------
+// The preview FOR THE TICKS (lane B8a-fix3): the dry run takes the selection, the token is minted for it, and the flip must be sent the same one.
+
+// The numbers a dry run promises and the flip's banner reports; they must be equal.
+const promised = (dry) => ({
+  membersBefore: dry.access.members.today, membersAfter: dry.access.members.afterFlip, stay: dry.access.members.today - dry.access.loses.count, gains: dry.access.gains.count, loses: dry.access.loses.count,
+  rankChanges: dry.ranks.changed, becameTrial: dry.ranks.becomesTrial, becameSocial: dry.ranks.becomesSocial, newPermissions: dry.permissions.gains.count, lostPermissions: dry.permissions.loses.count,
+  needsClaim: dry.needsClaim.count, boundByName: dry.confirmedCharacterIds.length,
+});
+const reported = (applied) => {
+  const { owner, discordRolesMadeManual, discordRolesDropped, ...numbers } = applied;
+  return numbers;
+};
+
+check('the dry run for a selection counts everything as that selection leaves it, and the flip then applies exactly those numbers (an unticked person loses their membership; an unticked Trial character is no Trial)', async () => {
+  for (const [label, key, name] of [['Nbperson (their account keeps its access only through the match)', 'nb', 'Nbperson'], ['Trialone (the one that becomes Trial)', 'trial', 'Trialone']]) {
+    const s = await flipWorld();
+    const full = (await dryRun(s)).json;
+    const ids = full.boundByName.ids;
+    const ticked = ids.filter((id) => id !== s.people[key].cid);
+    assert.equal(ticked.length, ids.length - 1);
+    const sub = (await dryRun(s, 'gm', ticked)).json;
+    assert.deepEqual(sub.confirmedCharacterIds, [...ticked].sort(), `${label}: the answer echoes the selection the token is for`);
+    assert.deepEqual(full.confirmedCharacterIds, [...ids].sort(), 'no list = every candidate');
+    // The candidates stay the whole list (the Owner can tick the unticked one again); the lines move.
+    assert.deepEqual(sub.boundByName, full.boundByName);
+    if (key === 'nb') {
+      assert.equal(sub.access.loses.count, full.access.loses.count + 1, label);
+      assert.equal(sub.access.members.afterFlip, full.access.members.afterFlip - 1);
+      assert(sub.access.loses.samples.some((entry) => entry.name === name));
+      assert.equal(sub.ranks.changed, full.ranks.changed + 1);
+    } else {
+      assert.equal(sub.ranks.becomesTrial, full.ranks.becomesTrial - 1, label);
+      assert.equal(sub.ranks.becomesSocial, full.ranks.becomesSocial + 1);
+      assert.equal(sub.ranks.changed, full.ranks.changed);
+    }
+    assert.equal(sub.notOnRoster.count, full.notOnRoster.count + 1, 'the unticked character is off the roster');
+    assert(sub.notOnRoster.samples.some((entry) => entry.character === name));
+    assert.deepEqual(sub.blockers, []);
+    const res = await flipWith(s, sub, 'gm', { confirmed: sub.confirmedCharacterIds });
+    assert.equal(res.status, 200, res.text);
+    assert.deepEqual(reported(res.json.applied), promised(sub), `${label}: the flip applies what the preview showed`);
+    assert.notDeepEqual(promised(full), promised(sub), 'and the preview of the full list showed something else');
+  }
+});
+
+check('the dry run for a selection reads the four binding-dependent sections a second time: 8 more D1 statements (27 in all, far inside the invocation budget of 45)', async () => {
+  const s = await flipWorld();
+  const count = async (confirmed) => {
+    const mark = s.w.db.statementLog.length;
+    const res = await dryRun(s, 'gm', confirmed);
+    assert.equal(res.status, 200, res.text);
+    return { statements: s.w.db.statementLog.length - mark, json: res.json };
+  };
+  const full = await count();
+  const some = await count(full.json.boundByName.ids.slice(1));
+  const all = await count(full.json.boundByName.ids);
+  assert.equal(all.statements, full.statements, 'every candidate ticked = the default: no second pass');
+  assert.equal(some.statements - full.statements, 8, 'the second pass: the guild row and access (2), needsClaim, ranks (3), notOnRoster');
+  assert(some.statements <= 30, `the dry run for a selection used ${some.statements} statements`);
+  console.log(`      measured: the dry run ran ${full.statements} D1 statements, for a selection ${some.statements}`);
+});
+
+check('the dry run takes its ticks like the flip: left out = every candidate, duplicates and order do not matter, a list that is no list or names a stranger is 400 and mints nothing', async () => {
+  const s = await flipWorld();
+  const approvals = () => s.rows('SELECT map_hash FROM dry_run_approvals ORDER BY created_at, token_hash');
+  const first = (await dryRun(s)).json;
+  const explicit = (await dryRun(s, 'gm', [...first.boundByName.ids].reverse())).json;
+  assert.deepEqual(explicit.confirmedCharacterIds, first.confirmedCharacterIds);
+  const [a, b] = await approvals();
+  assert.equal(a.map_hash, b.map_hash, 'ticking every candidate is the default: same state, same hash');
+  const [one, two] = first.boundByName.ids;
+  await dryRun(s, 'gm', [one, two]);
+  await dryRun(s, 'gm', [two, one, two]);
+  const rows = await approvals();
+  assert.equal(rows.length, 4);
+  assert.equal(new Set(rows.map((row) => row.map_hash)).size, 2, 'a subset has its own hash; order and duplicates do not change it');
+  assert(rows.every((row) => /^flip:[0-9a-f]+:[0-9a-f]+:[0-9a-f0]+$/.test(row.map_hash)));
+  // Refusals before the token.
+  const before = (await approvals()).length;
+  const bad = async (confirmed, status, code) => {
+    const res = await s.call('gm', 'POST', '/flip/dry-run', { confirmedCharacterIds: confirmed });
+    assert.equal(res.status, status, res.text);
+    assert.equal(res.json.error, code, res.text);
+    assert.equal(res.json.field, 'confirmedCharacterIds');
+    return res.json;
+  };
+  await bad('all', 400, 'confirmation_required');
+  await bad(null, 400, 'confirmation_required');
+  await bad({ 0: one }, 400, 'confirmation_required');
+  await bad([one, 7], 400, 'bad_confirmation');
+  await bad([''], 400, 'bad_confirmation');
+  await bad(Array.from({ length: 2001 }, (_, i) => `c_${i}`), 400, 'bad_confirmation');
+  const foreign = [s.people.klass.cid, s.people.hand.cid, 'c_NoSuchCharacter0000000000'];
+  assert.deepEqual((await bad([one, ...foreign], 400, 'bad_confirmation')).ids, foreign);
+  assert.equal((await approvals()).length, before, 'no refusal minted a token');
+  // Owner only, as before.
+  const res = await s.call('off', 'POST', '/flip/dry-run', { confirmedCharacterIds: [one] });
+  assert.equal(res.status, 403, res.text);
+});
+
+check('the selection is part of the approval: a flip for other ticks than the token was made for is 409 confirmation_changed and changes nothing; the token survives and works with its own ticks', async () => {
+  const s = await flipWorld();
+  const full = (await dryRun(s)).json;
+  const ids = full.boundByName.ids;
+  const [x, y, z] = ids;
+  const forAll = full;
+  const forXY = (await dryRun(s, 'gm', [x, y])).json;
+  const forNone = (await dryRun(s, 'gm', [])).json;
+  const attempt = async (dry, confirmed) => {
+    const body = await refused(s, dry, 409, 'confirmation_changed', { body: { token: dry.token, confirmedCharacterIds: confirmed } });
+    assert(/Update the preview/.test(body.message) && body.field === 'confirmedCharacterIds', body.message);
+  };
+  await attempt(forAll, [x, y]); // a subset of a token made for everyone
+  await attempt(forXY, ids); // everyone, for a token made for two
+  await attempt(forXY, [x, z]); // same size, another character
+  await attempt(forXY, [x]); // fewer
+  await attempt(forNone, ids); // a token for nothing
+  await attempt(forNone, [x]);
+  await attempt(forAll, []);
+  // The order and duplicates of the right selection are fine (no refusal above burned the token).
+  const ok = await s.call('gm', 'POST', '/flip', { token: forXY.token, confirmedCharacterIds: [y, x, y] });
+  assert.equal(ok.status, 200, ok.text);
+  assert.deepEqual(reported(ok.json.applied), promised(forXY));
+});
+
+check('a guild that moved after the preview is approval_stale even when the ticks differ too, and a stranger among the ticks is 400 bad_confirmation first', async () => {
+  const s = await flipWorld();
+  const full = (await dryRun(s)).json;
+  const [x, y] = full.boundByName.ids;
+  const forXY = (await dryRun(s, 'gm', [x, y])).json;
+  // A new roster row gives the id-less Namemissing a place: the list the Owner approved is no longer the list.
+  rosterRow(s, { name: 'Namemissing', id: 9530, rank: 3 });
+  await refused(s, forXY, 409, 'approval_stale', { body: { token: forXY.token, confirmedCharacterIds: [x] } });
+  const again = (await dryRun(s, 'gm', [x])).json;
+  await refused(s, again, 400, 'bad_confirmation', { body: { token: again.token, confirmedCharacterIds: [y, 'c_NoSuchCharacter0000000000'] } });
+  const ok = await s.call('gm', 'POST', '/flip', { token: again.token, confirmedCharacterIds: [x] });
+  assert.equal(ok.status, 200, ok.text);
+});
+
+check('the cut at 25 never hides a Trial character: the rank samples list Trial first, with the in-game rank, even when more than 25 others change rank', async () => {
+  const s = await flipWorld({ bulk: 150 });
+  const dry = (await dryRun(s)).json;
+  assert.equal(dry.ranks.samples.length, 25);
+  const trial = dry.ranks.samples.filter((entry) => entry.to === 'trial');
+  assert.equal(trial.length, Math.min(25, dry.ranks.becomesTrial));
+  assert(dry.ranks.becomesTrial >= 6 && dry.ranks.becomesSocial > 25);
+  assert.deepEqual(dry.ranks.samples.slice(0, trial.length), trial, 'Trial first');
+  assert(trial.every((entry) => entry.rosterRank === 6), 'the in-game rank the map calls Trial');
 });
 
 runChecks(checks);

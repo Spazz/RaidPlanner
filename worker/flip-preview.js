@@ -355,3 +355,31 @@ export async function previewFlip(db, guildId, sections = FLIP_SECTIONS, options
   });
   return { guild, payload, hashParts, stateHash: await flipStateHash(hashParts) };
 }
+
+// ---------------------------------------------------------------------------
+// THE PREVIEW FOR A SELECTION (lane B8a-fix3). The Owner ticks which candidates of `boundByName` the flip matches to the roster; the dry run and the flip both read the state for
+// exactly that selection, so the numbers the Owner reads are the numbers the flip applies.
+//   ticked  the ids to count as matched (any order, duplicates collapse), or null = every candidate (the default tick state)
+// -> { guild, payload, base, effective, confirmed, foreign, stateHash }
+//   base       previewFlip's answer for every candidate (the whole state the lists are read from)
+//   effective  the binding-dependent sections for the confirmed ids (base itself when every candidate is confirmed)
+//   payload    base's payload with the binding-dependent sections of `effective`: what the dry run shows
+//   confirmed  the ticked ids that are candidates, sorted; foreign: the ticked ids that are not (the caller refuses them)
+//   stateHash  what the token covers: 'flip:<state>:<selection>:<effective>' = the hash of base's lists, the hash of the confirmed ids, the hash of effective's lists ('0' when every
+//              candidate is confirmed). The three segments let the flip tell "the ticks differ from the token's" (flipApprovalProblem) from "the guild moved".
+export async function previewFlipFor(db, guildId, ticked = null) {
+  const base = await previewFlip(db, guildId);
+  if (!base.guild) return { guild: null, payload: {}, base, effective: base, confirmed: [], foreign: [], stateHash: null };
+  const candidates = base.hashParts.boundByName.ids;
+  const listed = new Set(candidates);
+  const asked = ticked === null ? candidates : [...new Set(ticked)];
+  const confirmed = asked.filter((id) => listed.has(id)).sort();
+  const foreign = asked.filter((id) => !listed.has(id));
+  const everyone = confirmed.length === candidates.length;
+  const effective = everyone ? base : await previewFlip(db, guildId, FLIP_SECTIONS.filter((section) => BINDING_DEPENDENT_KEYS.includes(section.key)), { confirmed });
+  const payload = everyone ? base.payload : { ...base.payload, ...effective.payload };
+  const stateHash = [
+    FLIP_PURPOSE, base.stateHash.slice(FLIP_PURPOSE.length + 1), await hashToken(JSON.stringify(confirmed)), everyone ? '0' : await hashToken(JSON.stringify(effective.hashParts)),
+  ].join(':');
+  return { guild: base.guild, payload, base, effective, confirmed, foreign, stateHash };
+}

@@ -299,14 +299,14 @@ check("the token is a 'flip:' approval bound to the Owner, the previewed lists a
   s.exec(`UPDATE guilds SET last_good_sync_id = 'rs_known' WHERE id = '${s.gid}'`);
   const { approvalProblem, loadApproval } = await load('worker/dry-run.js');
   const { hashToken } = await load('worker/session.js');
-  const { previewFlip } = await load('worker/flip-preview.js');
+  const { previewFlipFor } = await load('worker/flip-preview.js');
   const flip = (await dry(s)).json;
   assert.equal(flip.rosterSyncId, 'rs_known');
   const row = await loadApproval(s.w.db, await hashToken(flip.token));
   assert.deepEqual([row.guild_id, row.approver_user_id, row.roster_sync_id, row.used_at], [s.gid, s.uids.gm, 'rs_known', null]);
-  assert(/^flip:[0-9a-f]+$/.test(row.map_hash), row.map_hash);
+  assert(/^flip:[0-9a-f]+:[0-9a-f]+:0$/.test(row.map_hash), row.map_hash);
   // B9's check: recompute the state with the same function; the token fits it exactly while nothing moved.
-  const state = async () => previewFlip(s.w.db, s.gid);
+  const state = async () => previewFlipFor(s.w.db, s.gid);
   const fits = async (over = {}) => approvalProblem(row, { guildId: s.gid, approverUserId: s.uids.gm, stateHash: (await state()).stateHash, rosterSyncId: 'rs_known', now: s.w.clock.now, ...over });
   assert.equal(await fits(), null);
   assert.equal(await fits({ approverUserId: s.uids.keep }), 'invalid', 'another account\'s token');

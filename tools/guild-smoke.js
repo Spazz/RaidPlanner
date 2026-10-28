@@ -3,7 +3,7 @@
  * An isolated, seeded copy of the guild tracker for API and DOM checks. Nothing here touches port 8787 or the dev database
  * (~/.raidsmith-dev/wrangler-state): every run lives in its own state dir and its own ports, on 127.0.0.1 only.
  *
- *   node tools/guild-smoke.js up   --name <x> [--port 8790-8799] [--with discord,sources,bnet] [--open] [--pin-open]
+ *   node tools/guild-smoke.js up   --name <x> [--port 8790-8799] [--with discord,sources,bnet] [--open] [--pin-open] [--owner-on-roster]
  *   node tools/guild-smoke.js down --name <x>
  *   node tools/guild-smoke.js run  --name <x> <script.js> [script args]
  *
@@ -19,6 +19,13 @@
  *       the Guild Master user. Without it GUILD_CREATOR_ALLOWLIST is the Guild Master's Discord ID, as in the pilot.
  *       --pin-open opens the setup pin (Guild setup, POST .../bnet/pin) for the seeded guild: the Worker reads SETUP_PIN_GUILDS when it starts, before the guild and its id
  *       exist, so it is set to '*' (every guild; the isolated state holds only the seeded one). Without it the pin is closed (a lone comma: nobody).
+ *       --owner-on-roster makes the seeded Owner (gm, the person Thornwick) a character that Battle.net proves AND that the in-game roster holds, so a check can run Guild setup from the
+ *       pin to the switch-over without hand-made rows. It implies --with bnet. The stock fake cannot do this alone: its profile characters carry ids 7000 + n and its roster ids 8000 + n,
+ *       and the Worker matches by id. Two things are done: the fake Battle.net is started with --owner-on-roster (tools/fake-battlenet.js: the account's profile holds Thornwick with the
+ *       roster's id 8000), and gm links that Battle.net account through the real flow (login -> fake authorize -> callback) (1) right after the first sign-in, BEFORE the guild exists - a
+ *       first link of an account that holds a staff role needs a fresh grant, so it cannot come later - which makes it the account's FOUNDING identity (linked within 60 s of the account's
+ *       creation: worker/fresh.js rule (a) accepts it for the Owner acts without the 7 days) and (2) once more after the seed, which is what stamps Thornwick's key and Battle.net proof
+ *       (the sign-in match of a legacy guild). Pin (--pin-open) then finds him on the roster and the flip dry run says the Owner is live. No clock is moved and no database is written.
  *       --port is the Worker's port (8790-8799, default the first free one); the fakes sit on port+10000 (Discord), +11000 (sources), +12000 (Battle.net).
  *       Every Worker secret is a placeholder passed with --var, so a local .env is never read for them and no real service is called.
  *       Each background process (the fakes, the Worker) runs behind tools/guild-smoke-host.js, the only thing started detached: it keeps the
@@ -50,7 +57,7 @@ const SESSION_COOKIE = '__Host-rs_session';
 const DISCORD_SERVER_ID = '900000000000000001';
 const WCL_REPORT = 'Fake000000000001';
 const USAGE = [
-  'usage: node tools/guild-smoke.js up   --name <x> [--port 8790-8799] [--with discord,sources,bnet] [--open] [--pin-open]',
+  'usage: node tools/guild-smoke.js up   --name <x> [--port 8790-8799] [--with discord,sources,bnet] [--open] [--pin-open] [--owner-on-roster]',
   '       node tools/guild-smoke.js down --name <x>',
   '       node tools/guild-smoke.js run  --name <x> <script.js> [script args]',
 ].join('\n');
@@ -63,11 +70,11 @@ function fail(message) {
   return error;
 }
 
-// -> { command, name, port | null, fakes: [...], open, pinOpen, script, scriptArgs }
+// -> { command, name, port | null, fakes: [...], open, pinOpen, ownerOnRoster, script, scriptArgs }
 function parseArgs(argv) {
   const [command, ...rest] = argv;
   if (!COMMANDS.includes(command)) throw fail(`unknown command "${command || ''}"\n${USAGE}`);
-  const out = { command, name: null, port: null, fakes: DEFAULT_FAKES.slice(), open: false, pinOpen: false, script: null, scriptArgs: [] };
+  const out = { command, name: null, port: null, fakes: DEFAULT_FAKES.slice(), open: false, pinOpen: false, ownerOnRoster: false, script: null, scriptArgs: [] };
   const seen = new Set();
   let index = 0;
   const value = (flag) => {
@@ -98,11 +105,17 @@ function parseArgs(argv) {
       if (inline !== null) throw fail('--pin-open takes no value');
       out.pinOpen = true;
     }
+    else if (flag === '--owner-on-roster' && command === 'up') {
+      if (inline !== null) throw fail('--owner-on-roster takes no value');
+      out.ownerOnRoster = true;
+    }
     else throw fail(`unknown option ${flag} for ${command}\n${USAGE}`);
   }
   if (out.name === null) throw fail(`--name is required\n${USAGE}`);
   if (!NAME_PATTERN.test(out.name)) throw fail(`--name must be 1-24 lower-case letters, digits or dashes (got "${out.name}")`);
   if (command === 'run' && !out.script) throw fail(`run needs a script to run\n${USAGE}`);
+  // The Owner's Battle.net character lives in the Battle.net fake: the option brings it along (discord, sources, bnet keep their fixed order).
+  if (out.ownerOnRoster && !out.fakes.includes('bnet')) out.fakes = FAKES.filter((fake) => fake === 'bnet' || out.fakes.includes(fake));
   return out;
 }
 
@@ -291,13 +304,36 @@ const MANAGE_SERVER = [{ id: DISCORD_SERVER_ID, name: 'Smoke Server', icon: null
 const PLAIN_SERVER = [{ id: DISCORD_SERVER_ID, name: 'Smoke Server', icon: null, owner: false, permissions: '0' }];
 const dayText = (offsetDays) => new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
 
-async function seed(base, fakes, discord) {
+// Battle.net link of the signed-in account through the real flow and the fake: login -> the fake's authorize -> the Worker's callback. Throws on anything but a clean redirect.
+async function linkBattlenet(base, cookie) {
+  const login = await request(base, cookie, 'GET', '/auth/bnet/login');
+  const location = login.headers.get('Location') || '';
+  if (login.status !== 302 || !/^https?:/.test(location)) throw new Error(`/auth/bnet/login did not start the Battle.net sign-in: ${login.status} ${location}`);
+  const authorize = await fetch(location, { redirect: 'manual' });
+  if (authorize.status !== 302) throw new Error(`fake Battle.net authorize answered ${authorize.status}`);
+  const stateCookie = login.headers.getSetCookie().map((line) => line.split(';')[0].trim()).join('; ');
+  const target = new URL(authorize.headers.get('Location'));
+  const callback = await request(base, `${cookie}; ${stateCookie}`, 'GET', target.pathname + target.search);
+  const where = callback.headers.get('Location') || '';
+  if (callback.status !== 302 || /error=/.test(where)) throw new Error(`/auth/bnet/callback answered ${callback.status} ${where}`);
+}
+
+// ownerOnRoster: see the header. The first link has to be made within this long of the account's creation to be its founding identity (worker/fresh.js FOUNDING_WINDOW_MS is 60 s).
+const FOUNDING_LINK_MS = 45 * 1000;
+
+async function seed(base, fakes, discord, { ownerOnRoster = false } = {}) {
   const need = async (who, cookie, method, route, body, status = [200, 201]) => {
     const res = await request(base, cookie, method, route, body);
     if (!status.includes(res.status)) throw new Error(`seed: ${who} ${method} ${route} -> ${res.status} ${res.text.slice(0, 200)}`);
     return res.json;
   };
+  const founded = Date.now();
   const gm = await signIn(base, discord, PEOPLE.gm, MANAGE_SERVER);
+  if (ownerOnRoster) {
+    // Before the guild exists: gm holds no role yet, so this first link needs no fresh grant; and it is made within seconds of the account's creation.
+    await linkBattlenet(base, gm.cookie);
+    if (Date.now() - founded > FOUNDING_LINK_MS) throw new Error('seed: the Battle.net link came more than 45 s after the account was created, so it is not the founding identity; run it again');
+  }
   const created = await need('gm', gm.cookie, 'POST', '/api/guild', {
     serverId: DISCORD_SERVER_ID, gameVersion: 'tbc', region: 'US', realm: 'Dreamscythe', name: 'Smoke Guard', timeZone: 'America/New_York', multipleTeams: false,
   });
@@ -335,6 +371,8 @@ async function seed(base, fakes, discord) {
   }
   const upcoming = await need('gm', gm.cookie, 'POST', `${root}/raids`, { teamId, raidOn: dayText(3), startTime: '20:00', zone: 'Gruul\'s Lair', title: 'Smoke night' });
   await need('member', member.cookie, 'PUT', `${root}/raids/${upcoming.raid.id}/signup`, { kind: 'signed' });
+  // The same Battle.net account again ("Re-verify"): now the guild and gm's person exist, so the sign-in match gives Thornwick the roster's key (id 8000) and the Battle.net proof.
+  if (ownerOnRoster) await linkBattlenet(base, gm.cookie);
 
   return {
     cookies: { gm: gm.cookie, member: member.cookie, member2: member2.cookie },
@@ -389,6 +427,7 @@ async function up(options) {
       const args = ['--port', String(fakePort(fake, port))];
       if (fake === 'discord') args.push('--user-id', PEOPLE.gm.id, '--username', PEOPLE.gm.username, '--global-name', PEOPLE.gm.globalName, '--servers', JSON.stringify(MANAGE_SERVER));
       if (fake === 'sources') args.push('--server-id', DISCORD_SERVER_ID);
+      if (fake === 'bnet' && options.ownerOnRoster) args.push('--owner-on-roster');
       const child = startDetached(nodePlan(file, args), path.join(logs, `${fake}.log`));
       pids[fake] = child.pid;
       started.push(child.pid);
@@ -405,9 +444,9 @@ async function up(options) {
 
     log('seeding through the API');
     const discord = fakeUrl('discord', port);
-    const seeded = await seed(base, options.fakes, discord);
+    const seeded = await seed(base, options.fakes, discord, { ownerOnRoster: options.ownerOnRoster });
     const result = {
-      name: options.name, base, port, open: options.open, pinOpen: options.pinOpen, cookies: seeded.cookies, ids: seeded.ids,
+      name: options.name, base, port, open: options.open, pinOpen: options.pinOpen, ownerOnRoster: options.ownerOnRoster, cookies: seeded.cookies, ids: seeded.ids,
       fakes: Object.fromEntries(options.fakes.map((fake) => [fake, fakeUrl(fake, port)])),
       signIn: signInLinks(discord), state: stateDir, logs, pids,
     };

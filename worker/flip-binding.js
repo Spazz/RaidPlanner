@@ -61,11 +61,12 @@ const rankMapCte = (guild) => `rank_map AS (SELECT CAST(source_key AS INTEGER) A
 const boundCte = (guild, only) => `bound AS (SELECT character_id, namespace, realm_id, char_id FROM (${nameMatchSql(guild, only)}) WHERE class_ok = 1)`;
 
 // Every character of the guild with its core rank today and the one the apply would give it (the same expression as newCoreRankSql in worker/rank-map.js, with the identity key
-// a character has OR is about to get).
+// a character has OR is about to get). to_roster_rank: the in-game rank of that roster row (NULL when the character is not on the roster); only the samples read it.
+const ON_ROSTER = `rg.guild_id = c.guild_id AND rg.namespace = COALESCE(c.namespace, b.namespace)
+                    AND rg.blizzard_realm_id = COALESCE(c.blizzard_realm_id, b.realm_id) AND rg.blizzard_char_id = COALESCE(c.blizzard_char_id, b.char_id)`;
 const changesSql = (guild) => `SELECT c.id AS character_id, c.name AS name, c.name_key AS name_key, c.class AS class, c.core_rank AS from_rank,
-       COALESCE((SELECT COALESCE(m.core_rank, 'social') FROM guild_roster rg LEFT JOIN rank_map m ON m.rank = rg.rank
-                  WHERE rg.guild_id = c.guild_id AND rg.namespace = COALESCE(c.namespace, b.namespace)
-                    AND rg.blizzard_realm_id = COALESCE(c.blizzard_realm_id, b.realm_id) AND rg.blizzard_char_id = COALESCE(c.blizzard_char_id, b.char_id)), 'social') AS to_rank
+       COALESCE((SELECT COALESCE(m.core_rank, 'social') FROM guild_roster rg LEFT JOIN rank_map m ON m.rank = rg.rank WHERE ${ON_ROSTER}), 'social') AS to_rank,
+       (SELECT rg.rank FROM guild_roster rg WHERE ${ON_ROSTER}) AS to_roster_rank
   FROM characters c LEFT JOIN bound b ON b.character_id = c.id
  WHERE c.guild_id = ${guild}`;
 
@@ -73,9 +74,10 @@ export const transitionsSql = (guild, only = null) => `WITH ${rankMapCte(guild)}
 SELECT from_rank, to_rank, COUNT(*) AS n FROM (${changesSql(guild)})
  WHERE from_rank != to_rank GROUP BY from_rank, to_rank ORDER BY from_rank, to_rank`;
 
+// The Trial characters come first: the page lists them as "Become Trial", so the cut at 25 never hides one behind the many that become Social.
 export const rankSamplesSql = (guild, only = null) => `WITH ${rankMapCte(guild)}, ${boundCte(guild, only)}
-SELECT name, class, from_rank, to_rank FROM (${changesSql(guild)})
- WHERE from_rank != to_rank ORDER BY to_rank, name_key, character_id LIMIT ${BINDING_SAMPLES}`;
+SELECT name, class, from_rank, to_rank, to_roster_rank FROM (${changesSql(guild)})
+ WHERE from_rank != to_rank ORDER BY to_rank != 'trial', to_rank, name_key, character_id LIMIT ${BINDING_SAMPLES}`;
 
 // SQL (a scalar): the transitions as one canonical JSON text, [[from, to, count], ...] in the order of transitionsSql. `only`: the confirmed ids (the flip's batch passes them).
 export const transitionsTextSql = (guild, only = null) => `(WITH ${rankMapCte(guild)}, ${boundCte(guild, only)}
@@ -159,7 +161,7 @@ export const ranksSection = {
         becomesTrial: sum((entry) => entry.to === 'trial'),
         becomesSocial: sum((entry) => entry.to === 'social'),
         transitions,
-        samples: sampleResult.results.map((row) => ({ name: row.name, class: row.class, from: row.from_rank, to: row.to_rank })),
+        samples: sampleResult.results.map((row) => ({ name: row.name, class: row.class, from: row.from_rank, to: row.to_rank, rosterRank: row.to_roster_rank })),
         unmapped,
       },
       hashPart: { transitions: transitions.map((entry) => [entry.from, entry.to, entry.count]), unmapped: unmapped.map((entry) => [entry.rank, entry.members]) },
