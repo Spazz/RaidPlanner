@@ -10,7 +10,7 @@
 import { NAMESPACES, bnetSupport } from './battlenet.js';
 import { loadMemberGuilds } from './bnet-store.js';
 import { CALLBACK_STATEMENT_BUDGET } from './bnet-match.js';
-import { applyPicks } from './claim-apply.js';
+import { applyPicks, snapshotIdentity } from './claim-apply.js';
 import { maxLevelOf } from './realms.js';
 import { cleanCharacterName } from './roster-data.js';
 import { resolveRealm } from './routes/roster.js';
@@ -23,8 +23,9 @@ const START_MIN_STATEMENTS = GUILD_MIN_STATEMENTS + 3;
 const byLevelThenName = (a, b) => (b.level || 0) - (a.level || 0) || a.name.localeCompare(b.name);
 
 // The picks of ONE guild: the characters of its namespace at the level cap, on the guild's realm, with a name a roster can hold, one per name and realm.
-// -> [{ index, name, realm: { realm, key }, class, level }] (applyPicks' shape), best first.
-export function maxLevelPicks(guild, entry) {
+// -> [{ index, name, realm: { realm, key }, class, level, identity }] (applyPicks' shape), best first. identity: the Blizzard key the snapshot holds for the character in the
+// guild's profile `namespace` (worker/claim-apply.js snapshotIdentity), or null.
+export function maxLevelPicks(guild, entry, namespace = null) {
   const cap = maxLevelOf(guild.game_version);
   if (cap === null || !entry || entry.error || !Array.isArray(entry.characters)) return [];
   const seen = new Set();
@@ -37,7 +38,7 @@ export function maxLevelPicks(guild, entry) {
     const key = `${name.toLowerCase()}|${realm.key}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    picks.push({ index: picks.length, name, realm, class: character.class, level: character.level });
+    picks.push({ index: picks.length, name, realm, class: character.class, level: character.level, identity: snapshotIdentity(character, namespace) });
   }
   return picks;
 }
@@ -69,7 +70,7 @@ export async function autoAddMaxLevel(ctx, { userId, snapshot, spent }) {
   for (const guild of memberGuilds) {
     const support = bnetSupport(guild.game_version, guild.region);
     if (!support.supported) continue;
-    const picks = maxLevelPicks(guild, snapshot && snapshot[support.namespace]);
+    const picks = maxLevelPicks(guild, snapshot && snapshot[support.namespace], support.namespace);
     if (picks.length) wanted.push({ id: guild.id, picks });
   }
   if (!wanted.length) return outcome();

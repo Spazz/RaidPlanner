@@ -39,9 +39,12 @@ export function characterRankColumns({ status, leftOn = null, leftReason = null,
 import { visibleCharacterSql } from './character-visibility.js';
 
 // (The person's main is its VISIBLE main: a retired placeholder, worker/character-visibility.js, hands no rank or left date to a new character.)
-export const RANK_COLUMNS_SQL = `COALESCE(?, (SELECT m.core_rank FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')}), 'raider'),
-       COALESCE(?, (SELECT m.left_on FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')})),
-       COALESCE(?, (SELECT m.left_reason FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')})), ?, ?`;
+// The parts are exported for the one writer that replaces the first (worker/claim-apply.js: in an in-game guild the core rank is the roster's) and the trial dates.
+export const CORE_RANK_SQL = `COALESCE(?, (SELECT m.core_rank FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')}), 'raider')`;
+export const LEFT_COLUMNS_SQL = `COALESCE(?, (SELECT m.left_on FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')})),
+       COALESCE(?, (SELECT m.left_reason FROM characters m WHERE m.player_id = ? AND m.is_main = 1 AND ${visibleCharacterSql('m')}))`;
+export const RANK_COLUMNS_SQL = `${CORE_RANK_SQL},
+       ${LEFT_COLUMNS_SQL}, ?, ?`;
 
 export function rankBinds(rank, personId) {
   const given = rank || {};

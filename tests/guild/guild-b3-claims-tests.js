@@ -17,6 +17,8 @@
 const assert = require('node:assert/strict');
 const { load, runChecks, scenario } = require('../guild-b3-world');
 const { seatOnRoster } = require('../guild-seat');
+const { ingameize } = require('../guild-ingame');
+const { ownPerson } = require('../guild-owner-fixture');
 
 const checks = [];
 function check(name, fn) { checks.push({ name, fn }); }
@@ -351,5 +353,56 @@ check('a Battle.net claim on a character somebody typed in on another person wai
   }
   assert.equal((await s.rows("SELECT id FROM character_claims WHERE status = 'pending'")).length, 1);
 });
+
+// An officer approves a claim that was waiting (an Alt of a person, or in a legacy guild a new person): the character's core rank is the one the guild's rank source gives it, and so
+// is the owner's right to remove it. In an in-game guild: Social while it is off the roster (user decision H-Q44), no key (a claim carries none), and its owner removes nothing
+// (user rule 2026-10-28). In a manual or legacy guild: the Main's rank (a new person is a Trial), and the owner may remove an Alt.
+for (const source of ['ingame', 'manual', 'legacy']) {
+  check(`approve (${source} guild): the claimed Alt (and a new person's Main) get the core rank of the guild's rank source; the owner's removal follows the guild's rule`, async () => {
+    const s = await world();
+    const gm = await s.person({ name: 'Gmmain' });
+    await s.link(gm.pid, 'gm');
+    const mine = await s.person({ name: 'Minemain' });
+    await s.link(mine.pid, 'm1');
+    const officerMain = await s.person({ name: 'Officermain' });
+    s.exec(`UPDATE characters SET core_rank = 'raider' WHERE id IN ('${gm.cid}', '${mine.cid}')`);
+    if (source === 'ingame') {
+      ingameize(s, { owner: 'gm', people: { gm, m1: mine } });
+    } else if (source === 'manual') {
+      s.exec(`UPDATE guilds SET rank_source = 'manual' WHERE id = '${s.gid}'`);
+      for (const [who, made] of [['o1', officerMain], ['m1', mine]]) ownPerson(s.w.db.sqlite, made.pid, s.uids[who]); // a manual guild's members are linked persons (players.user_id)
+    }
+    const officer = source === 'ingame' ? 'gm' : 'o1';
+    const alt = pending(s, 'm1', 'Claimedalt');
+    await s.ok(officer, 'POST', `/claims/${alt}/approve`, { expectedKind: 'add_alt' }, 200);
+    const altRow = await charOf(s, 'Claimedalt');
+    assert.deepEqual([altRow.player_id, altRow.is_main, altRow.owner_proof, altRow.namespace, altRow.blizzard_char_id], [mine.pid, 0, 'officer', null, null]);
+    if (source === 'ingame') {
+      assert.equal(altRow.core_rank, 'social', 'not on the in-game roster');
+    } else {
+      assert.equal(altRow.core_rank, 'raider', 'the Main\'s rank');
+    }
+    if (source === 'legacy') {
+      // a claimant with no person: a new person (a manual or in-game guild has no such claimant: only a person's account is a member there)
+      const fresh = pending(s, 'm3', 'Claimedmain');
+      await s.ok(officer, 'POST', `/claims/${fresh}/approve`, { expectedKind: 'new_person', status: 'trial' }, 200);
+      const mainRow = await charOf(s, 'Claimedmain');
+      assert.deepEqual([mainRow.is_main, mainRow.team_id, mainRow.core_rank, mainRow.namespace, mainRow.blizzard_char_id], [1, null, 'trial', null, null]);
+      assert.notEqual(mainRow.trial_start, null);
+    }
+    const asOwner = await s.call('m1', 'GET', `/api/me/characters/${altRow.id}`);
+    assert.equal(asOwner.status, 200, asOwner.text);
+    assert.equal(asOwner.json.can.remove, source !== 'ingame');
+    assert.equal(asOwner.json.character.coreRank, altRow.core_rank);
+    const dropped = await s.call('m1', 'DELETE', `/api/me/characters/${altRow.id}`, {});
+    if (source === 'ingame') {
+      assert.deepEqual([dropped.status, dropped.json.error], [403, 'battlenet_only']);
+      assert.equal((await s.rows('SELECT id FROM characters WHERE id = ?', altRow.id)).length, 1);
+    } else {
+      assert.equal(dropped.status, 200, dropped.text);
+      assert.equal((await s.rows('SELECT id FROM characters WHERE id = ?', altRow.id)).length, 0);
+    }
+  });
+}
 
 runChecks(checks);

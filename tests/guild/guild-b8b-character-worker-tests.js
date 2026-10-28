@@ -4,7 +4,7 @@
  *
  *   GET    /api/me/characters/:cid   the owner's read: facts, team + core rank, in-game rank, level, waiting request, loot it won, raids it was in, the three flags
  *   PATCH  /api/me/characters/:cid   the owner changes Main spec and Off spec without roster.edit
- *   DELETE /api/me/characters/:cid   the owner removes their own ALT (never a Main, never a Battle.net-proven character in an in-game guild)
+ *   DELETE /api/me/characters/:cid   the owner removes their own ALT (never a Main, and in an in-game guild no character at all: user rule 2026-10-28)
  *   - 404 for everyone who is not the owner (another member, an officer, a stranger, an unknown or malformed id); officers keep roster.js's own paths unchanged;
  *   - raids: logged presence + typed names of a manual raid, bosses killed with it present out of the kills that night, none for a manual raid, rename aliases;
  *   - D1 limits (tests/d1-fake.js): every statement is one the fake accepts.
@@ -294,21 +294,36 @@ check('DELETE: the owner removes their own Alt in a guild that is not in-game: g
   assert.equal((await s.call('o1', 'DELETE', `/api/me/characters/${s.m2.cid}`, {})).status, 404);
 });
 
-check('DELETE in an in-game guild: a Battle.net-proven Alt is refused (403 seniority, the existing wording) and the page says canRemove false; an officer-proven Alt goes', async () => {
+check('DELETE in an in-game guild: the owner removes NO character, whatever its proof (403 battlenet_only), and the page says can.remove false; elsewhere a Battle.net-proven Alt may go', async () => {
   const s = await world();
   const second = await s.alt(s.m1.pid, 'Alttwo');
   ingameize(s, { owner: 'gm', people: { m1: s.m1, m2: s.m2 } });
   s.exec(`UPDATE characters SET owner_proof = 'bnet' WHERE id = '${s.altId}'`);
-  const proven = await page(s, 'm1', s.altId);
-  assert.equal(proven.can.remove, false);
-  const refused = await s.call('m1', 'DELETE', `/api/me/characters/${s.altId}`, {});
-  assert.equal(refused.status, 403);
-  assert.equal(refused.json.error, 'seniority');
-  assert.match(refused.json.message, /proven by Battle\.net/);
-  assert.equal(await s.one('SELECT COUNT(*) AS n FROM characters WHERE id = ?', s.altId).then((r) => r.n), 1);
-  const plain = await page(s, 'm1', second);
-  assert.equal(plain.can.remove, true, 'proof officer: not Battle.net\'s');
-  await s.ok('m1', 'DELETE', `/api/me/characters/${second}`, {}, 200);
+  const message = 'In this guild your characters come from Battle.net, so you cannot remove them yourself.';
+  for (const [cid, label] of [[s.altId, 'Battle.net-proven'], [second, 'officer-proven']]) {
+    assert.equal((await page(s, 'm1', cid)).can.remove, false, label);
+    const refused = await s.call('m1', 'DELETE', `/api/me/characters/${cid}`, {});
+    assert.deepEqual([refused.status, refused.json.error, refused.json.message], [403, 'battlenet_only', message], label);
+    assert.equal(await s.one('SELECT COUNT(*) AS n FROM characters WHERE id = ?', cid).then((r) => r.n), 1, label);
+  }
+  const main = await s.call('m1', 'DELETE', `/api/me/characters/${s.m1.cid}`, {});
+  assert.deepEqual([main.status, main.json.error], [403, 'battlenet_only'], 'a Main too: the in-game rule is checked first');
+  assert.equal(await s.one("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'character.delete'").then((r) => r.n), 0);
+  // the guild switching to the in-game roster between the checks and the write changes nothing (the guard is inside the statement)
+  const sneaky = await world();
+  const real = sneaky.w.db.prepare.bind(sneaky.w.db);
+  let flipped = false;
+  sneaky.w.db.prepare = (sql) => {
+    if (!flipped && /DELETE FROM characters/.test(sql)) {
+      flipped = true;
+      sneaky.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${sneaky.gid}'`);
+    }
+    return real(sql);
+  };
+  const raced = await sneaky.call('m1', 'DELETE', `/api/me/characters/${sneaky.altId}`, {});
+  assert.equal(flipped, true);
+  assert.deepEqual([raced.status, raced.json.error], [403, 'battlenet_only']);
+  assert.equal(await sneaky.one('SELECT COUNT(*) AS n FROM characters WHERE id = ?', sneaky.altId).then((r) => r.n), 1);
   // the same bnet proof in a guild that is not in-game may go
   const t = await world();
   t.exec(`UPDATE characters SET owner_proof = 'bnet' WHERE id = '${t.altId}'`);

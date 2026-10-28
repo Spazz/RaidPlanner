@@ -458,6 +458,137 @@ check('in-game guild: the rule adds the characters at the cap that are not on th
 });
 
 // ---------------------------------------------------------------------------
+// Characters added to a record (Add, the max-level rule): their core rank, their Blizzard key and the owner's removal
+//   in-game guild ... the core rank is the roster's through the rank map, else Social (user decision H-Q44), the key is stamped, and the owner removes NO character (user rule 2026-10-28)
+//   manual / legacy guild ... the person's Main's rank, no key, and the owner may still remove an Alt
+
+const TBC_NAMESPACE = 'profile-classicann-us';
+const NIGHTSLAYER_ID = 4002;
+const meCharacter = (s, who, cid) => s.w.call(s.jars[who], 'GET', `/api/me/characters/${cid}`);
+const dropCharacter = (s, who, cid) => s.w.call(s.jars[who], 'DELETE', `/api/me/characters/${cid}`);
+const charactersOf = (s, names) => s.w.rows(
+  `SELECT id, name, is_main, core_rank, owner_proof, trial_start, trial_end, namespace, blizzard_realm_id, blizzard_char_id FROM characters
+    WHERE guild_id = ? AND name IN (${names.map(() => '?').join(', ')}) ORDER BY name`,
+  s.guildId, ...names,
+);
+const putOnRoster = (s, { name, id, realmId, realmSlug, classId, rank }) => s.w.db.sqlite.prepare(
+  `INSERT INTO guild_roster (guild_id, namespace, blizzard_realm_id, blizzard_char_id, name, name_key, realm_slug, class, level, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 70, ?)`,
+).run(s.guildId, TBC_NAMESPACE, realmId, id, name, name.toLowerCase(), realmSlug, classId, rank);
+
+// Erin's person in an in-game guild: a Main on the roster (rank 4), the rank map 4 Raider, 5 Social, 6 Trial.
+async function ingameWorld() {
+  const s = await scenario();
+  const seated = await seatOnRoster({ call: (who, method, tail, body) => s.call(who, method, tail, body), sqlite: s.w.db.sqlite, guildId: s.guildId, teamId: s.A, userId: s.ids.erin, who: 'alice' }, { name: 'Seaterin', id: 71002 });
+  s.w.db.sqlite.prepare("UPDATE characters SET core_rank = 'raider' WHERE id = ?").run(seated.cid);
+  s.w.db.sqlite.exec(`UPDATE guilds SET rank_source = 'ingame' WHERE id = '${s.guildId}'`);
+  for (const [rank, label, coreRank] of [[4, 'Raider', 'raider'], [5, 'Social', 'social'], [6, 'On trial', 'trial']]) {
+    s.w.db.sqlite.prepare("INSERT INTO source_rank_maps (guild_id, source, source_key, label, core_rank, role_id, team_id) VALUES (?, 'ingame', ?, ?, ?, NULL, NULL)").run(s.guildId, String(rank), label, coreRank);
+  }
+  s.mainId = seated.cid;
+  return s;
+}
+
+check('in-game guild, max-level rule: an auto-added Alt is Social while it is off the roster, carries its Blizzard key, and its owner cannot remove it', async () => {
+  const s = await ingameWorld();
+  await link(s, 'erin');
+  const alts = await charactersOf(s, ['Aldric', 'Brindle', 'Dunmar', 'Galdor', 'Quillfeather']);
+  assert.equal(alts.length, 5);
+  assert(alts.every((row) => row.is_main === 0 && row.core_rank === 'social' && row.owner_proof === 'officer'), JSON.stringify(alts));
+  assert.deepEqual(alts.map((row) => [row.namespace, row.blizzard_realm_id, row.blizzard_char_id]),
+    [[TBC_NAMESPACE, 4001, 7000], [TBC_NAMESPACE, 4001, 7001], [TBC_NAMESPACE, 4001, 7003], [TBC_NAMESPACE, 4001, 7006], [TBC_NAMESPACE, 4001, 7007]], 'the snapshot\'s ids, in name order');
+  assert(alts.every((row) => row.trial_start === null && row.trial_end === null));
+  const aldric = alts[0];
+  const shown = await meCharacter(s, 'erin', aldric.id);
+  assert.equal(shown.status, 200, JSON.stringify(shown.json));
+  assert.equal(shown.json.can.remove, false);
+  assert.equal(shown.json.character.coreRank, 'social');
+  const refused = await dropCharacter(s, 'erin', aldric.id);
+  assert.deepEqual([refused.status, refused.json.error], [403, 'battlenet_only']);
+  assert.equal(refused.json.message, 'In this guild your characters come from Battle.net, so you cannot remove them yourself.');
+  const main = await dropCharacter(s, 'erin', s.mainId);
+  assert.deepEqual([main.status, main.json.error], [403, 'battlenet_only'], 'a Main too: the in-game rule comes first');
+  assert.equal(await s.w.count('characters', 'id IN (?, ?)', aldric.id, s.mainId), 2, 'nothing was removed');
+  assert.equal(await s.w.count('audit_log', "action = 'character.delete'"), 0);
+  // The roster sync finds the character by the stamped key when it joins the guild in-game, and gives it the rank of its in-game rank.
+  putOnRoster(s, { name: 'Aldric', id: 7000, realmId: 4001, realmSlug: 'dreamscythe', classId: 'WARRIOR', rank: 4 });
+  const { rankMapApplyStatements, ingameGuard } = await load('worker/rank-map.js');
+  await s.w.db.batch(rankMapApplyStatements(s.w.db, { guildId: s.guildId, now: s.w.clock.now, timeZone: 'America/New_York' }, [ingameGuard(s.guildId)]));
+  assert.equal((await charactersOf(s, ['Aldric']))[0].core_rank, 'raider', 'on the roster at rank 4 (Raider)');
+  assert.equal((await charactersOf(s, ['Brindle']))[0].core_rank, 'social', 'still off the roster');
+});
+
+check('in-game guild, Add: the rank follows the roster through the map (Raider, Trial), Social when off the roster; the key is stamped; no Remove', async () => {
+  const s = await ingameWorld();
+  await link(s, 'erin');
+  putOnRoster(s, { name: 'Cassia', id: 7002, realmId: NIGHTSLAYER_ID, realmSlug: 'nightslayer', classId: 'PRIEST', rank: 4 });
+  putOnRoster(s, { name: 'Fenwick', id: 7005, realmId: NIGHTSLAYER_ID, realmSlug: 'nightslayer', classId: 'ROGUE', rank: 6 });
+  const added = await s.w.call(s.jars.erin, 'POST', `${s.guildPath}/claims`, claimBody('Cassia', 'Eliora', 'Fenwick'));
+  assert.equal(added.status, 201, JSON.stringify(added.json));
+  assert.deepEqual(added.json.claims.map((claim) => [claim.name, claim.status, claim.outcome]), [['Cassia', 'applied', 'add_alt'], ['Eliora', 'applied', 'add_alt'], ['Fenwick', 'applied', 'add_alt']]);
+  const rows = Object.fromEntries((await charactersOf(s, ['Cassia', 'Eliora', 'Fenwick'])).map((row) => [row.name, row]));
+  assert.deepEqual([rows.Cassia.core_rank, rows.Eliora.core_rank, rows.Fenwick.core_rank], ['raider', 'social', 'trial']);
+  assert.deepEqual([rows.Cassia.blizzard_realm_id, rows.Cassia.blizzard_char_id, rows.Eliora.blizzard_char_id, rows.Fenwick.blizzard_char_id], [NIGHTSLAYER_ID, 7002, 7004, 7005]);
+  assert.equal(rows.Fenwick.trial_start, null, 'the Trial clock sets the dates (rank-map apply, raid recompute), not the insert');
+  for (const row of Object.values(rows)) {
+    assert.equal((await meCharacter(s, 'erin', row.id)).json.can.remove, false, row.name);
+    assert.equal((await dropCharacter(s, 'erin', row.id)).status, 403, row.name);
+  }
+  assert.equal(await s.w.count('characters', 'id IN (?, ?, ?)', rows.Cassia.id, rows.Eliora.id, rows.Fenwick.id), 3);
+});
+
+check('in-game guild, Add: a Blizzard key another character of the guild already holds is not stamped twice (the Alt is added unkeyed, Social)', async () => {
+  const s = await ingameWorld();
+  await link(s, 'erin');
+  // Another character of the guild already holds Cassia's key under another name (a rename the sync has not followed yet).
+  const holder = await charactersOf(s, ['Galdor']);
+  s.w.db.sqlite.prepare('UPDATE characters SET namespace = ?, blizzard_realm_id = ?, blizzard_char_id = ? WHERE id = ?').run(TBC_NAMESPACE, NIGHTSLAYER_ID, 7002, holder[0].id);
+  const added = await s.w.call(s.jars.erin, 'POST', `${s.guildPath}/claims`, claimBody('Cassia'));
+  assert.equal(added.status, 201, JSON.stringify(added.json));
+  const row = (await charactersOf(s, ['Cassia']))[0];
+  assert.deepEqual([row.core_rank, row.namespace, row.blizzard_char_id], ['social', null, null]);
+});
+
+check('in-game guild: an UNKEYED Alt (what an approved claim leaves) is Social until the sign-in match binds it to its roster row at the next Battle.net sign-in, which also gives it the mapped rank', async () => {
+  const s = await ingameWorld();
+  await link(s, 'erin');
+  const person = (await s.w.rows('SELECT player_id FROM characters WHERE id = ?', s.mainId))[0].player_id;
+  s.w.db.sqlite.prepare(
+    `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at, core_rank, owner_proof)
+     VALUES ('c_0000000000000000000099', ?, ?, NULL, 'Eliora', 'eliora', 'Dreamscythe', 'dreamscythe', 'PALADIN', NULL, NULL, 0, 1, 1, 'social', 'officer')`,
+  ).run(s.guildId, person);
+  putOnRoster(s, { name: 'Eliora', id: 7004, realmId: 4001, realmSlug: 'dreamscythe', classId: 'PALADIN', rank: 4 });
+  const { rankMapApplyStatements, ingameGuard } = await load('worker/rank-map.js');
+  await s.w.db.batch(rankMapApplyStatements(s.w.db, { guildId: s.guildId, now: s.w.clock.now, timeZone: 'America/New_York' }, [ingameGuard(s.guildId)]));
+  const unbound = (await charactersOf(s, ['Eliora']))[0];
+  assert.deepEqual([unbound.core_rank, unbound.blizzard_char_id], ['social', null], 'the roster sync alone does not find an unkeyed character');
+  await link(s, 'erin');
+  const bound = (await charactersOf(s, ['Eliora']))[0];
+  assert.deepEqual([bound.core_rank, bound.namespace, bound.blizzard_realm_id, bound.blizzard_char_id], ['raider', TBC_NAMESPACE, 4001, 7004], 'bound by name + realm, rank from the map');
+});
+
+for (const source of ['manual', null]) {
+  check(`${source ? 'manual' : 'legacy'} guild: an auto-added and an Added Alt take the Main's rank, carry no Blizzard key, and the owner may still remove an Alt (a Main never)`, async () => {
+    const s = await scenario();
+    const roster = await seedRoster(s);
+    if (source) s.w.db.sqlite.prepare('UPDATE guilds SET rank_source = ? WHERE id = ?').run(source, s.guildId);
+    await link(s, 'erin');
+    const alts = await charactersOf(s, ['Galdor', 'Quillfeather']);
+    assert.deepEqual(alts.map((row) => [row.core_rank, row.namespace, row.blizzard_realm_id, row.blizzard_char_id, row.owner_proof]), Array(2).fill(['raider', null, null, null, 'officer']), 'Aldric is a Raider');
+    const added = await s.w.call(s.jars.erin, 'POST', `${s.guildPath}/claims`, claimBody('Cassia'));
+    assert.equal(added.status, 201, JSON.stringify(added.json));
+    const cassia = (await charactersOf(s, ['Cassia']))[0];
+    assert.deepEqual([cassia.core_rank, cassia.namespace, cassia.blizzard_char_id], ['raider', null, null]);
+    assert.equal((await meCharacter(s, 'erin', alts[0].id)).json.can.remove, true);
+    assert.equal((await meCharacter(s, 'erin', cassia.id)).json.can.remove, true);
+    const main = await s.w.rows('SELECT id FROM characters WHERE player_id = ? AND is_main = 1', roster.aldric);
+    assert.equal((await dropCharacter(s, 'erin', main[0].id)).json.error, 'main_character');
+    assert.equal((await dropCharacter(s, 'erin', alts[0].id)).status, 200);
+    assert.equal((await dropCharacter(s, 'erin', cassia.id)).status, 200);
+    assert.equal(await s.w.count('characters', 'id IN (?, ?)', alts[0].id, cassia.id), 0);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // The page, drawn from the Worker's real answer
 
 check('contract: My characters draws its cards, waiting row and quiet line from the real GET /auth/bnet', async () => {

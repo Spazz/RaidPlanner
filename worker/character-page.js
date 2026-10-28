@@ -43,12 +43,14 @@ export async function loadOwnedCharacter(ctx) {
   return { guildContext, personId: own.id, characterId };
 }
 
-// The Battle.net rule for removing an own character: an Alt, and not one Battle.net proved in a guild whose in-game roster decides (the sync removes those when
-// they leave the guild). SQL on the characters row of the statement (alias given, guild id as an expression). Fixed text.
-export const mayRemoveOwnSql = (c, guildExpr) => `${c}.is_main = 0 AND (COALESCE(${c}.owner_proof, '') <> 'bnet' OR NOT EXISTS (SELECT 1 FROM guilds rg WHERE rg.id = ${guildExpr} AND rg.rank_source = 'ingame'))`;
+// The rule for removing an own character (user rule 2026-10-28): an Alt, and in a guild whose rank source is the in-game roster NOTHING. Typed names are refused there
+// (409 battlenet_only), so every character of such a guild came from Battle.net and the roster sync removes it when it leaves the guild; the proof column does not matter
+// (a character added through Add or the max-level rule carries 'officer'). SQL on the characters row of the statement (alias given, guild id as an expression). Fixed text.
+export const mayRemoveOwnSql = (c, guildExpr) => `${c}.is_main = 0 AND NOT EXISTS (SELECT 1 FROM guilds rg WHERE rg.id = ${guildExpr} AND rg.rank_source = 'ingame')`;
+export const INGAME_KEEP_MESSAGE = 'In this guild your characters come from Battle.net, so you cannot remove them yourself.';
 
 // The writes of worker/routes/character-page.js, fixed text built once. Each repeats the owner's checks INSIDE the statement, so a race (the person handed to another account, the
-// character made a Main, Battle.net proving it) changes nothing. Binds: see the routes.
+// character made a Main, the guild switched to the in-game roster) changes nothing. Binds: see the routes.
 //   STILL_OWN_SQL   the character's person is still the account's (binds: person id, guild id, user id)
 export const STILL_OWN_SQL = `EXISTS (SELECT 1 FROM players op WHERE op.id = ? AND op.guild_id = ? AND ${ownPlayerSql('op', '?')})`;
 //   UPDATE_SPECS_SQL  binds: main spec, off spec, now, character id, person id, guild id, the main spec and off spec it read, then STILL_OWN_SQL's three
@@ -137,7 +139,7 @@ export async function characterPageReply(ctx, guildContext, personId, characterI
   const request = waiting && !onTeam ? { id: waiting.id, team: { id: waiting.team_id, name: waiting.team_name }, createdAt: waiting.created_at } : null;
   const roster = Number.isInteger(row.roster_level) ? row.roster_level : null;
   const snapshot = snapshotResult.results[0] ? snapshotLevel(snapshotResult.results[0].snapshot, row) : null;
-  const removable = row.is_main === 0 && !(row.owner_proof === 'bnet' && source === 'ingame');
+  const removable = row.is_main === 0 && source !== 'ingame';
   return {
     guild: { id: guild.id, name: guild.name, realm: guild.realm, gameVersion: guild.game_version, timeZone: guild.time_zone, rankSource: source },
     character: {

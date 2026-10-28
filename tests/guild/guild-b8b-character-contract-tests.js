@@ -8,7 +8,7 @@
  *     #/characters/<cid> parses and formats, the crumb is My characters > <name>;
  *   - Raids: 10 rows then "Showing 10 of N" + Show all; every head sorts (aria-sort, the page's own 'table-sort' handler);
  *   - Request team (only while the Worker says canRequestTeam) opens the Request team dialog with THIS character first; sending shows "Requested <team>" with Withdraw request;
- *   - Change on Main spec / Off spec; Remove from my profile in More only while canRemove (an Alt in a guild that is not in-game), never on a Main or a Battle.net Alt in-game;
+ *   - Change on Main spec / Off spec; Remove from my profile in More only while canRemove (an Alt in a guild that is not in-game), never on a Main or on any character in-game;
  *   - a character that is not the viewer's is a 404 for the page's load.
  */
 const assert = require('node:assert/strict');
@@ -290,7 +290,7 @@ check('Remove from my profile: in More for an Alt in a guild that is not in-game
   assert.equal(p.shown.dialogs.length, 0);
 });
 
-check('in an in-game guild: a Battle.net Alt has no More and no Remove (the Worker would refuse); an officer-proven Alt still has; the level and the in-game rank show', async () => {
+check('in an in-game guild: no Alt has More or Remove, whatever proved it (the Worker would refuse); the level and the in-game rank show', async () => {
   const s = await world();
   ingameize(s, { owner: 'gm', people: { m1: s.main, m2: s.m2 } });
   makeProven(s, 'm1', { pid: s.main.pid, cid: s.altId }, { rank: 3, proof: 'officer', link: false });
@@ -307,7 +307,7 @@ check('in an in-game guild: a Battle.net Alt has no More and no Remove (the Work
   assert.equal(p.shown.dialogs.length, 0, 'the handler is a no-op without canRemove');
   await openCharacter(p, s.alt3);
   html = pageHtml(p);
-  assert(html.includes('character-remove-open'), 'an Alt that Battle.net did not prove may go');
+  assert(!html.includes('character-more') && !html.includes('character-remove-open'), 'nor on an Alt that Battle.net did not prove: in an in-game guild the owner removes no character');
 });
 
 check('only the owner opens it: another account\'s load is a 404; the route parses and formats; the crumb is My characters > <name>', async () => {

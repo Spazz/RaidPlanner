@@ -158,6 +158,7 @@ const ALLOWED = [
   ["worker/bnet-store.js", "FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1", "person"],
   ["worker/bnet-store.js", "AS home_team_id FROM characters c JOIN players p ON p.id = c.player_id JOIN", "key"],
   ["worker/claim-apply.js", "AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main =", "person"],
+  ["worker/claim-apply.js", "NOT EXISTS (SELECT 1 FROM characters h WHERE h.guild_id = s.guild_id AND h.namespace = s.namespace", "key"],
   ["worker/duties.js", "(SELECT c.name FROM characters c WHERE c.player_id = d.player_id ORDER BY", "display"],
   ["worker/flip-preview.js", "(SELECT fm.name FROM characters fm WHERE fm.player_id = ? AND fm.is_main =", "display"],
   ["worker/flip-preview.js", "COALESCE((SELECT fm.name FROM players fp JOIN characters fm ON fm.player_id = fp.id AND fm.is_main = 1", "display"],

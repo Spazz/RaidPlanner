@@ -407,7 +407,7 @@ check('writer guards on the home or target team use IS ?, never = ? (a character
 check('the status mapping and the person-level SQL name exactly what the readers and writers use', async () => {
   const { pathToFileURL } = require('node:url');
   const legacy = await import(pathToFileURL(path.join(ROOT, 'worker/person-legacy.js')).href);
-  assert.deepEqual(Object.keys(legacy).sort(), ['IMPORTED_RANK_COLUMNS_SQL', 'RANK_COLUMNS_SQL', 'characterRankColumns', 'rankBinds', 'setCharacterRanksStatement', 'trialDatesFollowMainStatements']);
+  assert.deepEqual(Object.keys(legacy).sort(), ['CORE_RANK_SQL', 'IMPORTED_RANK_COLUMNS_SQL', 'LEFT_COLUMNS_SQL', 'RANK_COLUMNS_SQL', 'characterRankColumns', 'rankBinds', 'setCharacterRanksStatement', 'trialDatesFollowMainStatements']);
   const map = legacy.characterRankColumns;
   assert.deepEqual(map({ status: 'raider', leftOn: '2027-01-01', leftReason: 'left', trialStart: '2027-01-01', trialEnd: '2027-02-01' }), { coreRank: 'raider', leftOn: null, leftReason: null, trialStart: null, trialEnd: null });
   assert.deepEqual(map({ status: 'trial', trialStart: '2027-01-01', trialEnd: '2027-02-01' }), { coreRank: 'trial', leftOn: null, leftReason: null, trialStart: '2027-01-01', trialEnd: '2027-02-01' });

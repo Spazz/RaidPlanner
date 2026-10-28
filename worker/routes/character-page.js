@@ -4,15 +4,14 @@
 //   DELETE /api/me/characters/:cid                             the owner removes their own ALT; -> { removed: true }
 // A character id is unique across guilds, so the routes carry no guild id: the character names its guild. OWNER ONLY: anything that is not a character of the account's own
 // person is 404 (worker/character-page.js loadOwnedCharacter). Officers keep their own routes (worker/routes/roster.js patchCharacter / removeCharacter, roster.edit and the Seniority guard).
-// The owner's removal is refused for a Main (409 main_character) and for a Battle.net-proven character in a guild whose in-game roster decides (403 seniority, the wording of
-// worker/seniority.js PROVEN_MESSAGE: the sync removes it when it leaves the guild); both rules are repeated inside the write, so a race changes nothing.
+// The owner's removal is refused for EVERY character of a guild whose rank source is the in-game roster (403 battlenet_only: its characters come from Battle.net and the
+// sync removes one that leaves the guild; user rule 2026-10-28) and, elsewhere, for a Main (409 main_character); both rules are repeated inside the write, so a race changes nothing.
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { nameKey } from '../roster-data.js';
-import { PROVEN_MESSAGE } from '../seniority.js';
 import { markRaidsStale, weekFreeze } from '../attendance-store.js';
 import { visibleCharacterSql } from '../character-visibility.js';
-import { DELETE_SQL, MAIN_MESSAGE, REMOVABLE_SQL, UPDATE_SPECS_SQL, characterPageReply, loadOwnedCharacter } from '../character-page.js';
+import { DELETE_SQL, INGAME_KEEP_MESSAGE, MAIN_MESSAGE, REMOVABLE_SQL, UPDATE_SPECS_SQL, characterPageReply, loadOwnedCharacter } from '../character-page.js';
 import { wrote } from '../d1-changes.js';
 import { bad, readSpecs } from './roster.js';
 
@@ -58,12 +57,12 @@ export async function removeMyCharacter(ctx) {
   const { guildContext, personId, characterId } = await loadOwnedCharacter(ctx);
   const guild = guildContext.guild;
   const target = await db.prepare(
-    `SELECT c.id, c.name, c.team_id, c.class, c.main_spec, c.off_spec, c.is_main, c.owner_proof, (SELECT rank_source FROM guilds WHERE id = c.guild_id) AS rank_source
+    `SELECT c.id, c.name, c.team_id, c.class, c.main_spec, c.off_spec, c.is_main, (SELECT rank_source FROM guilds WHERE id = c.guild_id) AS rank_source
        FROM characters c WHERE c.id = ? AND c.guild_id = ? AND c.player_id = ? AND ${visibleCharacterSql('c')}`,
   ).bind(characterId, guild.id, personId).first();
   if (!target) throw new HttpError(404, 'not_found', 'That character was not found.');
+  if (target.rank_source === 'ingame') throw new HttpError(403, 'battlenet_only', INGAME_KEEP_MESSAGE);
   if (target.is_main === 1) throw new HttpError(409, 'main_character', MAIN_MESSAGE);
-  if (target.owner_proof === 'bnet' && target.rank_source === 'ingame') throw new HttpError(403, 'seniority', PROVEN_MESSAGE);
   const owner = [personId, guild.id, ctx.session.user.id];
   const removable = { sql: REMOVABLE_SQL, params: [characterId, personId, guild.id, guild.id, ...owner] };
   const results = await db.batch([
@@ -73,11 +72,14 @@ export async function removeMyCharacter(ctx) {
     markRaidsStale(db, guild.id, [nameKey(target.name)], null, target.team_id ? [target.team_id] : [], null, weekFreeze(guild.time_zone, ctx.now())),
   ]);
   if (results[1].results.length !== 1) {
-    // A lost race: the character is gone already (nothing left to remove), or became a Main, or Battle.net proved it meanwhile.
-    const again = await db.prepare(`SELECT is_main FROM characters WHERE id = ? AND guild_id = ? AND ${visibleCharacterSql('characters')}`).bind(characterId, guild.id).first();
+    // A lost race: the guild switched to the in-game roster meanwhile, or the character became a Main, or it is gone / no longer the account's own (nothing left to remove).
+    const again = await db.prepare(
+      `SELECT c.is_main, (SELECT rank_source FROM guilds WHERE id = c.guild_id) AS rank_source FROM characters c WHERE c.id = ? AND c.guild_id = ? AND ${visibleCharacterSql('c')}`,
+    ).bind(characterId, guild.id).first();
     if (!again) throw new HttpError(404, 'not_found', 'That character was not found.');
+    if (again.rank_source === 'ingame') throw new HttpError(403, 'battlenet_only', INGAME_KEEP_MESSAGE);
     if (again.is_main === 1) throw new HttpError(409, 'main_character', MAIN_MESSAGE);
-    throw new HttpError(403, 'seniority', PROVEN_MESSAGE);
+    throw new HttpError(404, 'not_found', 'That character was not found.');
   }
   return jsonResponse({ removed: true, characterId });
 }

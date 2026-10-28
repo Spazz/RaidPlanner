@@ -21,7 +21,8 @@ import { planClaims } from './bnet-store.js';
 import { HttpError } from './http.js';
 import { newId } from './ids.js';
 import { ownPlayerSql } from './membership.js';
-import { RANK_COLUMNS_SQL, characterRankColumns, rankBinds } from './person-legacy.js';
+import { CORE_RANK_SQL, LEFT_COLUMNS_SQL, characterRankColumns, rankBinds } from './person-legacy.js';
+import { newCoreRankSql } from './rank-map.js';
 import { nameKey } from './roster-data.js';
 import { guildToday } from './roster-view.js';
 import { constraintOf, limitError } from './routes/roster.js';
@@ -41,10 +42,36 @@ const hasNoPerson = (guildId, userId) => ({
 });
 const personIsTheirs = (personId, userId) => ({ sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND user_id = ?)', params: [personId, userId] });
 
-// The rank columns come from `rank` for the first character of a new person and from the person's main for every later one (worker/person-legacy.js).
+// The Blizzard identity key of a Battle.net snapshot character (worker/battlenet.js fetchAccountCharacters: namespace + realmId + characterId, each null where Blizzard sent
+// no usable id) in the shape of `character.identity` below, or null. Only a key of the guild's own namespace counts.
+export function snapshotIdentity(snapshotCharacter, namespace) {
+  const one = snapshotCharacter || {};
+  const ok = (value) => Number.isSafeInteger(value) && value > 0;
+  if (typeof namespace !== 'string' || !namespace || one.namespace !== namespace || !ok(one.realmId) || !ok(one.characterId)) return null;
+  return { namespace, realmId: one.realmId, characterId: one.characterId };
+}
+
+// The rank columns come from `rank` for the first character of a new person and from the person's main for every later one (worker/person-legacy.js); the trial dates only
+// from `rank`. IN A GUILD WHOSE RANK SOURCE IS THE IN-GAME ROSTER (read inside the statement, so a flip between the read and the write cannot slip past) the core rank is the
+// roster's, the same rule as the sync (worker/rank-map.js newCoreRankSql: its rank on the stored roster through the stored rank map, else Social; user decision H-Q44), and
+// the trial dates stay empty (the rank-map apply and the Trial clock set them when the rank is Trial). The Blizzard identity key (namespace, realm id, character id) is stamped
+// there when the snapshot carried one and no other character of the guild holds it, so the sync finds the character when it joins the guild in-game; elsewhere the three
+// columns stay NULL as before. Binds, in text order: guild id, then claim (guild id, namespace, realm id, character id, guild id), the fourteen values, rankBinds(...),
+// the proof, and the guard's.
 const INSERT_CHARACTER_SQL = `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at,
-                             core_rank, left_on, left_reason, trial_start, trial_end, owner_proof)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${RANK_COLUMNS_SQL}, ? WHERE `;
+                             core_rank, left_on, left_reason, trial_start, trial_end, owner_proof, namespace, blizzard_realm_id, blizzard_char_id)
+     WITH rank_map AS (SELECT CAST(source_key AS INTEGER) AS rank, core_rank FROM source_rank_maps WHERE guild_id = ? AND source = 'ingame' AND team_id IS NULL),
+          claim AS (SELECT ? AS guild_id, ? AS namespace, ? AS blizzard_realm_id, ? AS blizzard_char_id,
+                           EXISTS (SELECT 1 FROM guilds WHERE id = ? AND rank_source = 'ingame') AS ingame),
+          stamp AS (SELECT s.guild_id, s.namespace, s.blizzard_realm_id, s.blizzard_char_id FROM claim s WHERE s.ingame AND s.blizzard_char_id IS NOT NULL
+                       AND NOT EXISTS (SELECT 1 FROM characters h WHERE h.guild_id = s.guild_id AND h.namespace = s.namespace
+                                                                    AND h.blizzard_realm_id = s.blizzard_realm_id AND h.blizzard_char_id = s.blizzard_char_id))
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            CASE WHEN c.ingame THEN ${newCoreRankSql('k')} ELSE ${CORE_RANK_SQL} END,
+            ${LEFT_COLUMNS_SQL},
+            CASE WHEN c.ingame THEN NULL ELSE ? END, CASE WHEN c.ingame THEN NULL ELSE ? END,
+            ?, k.namespace, k.blizzard_realm_id, k.blizzard_char_id
+       FROM claim c LEFT JOIN stamp k ON 1 WHERE `;
 // The players row of a new person. The rank is the Main's (the INSERT INTO characters above); players.status is the inert placeholder (worker/person-legacy.js).
 const INSERT_PLAYER_SQL = `INSERT INTO players (id, guild_id, status, joined_on, discord_user_id, discord_nickname, user_id, version, notes_version, created_by, created_at, updated_at)
        SELECT ?, ?, 'raider', ?, ?, NULL, ?, 1, 0, ?, ?, ? WHERE `;
@@ -58,7 +85,7 @@ const INSERT_CLAIM_SQL = `INSERT INTO character_claims (id, guild_id, user_id, n
 // -> { writes, stale, personId, characterId } : `writes` are guarded statements for a db.batch, the LAST one is the key write (changes() = 1 when the outcome
 // happened); `stale` marks the raids that depend on it (put them after the audit row).
 //   plan       a plan of worker/bnet-store.js planClaims ({ kind: add_alt | new_person | link_person, person, homeTeamId, characterId })
-//   claimant   { userId, discordId }          character { name, realm, realmKey, class, mainSpec?, offSpec? }
+//   claimant   { userId, discordId }          character { name, realm, realmKey, class, mainSpec?, offSpec?, identity?: { namespace, realmId, characterId } (snapshotIdentity) }
 //   personId   the person new_person creates (the caller needs the id for later picks of the same request)
 //   actorId    who writes (the claimant, or the officer deciding)                guard   another guard every write carries (a claim still pending)
 export function applyClaimPlan(ctx, { guild, plan, claimant, character, source, now, actorId, personId = null, guard = ALWAYS, team = null, status = 'trial' }) {
@@ -67,9 +94,12 @@ export function applyClaimPlan(ctx, { guild, plan, claimant, character, source, 
   const key = nameKey(character.name);
   const characterId = newId('c', ctx.randomBytes);
   const freeze = weekFreeze(guild.time_zone, now);
+  const identity = character.identity ? snapshotIdentity(character.identity, character.identity.namespace) : null;
+  const keyBinds = identity ? [identity.namespace, identity.realmId, identity.characterId] : [null, null, null];
   const insert = (playerId, isMain, rank, teamId, extra) => {
     const g = and(guard, extra);
     return db.prepare(INSERT_CHARACTER_SQL + g.sql).bind(
+      guild.id, guild.id, ...keyBinds, guild.id,
       characterId, guild.id, playerId, teamId, character.name, key, character.realm, character.realmKey, character.class, character.mainSpec || null, character.offSpec || null,
       isMain ? 1 : 0, now, now, ...rankBinds(rank, playerId), proof, ...g.params,
     );

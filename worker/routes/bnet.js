@@ -29,7 +29,7 @@ import {
   BNET_STATE_COOKIE, FRESH_MODE, bnetStateCookie, bnetStateMode, claimStateNonce, clearBnetStateCookie, hashToken, loadSession, newSessionToken,
   presentedToken, sessionCookie, signBnetSigninState, signBnetState, startSessionStatements, verifyBnetSigninState, verifyBnetState, verifyFreshState,
 } from '../session.js';
-import { applyPicks } from '../claim-apply.js';
+import { applyPicks, snapshotIdentity } from '../claim-apply.js';
 import { autoAddMaxLevel } from '../bnet-auto-add.js';
 import { bad, resolveRealm } from './roster.js';
 import { viewerOf } from '../roster-view.js';
@@ -571,7 +571,7 @@ export async function createClaims(ctx) {
   // Applied at once (D2): the character joins the member's own record, or the member's account is linked to the person that holds it (D2b); only a conflict
   // goes to the officers as a pending claim. One batch, worker/claim-apply.js.
   const result = await applyPicks(ctx, guildContext, picked.map((item) => ({
-    index: item.index, name: item.name, realm: item.realm, class: item.character.class, level: item.character.level,
+    index: item.index, name: item.name, realm: item.realm, class: item.character.class, level: item.character.level, identity: snapshotIdentity(item.character, support.namespace),
   })), { source: 'bnet', field: 'characters' });
   return jsonResponse(result, 201);
 }
