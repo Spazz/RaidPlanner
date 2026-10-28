@@ -147,9 +147,9 @@ check('router: the keys are encoded safely, strangers are not found, and a done 
   assert.equal(G.router.parse('#/linked?error=fresh_required').error, 'fresh_required');
 });
 
-check('router: nothing retired - people, accounts, guests and dataaccess still open, TABS and TAB_ALIASES stay one entry per line', () => {
-  for (const tab of ['people', 'guests', 'dataaccess']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'settings', gid: 'g1', tab });
-  assert.deepEqual(plain(G.router.parse('#/g/g1/settings/accounts')), { name: 'settings', gid: 'g1', tab: 'people' });
+check('router: nothing retired but Accounts - guests and dataaccess still open, people and accounts open Users, TABS and TAB_ALIASES stay one entry per line', () => {
+  for (const tab of ['guests', 'dataaccess']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'settings', gid: 'g1', tab });
+  for (const tab of ['people', 'accounts']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'users', gid: 'g1', segment: null }, 'Settings > Accounts is retired into Users');
   const source = read('js/guild/router.js');
   const block = (name) => source.slice(source.indexOf(`const ${name} = `), source.indexOf('];\n', source.indexOf(`const ${name} = `)) + 2);
   const tabs = block('TABS');
@@ -214,8 +214,9 @@ check('shell: Links and keys (Sharing, guild.access, New) and Owner review (the 
   assert(names(everything, owner, { name: 'A', you: true, reviewOpen: true }).includes('claimreview'));
   assert.equal(names(everything, owner, { reviewOpen: true })[1], 'claimreview', 'it follows General in the Guild group');
   assert.deepEqual(plain(G.shell.settingsGroups(everything, owner, { reviewOpen: true })[0].items.map((item) => item.label)).slice(0, 2), ['General', 'Owner review']);
-  // Accounts, Guest links and Data access stay in the list for now.
-  for (const tab of ['people', 'guests', 'dataaccess']) assert(names(everything, owner).includes(tab), tab);
+  // Guest links and Data access stay in the list for now (Accounts is retired into Users).
+  for (const tab of ['guests', 'dataaccess']) assert(names(everything, owner).includes(tab), tab);
+  assert(!names(everything, owner).includes('people'), 'Accounts is gone from the list');
   // The frame lists it for the Owner and carries the page's own heading.
   const gd = guildData(everything, { owner: { name: 'A', you: true, reviewOpen: true } });
   gd.me.roles = owner;
@@ -225,7 +226,7 @@ check('shell: Links and keys (Sharing, guild.access, New) and Owner review (the 
   assert(linksFrame.includes('Links and keys') && linksFrame.includes('gs-nbadge'), 'Links and keys carries the New mark');
 });
 
-check('shell: the crumbs of Users, a user, Guild setup and #/fresh; the stubs draw a real head and an empty state', () => {
+check('shell: the crumbs of Users, a user, Guild setup and #/fresh; the pages draw a real head (the Users pages until their read answers, with the back link)', () => {
   const ctx = (route, extra) => ({ section: 'guild', page: 'app', signedOut: false, me: { user: { id: 'u1' } }, route, guildData: guildData({ 'guild.access': 'guild', 'guild.teams': 'guild' }), ...extra });
   const labels = (route, extra) => plain(G.shell.breadcrumbItems(ctx(route, extra)).map((crumb) => crumb.label));
   assert.deepEqual(labels({ name: 'users', gid: 'g1', segment: null }), ['Writers', 'Users']);
@@ -240,9 +241,10 @@ check('shell: the crumbs of Users, a user, Guild setup and #/fresh; the stubs dr
     assert(/gs-empty2/.test(html), `${title}: an empty state`);
     assert(!/\sstyle=|\son[a-z]+=/i.test(html));
   };
-  page(G.pages.users.main({ name: 'users', gid: 'g1', segment: null }, gd), 'Users');
+  const users = G.pages.users.main({ name: 'users', gid: 'g1', segment: null }, gd);
+  assert(/<h1[^>]*>Users<\/h1>/.test(users) && !/\sstyle=|\son[a-z]+=/i.test(users), 'Users: the real head while the read is not in');
   const user = G.pages.user.main({ name: 'user', gid: 'g1', key: 'u_x' }, gd);
-  page(user, 'User');
+  assert(/<h1[^>]*>User<\/h1>/.test(user) && !/\sstyle=|\son[a-z]+=/i.test(user), 'User: the real head while the read is not in');
   assert(user.includes('href="#/g/g1/users"') && user.includes('gs-back-link'), 'the user page has its back link to Users');
   const setup = G.pages.setup.main({ name: 'setup', gid: 'g1' }, gd);
   page(setup, 'Guild setup');
@@ -273,9 +275,11 @@ check('app: the routes are wired (titles, page keys) and the manifest lists the 
   assert(order.every((n) => n > 0) && order.every((n, i) => i === 0 || n > order[i - 1]), 'the four marker blocks, in order');
   assert(css.indexOf('.gs-fresh-page') > 0 && css.indexOf('.gs-fresh-page') < order[0], 'the fresh styles sit above the four blocks');
   assert(css.trimEnd().endsWith('/* == end B8a Owner == */'));
-  for (const [name, lane] of [['Guild setup', 'setup'], ['Users', 'users'], ['Links and keys', 'links'], ['Owner', 'owner']]) {
+  for (const [name, lane] of [['Guild setup', 'setup'], ['Links and keys', 'links'], ['Owner', 'owner']]) {
     assert(css.includes(`/* == B8a ${name} (lane ${lane}) == */\n/* == end B8a ${name} == */\n`), `${name}: an empty marker block`);
   }
+  const usersBlock = css.slice(css.indexOf('/* == B8a Users (lane users) == */'), css.indexOf('/* == end B8a Users == */'));
+  assert(usersBlock.includes('.gs-us-selbar') && usersBlock.includes('.gs-us-urow'), 'Users: the lane\'s styles are between its markers');
 });
 
 // ---------------------------------------------------------------------------
@@ -881,16 +885,20 @@ const appRoutes = (can, owner, extra) => ({
 });
 const mainOf = async (env) => { await settle(); return env.html('gs-main'); };
 
-check('app: Users opens for guild.access (head and empty state, no data call yet), the user page has its back link, Guild setup is its own page; members are told they cannot open them', async () => {
-  const env = makeEnv({ url: '/#/g/g1/users', routes: appRoutes(OFFICER) });
+check('app: Users opens for guild.access (head and the first rows of the segment), the user page has its back link, Guild setup is its own page; members are told they cannot open them', async () => {
+  const usersRoutes = {
+    '/api/guild/g1/users?segment=members&sort=user&dir=asc&offset=0&limit=10': { status: 200, body: { segment: 'members', rows: [{ key: 'u_abcdefghijklmnopqrstuv', kind: 'account', name: 'Ashgrove', main: null, permission: 'Officer', lastSeen: '2026-10-26', tags: [], flags: {} }], more: false, counts: { members: 1, former: 0, nonmembers: 0, blocked: 0 }, sort: 'user', dir: 'asc', battlenetOnly: false, coreRanks: ['raider', 'trial', 'reserve', 'social'] } },
+    '/api/guild/g1/users/u_abcdefghijklmnopqrstuv': { status: 200, body: { key: 'u_abcdefghijklmnopqrstuv', kind: 'account', segment: 'members', name: 'Ashgrove', identity: { account: { displayName: 'Ashgrove' }, battlenet: false, signInMethods: [] }, main: null, characters: [], permission: 'Officer', permissions: [], lastSeen: '2026-10-26', block: { blocked: false, pendingReview: false, blockedOn: null }, flags: {}, tags: [], sightings: [], battlenetOnly: false, ownerSeat: true } },
+  };
+  const env = makeEnv({ url: '/#/g/g1/users', routes: appRoutes(OFFICER, null, usersRoutes) });
   const users = await mainOf(env);
-  assert(/<h1[^>]*>Users<\/h1>/.test(users) && users.includes('gs-empty2'), text(users));
+  assert(/<h1[^>]*>Users<\/h1>/.test(users) && users.includes('Ashgrove') && users.includes('Members <span class="gs-fg-segn">1</span>'), text(users));
   assert(env.html('shell-sidebar').includes('class="gs-nav-link is-active" href="#/g/g1/users"'), 'Users is the current nav item');
   assert(env.html('shell-topbar-lead').includes('>Users<'), 'the crumb');
-  assert(!env.fetchCalls.some((call) => /\/users/.test(call.url)), 'the stub reads nothing');
+  assert.equal(env.fetchCalls.filter((call) => /\/users\?/.test(call.url)).length, 1, 'one read of the first page of the segment');
   env.loc.hash = '#/g/g1/users/u/u_abcdefghijklmnopqrstuv';
   const user = await mainOf(env);
-  assert(/<h1[^>]*>User<\/h1>/.test(user) && user.includes('href="#/g/g1/users"'));
+  assert(/<h1[^>]*>Ashgrove<\/h1>/.test(user) && user.includes('href="#/g/g1/users"'));
   env.loc.hash = '#/g/g1/setup';
   const setup = await mainOf(env);
   assert(/<h1[^>]*>Guild setup<\/h1>/.test(setup) && setup.includes('In-game guild') && setup.includes('Switch over'));
@@ -898,7 +906,8 @@ check('app: Users opens for guild.access (head and empty state, no data call yet
   assert(env.html('shell-sidebar').includes('class="gs-nav-link is-active" href="#/g/g1/settings"'), 'Guild setup keeps Guild settings current');
   const member = makeEnv({ url: '/#/g/g1/users', routes: appRoutes(MEMBER) });
   const refused = await mainOf(member);
-  assert(refused.includes('You cannot open this') && !refused.includes('gs-empty2'), text(refused));
+  assert(refused.includes('You cannot open this') && !refused.includes('gs-rs-people'), text(refused));
+  assert(!member.fetchCalls.some((call) => /\/users/.test(call.url)), 'a member reads nothing');
   assert(!member.html('shell-sidebar').includes('>Users<'), 'no Users item for a member');
   member.loc.hash = '#/g/g1/setup';
   assert((await mainOf(member)).includes('You cannot open this'));
@@ -949,8 +958,10 @@ check('app: #/linked?error=fresh_required shows the sign-in banner for the accou
   assert(!page.includes('Battle.net could not finish connecting'));
 });
 
-check('the page lanes\' hand-over is untouched: pages-settings-people.js does not call the fresh helper yet', () => {
-  assert(!read('js/guild/pages-settings-people.js').includes('G.fresh'), 'the Users lane moves the hand-over');
+check('the hand-over lives on Users and calls the fresh helper; Settings > Accounts (pages-settings-people.js) is gone', () => {
+  assert(!fs.existsSync(path.join(ROOT, 'js/guild/pages-settings-people.js')), 'the Accounts page is deleted');
+  const source = read('js/guild/pages-users.js');
+  assert(source.includes("G.fresh.registerAct('handover'") && source.includes('G.fresh.runDialog('), 'the hand-over asks for the sign-in step and repeats after it');
 });
 
 // ---------------------------------------------------------------------------

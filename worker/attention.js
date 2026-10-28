@@ -325,7 +325,7 @@ function collect(input) {
   if (input.blockReview && (input.blockReview.pending > 0 || input.blockReview.held > 0) && input.granted('guild.access')) {
     const { pending, held } = input.blockReview;
     add('block_review', {
-      ...base('block_review', null), count: pending + held, pending, held, id: 'block_review', link: { name: 'settings', tab: 'people' },
+      ...base('block_review', null), count: pending + held, pending, held, id: 'block_review', link: { name: 'users', segment: 'blocked' },
     }, [0], `${pending}:${held}`);
   }
   // The new Owner's review of what the previous Owner left live after a Guild Master claim (lane B6b part 2b, U R6-Q1): one item for the guild, dismissable (a later claim brings it back).

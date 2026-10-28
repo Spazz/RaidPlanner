@@ -865,17 +865,6 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   });
 
   // ── people and teams pages ─────────────────────────────────────
-  await check('People and roles: the Roster cell links to the Main\'s record in the class colour; null stays "Not linked"', () => {
-    const entry = (id, roster) => ({ person: { id, username: id, displayName: id, avatarUrl: null, initials: 'XX' }, roles: [], roster, lastSeenAt: null, isMe: false, actions: {} });
-    const out = G.pages.people.tableHtml({ gid: 'g1', people: [entry('u1', { personId: 'p_8', name: 'Sølvhand', class: 'PALADIN' }), entry('u2', null), entry('u3', { personId: 'p_9', name: HOSTILE, class: 'NOPE' })], teams: [], sort: { column: 'person', dir: 'asc' }, query: '', now: 0 });
-    assert(out.includes('<a class="gs-char-link gs-class-paladin" href="#/g/g1/roster/p/p_8">Sølvhand</a>'));
-    assert(out.includes('Not linked'));
-    assertEscaped(out, 'people roster cell');
-    assert(out.includes('<a class="gs-char-link " href="#/g/g1/roster/p/p_9">'), 'an unknown class gets no colour class');
-    const sorted = G.peopleSort.sortPeople([entry('u2', null), entry('u1', { personId: 'p_8', name: 'Sølvhand', class: 'PALADIN' })], { column: 'roster', dir: 'asc' });
-    assert.equal(sorted[0].person.id, 'u1');
-  });
-
   await check('Teams: the player count shows, and archived teams with characters get an Open roster link', () => {
     const gd = guildData({ teams: [{ id: 't_main', name: 'Main team', players: 23 }, { id: 't_old', name: 'Old team', archived: true, players: 4 }, { id: 't_empty', name: 'Empty team', archived: true, players: 0 }] });
     const out = G.pages.teams.teamsHtml({ guildData: gd, alert: '' });

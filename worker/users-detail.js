@@ -1,6 +1,6 @@
 // The page of one user (user-hierarchy build, lane B7b part 1): GET /api/guild/:gid/users/:ukey. READ ONLY; the key comes from the Users list (worker/users-list.js).
 //
-//   { key, kind, segment, name,
+//   { key, kind, segment, name, personId?,         personId: the roster person of an account or of an account-less person (the "Open roster record" link); left out for a name and for an account with no person
 //     identity: { account: { displayName } | null, battlenet, signInMethods: ['discord', 'battlenet'] },     never a Discord id, a Battle.net account id or a BattleTag
 //     main, characters: [{ name, class, realm, ingameRank: { rank, label } | null, coreRank, team: { id, name } | null, isMain, former, leftOn }],
 //     permission, permissions: [{ role, label, teamId?, teamName?, sources }], lastSeen,
@@ -137,7 +137,7 @@ async function accountPage(ctx, scope, guildContext, userId, mayDecide) {
   const tags = ACCOUNT_TAGS.map((tag) => `${accountTagSql(head, tag, 'a')} AS t_${tag}`).join(', ');
   const headStatement = bound(db, head, `WITH ${accountsCte(head, userId)}
      SELECT a.id AS id, a.username AS username, a.global_name AS global_name, a.display_name AS display_name, (a.discord_id IS NOT NULL) AS has_discord,
-            EXISTS (SELECT 1 FROM bnet_links bl WHERE bl.user_id = a.id) AS has_bnet, ${accountSegmentSql(head, null)} AS seg,
+            EXISTS (SELECT 1 FROM bnet_links bl WHERE bl.user_id = a.id) AS has_bnet, a.pid AS person_id, ${accountSegmentSql(head, null)} AS seg,
             ${lastSeenSql(head, { pid: 'a.pid', uid: 'a.id', signInExpr: 'a.last_seen_at' })} AS seen,
             ${bestBuiltinSql(g, 'a.id')} AS best, ${customNameSql(g, 'a.id')} AS custom,
             ${ownerSql(g, 'a.id')} AS is_owner, (${seatHeldBySql(g, 'a.id')} AND NOT ${ownerSql(g, 'a.id')}) AS is_suspended, ${ignoredBlockSql(head, 'a')} AS ignored_block, ${tags}
@@ -189,6 +189,7 @@ async function accountPage(ctx, scope, guildContext, userId, mayDecide) {
     kind: 'account',
     segment: row.seg,
     name: displayNameOf(row),
+    ...(row.person_id ? { personId: row.person_id } : {}),
     identity: {
       account: { displayName: displayNameOf(row) },
       battlenet: row.has_bnet === 1,
@@ -225,6 +226,7 @@ async function personPage(ctx, scope, guildContext, personId, mayDecide) {
     kind: 'person',
     segment: row.seg,
     name: row.name,
+    personId,
     identity: { account: null, battlenet: false, signInMethods: [] },
     main: mainOf(list),
     characters: list,

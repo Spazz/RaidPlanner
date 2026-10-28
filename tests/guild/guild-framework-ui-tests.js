@@ -173,7 +173,7 @@ function assertNoRawAttrs(out) {
     assert(read('js/guild/pages-settings-activity.js').includes("G.ui.dateTimeInZone(ms, timeZone, { year: 'auto', now: now })"));
     assert(read('js/guild/pages-join.js').includes('G.ui.dateTimeInZone(raid.startsAt, zone)') && read('js/guild/pages-join.js').includes('data.guild.timeZone'), 'the guest sign-up writes the start in the guild zone');
     assert(read('js/app.js').includes('guild.ui.timeInZone(Date.now()'), 'the Planner\'s "Saved to the raid at" uses the guild clock');
-    for (const f of ['pages-applications', 'pages-settings-guests', 'pages-settings-dataaccess', 'pages-settings-people']) assert(read('js/guild/' + f + '.js').includes('G.ui.guildZone()'), f);
+    for (const f of ['pages-applications', 'pages-settings-guests', 'pages-settings-dataaccess']) assert(read('js/guild/' + f + '.js').includes('G.ui.guildZone()'), f);
   });
 
   // ═══ 3. Buttons, chips, badges, segments ═══
@@ -746,7 +746,7 @@ function assertNoRawAttrs(out) {
     assert(all['js/guild/pages-raid-roster.js'].includes('Can\\\'t come'));
     assert(all['js/guild/pages-raid-board.js'].includes('Loot prios') && all['js/guild/pages-raid-loot.js'].includes('">Loot</h2>'));
     assert(all['js/guild/pages-roster-tabs.js'].includes("intent: 'Spec poll'") && all['js/guild/pages-roster-tabs.js'].includes("recruiting: 'Recruiting'"));
-    assert(all['js/guild/shell.js'].includes("label: 'Spec poll'") && all['js/guild/shell.js'].includes("label: 'Recruiting'") && all['js/guild/shell.js'].includes("label: 'Accounts'"));
+    assert(all['js/guild/shell.js'].includes("label: 'Spec poll'") && all['js/guild/shell.js'].includes("label: 'Recruiting'") && all['js/guild/shell.js'].includes("label: 'Users'"));
     assert(all['js/guild/pages-raid.js'].includes("label: 'More', key: 'raid-actions'") && all['js/guild/pages-raid-facts.js'].includes("changeMenu('plan', 'Plan settings'"));
     assert(all['js/guild/pages-raid-signups.js'].includes("absence: 'Can\\'t come'"));
     assert(all['worker/notify.js'].includes('Line-up published:') && all['worker/notify.js'].includes('Please confirm your group, or say you can\'t come.'));
@@ -755,7 +755,7 @@ function assertNoRawAttrs(out) {
     // Route names, ids and data keys did not change.
     assert(read('js/guild/router.js').includes("ROSTER_TABS = ['intent', 'recruiting', 'applications', 'launch']"));
     assert(all['js/guild/pages-raid.js'].includes("id: 'raid-actions'") && all['js/guild/pages-raid-roster.js'].includes("data-action=\"roster-publish\""));
-    assert(all['js/guild/shell.js'].includes("{ tab: 'people', label: 'Accounts'"), 'the tab key stays people');
+    assert(!all['js/guild/shell.js'].includes("{ tab: 'people'") && read('js/guild/router.js').includes("RETIRED_TAB = 'people'"), 'Settings > Accounts is retired into Users; its address still resolves');
   });
 
   // ═══ 12. Dead ends (F10) ═══

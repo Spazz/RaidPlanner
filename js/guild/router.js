@@ -3,8 +3,8 @@
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list for officers, the member's own page for everyone else)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{general,teams,schedule,people,roles,discord,guests,dataaccess,public,applications,notifications,attendance,loot,battlenet,activity,data}]
-//   (settings: the bare address opens the first page on a wide screen and the list of pages on a phone; 'accounts' is read as 'people', the page's new name)
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{general,teams,schedule,roles,discord,guests,dataaccess,public,applications,notifications,attendance,loot,battlenet,activity,data}]
+//   (settings: the bare address opens the first page on a wide screen and the list of pages on a phone; the retired Accounts page's two addresses, settings/people and settings/accounts, open the Users list)
 //   (settings also has 'links' (Links and keys) and 'claimreview' (Owner review, the new Owner's page after a claim))
 //   #/g/:gid/users[/{members,former,non-members,blocked}]  #/g/:gid/users/u/:key  (the Users list, its segments, and one user by the key GET /users hands out)
 //   #/g/:gid/setup  (Guild setup, the in-game guild flow; its own page under Guild settings)
@@ -30,7 +30,6 @@
     'general',
     'teams',
     'schedule',
-    'people',
     'roles',
     'discord',
     'guests',
@@ -51,6 +50,9 @@
   const TAB_ALIASES = {
     accounts: 'people',
   };
+  // Settings > Accounts is retired into Users (B8a): its address (tab 'people', and the alias 'accounts' that reads as it) opens the Users list, and format() writes that address for any
+  // old link that still names the tab, so no bookmark and no link of another page breaks.
+  const RETIRED_TAB = 'people';
   const ROSTER_TABS = ['intent', 'recruiting', 'applications', 'launch'];
   const LOOT_VIEWS = ['raids', 'items'];
   const RAID_FOCUS = 'signups-unmatched'; // #/g/:gid/raids/r/:rid?focus=signups-unmatched opens the raid page scrolled to its Unmatched sign-ups panel
@@ -188,10 +190,21 @@
     }
     if (parts[2] === 'settings') {
       if (parts.length === 3) return { name: 'settings', gid: gid, tab: null };
+      const named = parts.length === 4 && TAB_ALIASES.hasOwnProperty(parts[3]) ? TAB_ALIASES[parts[3]] : parts[3];
+      if (parts.length === 4 && named === RETIRED_TAB) return { name: 'users', gid: gid, segment: null };
       if (parts.length === 4 && TAB_ALIASES.hasOwnProperty(parts[3])) return { name: 'settings', gid: gid, tab: TAB_ALIASES[parts[3]] };
       if (parts.length === 4 && TABS.indexOf(parts[3]) >= 0) return { name: 'settings', gid: gid, tab: parts[3] };
     }
     return { name: 'notfound' };
+  }
+
+  // The address of the retired Accounts page (settings/people, or its alias settings/accounts): the app swaps it for the Users address in the history, so the bar shows where the person is.
+  function isRetiredAddress(hash) {
+    let h = String(hash == null ? '' : hash);
+    if (h.charAt(0) === '#') h = h.slice(1);
+    const qi = h.indexOf('?');
+    const parts = (qi < 0 ? h : h.slice(0, qi)).split('/').filter(function (p) { return p !== ''; }).map(decode);
+    return parts.length === 4 && parts[0] === 'g' && parts[2] === 'settings' && ID.test(parts[1] || '') && (parts[3] === RETIRED_TAB || TAB_ALIASES[parts[3]] === RETIRED_TAB);
   }
 
   function format(route) {
@@ -241,7 +254,9 @@
       case 'lootitem': return '#/g/' + encodeURIComponent(r.gid) + '/loot/i/' + encodeURIComponent(r.itemId);
       case 'lootaward': return '#/g/' + encodeURIComponent(r.gid) + '/loot/a/' + encodeURIComponent(r.aid) + (r.edit ? '?edit=1' : '');
       case 'lootperson': return '#/g/' + encodeURIComponent(r.gid) + '/loot/p/' + encodeURIComponent(r.pid);
-      case 'settings': return '#/g/' + encodeURIComponent(r.gid) + '/settings' + (TABS.indexOf(r.tab) >= 0 ? '/' + r.tab : '');
+      case 'settings':
+        if (r.tab === RETIRED_TAB) return format({ name: 'users', gid: r.gid, segment: null });
+        return '#/g/' + encodeURIComponent(r.gid) + '/settings' + (TABS.indexOf(r.tab) >= 0 ? '/' + r.tab : '');
       default: return '#/';
     }
   }
@@ -343,6 +358,6 @@
   }
 
   G.router = { SECTIONS: SECTIONS, TABS: TABS, TAB_ALIASES: TAB_ALIASES, ROSTER_TABS: ROSTER_TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN,
-    USER_SEGMENTS: USER_SEGMENTS, FRESH_PURPOSES: FRESH_PURPOSES, parse: parse, format: format, isViewerRoute: isViewerRoute,
+    USER_SEGMENTS: USER_SEGMENTS, FRESH_PURPOSES: FRESH_PURPOSES, parse: parse, format: format, isViewerRoute: isViewerRoute, isRetiredAddress: isRetiredAddress,
     visit: visit, rendered: rendered, previous: previous, back: back, resetTrail: resetTrail, pathOf: pathOf };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

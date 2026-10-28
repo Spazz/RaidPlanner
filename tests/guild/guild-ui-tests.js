@@ -119,7 +119,7 @@ function assertEscaped(out, label) {
     assert.deepEqual(p('#/g/g1/home'), { name: 'section', gid: 'g1', section: 'home' });
     assert.deepEqual(p('#/g/g1/settings'), { name: 'settings', gid: 'g1', tab: null });
     assert.deepEqual(p('#/g/g1/settings/teams'), { name: 'settings', gid: 'g1', tab: 'teams' });
-    assert.deepEqual(p('#/g/g1/settings/people'), { name: 'settings', gid: 'g1', tab: 'people' });
+    assert.deepEqual(p('#/g/g1/settings/people'), { name: 'users', gid: 'g1', segment: null }, 'Settings > Accounts is retired into Users');
   });
 
   await check('router: format and parse round-trip for every route shape', () => {
@@ -127,7 +127,7 @@ function assertEscaped(out, label) {
       { name: 'home' }, { name: 'signin', error: null }, { name: 'signin', error: 'state' }, { name: 'signin', error: 'discord' },
       { name: 'new' }, { name: 'privacy' }, { name: 'planner' }, { name: 'planner', gid: 'g_Ab-9', rid: 'r_1-x' },
       ...['home', 'roster', 'raids', 'attendance', 'loot'].map(section => ({ name: 'section', gid: 'g_Ab-9', section })),
-      { name: 'settings', gid: 'g1', tab: null }, { name: 'settings', gid: 'g1', tab: 'teams' }, { name: 'settings', gid: 'g1', tab: 'people' },
+      { name: 'settings', gid: 'g1', tab: null }, { name: 'settings', gid: 'g1', tab: 'teams' }, { name: 'users', gid: 'g1', segment: null }, { name: 'users', gid: 'g1', segment: 'nonmembers' },
     ];
     for (const r of routes) assert.deepEqual(plain(G.router.parse(G.router.format(r))), r, JSON.stringify(r));
   });
@@ -284,29 +284,6 @@ function assertEscaped(out, label) {
     assert.equal(G.peopleSort.filterPeople(PEOPLE, 'zzz').length, 0);
   });
 
-  await check('people table: Not linked shows for a null roster, a role-less person shows Member, headers carry aria-sort', () => {
-    const out = G.pages.people.tableHtml({ people: PEOPLE, teams: TEAMS, sort: { column: 'person', dir: 'desc' }, query: '', now: NOW });
-    assert(out.includes('Not linked'));
-    assert(out.includes('>Member<'));
-    assert(out.includes('aria-sort="descending"'));
-    assert.equal((out.match(/aria-sort=/g) || []).length, 1);
-    for (const col of ['person', 'roster', 'roles', 'lastSeen']) assert(out.includes(`data-action="sort" data-col="${col}"`), col);
-    assert(/<button type="button" class="gs-sort"/.test(out));
-    const order = ['Thornvald', 'Stormjaw', 'Mistvale', 'Kaelith', 'Brightmane', 'Aelith'];
-    let at = out.indexOf('<tbody>');
-    for (const n of order) { const i = out.indexOf('<span class="gs-person-name">' + n, at); assert(i > at, n); at = i; }
-  });
-
-  await check('people table: Last seen is relative text with the date in a title', () => {
-    const out = G.pages.people.tableHtml({ people: PEOPLE, teams: TEAMS, sort: G.peopleSort.DEFAULT_SORT, query: '', now: NOW });
-    assert(out.includes('>Today<'));
-    assert(out.includes('>Yesterday<'));
-    assert(out.includes('>5 days ago<'));
-    assert(out.includes('>Not yet<'));
-    assert(/<span title="[^"]+">Today<\/span>/.test(out));
-    assert.equal(G.ui.relativeTime(NOW - 20 * DAY, NOW), G.ui.formatDate(NOW - 20 * DAY));
-  });
-
   // ── can-driven visibility ──────────────────────────────────────
   await check('visibility: hasAction accepts "guild" and a non-empty team list, and nothing else', () => {
     assert.equal(G.shell.hasAction({ a: 'guild' }, 'a'), true);
@@ -329,15 +306,15 @@ function assertEscaped(out, label) {
     }
   });
 
-  await check('visibility: Guild settings tabs follow the actions (Teams and Battle.net: guild.teams; People: guild.access or guild.roles)', () => {
+  await check('visibility: Guild settings tabs follow the actions (Teams and Battle.net: guild.teams; Roles: guild.roles; Accounts is retired into Users)', () => {
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
     assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['general', 'teams', 'notifications', 'applications', 'battlenet']);
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'links', 'guests', 'dataaccess']);
-    assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people', 'roles', 'discord', 'public']);
-    assert.deepEqual(tabs(ALL_CAN), ['general', 'teams', 'people', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess', 'notifications', 'applications', 'battlenet']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['links', 'guests', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['roles', 'discord', 'public']);
+    assert.deepEqual(tabs(ALL_CAN), ['general', 'teams', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess', 'notifications', 'applications', 'battlenet']);
     assert.deepEqual(tabs({}), []);
-    const frame = G.shell.settingsFrameHtml({ guildData: guildData({ 'guild.access': 'guild' }) }, 'people', '<p>x</p>');
-    assert(frame.includes('Accounts'));
+    const frame = G.shell.settingsFrameHtml({ guildData: guildData({ 'guild.access': 'guild' }) }, 'links', '<p>x</p>');
+    assert(frame.includes('Links and keys'));
     assert(!/>Teams</.test(frame));
     const nav = G.shell.navItems('g1', { 'guild.access': 'guild' }).find(i => i.key === 'settings');
     assert.equal(nav.href, '#/g/g1/settings', 'the bare address: the app opens the first page on a wide screen and the list on a phone');
@@ -375,68 +352,30 @@ function assertEscaped(out, label) {
     assert(out.includes('aria-label="More for Team A"') && out.includes('aria-label="More for Team B"') && out.includes('aria-label="Restore Old Team"'));
   });
 
-  await check('visibility: person row actions come only from the server actions flags', () => {
-    const rows = [
-      entry(person('a', 'Both'), [], NOW, { actions: { editRoles: true, makeGuildMaster: false, removeAccess: true } }),
-      entry(person('b', 'EditOnly'), [], NOW, { actions: { editRoles: true, makeGuildMaster: false, removeAccess: false } }),
-      entry(person('c', 'RemoveOnly'), [], NOW, { actions: { editRoles: false, makeGuildMaster: false, removeAccess: true } }),
-      entry(person('d', 'GmOnly'), [], NOW, { actions: { editRoles: false, makeGuildMaster: true, removeAccess: false } }),
-      entry(person('e', 'None'), [], NOW, { actions: { editRoles: false, makeGuildMaster: false, removeAccess: false } }),
-      entry(person('f', 'NoFlags'), [{ role: 'guild_master' }], NOW, { actions: undefined }),
-    ];
-    const out = G.pages.people.tableHtml({ people: rows, teams: TEAMS, sort: { column: 'person', dir: 'asc' }, query: '', now: NOW });
-    const has = (what, name) => out.includes(`aria-label="${what} ${name}"`);
-    assert(has('Edit roles for', 'Both') && has('Remove access for', 'Both'));
-    assert(has('Edit roles for', 'EditOnly') && !has('Remove access for', 'EditOnly'));
-    assert(!has('Edit roles for', 'RemoveOnly') && has('Remove access for', 'RemoveOnly'));
-    assert(has('Edit roles for', 'GmOnly') && !has('Remove access for', 'GmOnly'));
-    assert(!has('Edit roles for', 'None') && !has('Remove access for', 'None'));
-    assert(!has('Edit roles for', 'NoFlags') && !has('Remove access for', 'NoFlags'));
+  // Edit permission (Users) is the old Edit roles dialog: the Owner seat's hand-over replaces Make Guild Master, and only the owner of the seat sees it.
+  const userPage = (over) => Object.assign({ key: 'u_2222222222222222222222', kind: 'account', segment: 'members', name: 'Brightmane', permission: 'Officer', permissions: [{ role: 'officer', label: 'Officer', sources: ['manual'] }], flags: {}, block: { blocked: false, pendingReview: false } }, over || {});
+
+  await check('visibility: the Owner seat section is in Edit permission only for the Owner viewing a current member; Save is always there', () => {
+    const dialog = (gd, data) => G.pages.user.editPermissionDialogHtml({ guildData: gd, data, customRoles: [], meId: 'u1' });
+    const owner = guildData(ALL_CAN, { owner: { name: 'Thornvald', you: true } });
+    const withSeat = dialog(owner, userPage());
+    assert(withSeat.includes('Owner seat') && withSeat.includes('data-action="users-handover-open"') && withSeat.includes('Hand over the Owner seat'));
+    const notOwner = dialog(guildData(ALL_CAN, { owner: { name: 'Thornvald', you: false } }), userPage());
+    assert(!notOwner.includes('Owner seat') && !notOwner.includes('users-handover-open'));
+    assert(!dialog(guildData(ALL_CAN), userPage()).includes('users-handover-open'), 'no owner block: no section');
+    assert(!dialog(owner, userPage({ segment: 'former' })).includes('users-handover-open'), 'a former member cannot take the seat');
+    assert(withSeat.includes('type="submit"') && notOwner.includes('type="submit"'));
   });
 
-  await check('visibility: Restore access shows only when the removed row allows it', () => {
-    const removed = [
-      { person: person('r1', 'Allowed'), roles: [], removedBy: person('u1', 'Thornvald'), removedAt: NOW, reason: 'Left the guild', actions: { restoreAccess: true } },
-      { person: person('r2', 'Denied'), roles: [], removedBy: null, removedAt: NOW, reason: '', actions: { restoreAccess: false } },
-    ];
-    const out = G.pages.people.removedHtml({ removed });
-    assert(out.includes('aria-label="Restore access for Allowed"'));
-    assert(!out.includes('Restore access for Denied'));
-    assert(out.includes('Access removed (2)'));
-    assert(/Removed by Thornvald on [A-Z][a-z]{2} \d{1,2}, \d{4} - Left the guild/.test(out));
-    assert(/Removed on [A-Z][a-z]{2} \d{1,2}, \d{4}</.test(out));
-    assert.equal(G.pages.people.removedHtml({ removed: [] }), '');
-  });
-
-  await check('visibility: Make Guild Master is in Edit roles only when the server allows it; Save only when roles are editable', () => {
-    const base = entry(person('u2', 'Brightmane'), [{ role: 'officer' }], NOW);
-    const withGm = G.pages.people.rolesDialogHtml(Object.assign({}, base, { actions: { editRoles: true, makeGuildMaster: true, removeAccess: true } }), TEAMS, 'Ravens');
-    assert(withGm.includes('Make Guild Master') && withGm.includes('data-action="gm-confirm"'));
-    assert(withGm.includes('You become an Officer'));
-    const without = G.pages.people.rolesDialogHtml(base, TEAMS, 'Ravens');
-    assert(!without.includes('Make Guild Master') && !without.includes('gm-confirm'));
-    assert(without.includes('type="submit"'));
-    const gmOnly = G.pages.people.rolesDialogHtml(Object.assign({}, base, { actions: { editRoles: false, makeGuildMaster: true, removeAccess: false } }), TEAMS, 'Ravens');
-    assert(!gmOnly.includes('type="submit"') && gmOnly.includes('<fieldset class="gs-fieldset" disabled>'));
-  });
-
-  await check('roles dialog: Officer plus Team Lead per active team, pre-checked from the current roles', () => {
-    const e = entry(person('u6', 'Kaelith'), [{ role: 'officer' }, { role: 'team_lead', teamId: 't2' }], NOW);
-    const out = G.pages.people.rolesDialogHtml(e, TEAMS, 'Ravens');
+  await check('roles dialog: Officer plus Team Lead per active team, pre-checked from what was set by hand', () => {
+    const data = userPage({ name: 'Kaelith', permissions: [{ role: 'officer', label: 'Officer', sources: ['manual'] }, { role: 'team_lead', label: 'Team Lead', teamId: 't2', teamName: 'Team B', sources: ['manual'] }] });
+    const out = G.pages.user.editPermissionDialogHtml({ guildData: guildData(ALL_CAN), data, customRoles: [], meId: 'u1' });
     assert(/name="officer" checked/.test(out));
     assert(/name="teamLead" value="t2" checked/.test(out));
     assert(/name="teamLead" value="t1"(?! checked)/.test(out));
     assert(!out.includes('value="t3"'), 'archived team must not be offered');
     assert(out.includes('Officer: whole guild') && out.includes('Team Lead: Team A') && out.includes('Team Lead: Team B'));
-    assert(out.includes('id="dlg-title"') && out.includes('Edit roles for Kaelith'));
-  });
-
-  await check('remove dialog: optional reason capped at 200 characters, names the person and the guild', () => {
-    const out = G.pages.people.removeDialogHtml(entry(person('u4', 'Stormjaw'), [], NOW), 'Ravens');
-    assert(out.includes("Remove Stormjaw's access?"));
-    assert(out.includes("Stormjaw can't open Ravens's pages"));
-    assert(/name="reason" maxlength="200"/.test(out));
-    assert(out.includes('Reason (optional)'));
+    assert(out.includes('id="dlg-title"') && out.includes('Edit permission for Kaelith'));
   });
 
   await check('visibility: the Add a guild tile needs create.allowed; guild tiles come from /auth/me', () => {
@@ -460,7 +399,8 @@ function assertEscaped(out, label) {
     const gd = guildData(ALL_CAN);
     const crumbs = (route, teamId) => plain(G.shell.breadcrumbItems({ route, guildData: gd, teamId }).map(c => c.label));
     assert.deepEqual(crumbs({ name: 'section', gid: 'g1', section: 'raids' }, 't1'), ['Ravens', 'Team A', 'Raids']);
-    assert.deepEqual(crumbs({ name: 'settings', gid: 'g1', tab: 'people' }, 't1'), ['Ravens', 'Guild settings', 'Accounts']);
+    assert.deepEqual(crumbs({ name: 'settings', gid: 'g1', tab: 'roles' }, 't1'), ['Ravens', 'Guild settings', 'Roles']);
+    assert.deepEqual(crumbs({ name: 'users', gid: 'g1', segment: null }, 't1'), ['Ravens', 'Users']);
     assert.deepEqual(crumbs({ name: 'new' }, null), ['Create a guild']);
     assert.deepEqual(crumbs({ name: 'privacy' }, null), ['Privacy & my data']);
   });
@@ -479,20 +419,6 @@ function assertEscaped(out, label) {
   });
 
   // ── hostile names ──────────────────────────────────────────────
-  await check('hostile names: people table, removed list and dialogs come out escaped', () => {
-    const bad = person('x1', HOSTILE + QUOTES, { avatarUrl: 'https://cdn.discordapp.com/a.png" onerror="x' });
-    const e = entry(bad, [{ role: 'team_lead', teamId: 't9' }], NOW);
-    const teams = [{ id: 't9', name: HOSTILE + QUOTES, size: 25, archived: false }];
-    const table = G.pages.people.tableHtml({ people: [e], teams, sort: G.peopleSort.DEFAULT_SORT, query: '', now: NOW });
-    assertEscaped(table, 'table');
-    assert(table.includes('&lt;img src=x onerror=1&gt;'));
-    assert(table.includes('&quot;'));
-    assertEscaped(G.pages.people.rolesDialogHtml(e, teams, HOSTILE + QUOTES), 'roles dialog');
-    assertEscaped(G.pages.people.removeDialogHtml(e, HOSTILE + QUOTES), 'remove dialog');
-    assertEscaped(G.pages.people.removedHtml({ removed: [{ person: bad, roles: [], removedBy: bad, removedAt: NOW, reason: HOSTILE + QUOTES, actions: { restoreAccess: true } }] }), 'removed');
-    assertEscaped(G.pages.people.peopleHtml({ guildData: guildData(ALL_CAN), data: { signedInCount: 1, people: [e], removed: [] }, sort: G.peopleSort.DEFAULT_SORT, query: HOSTILE + QUOTES, notice: HOSTILE, alert: HOSTILE, now: NOW }), 'people page');
-  });
-
   await check('hostile names: shell, teams page, team dialog, create page, privacy and messages come out escaped', () => {
     const gd = guildData(ALL_CAN, {
       guild: { id: 'g1', name: HOSTILE + QUOTES, realm: HOSTILE + QUOTES, region: 'EU', timeZone: 'UTC', gameVersion: HOSTILE, createdAt: NOW },
@@ -516,7 +442,7 @@ function assertEscaped(out, label) {
     assert(/disabled[^>]*id="delete-open"/.test(out), 'open button disabled');
     assert(out.includes('delete-blocked') && out.includes('<strong>Ravens</strong>') && out.includes('<strong>Owls</strong>') && out.includes('Make Guild Master'));
     assert(!out.includes('id="delete-confirm"') && !out.includes('id="delete-go"'), 'no confirm path while blocked');
-    assert(out.includes('href="#/g/g1/settings/people"'));
+    assert(out.includes('href="#/g/g1/users"'), 'the way to hand a guild over is Users (Accounts is retired)');
   });
 
   await check('delete: with nothing in the way the confirm needs "I understand" before the button enables', () => {
@@ -759,16 +685,16 @@ function assertEscaped(out, label) {
     assert.deepEqual(plain(G.shell.breadcrumbItems({ route, guildData: two.gd, teamId: 't1' })).map(c => c.label), ['Ravens', 'Main team', 'Roster']);
   });
 
-  await check('one-team guild: Team Lead shows without a team name in the roles dialog and the Roles column; two teams keep the names', () => {
+  await check('one-team guild: Team Lead shows without a team name in the Edit permission dialog and the Permission panel; two teams keep the names', () => {
     const one = [{ id: 't1', name: 'Main <team>', size: 25, archived: false, players: 0, leads: [] }, { id: 't9', name: 'Old', size: 25, archived: true, players: 0, leads: [] }];
-    const e = entry(person('u9', 'Lead'), [{ role: 'team_lead', teamId: 't1' }], NOW);
-    const dialog = G.pages.people.rolesDialogHtml(e, one, 'Ravens');
+    const lead = userPage({ name: 'Lead', permissions: [{ role: 'team_lead', label: 'Team Lead', teamId: 't1', teamName: 'Main <team>', sources: ['manual'] }] });
+    const dialog = G.pages.user.editPermissionDialogHtml({ guildData: guildData(ALL_CAN, { teams: one }), data: lead, customRoles: [], meId: 'u1' });
     assert(/name="teamLead"[^>]*><label[^>]*>Team Lead<\/label>/.test(dialog), 'single checkbox says Team Lead');
     assert(!dialog.includes('Team Lead: ') && !dialog.includes('Main &lt;team&gt;'));
-    assert.deepEqual(plain(G.peopleSort.roleLabels(e.roles, one)).map(r => r.label), ['Team Lead']);
-    assert(G.ui.roleChipsHtml(e.roles, one).includes('>Team Lead<'));
-    assert(G.pages.people.rolesDialogHtml(e, TEAMS, 'Ravens').includes('Team Lead: Team A'), 'two active teams keep the names');
-    assert.deepEqual(plain(G.peopleSort.roleLabels(e.roles, TEAMS)).map(r => r.label), ['Team Lead: Team A']);
+    const page = (teams) => G.pages.user.userHtml({ guildData: guildData(ALL_CAN, { teams }), data: Object.assign({ identity: { account: { displayName: 'Lead' }, battlenet: false, signInMethods: [] }, characters: [], main: null, sightings: [], lastSeen: null }, lead), meId: 'u1' });
+    assert(page(one).includes('>Team Lead<') && !page(one).includes('Team Lead: '), 'the panel row says Team Lead');
+    assert(G.pages.user.editPermissionDialogHtml({ guildData: guildData(ALL_CAN), data: lead, customRoles: [], meId: 'u1' }).includes('Team Lead: Team A'), 'two active teams keep the names');
+    assert(page(TEAMS).includes('Team Lead: Main &lt;team&gt;'), 'two active teams keep the names in the panel');
   });
 
   // ── guild.html, guild.css, source hygiene ──────────────────────
@@ -881,7 +807,7 @@ function assertEscaped(out, label) {
   });
 
   await check('guild.css has a rule for every gs- class the markup builders use', () => {
-    const markup = ['shell.js', 'ui.js', 'icons.js', 'pages-signin.js', 'pages-create.js', 'pages-settings-teams.js', 'pages-settings-people.js', 'pages-privacy.js', 'pages-roadmap.js', 'pages-roster.js', 'pages-person.js', 'pages-import.js', 'pages-loot.js', 'pages-person-loot.js', 'pages-raid-loot.js', 'pages-settings-loot.js', 'pages-raid-signups.js', 'pages-settings-schedule.js']
+    const markup = ['shell.js', 'ui.js', 'icons.js', 'pages-signin.js', 'pages-create.js', 'pages-settings-teams.js', 'pages-users.js', 'pages-privacy.js', 'pages-roadmap.js', 'pages-roster.js', 'pages-person.js', 'pages-import.js', 'pages-loot.js', 'pages-person-loot.js', 'pages-raid-loot.js', 'pages-settings-loot.js', 'pages-raid-signups.js', 'pages-settings-schedule.js']
       .map(f => read('js/guild/' + f)).join('\n');
     const used = new Set();
     for (const m of markup.matchAll(/class="([^"]*)"/g)) {
@@ -926,15 +852,15 @@ function assertEscaped(out, label) {
     assert(out.includes('Guilds without a Guild Master'));
   });
 
-  await check('claim: the claim button is wired to POST /api/guild/:gid/claim with an empty JSON body, then opens People and roles', () => {
+  await check('claim: the claim button is wired to POST /api/guild/:gid/claim with an empty JSON body, then opens Users', () => {
     const src = read('js/guild/pages-create.js');
     assert(/G\.handlers\.click\['claim-go'\]/.test(src) && /G\.handlers\.click\['claim-ask'\]/.test(src) && /G\.handlers\.click\['claim-cancel'\]/.test(src));
     assert(/G\.api\.post\('\/api\/guild\/' \+ encodeURIComponent\(gid\) \+ '\/claim', \{\}\)/.test(src));
     assert(/afterGuildClaimed/.test(src));
     const app = read('js/guild/app.js');
     assert(/app\.afterGuildClaimed = function \(res, guildName\)[\s\S]*?afterGuildCreated\(res,/.test(app));
-    // afterGuildCreated lands on People and roles
-    assert(/tab: 'people'/.test(app.slice(app.indexOf('app.afterGuildCreated'))));
+    // afterGuildCreated lands on Users (Settings > Accounts is retired)
+    assert(/name: 'users'/.test(app.slice(app.indexOf('app.afterGuildCreated'))));
   });
 
   await check('claim: the No guild page links to Create guild only when something is claimable', () => {
@@ -1013,10 +939,10 @@ function assertEscaped(out, label) {
     const app = read('js/guild/app.js');
     assert(/err\.code === 'conflict'\) \{ app\.reloadAfterConflict\(c\.text\)/.test(app));
     const reload = app.slice(app.indexOf('app.reloadAfterConflict'), app.indexOf('app.refreshGuild'));
-    assert(/loadMe\(\)/.test(reload) && /fetchGuild\(r\.gid\)/.test(reload) && /\/people'/.test(reload));
+    assert(/loadMe\(\)/.test(reload) && /fetchGuild\(r\.gid\)/.test(reload));
     assert(/state\.pageAlert = text;[\s\S]*render\(\)/.test(reload));
     // dialogs close first so the message is visible on the reloaded page
-    for (const f of ['pages-settings-people.js', 'pages-settings-teams.js']) {
+    for (const f of ['pages-settings-teams.js']) {
       assert(/err\.code === 'conflict'\) \{ G\.ui\.closeDialogOf\(form\); G\.app\.handleError\(err\); return; \}/.test(read('js/guild/' + f)), f);
     }
     // the Create guild page shows the alert (claim conflicts land here)
@@ -1080,41 +1006,6 @@ function assertEscaped(out, label) {
     const other = meData({ create: { allowed: true, stale: false, servers: [], claimable: [{ guildId: 'g9', guildName: 'X', serverId: 's', serverName: 'S' }] } });
     assert(!G.shell.render({ me: other, route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: 't1', collapsed: false }, '').includes('This guild has no Guild Master'), 'other guild: no notice');
     assertEscaped(G.shell.render({ me: meData({ create: { allowed: true, claimable: [{ guildId: HOSTILE }] } }), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: 't1', collapsed: false }, ''), 'claim notice');
-  });
-
-  await check('O2: Make Guild Master step 2 hides the roles-form Cancel/Save footer and Cancel restores it', () => {
-    const entry0 = entry(person('u2', 'Brightmane'), [{ role: 'officer' }], NOW, { actions: { editRoles: true, makeGuildMaster: true, removeAccess: true } });
-    const out = G.pages.people.rolesDialogHtml(entry0, TEAMS, 'Ravens');
-    assert(out.includes('id="dlg-roles-footer"'));
-    const src = read('js/guild/pages-settings-people.js');
-    const ask = src.slice(src.indexOf("click['gm-ask']"), src.indexOf("click['gm-cancel']"));
-    const cancel = src.slice(src.indexOf("click['gm-cancel']"), src.indexOf("click['gm-confirm']"));
-    assert(/dlg-roles-footer[\s\S]*footer\.hidden = true/.test(ask));
-    assert(/dlg-roles-footer[\s\S]*footer\.hidden = false/.test(cancel));
-    assert(/\.gs-dialog-actions\[hidden\] \{ display: none; \}/.test(css));
-  });
-
-  await check('B4: Make Guild Master step 2 is one dialog-footer row', () => {
-    const entry0 = entry(person('u2', 'Brightmane'), [{ role: 'officer' }], NOW, { actions: { editRoles: true, makeGuildMaster: true, removeAccess: true } });
-    const out = G.pages.people.rolesDialogHtml(entry0, TEAMS, 'Ravens');
-    const confirm = out.slice(out.indexOf('id="dlg-gm-confirm"'));
-    assert(/<div class="gs-dialog-actions"><button[^>]*data-action="gm-cancel">Cancel<\/button><button[^>]*data-action="gm-confirm">Make Guild Master<\/button><\/div>/.test(confirm));
-    assert(/\.gs-gm \.gs-dialog-actions \{ flex-wrap: nowrap; \}/.test(css));
-  });
-
-  await check('B5: People rows show the Discord username as muted text when it differs from the display name', () => {
-    const different = entry(person('u7', 'Fancy Name', { username: 'plainuser' }), [], NOW);
-    const same = entry(person('u8', 'Same', { username: 'Same' }), [], NOW);
-    const out = G.pages.people.tableHtml({ people: [different, same], teams: TEAMS, sort: { column: 'person', dir: 'asc' }, query: '', now: NOW });
-    assert(out.includes('<span class="gs-person-user">@plainuser</span>'));
-    assert.equal((out.match(/gs-person-user">/g) || []).length, 2, 'table and card, not for the matching name');
-    assertEscaped(G.pages.people.tableHtml({ people: [entry(person('u9', 'X', { username: HOSTILE + QUOTES }), [], NOW)], teams: TEAMS, sort: { column: 'person', dir: 'asc' }, query: '', now: NOW }), 'username');
-  });
-
-  await check('B7: the YOU badge sits inline beside the name', () => {
-    const out = G.pages.people.tableHtml({ people: PEOPLE, teams: TEAMS, sort: { column: 'person', dir: 'asc' }, query: '', now: NOW });
-    assert(out.includes('<span class="gs-person-line"><span class="gs-person-name">Thornvald</span><span class="gs-you">you</span></span>'));
-    assert(/\.gs-person-line \{ display: flex; flex-wrap: wrap; align-items: center;/.test(css));
   });
 
   await check('B6: phone avatar menu items and the drawer close button are 44 px', () => {

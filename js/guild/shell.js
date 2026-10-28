@@ -43,9 +43,9 @@
   }
 
   // The Guild settings pages, in the order of the five groups the list shows (design framework T3). A viewer sees a page when they hold ANY of its `needs`
-  // actions (Accounts needs access or roles; Raid schedule is for whoever edits raids, and a Team Lead reaches it from the Raids page: canSeeSettings below,
+  // actions (Raid schedule is for whoever edits raids, and a Team Lead reaches it from the Raids page: canSeeSettings below,
   // and so the sidebar item, is unchanged). Every page here is a route tab in router.js and every action a Worker action: guild-structure-tests.js checks both.
-  // `tab` is the address (#/g/:gid/settings/<tab>) and never changes with a label: 'people' is the page called Accounts. `purpose` is the one line under the
+  // `tab` is the address (#/g/:gid/settings/<tab>) and never changes with a label. `purpose` is the one line under the
   // page's heading. General is the Guild Master's to edit (the Worker says 403 to anyone else); an officer who reaches Guild settings reads it.
   // Two pages are shown by something other than an action: `guildMasterOnly` (Guild data: the role) and `ownerReviewOnly` (Owner review: only the Owner, only while GET /api/guild/:gid
   // says owner.reviewOpen; settingsTabs' third argument is that `owner` block).
@@ -59,8 +59,6 @@
       purpose: 'The raid teams of the guild. Each character is locked to one team.' },
     { tab: 'schedule', label: 'Raid schedule', group: 'Guild', needs: ['raids.edit'],
       purpose: 'The days each team raids every week, and when sign-ups close.' },
-    { tab: 'people', label: 'Accounts', group: 'People and access', needs: ['guild.access', 'guild.roles'],
-      purpose: 'The accounts that have signed in to this guild, and the roles they hold.' },
     { tab: 'roles', label: 'Roles', group: 'People and access', needs: ['guild.roles'],
       purpose: 'What each role may see and do. Add your own roles, or reset a built-in one.' },
     { tab: 'discord', label: 'Discord roles', group: 'People and access', needs: ['guild.roles'],

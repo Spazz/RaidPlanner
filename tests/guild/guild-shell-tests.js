@@ -1847,9 +1847,14 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     await settle();
     const t = teams.html('gs-main');
     assert(t.includes('id="settings-title" tabindex="-1">Teams</h2>') && t.includes('aria-current="page">Teams<') && (t.match(/class="gs-sgroup-h"/g) || []).length >= 4);
-    const accounts = makeEnv({ url: '/#/g/g1/settings/accounts', routes: signedInRoutes(can, { '/api/guild/g1/people': { status: 200, body: { people: [], removed: [], signedInCount: 0, roster: null } } }) });
-    await settle();
-    assert(accounts.html('gs-main').includes('id="settings-title" tabindex="-1">Accounts</h2>'), 'the Accounts name reads as the people address');
+    // Settings > Accounts is retired: both its addresses open Users, and the address bar shows Users.
+    for (const old of ['accounts', 'people']) {
+      const users = makeEnv({ url: '/#/g/g1/settings/' + old, routes: signedInRoutes(can) });
+      await settle();
+      assert(/<h1[^>]*id="page-title"[^>]*>Users<\/h1>/.test(users.html('gs-main')) || users.html('gs-main').includes('Loading users'), old + ' opens Users');
+      assert(users.history.calls.some(c => c[0] === 'replace' && c[1].endsWith('#/g/g1/users')), old + ': the address is swapped for the Users address');
+      assert(!users.html('gs-main').includes('settings-title'), old + ' is no settings page');
+    }
   });
 
   await check('Planner officer layout: guild cards own the primary, Help returns to the full landing, members keep import', async () => {

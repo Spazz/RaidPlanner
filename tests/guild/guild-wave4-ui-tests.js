@@ -122,7 +122,7 @@ function formFor(teamId, values) {
     const tabs = (can) => plain(G.shell.settingsTabs(can, []).map(t => t.tab));
     assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['general', 'teams', 'notifications', 'applications', 'battlenet']);
     assert.deepEqual(tabs({ 'raids.edit': 'guild' }), ['schedule'], 'raid editing alone does not open it');
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'links', 'guests', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['links', 'guests', 'dataaccess']);
     assert.equal(G.shell.SETTINGS_TABS.find(t => t.tab === 'notifications').label, 'Notifications');
   });
 

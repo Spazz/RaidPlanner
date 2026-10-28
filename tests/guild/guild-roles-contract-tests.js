@@ -346,7 +346,7 @@ check('public page settings: the real settings draw the switch and sections, a s
   assert(/<input[^>]*value="loot"[^>]*disabled|<input[^>]*disabled[^>]*value="loot"/.test(html), 'the loot checkbox is disabled');
 });
 
-check('people page: Discord-given roles show as Discord\'s, the Edit roles dialog lists the guild\'s own roles and only what an officer set by hand is ticked, and Sync now is offered where the Worker says', async () => {
+check('users page: Discord-given roles show as Discord\'s, the Edit permission dialog lists the guild\'s own roles and only what an officer set by hand is ticked, and Sync now is offered where the Worker says', async () => {
   const s = await scenario();
   const { G } = s;
   const council = (await G.api.roles.create(s.gid, { name: 'Loot council', permissions: { 'loot.edit': 'guild' } })).roles.find((r) => r.name === 'Loot council');
@@ -361,20 +361,22 @@ check('people page: Discord-given roles show as Discord\'s, the Edit roles dialo
   const dave = people.people.find((p) => p.person.id === s.ids.dave);
   assert.deepEqual(bob.roles, [{ role: 'officer', fromDiscord: true }]);
   assert.equal(bob.actions.syncDiscord, true);
-  const table = G.pages.people.tableHtml({ people: people.people, teams: s.guildData.teams, sort: G.peopleSort.DEFAULT_SORT, query: '', now: Date.now(), gid: s.gid });
-  const tableText = stripTags(table);
-  assert(/Officer \(Discord\)/.test(tableText), tableText);
-  assert(/Loot council/.test(tableText) && /Raid leader/.test(tableText), 'custom roles show by name');
-  assert(/Raid leader[^<]*Alpha|Raid leader - Alpha/.test(tableText), 'with their team');
-  assert(/data-action="person-sync"[^>]*data-uid="[^"]*"/.test(table));
-  assert(!new RegExp(`data-action="person-sync"[^>]*data-uid="${s.ids.alice}"`).test(table), 'not for the Guild Master');
+  // The Users page of Bob and Dave, from the real Worker's answers (GET /users/:ukey): Discord's role says so, the hand-set custom roles show by name with their team.
+  const bobUser = await G.api.get(`${s.base}/users/${s.ids.bob}`);
+  const daveUser = await G.api.get(`${s.base}/users/${s.ids.dave}`);
+  const pageText = (data) => stripTags(G.pages.user.userHtml({ guildData: s.guildData, data, meId: null, flash: null }));
+  assert(/Officer\s*From Discord/.test(pageText(bobUser)), pageText(bobUser));
+  const daveText = pageText(daveUser);
+  assert(/Loot council/.test(daveText) && /Raid leader/.test(daveText) && /Set by hand/.test(daveText), 'custom roles show by name, set by hand');
+  assert(/Raid leader: Alpha/.test(daveText), 'with their team');
   // The dialog for Bob: the Discord Officer is a read-only line, the box is not ticked; custom roles are listed.
   const rolesList = await G.api.roles.list(s.gid);
-  const bobDialog = G.pages.people.rolesDialogHtml(bob, s.guildData.teams, 'Ember', rolesList.roles.filter((r) => r.kind === 'custom'));
+  const dialogOf = (data) => G.pages.user.editPermissionDialogHtml({ guildData: s.guildData, data, customRoles: rolesList.roles.filter((r) => r.kind === 'custom'), meId: null });
+  const bobDialog = dialogOf(bobUser);
   assert(/From Discord/.test(stripTags(bobDialog)), 'the Discord role is shown read-only');
   assert(!/name="officer"[^>]*checked/.test(bobDialog), 'and not ticked');
   assert(/Loot council/.test(bobDialog) && /Raid leader: Alpha/.test(stripTags(bobDialog)) && /Raid leader: Bravo/.test(stripTags(bobDialog)), 'the guild\'s own roles, one box per team for the team role');
-  const daveDialog = G.pages.people.rolesDialogHtml(dave, s.guildData.teams, 'Ember', rolesList.roles.filter((r) => r.kind === 'custom'));
+  const daveDialog = dialogOf(daveUser);
   assert((daveDialog.match(/checked/g) || []).length >= 2, 'what Dave holds by hand is ticked');
   // The reply of Sync now: the real body feeds the notice the page builds.
   s.world.discord.members[DAVE.id] = [D_OFFICERS];
@@ -403,7 +405,7 @@ check('router and shell: the viewer routes round-trip, the new Guild settings ta
     const P = loadPages(s.world, jar);
     return plain(P.shell.settingsTabs((await P.api.get(s.base)).me.can).map((t) => t.tab));
   };
-  assert.deepEqual(await tabsFor(s.jar), ['general', 'teams', 'schedule', 'people', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess', 'attendance', 'loot', 'notifications', 'applications', 'battlenet', 'activity']);
+  assert.deepEqual(await tabsFor(s.jar), ['general', 'teams', 'schedule', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess', 'attendance', 'loot', 'notifications', 'applications', 'battlenet', 'activity']);
   assert.deepEqual(await tabsFor(s.daveJar), []);
 });
 

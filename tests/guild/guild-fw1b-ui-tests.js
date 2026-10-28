@@ -132,7 +132,7 @@ function withState(fn) {
     assert(withRaid.includes('class="gs-onboard is-line" id="setup"'), 'one line once the guild has a raid');
     const text = stripTags(withRaid);
     assert(text.includes('Setup') && text.includes('4 of 6 steps done. Next: invite your officers .'), text);
-    assert(withRaid.includes('<a class="gs-onboard-link" href="#/g/g1/settings/people">invite your officers</a>'), 'the next step is the link');
+    assert(withRaid.includes('<a class="gs-onboard-link" href="#/g/g1/users">invite your officers</a>'), 'the next step is the link');
     assert(withRaid.includes('data-action="copy-invite" data-key="copy-invite-line"') && withRaid.includes('<span>All steps</span>'));
     assert(!withRaid.includes('<ol class="gs-onboard-steps">'), 'the steps are folded');
     // The officer's own choice wins: All steps opens the list (with Hide steps), Hide steps folds it again; before a raid there is no Hide.
@@ -172,7 +172,7 @@ function withState(fn) {
     assert.equal(renders, 2, 'no checklist, nothing to fold');
   }));
 
-  await check('invite message: the guild, the site address and "sign in with Discord"; Copy invite message copies it through copyText and says so; Accounts has the button too', withState(async () => {
+  await check('invite message: the guild, the site address and "sign in with Discord"; Copy invite message copies it through copyText and says so (Accounts is retired: the setup card has the button)', withState(async () => {
     const msg = G.pages.attention.inviteMessage('Ravens', 'https://raidsmith.test/');
     assert(msg.includes('Ravens') && msg.includes('https://raidsmith.test/') && msg.includes('sign in with Discord'), msg);
     assert(!/[^\x00-\x7f]/.test(msg), 'ASCII');
@@ -190,10 +190,6 @@ function withState(fn) {
     delete ctx.copyText;
     await G.handlers.click['copy-invite'](el({}));
     assert(said[2][1].includes('not available'), 'no copy helper: said, nothing thrown');
-    // Settings > Accounts
-    const people = G.pages.people.peopleHtml({ guildData: S.guilds.g1, data: { people: [], removed: [], signedInCount: 0 }, sort: null, query: '' });
-    assert(people.includes('data-action="copy-invite" data-key="copy-invite-accounts"') && people.includes('Copy invite message') && people.includes('id="invite-status" role="status"'));
-    assertNoRawAttrs(people);
     assertEscaped(attnHtml(ATTN([], { onboarding: onboarding([]) }), {}, gd(OFFICER_CAN, { guild: { name: HOSTILE + QUOTES } })), 'invite card');
   }));
 

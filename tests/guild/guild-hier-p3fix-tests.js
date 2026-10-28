@@ -10,19 +10,14 @@
  *   5  a blocked account that links a NEW Battle.net account gets a block tombstone for it in each guild that blocks it;
  *   6  a failed first roster sync during the setup pin hands the sync lease back: Sync now works at once;
  *   7  a malformed Blizzard roster during a Guild Master claim is a Battle.net problem: not counted as a failed claim, and the claimant's start budget is given back.
- * Drives worker/index.js over the node:sqlite D1 stand-in, Discord faked by an injected fetch, Battle.net by tools/fake-battlenet.js on a local port. The client check loads the guild
- * scripts in a vm with no DOM (as guild-roles-ui-tests.js does).
+ * Drives worker/index.js over the node:sqlite D1 stand-in, Discord faked by an injected fetch, Battle.net by tools/fake-battlenet.js on a local port.
  */
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
 const { load, runChecks } = require('../guild-b3-world');
 const { ACCOUNT, ID, claimWorld, claim, entry, refused, DONE, tieToGuild, seatOf } = require('../guild-claim');
 const { freshScenario } = require('../guild-fresh');
 const { flip, makeProven } = require('../guild-ingame');
 const { pinWorld, pin, pinRow } = require('../guild-pin');
-const { GUILD_SCRIPTS } = require('../guild-scripts');
 
 const checks = [];
 const filter = process.argv[2];
@@ -134,47 +129,6 @@ check('L2: a previous Owner who is no member after the hand-over (a manual guild
   assert.deepEqual(done.json, { handedOver: true });
   const gone = await s.call('own', 'GET', '');
   assert.deepEqual([gone.status, gone.json.error], [403, 'not_member']);
-});
-
-// ---------------------------------------------------------------------------
-// 1b. L2 in the client
-
-check('L2 client: a bare hand-over answer drops the stale People list and leaves the tab; a full answer is applied as before', async () => {
-  const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, setTimeout };
-  vm.createContext(sandbox);
-  for (const src of GUILD_SCRIPTS) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', '..', src.replace(/^\//, '')), 'utf8'), sandbox, { filename: src });
-  sandbox.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
-  const G = sandbox.Guild;
-  const tick = () => new Promise((resolve) => setImmediate(resolve));
-  const run = async (answer) => {
-    const calls = [];
-    const state = G.app.state;
-    state.currentGid = 'g1';
-    state.guilds = { g1: { guild: { id: 'g1', name: 'Writers' }, me: { can: {} }, teams: [] } };
-    state.people = { g1: { people: [{ person: { id: 'u1' } }], removed: [], signedInCount: 1 } };
-    const saved = { post: G.api.post, render: G.app.render, refresh: G.app.refreshGuild, go: G.app.go };
-    G.api.post = (url) => { calls.push(['POST', url]); return Promise.resolve(answer); };
-    G.app.render = () => calls.push(['render']);
-    G.app.refreshGuild = (gid) => { calls.push(['refresh', gid]); return Promise.resolve(); };
-    G.app.go = (hash) => calls.push(['go', hash]);
-    const form = { getAttribute: (key) => (key === 'data-uid' ? 'u_target' : null), querySelectorAll: () => [], closest: () => null };
-    try {
-      G.handlers.click['gm-confirm']({ closest: () => form });
-      for (let i = 0; i < 8; i++) await tick();
-    } finally {
-      G.api.post = saved.post; G.app.render = saved.render; G.app.refreshGuild = saved.refresh; G.app.go = saved.go;
-    }
-    return { calls, people: state.people.g1 };
-  };
-  const bare = await run({ handedOver: true });
-  assert.deepEqual(bare.calls.map((call) => call[0]), ['POST', 'render', 'refresh', 'go']);
-  assert.equal(bare.calls[0][1], '/api/guild/g1/people/u_target/guild-master');
-  assert.equal(bare.calls[3][1], '#/', 'away from the People tab');
-  assert.equal(bare.people, undefined, 'the stale list is gone');
-  const full = { people: [{ person: { id: 'u2' } }], removed: [], signedInCount: 1 };
-  const kept = await run(full);
-  assert.deepEqual(kept.calls.map((call) => call[0]), ['POST', 'render', 'refresh'], 'no navigation: they may read the page');
-  assert.deepEqual(JSON.parse(JSON.stringify(kept.people)), full);
 });
 
 // ---------------------------------------------------------------------------

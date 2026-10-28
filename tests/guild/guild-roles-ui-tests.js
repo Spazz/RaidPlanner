@@ -258,13 +258,13 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
   await check('shell: the settings tabs follow guild.roles (Roles, Discord roles, Public page) and guild.access (Guest links), in this order', () => {
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
     const labels = can => plain(G.shell.settingsTabs(can).map(t => t.label));
-    assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people', 'roles', 'discord', 'public']);
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'links', 'guests', 'dataaccess']);
-    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['roles', 'discord', 'public']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['links', 'guests', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['roles', 'discord', 'links', 'guests', 'public', 'dataaccess']);
     assert.deepEqual(tabs({ 'guild.roles': [] , 'guild.access': [] }), [], 'an empty team list is no permission');
     assert.deepEqual(tabs({}), []);
-    assert.deepEqual(labels({ 'guild.roles': 'guild' }), ['Accounts', 'Roles', 'Discord roles', 'Public page']);
-    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['Accounts', 'Links and keys', 'Guest links', 'Data access']);
+    assert.deepEqual(labels({ 'guild.roles': 'guild' }), ['Roles', 'Discord roles', 'Public page']);
+    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['Links and keys', 'Guest links', 'Data access']);
     assert.equal(G.shell.canSeeSettings({ 'guild.roles': 'guild' }), true);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData() }, 'guests', '<p>x</p>');
     assert(/aria-current="page">Guest links</.test(frame) && frame.includes('href="#/g/g1/settings/guests"') && frame.includes('href="#/g/g1/settings/public"'));
@@ -1258,217 +1258,104 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
   });
 
   // =========================================================================
-  // People page
-  const PEOPLE_GD = () => guildData({ 'guild.access': 'guild', 'guild.roles': 'guild' });
-  const peopleHtml = (data, gd) => G.pages.people.peopleHtml({ guildData: gd || PEOPLE_GD(), data, sort: { column: 'roles', dir: 'asc' }, query: '', now: T0 });
+  // Users: Edit permission (the Edit roles dialog of the retired Accounts page, moved to the user page)
+  const PEOPLE_GD = (can, extra) => guildData(can || { 'guild.access': 'guild', 'guild.roles': 'guild' }, extra);
+  const BOB_KEY = 'u_BobBobBobBobBobBobBobB1';
+  const account = (permissions, over) => Object.assign({
+    key: BOB_KEY, kind: 'account', segment: 'members', name: 'Bob B', permission: 'Officer', permissions, flags: {}, block: { blocked: false, pendingReview: false },
+    identity: { account: { displayName: 'Bob B' }, battlenet: false, signInMethods: [] }, characters: [], main: null, sightings: [], lastSeen: null, tags: [],
+  }, over || {});
+  const held = (role, label, sources, team) => Object.assign({ role, label, sources }, team ? { teamId: team[0], teamName: team[1] } : {});
+  const editDialog = (data, own, gd) => G.pages.user.editPermissionDialogHtml({ guildData: gd || PEOPLE_GD(), data, customRoles: own || [], meId: null });
 
-  await check('People: Sync now only where the Worker says so, with a name for screen readers; Sync everyone only with a bot, a mapping and guild.access', () => {
-    const out = peopleHtml(peopleData());
-    assert.equal((out.match(/data-action="person-sync"/g) || []).length, 2, 'the table row and the phone card of the one person');
-    assert(out.includes('data-uid="u2" data-key="sync-u2" aria-label="Sync Discord roles for Bob B">Sync now</button>'));
-    assert(!/data-action="person-sync"[^>]*data-uid="u3"/.test(out));
-    assert(out.includes('data-action="people-sync-all"') && out.includes('>Sync everyone who signed in<'));
-    for (const discord of [{ configured: false, mapped: 2 }, { configured: true, mapped: 0 }, undefined]) {
-      assert(!peopleHtml(peopleData({ discord })).includes('people-sync-all'), JSON.stringify(discord));
-    }
-    assert(!peopleHtml(peopleData(), guildData({ 'guild.roles': 'guild' })).includes('people-sync-all'), 'guild.access is needed');
-    const old = peopleHtml({ people: [entry('u2', 'Bob B', [])], removed: [], signedInCount: 1 });
-    assert(!old.includes('person-sync') && !old.includes('people-sync-all'), 'an answer without the new fields');
-    assertNoRawAttrs(out);
+  const rolesFormEls = (officer) => ({ officer: { checked: officer } });
+  const peopleFormLists = (leads, customs) => ({ 'input[name="teamLead"]:checked': leads.map(v => ({ value: v })), 'input[name="customRole"]:checked': customs.map(([r, t]) => el({ 'data-role': r, 'data-team': t })) });
+
+  await check('Edit permission dialog: the boxes show what was set by hand; roles only the in-game rank or Discord gives are listed apart, and a tick keeps them', () => {
+    const byHand = editDialog(account([held('officer', 'Officer', ['manual']), held('team_lead', 'Team Lead', ['manual'], ['t1', 'Alpha'])]));
+    assert(/id="dlg-role-officer" name="officer" checked/.test(byHand) && /name="teamLead" value="t1" checked/.test(byHand) && !byHand.includes('Other roles') && !byHand.includes('From Discord') && !byHand.includes('From the in-game rank') && !byHand.includes('data-custom'));
+    const fromDiscord = editDialog(account([held('officer', 'Officer', ['discord']), held('team_lead', 'Team Lead', ['discord'], ['t2', 'Bravo']), held('cr_raid', 'Raid leader', ['discord'], ['t1', 'Alpha'])]));
+    assert(!/id="dlg-role-officer" name="officer" checked/.test(fromDiscord) && !/name="teamLead"[^>]*checked/.test(fromDiscord), 'Discord-given roles are not ticked');
+    assert(text(fromDiscord).includes('From Discord: Officer, Team Lead: Bravo, Raid leader: Alpha.') && fromDiscord.includes('class="gs-fine gs-from-discord"') && text(fromDiscord).includes('Tick its box to keep it.'));
+    const fromRank = editDialog(account([held('officer', 'Officer', ['ingame'])]));
+    assert(text(fromRank).includes('From the in-game rank: Officer. It lasts only while the rank gives it. Tick its box to keep it.') && !/name="officer"[^>]*checked/.test(fromRank) && !fromRank.includes('From Discord'));
+    const both = editDialog(account([held('officer', 'Officer', ['manual', 'ingame'])]));
+    assert(/id="dlg-role-officer" name="officer" checked/.test(both) && !both.includes('From the in-game rank'), 'held by hand and by the rank shows once, as theirs');
+    assertEscaped(editDialog(account([held('cr_x', HOSTILE + QUOTES, ['discord'], ['t1', HOSTILE + QUOTES])], { name: HOSTILE + QUOTES })), 'permission dialog');
   });
 
-  await check('People: role chips show custom roles by name and Discord-only roles with (Discord); the sort puts custom roles between Team Lead and Member', () => {
-    const data = peopleData({ people: [
-      entry('u1', 'Zed Z', []),
-      entry('u2', 'Ann A', [{ role: 'cr_a', name: 'Loot council' }]),
-      entry('u3', 'Bea B', [{ role: 'team_lead', teamId: 't1', fromDiscord: true }, { role: 'cr_b', name: 'Raid leader', teamId: 't2' }]),
-      entry('u4', 'Cy C', [{ role: 'officer' }]),
-    ] });
-    const out = peopleHtml(data);
-    const names = [...out.matchAll(/<td><span class="gs-person"><span class="gs-avatar[^>]*>[^<]*<\/span><span class="gs-person-text"><span class="gs-person-line"><span class="gs-person-name">([^<]*)</g)].map(m => m[1]);
-    assert.deepEqual(names, ['Cy C', 'Bea B', 'Ann A', 'Zed Z']);
-    assert(out.includes('<span class="gs-person-roles">Loot council</span>') && !out.includes('gs-chips') && out.includes('Team Lead: Alpha (Discord)') && out.includes('Raid leader - Bravo'));
-  });
-
-  await check('Edit roles dialog: the old three-argument call is unchanged; the boxes show what was set by hand and Discord-only roles are listed apart', () => {
-    const e = entry('u2', 'Bob B', [{ role: 'officer' }, { role: 'team_lead', teamId: 't1' }]);
-    const old = G.pages.people.rolesDialogHtml(e, TEAMS, 'Ember');
-    assert(/id="dlg-role-officer" name="officer" checked/.test(old) && /name="teamLead" value="t1" checked/.test(old) && !old.includes('Other roles') && !old.includes('From Discord') && !old.includes('data-custom'));
-    const discordOnly = entry('u2', 'Bob B', [{ role: 'officer', fromDiscord: true }, { role: 'team_lead', teamId: 't2', fromDiscord: true }, { role: 'cr_raid', name: 'Raid leader', teamId: 't1', fromDiscord: true }]);
-    const out = G.pages.people.rolesDialogHtml(discordOnly, TEAMS, 'Ember');
-    assert(!/id="dlg-role-officer" name="officer" checked/.test(out) && !/name="teamLead"[^>]*checked/.test(out), 'Discord-given roles are not ticked');
-    assert(text(out).includes('From Discord: Officer, Team Lead: Bravo, Raid leader - Alpha.') && out.includes('class="gs-fine gs-from-discord"') && text(out).includes('Tick its box to keep it.'));
-    const both = entry('u2', 'Bob B', [{ role: 'officer' }]);
-    assert(/id="dlg-role-officer" name="officer" checked/.test(G.pages.people.rolesDialogHtml(both, TEAMS, 'Ember')) && !G.pages.people.rolesDialogHtml(both, TEAMS, 'Ember').includes('From Discord'), 'held by hand and by Discord shows once, as theirs');
-    assertEscaped(G.pages.people.rolesDialogHtml(entry('u2', HOSTILE, [{ role: 'cr_x', name: HOSTILE + QUOTES, teamId: 't1', fromDiscord: true }]), TEAMS, HOSTILE + QUOTES), 'discord line');
-  });
-
-  await check('Edit roles dialog: "Other roles" lists the guild\'s own roles, one box per active team for a role given per team; the form says it carries them only when it lists them', () => {
+  await check('Edit permission dialog: "Other roles" lists the guild\'s own roles, one box per active team for a role given per team; the form says it carries them only when it lists them', () => {
     const own = rolesData().roles.filter(r => r.kind === 'custom');
-    const e = entry('u2', 'Bob B', [{ role: 'cr_raid', name: 'Raid leader', teamId: 't2' }, { role: 'cr_loot', name: 'Loot council' }]);
-    const out = G.pages.people.rolesDialogHtml(e, TEAMS, 'Ember', own);
+    const data = account([held('cr_raid', 'Raid leader', ['manual'], ['t2', 'Bravo']), held('cr_loot', 'Loot council', ['manual'])]);
+    const out = editDialog(data, own);
     assert(out.includes('<legend class="gs-legend">Other roles</legend>') && out.includes(' data-custom="1"'));
     const boxes = [...out.matchAll(/<input type="checkbox" id="(dlg-role-custom-[^"]+)" name="customRole" data-role="([^"]*)" data-team="([^"]*)"( checked)?><label for="[^"]+">([^<]*)</g)].map(m => [m[2], m[3], !!m[4], m[5]]);
     assert.deepEqual(boxes, [['cr_raid', 't1', false, 'Raid leader: Alpha'], ['cr_raid', 't2', true, 'Raid leader: Bravo'], ['cr_loot', '', true, 'Loot council']], 'active teams only; held boxes ticked');
     assert(!out.includes('Old'), 'archived teams get no box');
     assert((text(out).match(/Other roles/g) || []).length === 1);
-    assert(!G.pages.people.rolesDialogHtml(e, TEAMS, 'Ember', []).includes('Other roles') && !G.pages.people.rolesDialogHtml(e, TEAMS, 'Ember', []).includes('data-custom'));
-    assert(!G.pages.people.rolesDialogHtml(e, TEAMS, 'Ember', rolesData().roles.filter(r => r.kind === 'builtin')).includes('Other roles'), 'built-in roles are not listed here');
-    assert(G.pages.people.rolesDialogHtml(e, TEAMS, 'Ember', [{ id: 'cr_x', name: 'No kind', needsTeam: false }]).includes('No kind'), 'a role list without kind is read by its id');
-    const noTeams = G.pages.people.rolesDialogHtml(e, [{ id: 't3', name: 'Old', archived: true }], 'Ember', own);
+    assert(!editDialog(data, []).includes('Other roles') && !editDialog(data, []).includes('data-custom'));
+    assert(!editDialog(data, rolesData().roles.filter(r => r.kind === 'builtin')).includes('Other roles'), 'built-in roles are not listed here');
+    assert(editDialog(data, [{ id: 'cr_x', name: 'No kind', needsTeam: false }]).includes('No kind'), 'a role list without kind is read by its id');
+    const noTeams = editDialog(data, own, PEOPLE_GD(null, { teams: [{ id: 't3', name: 'Old', archived: true }] }));
     assert(text(noTeams).includes('Raid leader is given for one team, and there are no active teams.') && noTeams.includes('name="customRole" data-role="cr_loot"'));
-    const readOnly = G.pages.people.rolesDialogHtml(Object.assign({}, e, { actions: { editRoles: false } }), TEAMS, 'Ember', own);
-    assert(/<fieldset class="gs-fieldset gs-other-roles" disabled>/.test(readOnly) && !readOnly.includes('type="submit"'));
-    assertEscaped(G.pages.people.rolesDialogHtml(e, TEAMS, 'Ember', [Object.assign({}, own[0], { name: HOSTILE + QUOTES })]), 'own role name');
+    assertEscaped(editDialog(data, [Object.assign({}, own[0], { name: HOSTILE + QUOTES })]), 'own role name');
     assertNoRawAttrs(out);
   });
 
-  const rolesFormEls = (officer) => ({ officer: { checked: officer } });
-  const peopleFormLists = (leads, customs) => ({ 'input[name="teamLead"]:checked': leads.map(v => ({ value: v })), 'input[name="customRole"]:checked': customs.map(([r, t]) => el({ 'data-role': r, 'data-team': t })) });
-
-  await check('roles-form: officer and team leads are sent as before; `roles` goes along only when the dialog listed the guild\'s own roles', async () => {
+  const withUser = async (data, stubs, fn) => {
     const s = G.app.state;
-    s.guilds.g1 = PEOPLE_GD(); s.currentGid = 'g1'; s.people.g1 = peopleData();
+    s.guilds.g1 = PEOPLE_GD(); s.currentGid = 'g1';
+    return withApi(Object.assign({ get: () => okRes(data) }, stubs), async probe => {
+      await G.pages.user.load({ name: 'user', gid: 'g1', key: data.key }, s.guilds.g1);
+      return fn(probe, s);
+    });
+  };
+
+  await check('users-roles-form: officer and team leads are sent as before; `roles` goes along only when the dialog listed the guild\'s own roles; pin only for a ticked role the rank gives', async () => {
     const sent = [];
-    const reply = peopleData();
-    await withApi({ put: (url, body) => { sent.push([url, plain(body)]); return okRes(reply); } }, async () => {
-      G.handlers.submit['roles-form'](Object.assign(formEl({ 'data-uid': 'u2' }, rolesFormEls(true), peopleFormLists(['t1'], [])), {}));
+    const data = account([held('officer', 'Officer', ['ingame'])]);
+    await withUser(data, { put: (url, body) => { sent.push([url, plain(body)]); return okRes({}); } }, async () => {
+      G.handlers.submit['users-roles-form'](formEl({}, rolesFormEls(false), peopleFormLists(['t1'], [])));
       await settle();
-      G.handlers.submit['roles-form'](formEl({ 'data-uid': 'u2', 'data-custom': '1' }, rolesFormEls(false), peopleFormLists([], [['cr_raid', 't2'], ['cr_loot', '']])));
+      G.handlers.submit['users-roles-form'](formEl({ 'data-custom': '1' }, rolesFormEls(false), peopleFormLists([], [['cr_raid', 't2'], ['cr_loot', '']])));
       await settle();
-      G.handlers.submit['roles-form'](formEl({ 'data-uid': 'u3', 'data-custom': '1' }, rolesFormEls(false), peopleFormLists([], [])));
+      G.handlers.submit['users-roles-form'](formEl({}, rolesFormEls(true), peopleFormLists([], [])));
       await settle();
     });
+    const url = `/api/guild/g1/people/${BOB_KEY}/roles`;
     assert.deepEqual(sent, [
-      ['/api/guild/g1/people/u2/roles', { officer: true, teamLeadTeamIds: ['t1'] }],
-      ['/api/guild/g1/people/u2/roles', { officer: false, teamLeadTeamIds: [], roles: [{ roleId: 'cr_raid', teamId: 't2' }, { roleId: 'cr_loot', teamId: null }] }],
-      ['/api/guild/g1/people/u3/roles', { officer: false, teamLeadTeamIds: [], roles: [] }],
+      [url, { officer: false, teamLeadTeamIds: ['t1'] }],
+      [url, { officer: false, teamLeadTeamIds: [], roles: [{ roleId: 'cr_raid', teamId: 't2' }, { roleId: 'cr_loot', teamId: null }] }],
+      [url, { officer: true, teamLeadTeamIds: [], pin: true }],
     ]);
     assert.equal('roles' in sent[0][1], false);
-    s.people.g1 = null;
+    assert.equal('pin' in sent[0][1], false, 'a Team Lead tick is not the rank\'s Officer: nothing is pinned');
+    const lead = account([held('team_lead', 'Team Lead', ['discord'], ['t2', 'Bravo'])]);
+    const more = [];
+    await withUser(lead, { put: (u, body) => { more.push(plain(body)); return okRes({}); } }, async () => {
+      G.handlers.submit['users-roles-form'](formEl({}, rolesFormEls(false), peopleFormLists(['t2'], [])));
+      await settle();
+    });
+    assert.deepEqual(more, [{ officer: false, teamLeadTeamIds: ['t2'], pin: true }], 'ticking the Team Lead Discord gives keeps it');
   });
 
-  await check('Edit roles click: the dialog gets the guild\'s own roles from state.rolesList (the whole answer or just the list), and none when it was not loaded', async () => {
-    const s = G.app.state;
-    s.guilds.g1 = PEOPLE_GD(); s.currentGid = 'g1'; s.people.g1 = peopleData();
-    await withApi({}, async probe => {
+  await check('users-roles-open: the dialog gets the guild\'s own roles from state.rolesList (the whole answer or just the list), and none when it was not loaded', async () => {
+    const data = account([held('cr_raid', 'Raid leader', ['manual'], ['t2', 'Bravo'])]);
+    await withUser(data, { get: url => (/\/roles$/.test(url) ? rejectWith(500, {}) : okRes(data)) }, async (probe, s) => {
       s.rolesList = {};
-      G.handlers.click['person-edit-roles'](el({ 'data-uid': 'u2' }));
+      G.handlers.click['users-roles-open'](el({}));
+      await settle();
       s.rolesList = { g1: rolesData() };
-      G.handlers.click['person-edit-roles'](el({ 'data-uid': 'u2' }));
+      G.handlers.click['users-roles-open'](el({}));
+      await settle();
       s.rolesList = { g1: rolesData().roles };
-      G.handlers.click['person-edit-roles'](el({ 'data-uid': 'u2' }));
-      assert(!probe.opened[0].html.includes('Other roles'));
+      G.handlers.click['users-roles-open'](el({}));
+      await settle();
+      assert(!probe.opened[0].html.includes('Other roles'), 'not loaded, and the read failed: the dialog still opens');
       assert(probe.opened[1].html.includes('Other roles') && probe.opened[1].html.includes('Raid leader: Alpha') && probe.opened[1].html.includes('data-custom="1"'));
       assert(probe.opened[2].html.includes('Other roles'));
+      s.rolesList = {};
     });
-    s.rolesList = {}; s.people.g1 = null;
-  });
-
-  await check('Sync now: a changed, unchanged or skipped answer is worded with the name; the people list is replaced; errors go to the page alert', async () => {
-    const s = G.app.state;
-    s.guilds.g1 = PEOPLE_GD(); s.currentGid = 'g1'; s.people.g1 = peopleData();
-    const sent = [];
-    const answer = status => Object.assign(peopleData({ people: [entry('u2', 'Bob B', [{ role: 'officer' }])] }), { sync: Object.assign({ status, reason: null, added: 2, removed: 1 }, status === 'skipped' ? { reason: 'manual' } : {}) });
-    for (const [status, words] of [['changed', 'Synced Bob B: 2 roles added, 1 removed.'], ['unchanged', 'Bob B already matches Discord.'], ['skipped', 'Bob B was left as is.']]) {
-      const button = el({ 'data-uid': 'u2' });
-      await withApi({ post: url => { sent.push(url); return okRes(answer(status)); } }, async probe => {
-        G.handlers.click['person-sync'](button);
-        assert.equal(button.disabled, true);
-        await settle();
-        assert.equal(s.notice, words);
-        assert.equal(probe.renders(), 1);
-        assert.equal(s.people.g1.people.length, 1);
-        assert.equal('sync' in s.people.g1, false, 'the sync part is not kept in the list');
-      });
-    }
-    assert.deepEqual(sent, ['/api/guild/g1/people/u2/sync', '/api/guild/g1/people/u2/sync', '/api/guild/g1/people/u2/sync']);
-    await withApi({ post: () => okRes(Object.assign(peopleData(), { sync: { status: 'changed', added: 1, removed: 0 } })) }, async () => {
-      G.handlers.click['person-sync'](el({ 'data-uid': 'u2' })); await settle();
-    });
-    assert.equal(s.notice, 'Synced Bob B: 1 role added, 0 removed.');
-    for (const [status, code, message] of [[409, 'bot_not_in_server', 'The bot is not in your Discord server.'], [409, 'no_mapping', 'Map a Discord role first.'], [409, 'no_discord', 'That person has no Discord.'], [502, 'discord_unavailable', 'Discord did not answer.'], [400, 'bot_not_configured', 'The bot is not set up.']]) {
-      s.pageAlert = ''; s.notice = '';
-      const button = el({ 'data-uid': 'u2' });
-      await withApi({ post: () => rejectWith(status, { error: code, message }) }, async () => { G.handlers.click['person-sync'](button); await settle(); });
-      assert.equal(s.pageAlert, message, code);
-      assert.equal(button.disabled, false);
-      assert.equal(s.notice, '');
-    }
-    s.people.g1 = null; s.notice = ''; s.pageAlert = '';
-  });
-
-  await check('Sync everyone: the call repeats with the next cursor until it is null, then the list is read again and the totals are worded', async () => {
-    const s = G.app.state;
-    s.guilds.g1 = PEOPLE_GD(); s.currentGid = 'g1'; s.people.g1 = peopleData(); s.notice = '';
-    const posts = [];
-    const pages = [
-      { processed: 25, changed: 4, unchanged: 20, skipped: 1, failed: 0, problem: null, next: 'u_page2' },
-      { processed: 25, changed: 2, unchanged: 22, skipped: 0, failed: 1, problem: null, next: 'u_page3' },
-      { processed: 7, changed: 1, unchanged: 6, skipped: 0, failed: 1, problem: null, next: null },
-    ];
-    const fresh = peopleData({ signedInCount: 57 });
-    const gets = [];
-    const button = el();
-    await withApi({
-      post: (url, body) => { posts.push([url, plain(body)]); return okRes(pages[posts.length - 1]); },
-      get: url => { gets.push(url); return okRes(fresh); },
-    }, async probe => {
-      G.handlers.click['people-sync-all'](button);
-      assert.equal(button.disabled, true);
-      await settle();
-      assert.deepEqual(posts, [['/api/guild/g1/discord/sync', {}], ['/api/guild/g1/discord/sync', { after: 'u_page2' }], ['/api/guild/g1/discord/sync', { after: 'u_page3' }]]);
-      assert.deepEqual(gets, ['/api/guild/g1/people']);
-      assert.equal(s.people.g1, fresh);
-      assert.equal(s.notice, 'Synced 57 people: 7 changed. 2 could not be read.');
-      assert.equal(probe.renders(), 1);
-    });
-    // no failures: no "could not be read"; one call when next is null at once
-    s.notice = '';
-    await withApi({ post: () => okRes({ processed: 1, changed: 0, unchanged: 1, skipped: 0, failed: 0, problem: null, next: null }), get: () => okRes(fresh) }, async () => {
-      G.handlers.click['people-sync-all'](el()); await settle();
-    });
-    assert.equal(s.notice, 'Synced 1 person: 0 changed.');
-    // a problem that will repeat stops the run
-    s.notice = '';
-    const calls = [];
-    await withApi({ post: () => { calls.push(1); return okRes({ processed: 3, changed: 1, unchanged: 0, skipped: 0, failed: 2, problem: 'rate_limited', next: 'u_more' }); }, get: () => okRes(fresh) }, async () => {
-      G.handlers.click['people-sync-all'](el()); await settle();
-    });
-    assert.equal(calls.length, 1, 'a problem stops the loop even with a cursor');
-    assert.equal(s.notice, 'Synced 3 people: 1 changed. 2 could not be read. It stopped early: Discord asked for a pause, so try again in a minute.');
-    // a cursor that does not move cannot loop for ever
-    const loop = [];
-    await withApi({ post: () => { loop.push(1); return okRes({ processed: 1, changed: 0, unchanged: 1, skipped: 0, failed: 0, problem: null, next: 'u_same' }); }, get: () => okRes(fresh) }, async () => {
-      G.handlers.click['people-sync-all'](el()); await settle();
-    });
-    assert.equal(loop.length, 2);
-    s.people.g1 = null; s.notice = '';
-  });
-
-  await check('Sync everyone: an error shows its message in the page alert (after the people already synced are read again); the button is usable again', async () => {
-    const s = G.app.state;
-    s.guilds.g1 = PEOPLE_GD(); s.currentGid = 'g1'; s.people.g1 = peopleData(); s.notice = ''; s.pageAlert = '';
-    for (const [status, code, message] of [[409, 'no_mapping', 'Map a Discord role to a Raidsmith role first.'], [429, 'rate_limited', 'Too many syncs.'], [502, 'discord_unavailable', 'Discord did not answer.']]) {
-      s.pageAlert = '';
-      const button = el();
-      let reads = 0;
-      await withApi({ post: () => rejectWith(status, { error: code, message }), get: () => { reads++; return okRes(peopleData()); } }, async () => { G.handlers.click['people-sync-all'](button); await settle(); });
-      assert(s.pageAlert.startsWith(message), code + ': ' + s.pageAlert);
-      assert.equal(button.disabled, false);
-      assert.equal(reads, 0, 'nothing was synced, nothing to read again');
-    }
-    s.pageAlert = ''; s.notice = '';
-    let step = 0;
-    const button = el();
-    await withApi({
-      post: () => (++step === 1 ? okRes({ processed: 25, changed: 3, unchanged: 22, skipped: 0, failed: 0, problem: null, next: 'u_next' }) : rejectWith(502, { error: 'discord_unavailable', message: 'Discord did not answer.' })),
-      get: () => okRes(peopleData({ signedInCount: 9 })),
-    }, async () => { G.handlers.click['people-sync-all'](button); await settle(); });
-    assert.equal(s.pageAlert, 'Discord did not answer.');
-    assert.equal(s.notice, 'Synced 25 people: 3 changed.');
-    assert.equal(s.people.g1.signedInCount, 9);
-    s.people.g1 = null; s.notice = ''; s.pageAlert = '';
   });
 
   // =========================================================================
@@ -1488,7 +1375,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
       assert(/window\.Guild = window\.Guild \|\| \{\}/.test(src) && !/^\s*(import|export)\s/m.test(src) && src.includes("'use strict'"), f);
     }
     const used = new Set();
-    for (const f of files.concat(['js/guild/pages-settings-people.js', 'js/guild/ui.js', 'js/guild/shell.js'])) {
+    for (const f of files.concat(['js/guild/pages-users.js', 'js/guild/ui.js', 'js/guild/shell.js'])) {
       const src = read(f);
       for (const m of src.matchAll(/class="([^"]*)"/g)) for (const c of m[1].split(/\s+/)) if (/^gs-[a-z0-9_-]+$/.test(c)) used.add(c);
       for (const m of src.matchAll(/'(gs-[a-z0-9_-]+(?: gs-[a-z0-9_-]+)*)'/g)) for (const c of m[1].split(' ')) used.add(c);
@@ -1503,8 +1390,8 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert(/@media \(max-width: 600px\) \{[\s\S]*\.gs-perm-select \{ height: 44px; \}/.test(phone), 'touch targets on a phone');
     assert(/\.gs-perm-row \{ grid-template-columns: minmax\(0, 1fr\); \}/.test(phone));
     const at = n => GUILD_SCRIPTS.indexOf('/js/guild/' + n + '.js');
-    for (const n of NEW_FILES) assert(at(n) > at('pages-settings-people') && at(n) < at('app'), n);
-    assert(at('pages-settings-people') < at('pages-settings-roles') && at('pages-settings-roles') < at('pages-settings-discord') && at('pages-settings-discord') < at('pages-settings-guests') && at('pages-settings-guests') < at('pages-settings-public') && at('pages-settings-public') < at('pages-view'));
+    for (const n of NEW_FILES) assert(at(n) > at('pages-users') && at(n) < at('app'), n);
+    assert(at('pages-users') < at('pages-settings-roles') && at('pages-settings-roles') < at('pages-settings-discord') && at('pages-settings-discord') < at('pages-settings-guests') && at('pages-settings-guests') < at('pages-settings-public') && at('pages-settings-public') < at('pages-view'));
     const order = page => guildScriptsOf(read(page));
     for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert.deepEqual(order(page), GUILD_SCRIPTS.filter(s => s.indexOf('/js/guild/') === 0), page);
   });
@@ -1721,25 +1608,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     }
     const first = makeEnv({ url: '/#/g/g1/settings', routes: routes({ 'guild.roles': 'guild' }) });
     await settle();
-    assert.equal(first.loc.hash, '#/g/g1/settings/people', 'Accounts is still the first tab');
-  });
-
-  await check('app: the People tab also reads the guild\'s roles for someone who can manage roles (a failed read leaves the page working); guild.access alone does not read them', async () => {
-    const people = peopleData();
-    const base = can => ({ '/auth/me': { status: 200, body: meBody() }, '/api/guild/g1': { status: 200, body: guildBody(can) }, '/api/guild/g1/people': { status: 200, body: people }, 'PATCH /auth/prefs': { status: 200, body: { prefs: USER.prefs } } });
-    const withRoles = makeEnv({ url: '/#/g/g1/settings/people', routes: Object.assign(base(OFFICER), { '/api/guild/g1/roles': { status: 200, body: rolesData() } }) });
-    await settle();
-    assert.equal(withRoles.fetched('/api/guild/g1/roles').length, 1);
-    assert.equal(withRoles.G.app.state.rolesList.g1.roles.length, 8);
-    assert(withRoles.main().includes('Sync everyone who signed in') && withRoles.main().includes('Bob B'));
-    const failing = makeEnv({ url: '/#/g/g1/settings/people', routes: base(OFFICER) });
-    await settle();
-    assert(failing.main().includes('Bob B') && !failing.main().includes('Could not load'), 'the roles read failed (404) and the page still works');
-    assert.equal(failing.G.app.state.rolesList.g1, undefined);
-    const accessOnly = makeEnv({ url: '/#/g/g1/settings/people', routes: Object.assign(base({ 'roster.view': 'guild', 'guild.access': 'guild' }), { '/api/guild/g1/roles': { status: 200, body: rolesData() } }) });
-    await settle();
-    assert.equal(accessOnly.fetched('/api/guild/g1/roles').length, 0);
-    assert(accessOnly.main().includes('Bob B'));
+    assert.equal(first.loc.hash, '#/g/g1/settings/roles', 'Roles is the first tab: Accounts is retired into Users');
   });
 
   await check('app: signing out clears what the new tabs and pages kept', async () => {

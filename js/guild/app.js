@@ -28,7 +28,6 @@
     bootError: '',
     me: null,
     guilds: {},        // gid -> GET /api/guild/:gid
-    people: {},        // gid -> GET /api/guild/:gid/people
     teamByGuild: {},
     currentGid: null,
     failure: null,     // { title, text, retry }
@@ -37,8 +36,6 @@
     pageAlert: '',
     privacyMessage: '',
     signinNotice: '',
-    peopleSort: { column: G.peopleSort.DEFAULT_SORT.column, dir: G.peopleSort.DEFAULT_SORT.dir },
-    peopleQuery: '',
     roster: null,      // { gid, teamId, data } - GET /roster?team= for the open roster page
     rosterUi: { status: 'active', query: '' },
     rosterShape: null, // { gid, teamId, status: loading | ready | error, data, cov } - GET /recruiting?team= for the officers' team shape
@@ -59,7 +56,7 @@
     guestSettings: null, // Guild settings > Guest links: { gid, data: GET /api/guild/:gid/guest-links, notice }; the token is never kept here (see pages-settings-guests.js)
     publicSettings: null, // Guild settings > Public page: { gid, data: GET /api/guild/:gid/public, notice } (see pages-settings-public.js)
     notifySettings: null, // Guild settings > Notifications: { gid, data: GET /api/guild/:gid/notifications, notice } (see pages-settings-notifications.js)
-    rolesList: {},     // gid -> GET /api/guild/:gid/roles, for the People page's "Other roles" (loaded with the People tab for people who can manage roles)
+    rolesList: {},     // gid -> GET /api/guild/:gid/roles, for the Edit permission dialog's "Other roles" (the Users page reads it when the dialog opens, for people who can manage roles)
     view: null,        // the read-only guest / public page: { kind, gid, data, error } (see pages-view.js); null while it loads
     apply: null,       // the application form: { gid, status, data, draft, busy, error, done } (see pages-apply.js); null until it is opened
     join: null,        // a raid's guest sign-up page: { token, status, data, draft, busy, error, done } (see pages-join.js); an open raid's has open: true, gid, rid instead of a token (pages-open-raid.js); null until it is opened
@@ -318,7 +315,6 @@
   // is read again with the new rights.
   function dropGuildData() {
     state.guilds = {};
-    state.people = {};
     state.chromeTried = {};
     state.lastGid = null;
     state.att = {};
@@ -485,12 +481,16 @@
     const token = ++routeToken;
     closeOverlays();
     const r = G.router.parse(window.location.hash);
+    // The retired Accounts address (settings/people, settings/accounts) opens Users: the history entry is swapped, so the bar shows the address the person is on.
+    if (r.name === 'users' && G.router.isRetiredAddress(window.location.hash) && window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search + G.router.format(r));
+    }
     state.failure = null;
     state.pageAlert = '';
     state.privacyMessage = r.name === 'privacy' ? state.privacyMessage : '';
     if (r.name !== 'person') state.personSaved = null; // "Saved at 8:14 PM ET" on a person's Details lasts until another page opens
     state.currentGid = r.gid || null;
-    if (!(r.name === 'settings' && r.tab === 'people')) state.notice = '';
+    if (r.name !== 'users') state.notice = ''; // the notice after a guild is created shows on Users
     if (!(r.name === 'section' && r.section === 'roster')) state.rosterNotice = '';
     if (G.router.isViewerRoute(r)) return routeViewer(r, token);
 
@@ -615,13 +615,7 @@
       if (tab === 'links') return loadAttendance('settingsLinks', r, gd);
       if (tab === 'claimreview') return loadAttendance('settingsClaimReview', r, gd);
       if (Object.prototype.hasOwnProperty.call(ROLE_TABS, tab)) return G.pages[ROLE_TABS[tab].page].load(r.gid).then(function () { return null; });
-      if (tab !== 'people') return null;
-      const jobs = [G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) { state.people[r.gid] = res; })];
-      // The Edit roles dialog lists the guild's own roles; a failed read only leaves them out of the dialog.
-      if (G.shell.hasAction(gd.me && gd.me.can, 'guild.roles')) {
-        jobs.push(G.api.roles.list(r.gid).then(function (res) { state.rolesList[r.gid] = res; }, function () { /* the dialog shows no Other roles */ }));
-      }
-      return Promise.all(jobs).then(function () { return null; });
+      return null;
     }).catch(function (err) {
       if (token !== routeToken) return null;
       handleLoadError(err);
@@ -874,10 +868,6 @@
           const x = state[ROLE_TABS[tab].state];
           if (!x || x.gid !== gd.guild.id) return G.ui.settingsLoadingHtml();
           return G.shell.settingsFrameHtml(ctx, tab, P[ROLE_TABS[tab].page].settingsHtml({ guildData: gd, data: x.data, alert: state.pageAlert, notice: x.notice }));
-        }
-        if (tab === 'people') {
-          if (!state.people[gd.guild.id]) return G.ui.settingsLoadingHtml();
-          return G.shell.settingsFrameHtml(ctx, 'people', P.people.peopleHtml({ guildData: gd, data: state.people[gd.guild.id], sort: state.peopleSort, query: state.peopleQuery, notice: state.notice, alert: state.pageAlert, now: Date.now() }));
         }
         return G.ui.settingsLoadingHtml();
       }
@@ -1178,9 +1168,6 @@
     const jobs = [loadMe()];
     if (r.gid) {
       jobs.push(fetchGuild(r.gid));
-      if (r.name === 'settings' && r.tab === 'people') {
-        jobs.push(G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) { state.people[r.gid] = res; return res; }));
-      }
     }
     return Promise.all(jobs.map(function (p) { return p.catch(function () { return null; }); })).then(function () {
       state.pageAlert = text;
@@ -1201,7 +1188,7 @@
     state.guilds[res.guild.id] = res;
     state.notice = noticeText;
     loadMe().then(function () {
-      go(G.router.format({ name: 'settings', gid: res.guild.id, tab: 'people' }));
+      go(G.router.format({ name: 'users', gid: res.guild.id, segment: null }));
     });
   };
 

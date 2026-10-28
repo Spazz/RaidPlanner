@@ -1,12 +1,14 @@
 // The Users list of a guild and the page of one user (user-hierarchy build, lane B7b part 1; plan "Users API/UI"), and Manage users (part 2). worker/users-list.js has the queries.
-//   GET  /api/guild/:gid/users?segment=members|former|nonmembers|blocked&sort=user|main|permission|lastSeen&dir=asc|desc&offset=&limit=&q=&rank=&from=
-//   GET  /api/guild/:gid/users/:ukey
+//   GET  /api/guild/:gid/users?segment=members|former|nonmembers|blocked&sort=user|main|permission|lastSeen&dir=asc|desc&offset=&limit=&q=&rank=&from=     (+ battlenetOnly, ownerSeat, coreRanks)
+//   GET  /api/guild/:gid/users/:ukey     (+ battlenetOnly, ownerSeat)
 //   POST /api/guild/:gid/users/block | /users/unblock     { keys: [ukey, ...], reason? }       worker/users-bulk.js
 //   POST /api/guild/:gid/users/add-to-person              { person: ukey, names: [{ key, class? }] }   worker/users-add-to-person.js
 // The gate of the reads is the People list's (guild.access or guild.roles), the rate limit is per user and shared by both routes (a read of the whole guild is not free). Manage users
 // (the three writes) is guild.access: Officers and up (Add to a person also needs roster.edit for the whole guild, it writes the roster); its own per-user limit counts the writes.
 import { HttpError, jsonResponse } from '../http.js';
 import { loadGuildContext, requireAction, requireAnyAction } from '../permissions.js';
+import { seatHolderSql } from '../owner.js';
+import { CORE_RANK_IDS } from '../rank-map.js';
 import { USERS_LIMIT, USERS_WINDOW_MS, USERS_WRITE_LIMIT, USERS_WRITE_WINDOW_MS, enforceRateLimit, usersKey, usersWriteKey } from '../ratelimit.js';
 import { addToPerson, parseAddBody } from '../users-add-to-person.js';
 import { bulkBlock, bulkUnblock, readKeys, readReason } from '../users-bulk.js';
@@ -21,17 +23,37 @@ async function usersContext(ctx) {
 
 const limitUsers = (ctx, guildContext) => enforceRateLimit(ctx.db, guildContext.userId, ctx.now(), { key: usersKey(guildContext.userId), limit: USERS_LIMIT, windowMs: USERS_WINDOW_MS });
 
+// Facts of the guild the pages need beside the rows, from ONE statement (the list carries all three, the page of one user the first two):
+//   battlenetOnly  the guild's ranks come from the in-game roster, so characters reach an account only through Battle.net and "Add to a person" is refused (409 battlenet_only): the page shows
+//                  no such button, and says where a character's rank comes from. The same word the My characters read uses (routes/bnet.js).
+//   ownerSeat      the guild has an Owner seat (owner.js seatHolderSql): a hand-over moves the seat and makes nobody an Officer; a guild with no seat (a legacy one) swaps the stored Guild Master
+//                  row and the previous one becomes an Officer (routes/people.js makeGuildMaster), which the hand-over dialog says.
+//   coreRanks      (list only) the core ranks the rank filter offers, in the order of CORE_RANK_IDS: in an in-game guild the ranks its rank map gives (an unmapped rank is Social); elsewhere
+//                  all four. The rank map itself is the Owner's to read (routes/rank-map.js), the Users page is for everyone who holds guild.access.
+const GUILD_FACTS_SQL = `SELECT g.rank_source AS rank_source, (${seatHolderSql('g.id')} IS NOT NULL) AS seated,
+       (SELECT group_concat(m.core_rank) FROM (SELECT DISTINCT core_rank FROM source_rank_maps WHERE guild_id = g.id AND source = 'ingame' AND team_id IS NULL) m) AS mapped
+  FROM guilds g WHERE g.id = ?`;
+
+async function guildFacts(db, guildId) {
+  const row = await db.prepare(GUILD_FACTS_SQL).bind(guildId).first();
+  const battlenetOnly = !!row && row.rank_source === 'ingame';
+  const mapped = new Set(((row && row.mapped) || '').split(',').concat('social'));
+  return { battlenetOnly, ownerSeat: !!row && row.seated === 1, coreRanks: CORE_RANK_IDS.filter((id) => !battlenetOnly || mapped.has(id)) };
+}
+
 export async function getUsers(ctx) {
   const guildContext = await usersContext(ctx);
   const query = parseUsersQuery(new URL(ctx.request.url).searchParams);
   await limitUsers(ctx, guildContext);
-  return jsonResponse(await listUsers(ctx, guildContext, query));
+  const [reply, facts] = await Promise.all([listUsers(ctx, guildContext, query), guildFacts(ctx.db, guildContext.guild.id)]);
+  return jsonResponse({ ...reply, ...facts });
 }
 
 export async function getUser(ctx) {
   const guildContext = await usersContext(ctx);
   await limitUsers(ctx, guildContext);
-  return jsonResponse(await loadUserDetail(ctx, guildContext, ctx.params.ukey));
+  const [detail, { battlenetOnly, ownerSeat }] = await Promise.all([loadUserDetail(ctx, guildContext, ctx.params.ukey), guildFacts(ctx.db, guildContext.guild.id)]);
+  return jsonResponse({ ...detail, battlenetOnly, ownerSeat });
 }
 
 // ---------------------------------------------------------------------------

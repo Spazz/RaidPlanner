@@ -659,7 +659,7 @@ check('page of a user: an account (identity, characters, roles, last seen), an a
   attend(s, s.r1, s.alpha, s.mone.pid);
   const key = row(await list(s, 'gm', 'segment=members'), 'Memberone').key;
   const page = await s.ok('gm', 'GET', `/users/${key}`);
-  assert.deepEqual(Object.keys(page).sort(), ['block', 'characters', 'flags', 'identity', 'key', 'kind', 'lastSeen', 'main', 'name', 'permission', 'permissions', 'segment', 'sightings', 'tags']);
+  assert.deepEqual(Object.keys(page).sort(), ['battlenetOnly', 'block', 'characters', 'flags', 'identity', 'key', 'kind', 'lastSeen', 'main', 'name', 'ownerSeat', 'permission', 'permissions', 'personId', 'segment', 'sightings', 'tags']);
   assert.deepEqual([page.key, page.kind, page.segment, page.name], [key, 'account', 'members', 'Memberone']);
   assert.deepEqual(page.identity, { account: { displayName: 'Memberone' }, battlenet: true, signInMethods: ['discord', 'battlenet'] });
   assert.deepEqual(page.main, { name: 'Mone', class: 'MAGE', realm: 'Nightslayer' });
@@ -1007,7 +1007,7 @@ const rowsReadSince = (db, from) => db.statementLog.slice(from).reduce((sum, ent
 const FIXED_ROWS = 160;
 const rowBound = (offset, limit) => FIXED_ROWS + 2 * (offset + limit + 1) + 2 * limit;
 
-check('budget: 5,000 names on a flipped in-game guild - the counts are right, a list costs at most 11 statements, a user page at most 14, no scan of any evidence table, rows returned bounded by the page', async () => {
+check('budget: 5,000 names on a flipped in-game guild - the counts are right, a list costs at most 12 statements, a user page at most 15, no scan of any evidence table, rows returned bounded by the page', async () => {
   const s = await bigWorld({ scale: 1 });
   const db = s.w.db;
   assert.equal(rowsOf(s, 'SELECT COUNT(*) AS n FROM guilds')[0].n, 2001);
@@ -1023,7 +1023,7 @@ check('budget: 5,000 names on a flipped in-game guild - the counts are right, a 
         const label = `${segment}/${sort} offset ${offset} limit ${limit}`;
         const statements = statementsSince(db, from);
         const rows = rowsReadSince(db, from);
-        assert(statements <= 11, `${label}: ${statements} statements`);
+        assert(statements <= 12, `${label}: ${statements} statements`);
         assert(rows <= rowBound(offset, limit), `${label}: ${rows} rows returned (bound ${rowBound(offset, limit)})`);
         dumpScans(label, scansSince(db, from, { tables: EVIDENCE_TABLES }));
         assert.equal(res.rows.length, limit, label);
@@ -1033,7 +1033,7 @@ check('budget: 5,000 names on a flipped in-game guild - the counts are right, a 
     }
   }
   assert.deepEqual(counts, s.expected, 'the four counts of the fixture');
-  console.log(`      measured: a list costs ${JSON.stringify(measured)} statements at most (guild context, rate limit, counts, the core, the names, the display columns)`);
+  console.log(`      measured: a list costs ${JSON.stringify(measured)} statements at most (guild context, rate limit, counts, the core, the names, the display columns, the guild facts of B8a)`);
   // The rows a request returns do not grow with the guild: the same first page on a guild a tenth of the size.
   const small = await bigWorld({ scale: 0.1, other: 20 });
   const rowsAt = async (world) => { const from = world.w.db.statementLog.length; await world.ok('own', 'GET', '/users?segment=nonmembers&limit=50'); return rowsReadSince(world.w.db, from); };
@@ -1043,7 +1043,7 @@ check('budget: 5,000 names on a flipped in-game guild - the counts are right, a 
   console.log(`      measured: the first page of non-members returns ${big} rows on 5,000 names and ${little} on 500`);
 });
 
-check('budget: the page of one user of each kind costs at most 14 statements and scans no evidence table; Keep costs far less than the 45 a Worker may run', async () => {
+check('budget: the page of one user of each kind costs at most 15 statements and scans no evidence table; Keep costs far less than the 45 a Worker may run', async () => {
   const s = await bigWorld({ scale: 1 });
   const db = s.w.db;
   const first = async (query) => (await s.ok('own', 'GET', `/users?${query}&limit=1&offset=3`)).rows[0];
@@ -1065,7 +1065,7 @@ check('budget: the page of one user of each kind costs at most 14 statements and
     const res = await s.ok('own', 'GET', `/users/${entry.key}`);
     const statements = statementsSince(db, from);
     used[label] = statements;
-    assert(statements <= 14, `${label}: ${statements} statements`);
+    assert(statements <= 15, `${label}: ${statements} statements`);
     assert(rowsReadSince(db, from) <= 400, `${label}: ${rowsReadSince(db, from)} rows returned`);
     dumpScans(label, scansSince(db, from, { tables: EVIDENCE_TABLES }));
     assert.equal(res.key, entry.key);
