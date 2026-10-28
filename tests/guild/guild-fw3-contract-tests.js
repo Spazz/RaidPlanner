@@ -132,7 +132,7 @@ check('My characters: a member an officer linked to the roster is told what Batt
   const s = await scenario();
   const onRoster = s.B.pages.bnet.charactersHtml({ data: await s.B.api.get('/auth/bnet') });
   const t = stripTags(onRoster);
-  assert(t.includes('You are on the roster already') && t.includes('Ember') && t.includes('add your alts') && !/Connect Battle\.net/.test(t), t);
+  assert(t.includes('You are on the roster already') && t.includes('Ember') && t.includes('your other characters (alts)') && !/Connect Battle\.net/.test(t), t);
   assert(!onRoster.includes('gs-btn-molten'));
   const off = s.C.pages.bnet.charactersHtml({ data: await s.C.api.get('/auth/bnet') });
   assert(stripTags(off).includes('Connect Battle.net to see your characters') && off.includes('gs-btn-molten'));

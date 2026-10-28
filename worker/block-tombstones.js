@@ -569,18 +569,22 @@ export const MATCH_PASS_MIN_STATEMENTS = 3 + TOMBSTONE_MATCH_STATEMENTS;
 //                       of their 45); a guild that does not fit waits for the next sign-in. Default: no budget (the Discord callbacks).
 //   options.skip ...... guild ids the caller has matched already (the Battle.net match does its in-game guilds itself)
 //   options.onDeferred  called once when a guild had to wait
-export async function matchAccountAtSignIn(ctx, userId, { budget = Infinity, skip = [], onDeferred = null } = {}) {
+//   options.report .... an object the pass fills with the D1 statements it ran ({ statements }), so a caller that goes on with the rest of a budget knows what is left
+export async function matchAccountAtSignIn(ctx, userId, { budget = Infinity, skip = [], onDeferred = null, report = null } = {}) {
   try {
     let left = budget;
+    if (report) report.statements = 0;
     if (left < MATCH_PASS_MIN_STATEMENTS) {
       if (onDeferred) onDeferred();
       return 0;
     }
     const keys = await accountKeys(ctx.db, userId);
     left -= 2;
+    if (report) report.statements += 2;
     const skipped = new Set(skip);
     const guildIds = (await candidateGuildIds(ctx.db, userId, keys.discordId)).filter((guildId) => !skipped.has(guildId));
     left -= 1;
+    if (report) report.statements += 1;
     const statements = [];
     let touched = 0;
     for (const guildId of guildIds) {
@@ -590,6 +594,7 @@ export async function matchAccountAtSignIn(ctx, userId, { budget = Infinity, ski
       }
       const plan = await planTombstoneMatch(ctx.db, { guildId, userId, keys, env: ctx.env, now: ctx.now, randomBytes: ctx.randomBytes, log: ctx.log });
       left -= plan.reads + plan.statements.length;
+      if (report) report.statements += plan.reads + plan.statements.length;
       if (plan.statements.length) touched++;
       statements.push(...plan.statements);
     }

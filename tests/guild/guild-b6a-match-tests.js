@@ -38,10 +38,11 @@ const DISCORD = {
   fay: { id: '120000000000000006', username: 'fay', globalName: 'Fay F' },
 };
 // The fake's TBC list (tools/fake-battlenet.js): [name, class id, level, realm index]; ids 7000 + position; realm ids 4001 / 4002. Extra01-14 are more mages.
+// One level below the cap (70): these suites are about the sign-in match, so the max-level rule (worker/bnet-auto-add.js, tests/guild/guild-b8b-mychars-tests.js) must not add characters on top of it.
 const ALL = [
-  ['Aldric', 1, 70, 0], ['Brindle', 8, 70, 0], ['Cassia', 5, 68, 1], ['Dunmar', 3, 70, 0], ['Eliora', 2, 61, 0], ['Fenwick', 4, 12, 1],
-  ['Galdor', 9, 70, 0], ['Quillfeather', 3, 70, 0],
-  ...Array.from({ length: 14 }, (_, i) => [`Extra${String(i + 1).padStart(2, '0')}`, 8, 70, 0]),
+  ['Aldric', 1, 69, 0], ['Brindle', 8, 69, 0], ['Cassia', 5, 68, 1], ['Dunmar', 3, 69, 0], ['Eliora', 2, 61, 0], ['Fenwick', 4, 12, 1],
+  ['Galdor', 9, 69, 0], ['Quillfeather', 3, 69, 0],
+  ...Array.from({ length: 14 }, (_, i) => [`Extra${String(i + 1).padStart(2, '0')}`, 8, 69, 0]),
 ];
 const REALM_ID = [4001, 4002];
 const REALM_NAME = ['Dreamscythe', 'Nightslayer'];

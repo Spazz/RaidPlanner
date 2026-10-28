@@ -193,7 +193,7 @@ function withApi(stubs, fn) {
     const t = text(expired);
     assert(t.includes('deleted after 30 days. Connect again to load it') && t.includes('Load my characters') && !expired.includes('data-key="bnet-characters"'));
     assert(!t.includes('Raidsmith deletes them on'));
-    const card = G.pages.bnet.guildCardHtml({ guildId: 'g1', guildName: 'Ember', supportLabel: 'TBC Anniversary', realm: 'Dreamscythe', realmKind: 'realm', status: 'expired', characters: [] });
+    const card = G.pages.bnet.guildSectionHtml({ guildId: 'g1', guildName: 'Ember', supportLabel: 'TBC Anniversary', realm: 'Dreamscythe', realmKind: 'realm', status: 'expired', characters: [], profile: [] }, true);
     assert(card.includes('data-status="expired"') && text(card).includes('deleted after 30 days') && card.includes('href="/auth/bnet/login"'));
     const notConnected = text(G.pages.bnet.linkedHtml({ data: bnetData({ link: null }), me: onlyDiscord() }));
     assert(notConnected.includes('You can also sign in with it') && notConnected.includes('accounts are never merged') && notConnected.includes('Your BattleTag stays while Battle.net is connected'));

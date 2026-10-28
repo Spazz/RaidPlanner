@@ -58,16 +58,20 @@ function assertNoRawAttrs(out) {
     assert(!/\son[a-z]+=/i.test(names), 'inline event handler attribute: ' + tag.slice(0, 80));
   }
 }
-const text = html => html.replace(/<[^>]*>/g, ' ').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+const text = html => html.replace(/<[^>]*>/g, ' ').replace(/&#39;/g, "'").replace(/&middot;/g, '·').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 // ── fixtures (the Worker's response shapes) ──────────────────────
 function character(name, cls, level, extra) {
   return Object.assign({ name, realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: cls, level, state: 'new', claim: null, claimable: true }, extra || {});
 }
+// A character on the viewer's profile (GET /auth/bnet guilds[].profile, the cards of My characters).
+function card(id, name, cls, extra) {
+  return Object.assign({ id, name, class: cls, mainSpec: null, isMain: false, level: 70, team: null, request: null }, extra || {});
+}
 function guildEntry(extra) {
   return Object.assign({
     guildId: 'g1', guildName: 'Ember', gameVersion: 'tbc', region: 'US', realm: 'Dreamscythe', realmKind: 'realm', supportLabel: 'TBC Anniversary',
-    status: 'ok', message: null,
+    status: 'ok', message: null, maxLevel: 70, profile: [card('c1', 'Aldric', 'WARRIOR', { isMain: true })],
     characters: [
       character('Aldric', 'WARRIOR', 70, { state: 'yours', claimable: false }),
       character('Brindle', 'MAGE', 70, { state: 'on_roster' }),
@@ -206,104 +210,259 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert.equal(G.app.state.bnet.notice, 'Battle.net disconnected. Your BattleTag and character list are deleted.');
   });
 
-  // ── My characters ──────────────────────────────────────────────
-  await check('My characters: one card per guild, class-coloured names, level, realm, and a status or action for every state', () => {
-    const out = G.pages.bnet.charactersHtml({ data: bnetData() });
+  // ── My characters (B8b boards MC1-MC5) ─────────────────────────
+  const mine = (n) => G.pages.bnet.charactersHtml({ data: bnetData(n) });
+  const sectionOf = (out, gid) => out.split('<section class="gs-chars-guild"').slice(1).find(s => s.includes('id="chars-' + (gid || 'g1') + '"')) || '';
+
+  await check('My characters: one gold head per guild with its count, version and realm; the cards are equal, Main first, a link each with no buttons', () => {
+    G.app.state.guilds = {};
+    const profile = [
+      card('c1', 'Thornwick', 'DRUID', { isMain: true, mainSpec: 'Restoration', team: { id: 't1', name: 'Team KJ' } }),
+      card('c2', 'Grimtoll', 'WARLOCK', { mainSpec: 'Destruction' }),
+      card('c3', 'Selvane', 'PRIEST', { mainSpec: 'Holy', request: { id: 'tr1', team: { id: 't2', name: 'Sunday Alts' }, createdAt: Date.now() - 2 * DAY } }),
+      card('c4', 'Wyndra', 'MAGE', { level: null }),
+    ];
+    const out = G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ profile, characters: [] })] }) });
     assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">My characters</h1>'));
-    assert(out.includes('id="chars-g1"') && text(out).includes('Ember') && text(out).includes('TBC Anniversary'));
-    const rows = out.split('<tr class="gs-dtable-row').slice(1).filter(r => r.includes('<th scope="row"'));
-    assert.equal(rows.length, 7);
-    const row = name => rows.find(r => r.includes('>' + name + '</span>'));
-    assert(row('Aldric').includes('On your record') && !row('Aldric').includes('<button'));
-    assert(row('Brindle').includes('On the roster, not linked to anyone') && row('Brindle').includes('data-action="bnet-claim"'));
-    assert(row('Cassia').includes('aria-label="Add Cassia"') && row('Cassia').includes('<span>Add</span>') && row('Cassia').includes('data-action="bnet-claim"') && row('Cassia').includes('data-realm="nightslayer"') && row('Cassia').includes('Nightslayer'));
-    assert(row('Dunmar').includes('On someone else&#39;s record') && !row('Dunmar').includes('<button'));
-    assert(row('Eliora').includes('Needs an officer') && row('Eliora').includes('aria-label="Withdraw the request for Eliora"') && row('Eliora').includes('data-action="bnet-withdraw"') && row('Eliora').includes('data-claim="cl_1"') && !row('Eliora').includes('bnet-claim"'));
-    assert(row('Fenwick').includes('An officer turned this down before') && row('Fenwick').includes('data-action="bnet-claim"'));
-    assert(row('Stranger').includes('Another realm') && !row('Stranger').includes('<button'));
-    assert(row('Aldric').includes('gs-class-warrior') && row('Brindle').includes('gs-class-mage'));
-    assert(row('Aldric').includes('>70<') && row('Fenwick').includes('>12<'));
-    assert(row('Aldric').includes('data-label="Level"') && row('Aldric').includes('data-label="Realm"'), 'phone labels');
-    assert(out.includes('gs-dtable') && !out.includes('gs-btn-molten'), 'the data table (cards on a phone); Claim is a quiet button, not orange');
-    const delivered = guildEntry().characters.slice().reverse();
-    const rev = G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ characters: delivered })] }) });
-    assert(rev.indexOf('>Aldric</span>') > rev.indexOf('>Brindle</span>'), 'your own character keeps the delivered order, it is not moved first');
-    assert(rev.split('<tr class="gs-dtable-row').find(r => r.includes('>Aldric</span>')).includes('On your record'), 'the yours state stays on its row');
+    assert(out.includes('gs-forge gs-chars-page'), 'a Forge T1 page');
+    const sec = sectionOf(out);
+    assert(sec.includes('<h2 class="gs-fg-gh"><span class="gs-fg-ght">Ember</span><span class="gs-fg-ghn">4</span></h2>') && text(sec).includes('TBC Anniversary · Dreamscythe'), 'the gold head: name, count, version and realm');
+    const cards = sec.split('<a class="gs-hd-panel gs-chars-card').slice(1);
+    assert.equal(cards.length, 4);
+    const of = (name) => cards.find(c => new RegExp('gs-chars-card-name[^>]*>' + name + '<').test(c));
+    assert(of('Thornwick').includes('gs-chars-cc-druid') && of('Thornwick').includes('Restoration Druid') && of('Thornwick').includes('>Main<') && of('Thornwick').includes('>Team KJ<'));
+    assert(sec.indexOf('Thornwick') < sec.indexOf('Grimtoll') && sec.indexOf('Grimtoll') < sec.indexOf('Selvane'), 'the cards keep the Worker\'s order (Main first)');
+    assert(!of('Grimtoll').includes('>Main<') && of('Grimtoll').includes('gs-chars-chip-none') && of('Grimtoll').includes('>No team<'));
+    assert(of('Selvane').includes('>Requested<') && of('Selvane').includes('Sunday Alts') && of('Selvane').includes('2 days ago'), 'the team asked for and how long ago');
+    assert(of('Thornwick').includes('aria-label="Level 70"') && !of('Wyndra').includes('gs-chars-lvl'), 'the level badge only with a level');
+    assert(of('Thornwick').includes('href="' + G.router.format({ name: 'character', cid: 'c1' }) + '"') && of('Thornwick').includes('aria-label="Open Thornwick"'), 'a card is one link to its Character page');
+    assert(!/<button|<input|<select/.test(cards.map(c => c.split('</a>')[0]).join('')), 'no actions on a card');
     assertNoRawAttrs(out);
   });
 
-  await check('My characters: a missing level shows a dash, an approved claim reads "Approved"', () => {
-    const none = G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ characters: [character('Nolevel', 'DRUID', null)] })] }) });
-    assert(none.includes('gs-muted gs-dash">-<'));
-    assert.equal(G.pages.bnet.stateText(character('Aldric', 'WARRIOR', 70, { state: 'yours', claim: { id: 'cl_9', status: 'approved' }, claimable: false })), 'Approved');
-    assert.equal(G.pages.bnet.stateText(character('X', 'MAGE', 1, { state: 'new', claim: { id: 'cl_9', status: 'approved' } })), '');
+  await check('My characters: Request team sits in the guild head only while a character can ask and its guild has a team to ask for', () => {
+    const profile = [card('c1', 'Thornwick', 'DRUID', { isMain: true, team: { id: 't1', name: 'Alpha' } }), card('c2', 'Grimtoll', 'WARLOCK')];
+    const data = bnetData({ guilds: [guildEntry({ profile, characters: [] })] });
+    G.app.state.guilds = {};
+    assert(!G.pages.bnet.charactersHtml({ data }).includes('chars-request-open'), 'no guild data read yet: no button');
+    G.app.state.guilds = { g1: guildData() };
+    const out = G.pages.bnet.charactersHtml({ data });
+    assert(/<span class="gs-chars-gact"><button[^>]*data-action="chars-request-open"[^>]*data-gid="g1"/.test(out) && out.includes('aria-label="Request a team for one of your characters in Ember"'));
+    const all = [card('c1', 'Thornwick', 'DRUID', { isMain: true, team: { id: 't1', name: 'Alpha' } }), card('c2', 'Grimtoll', 'WARLOCK', { team: { id: 't2', name: 'Bravo' } })];
+    assert(!G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ profile: all, characters: [] })] }) }).includes('chars-request-open'), 'every character has a team');
+    const asked = [card('c1', 'Thornwick', 'DRUID', { isMain: true, team: { id: 't1', name: 'Alpha' } }), card('c2', 'Grimtoll', 'WARLOCK', { request: { id: 'tr1', team: { id: 't2', name: 'Bravo' }, createdAt: T0 } })];
+    assert(!G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ profile: asked, characters: [] })] }) }).includes('chars-request-open'), 'the only one that could ask has asked');
+    G.app.state.guilds = { g1: guildData(null, { teams: [{ id: 't1', name: 'Alpha', players: 3, archived: false }] }) };
+    assert(!G.pages.bnet.charactersHtml({ data }).includes('chars-request-open'), 'the person already holds the only team');
+    G.app.state.guilds = {};
   });
 
-  await check('My characters: every state a guild can be in says what to do - unsupported version, not linked, joined later, a failed namespace, nothing found', () => {
+  await check('My characters: Waiting for an officer lists the conflicts with Withdraw; the quiet line counts what is left to add and opens the Add dialog', () => {
+    const data = bnetData({ guilds: [guildEntry({ profile: [card('c1', 'Aldric', 'WARRIOR', { isMain: true })], characters: [
+      character('Eliora', 'PALADIN', 70, { state: 'taken', claim: { id: 'cl_1', status: 'pending' }, claimable: false }),
+      character('Cassia', 'PRIEST', 64), character('Fenwick', 'ROGUE', 12),
+    ] })] });
+    const out = G.pages.bnet.charactersHtml({ data });
+    const waiting = out.split('<h3 class="gs-tim-h">Waiting for an officer</h3>')[1].split('</ul>')[0];
+    assert(waiting.includes('gs-tim-row') && text(waiting).includes('Eliora Paladin · level 70 · On another account') && waiting.includes('gs-hd-chip is-rose') && waiting.includes('Needs an officer'));
+    assert(waiting.includes('aria-label="Withdraw the request for Eliora"') && waiting.includes('data-action="bnet-withdraw"') && waiting.includes('data-claim="cl_1"') && waiting.includes('data-gid="g1"'));
+    assert(text(out).includes('2 characters below 70 on your Battle.net · Add'), 'the quiet line');
+    assert(/<button type="button" class="gs-linkbtn"[^>]*data-action="chars-add-open"[^>]*data-gid="g1"[^>]*>Add<\/button>/.test(out));
+    const one = G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ profile: [card('c1', 'Aldric', 'WARRIOR')], characters: [character('Cassia', 'PRIEST', 64)] })] }) });
+    assert(text(one).includes('1 character below 70 on your Battle.net'));
+    const mixed = G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ profile: [card('c1', 'Aldric', 'WARRIOR')], characters: [character('Brindle', 'MAGE', 70), character('Cassia', 'PRIEST', 64)] })] }) });
+    assert(text(mixed).includes('2 characters on your Battle.net not on your profile yet') && !text(mixed).includes('below 70 on your'), 'a character at the cap that has not joined (budget, or turned down before) is offered too');
+    const none = G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ profile: [card('c1', 'Aldric', 'WARRIOR')], characters: [character('Dunmar', 'HUNTER', 70, { state: 'yours', claimable: false })] })] }) });
+    assert(!none.includes('chars-add-open') && !none.includes('gs-chars-quiet'), 'nothing left to add: no line');
+  });
+
+  await check('My characters: nothing at the cap yet turns the line into the action; Battle.net listing none says so; a guild with nothing addable says that', () => {
+    const empty = G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ profile: [], characters: [character('Cassia', 'PRIEST', 64), character('Fenwick', 'ROGUE', 12)] })] }) });
+    assert(text(empty).includes('None of your characters is level 70 yet') && text(empty).includes('Characters at 70 join your profile when you connect or refresh. Pick lower ones to add them now.'));
+    assert(/<button[^>]*data-action="chars-add-open"[^>]*><span>Add characters below 70<\/span>/.test(empty) && !empty.includes('gs-chars-quiet'));
     const body = entry => G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [entry] }) });
-    const unsupported = body(guildEntry({ guildName: 'Fresh', gameVersion: 'forever', supportLabel: 'WoW Forever', realmKind: 'ruleset', realm: 'Normal', status: 'unsupported', characters: [], message: "Battle.net doesn't offer character data for WoW Forever yet." }));
+    const none = body(guildEntry({ profile: [], characters: [] }));
+    assert(none.includes('data-status="empty"') && text(none).includes('Battle.net lists no TBC Anniversary characters for you') && text(none).includes('log out of the game completely'));
+    const quiet = body(guildEntry({ profile: [], characters: [character('Dunmar', 'HUNTER', 70, { state: 'taken', claimable: false })] }));
+    assert(quiet.includes('data-status="nothing_to_add"'));
+    assert(!body(guildEntry({ profile: [card('c1', 'Aldric', 'WARRIOR')], characters: [] })).includes('data-status="empty"'), 'cards and no Battle.net list: nothing to explain');
+  });
+
+  await check('My characters: every state a guild can be in says what to do - unsupported version, joined later, a failed namespace, an expired list', () => {
+    const body = entry => G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [entry] }) });
+    const unsupported = body(guildEntry({ guildName: 'Fresh', gameVersion: 'forever', supportLabel: 'WoW Forever', realmKind: 'ruleset', realm: 'Normal', status: 'unsupported', characters: [], maxLevel: 60, message: "Battle.net doesn't offer character data for WoW Forever yet." }));
     assert(text(unsupported).includes("Battle.net doesn't offer character data for WoW Forever yet.") && unsupported.includes('data-status="unsupported"') && !unsupported.includes('Connect again'));
     assert(text(unsupported).includes('Normal ruleset'));
-    assert(body(guildEntry({ status: 'not_linked', characters: [] })).includes('data-status="not_linked"'));
     const refresh = body(guildEntry({ status: 'needs_refresh', characters: [] }));
     assert(refresh.includes('data-status="needs_refresh"') && text(refresh).includes('You joined this guild after you connected Battle.net') && refresh.includes('href="/auth/bnet/login"'));
     const unavailable = body(guildEntry({ status: 'unavailable', characters: [] }));
     assert(unavailable.includes('data-status="unavailable"') && unavailable.includes('Connect again'));
-    const empty = body(guildEntry({ characters: [] }));
-    assert(empty.includes('data-status="empty"') && text(empty).includes('log out of the game completely'));
+    const expired = body(guildEntry({ status: 'expired', profile: [], characters: [] }));
+    assert(expired.includes('data-status="expired"') && text(expired).includes('deleted after 30 days'));
+    assert(!expired.includes('gs-chars-cards'), 'no profile: no cards');
   });
 
-  await check('My characters: not connected, not set up, no guild and loading', () => {
-    const notLinked = G.pages.bnet.charactersHtml({ data: bnetData({ link: null }) });
-    assert(text(notLinked).includes('Connect Battle.net to see your characters') && notLinked.includes('href="/auth/bnet/login"'));
+  await check('My characters: the foot line is the one Battle.net link; not connected says what joins by itself; not set up, no guild and loading', () => {
+    const out = mine();
+    assert(text(out).includes('From Battle.net as Tester#1234, loaded Oct 17.') && /<a class="gs-fg-u" href="\/auth\/bnet\/login" data-key="bnet-reconnect">Refresh from Battle.net<\/a>/.test(out));
+    assert(!out.includes('chars-intro') && !text(out).includes('Add the characters that are yours'), 'the banner is gone');
+    const expired = G.pages.bnet.charactersHtml({ data: bnetData({ link: { battletag: 'Tester#1234', linkedAt: T0, fetchedAt: T0, expiresAt: T0, expired: true } }) });
+    assert(text(expired).includes('the list was deleted after 30 days') && expired.includes('Load from Battle.net'));
+    const notLinked = G.pages.bnet.charactersHtml({ data: bnetData({ link: null, guilds: [guildEntry({ status: 'not_linked', characters: [], onRoster: false })] }) });
+    assert(text(notLinked).includes('Connect Battle.net to see your characters') && text(notLinked).includes('Characters at level 70 join your profile when you connect; you pick the lower ones.'));
+    assert(!text(notLinked).includes('You pick the ones that are yours and add them to your profile'), 'the sentence that stopped being true is gone');
+    assert(notLinked.includes('href="/auth/bnet/login"') && !notLinked.includes('chars-foot'));
+    const mixed = G.pages.bnet.charactersHtml({ data: bnetData({ link: null, guilds: [guildEntry({ onRoster: false, status: 'not_linked' }), guildEntry({ guildId: 'g2', guildName: 'Era', supportLabel: 'Classic Era', maxLevel: 60, onRoster: false, status: 'not_linked' })] }) });
+    assert(text(mixed).includes('Characters at the level cap (70 in TBC Anniversary, 60 in Classic Era) join your profile when you connect; you pick the lower ones.'));
+    const on = G.pages.bnet.charactersHtml({ data: bnetData({ link: null, guilds: [guildEntry({ onRoster: true, status: 'not_linked' })] }) });
+    assert(text(on).includes('You are on the roster already') && text(on).includes('those at level 70 join when you connect, you pick the lower ones'));
+    const both = G.pages.bnet.charactersHtml({ data: bnetData({ link: null, guilds: [guildEntry({ onRoster: true, status: 'not_linked' }), guildEntry({ guildId: 'g2', guildName: 'Era', onRoster: false, status: 'not_linked' })] }) });
+    assert(text(both).includes('In Era, Battle.net finds your characters: those at level 70 join your profile when you connect, you pick the lower ones.'));
+    const inGame = G.pages.bnet.charactersHtml({ data: bnetData({ link: null, guilds: [guildEntry({ battlenetOnly: true, status: 'not_linked' })] }) });
+    assert(text(inGame).includes('Ember adds characters from Battle.net only.'), 'the in-game line stays above the empty state');
     assert(G.pages.bnet.charactersHtml({ data: bnetData({ configured: false, link: null }) }).includes('id="bnet-not-set-up"'));
     assert(text(G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [] }) })).includes('You are not in a Raidsmith guild yet'));
     assert(G.pages.bnet.charactersHtml({ data: null }).includes('Loading'));
-    const intro = G.pages.bnet.charactersHtml({ data: bnetData() });
-    assert(text(intro).includes('Add the characters that are yours. They go on your profile at once.') && !text(intro).includes('officers approve each claim') && text(intro).includes('deleted on Nov 16, 2026'));
-    assert(G.pages.bnet.charactersHtml({ data: bnetData(), notice: 'Claim sent: Eliora.' }).includes('Claim sent: Eliora.'));
+    assert(G.pages.bnet.charactersHtml({ data: bnetData(), notice: 'Added Cassia to your characters.' }).includes('Added Cassia to your characters.'));
   });
 
   await check('hostile names: BattleTag, guild, character, realm and notices come out escaped on both pages', () => {
-    const evil = guildEntry({ guildName: HOSTILE + QUOTES, realm: HOSTILE, characters: [character(HOSTILE + QUOTES, 'MAGE', 70, { realm: HOSTILE + QUOTES, realmSlug: 'x" onfocus="alert(1)', claim: { id: 'cl_" onfocus="alert(1)', status: 'pending' }, claimable: false })] });
+    const evil = guildEntry({
+      guildName: HOSTILE + QUOTES, realm: HOSTILE, profile: [card('c" onfocus="alert(1)', HOSTILE + QUOTES, 'MAGE', { team: { id: 't1', name: HOSTILE + QUOTES }, mainSpec: HOSTILE })],
+      characters: [character(HOSTILE + QUOTES, 'MAGE', 70, { realm: HOSTILE + QUOTES, realmSlug: 'x" onfocus="alert(1)', claim: { id: 'cl_" onfocus="alert(1)', status: 'pending' }, claimable: false, state: 'taken' }),
+        character(HOSTILE, 'PRIEST', 40, { realmSlug: 'y" onfocus="alert(1)' })],
+    });
     const data = bnetData({ link: { battletag: HOSTILE + QUOTES, linkedAt: T0, fetchedAt: T0, expiresAt: T0 + 30 * DAY }, guilds: [evil] });
     assertEscaped(G.pages.bnet.linkedHtml({ data, notice: HOSTILE + QUOTES, alert: HOSTILE + QUOTES }), 'linked');
     assertEscaped(G.pages.bnet.charactersHtml({ data, notice: HOSTILE + QUOTES, alert: HOSTILE + QUOTES }), 'characters');
     assertNoRawAttrs(G.pages.bnet.charactersHtml({ data }));
+    assertEscaped(G.pages.bnet.addDialogHtml(evil), 'add dialog');
+    assertNoRawAttrs(G.pages.bnet.addDialogHtml(evil));
   });
 
-  await check('claim: Claim sends the one character, then reloads GET /auth/bnet with a notice; Withdraw deletes the claim', async () => {
+  await check('Add dialog: one box per character, the primary says how many are ticked, the title says "below 70" only when they all are', () => {
+    const g = guildEntry({ characters: [character('Quillwick', 'HUNTER', 64), character('Fenlow', 'SHAMAN', 52), character('Dunlow', 'ROGUE', 31, { claim: { id: 'cl_2', status: 'rejected' } }), character('Eliora', 'PALADIN', 61, { claim: { id: 'cl_1', status: 'pending' }, claimable: false })] });
+    const out = G.pages.bnet.addDialogHtml(g);
+    assert(out.includes('Add characters below 70') && text(out).includes('Characters at level 70 join your profile by themselves. Tick the lower ones you want on it.'));
+    assert(out.includes('data-submit="chars-add-form"') && out.includes('data-gid="g1"'));
+    const rows = out.split('<li><label').slice(1);
+    assert.equal(rows.length, 3, 'only what can be added: a waiting character is not offered');
+    assert(rows[0].includes('type="checkbox"') && rows[0].includes('name="pick"') && rows[0].includes('data-name="Quillwick"') && rows[0].includes('data-realm="dreamscythe"') && !rows[0].includes('checked'), 'nothing is ticked at first');
+    assert(text(rows[0]).includes('Quillwick Hunter Level 64') && rows[0].includes('gs-class-hunter'));
+    assert(text(rows[2]).includes('An officer turned this down before'));
+    assert(/data-key="chars-add-submit"[^>]*><span>Add characters<\/span>/.test(out), 'the primary starts without a count');
+    const mixed = G.pages.bnet.addDialogHtml(guildEntry({ characters: [character('Brindle', 'MAGE', 70), character('Cassia', 'PRIEST', 64)] }));
+    assert(mixed.includes('Add characters from Battle.net') && text(mixed).includes('Tick the characters you want on your profile.') && text(mixed).includes('Level 70'));
+  });
+
+  function fakeForm(attrs, ticked) {
+    const label = { textContent: 'Add characters' };
+    const boxes = (ticked || []).map(t => ({ getAttribute: k => ({ 'data-name': t[0], 'data-realm': t[1] })[k] }));
+    return { label, getAttribute: k => (attrs || {})[k], querySelectorAll: () => boxes, querySelector: sel => (sel.includes('chars-add-submit') ? label : null) };
+  }
+  async function submitAdd(ticked, stubs) {
     G.app.state.bnet = { data: bnetData(), notice: '', alert: '' };
     const calls = [];
-    const button = el({ 'data-gid': 'g1', 'data-name': 'Cassia', 'data-realm': 'nightslayer' });
+    const savedRun = G.ui.runDialog;
+    G.ui.runDialog = (form, promise, ok) => Promise.resolve(promise).then(ok);
+    try {
+      await withApi(Object.assign({
+        post: (url, body) => { calls.push(['POST', url, plain(body)]); return Promise.resolve({ claims: body.characters.map(c => ({ name: c.name, status: 'applied', outcome: 'add_alt' })) }); },
+        get: url => { calls.push(['GET', url]); return Promise.resolve(bnetData()); },
+      }, stubs || {}), async () => {
+        G.handlers.submit['chars-add-form'](fakeForm({ 'data-gid': 'g1' }, ticked));
+        for (let i = 0; i < 12; i++) await tick();
+      });
+    } finally { G.ui.runDialog = savedRun; }
+    return calls;
+  }
+
+  await check('Add dialog: the picks go to POST /claims ten to a request, then the page reads GET /auth/bnet again and says what happened', async () => {
+    G.app.state.guilds = { g1: guildData() };
+    const one = await submitAdd([['Cassia', 'nightslayer']]);
+    assert.deepEqual(one[0], ['POST', '/api/guild/g1/claims', { characters: [{ name: 'Cassia', realmSlug: 'nightslayer' }] }]);
+    assert.deepEqual(one[1], ['GET', '/auth/bnet']);
+    assert.equal(G.app.state.bnet.notice, 'Added Cassia to your characters.');
+    const many = Array.from({ length: 23 }, (_, i) => ['Alt' + i, 'dreamscythe']);
+    const calls = await submitAdd(many);
+    const posts = calls.filter(c => c[0] === 'POST');
+    assert.deepEqual(posts.map(c => c[2].characters.length), [10, 10, 3], 'ten at a time (the Worker takes at most 10 in a request)');
+    assert.equal(G.app.state.bnet.notice, 'Added 23 characters to your profile.');
+    const mixed = await submitAdd([['A', 'x'], ['B', 'x']], { post: () => Promise.resolve({ claims: [{ name: 'A', status: 'applied' }, { name: 'B', status: 'pending' }] }) });
+    assert(mixed.some(c => c[0] === 'GET'));
+    assert.equal(G.app.state.bnet.notice, 'Added 1 character to your profile. 1 character is held by someone else, so an officer has to decide. Nothing changes until one does.');
+    assert.equal(G.pages.bnet.addedNotice([{ name: 'Brannock', status: 'pending', reason: 'other_person' }]), 'Brannock is on a different roster entry than yours, so an officer has to decide. Nothing changes until one does.');
+    // the second request fails after the first worked: the page still shows what was added
+    let n = 0;
+    await submitAdd(many, { post: (url, body) => { n++; return n === 1 ? Promise.resolve({ claims: body.characters.map(c => ({ name: c.name, status: 'applied' })) }) : Promise.reject(new G.api.ApiError(409, { error: 'already_yours', message: 'Alt11 is already on your record in this guild.' })); } });
+    assert(G.app.state.bnet.notice.startsWith('Added 10 characters to your profile.') && G.app.state.bnet.notice.includes('The rest did not go through: Alt11 is already on your record in this guild.'), G.app.state.bnet.notice);
+    G.app.state.guilds = {};
+  });
+
+  await check('Add dialog: nothing ticked asks for a tick; ticking changes the primary to "Add N characters"', async () => {
+    const errors = [];
+    const savedSet = G.ui.setText;
+    G.ui.setText = (id, t) => { if (t) errors.push([id, t]); };
+    try {
+      const none = await submitAdd([]);
+      assert.deepEqual(none, []);
+      assert.deepEqual(errors, [['dlg-error', 'Tick at least one character.']]);
+    } finally { G.ui.setText = savedSet; }
+    const form = fakeForm({}, [['A', 'x']]);
+    G.handlers.change['chars-pick']({ form });
+    assert.equal(form.label.textContent, 'Add 1 character');
+    const three = fakeForm({}, [['A', 'x'], ['B', 'x'], ['C', 'x']]);
+    G.handlers.change['chars-pick']({ form: three });
+    assert.equal(three.label.textContent, 'Add 3 characters');
+  });
+
+  await check('claim: Withdraw deletes the claim and reloads GET /auth/bnet with a notice; the per-row Add is gone', async () => {
+    G.app.state.bnet = { data: bnetData(), notice: '', alert: '' };
+    const calls = [];
     await withApi({
-      post: (url, body) => { calls.push(['POST', url, plain(body)]); return Promise.resolve({ claims: [{ id: 'cl_3' }] }); },
       get: url => { calls.push(['GET', url]); return Promise.resolve(bnetData()); },
       del: (url, body) => { calls.push(['DELETE', url, plain(body)]); return Promise.resolve({ ok: true }); },
     }, async () => {
-      G.handlers.click['bnet-claim'](button);
-      await tick(); await tick();
-      assert.equal(button.disabled, true, 'the button stays off while the request runs');
       G.handlers.click['bnet-withdraw'](el({ 'data-gid': 'g1', 'data-name': 'Eliora', 'data-claim': 'cl_1' }));
       await tick(); await tick();
     });
-    assert.deepEqual(calls[0], ['POST', '/api/guild/g1/claims', { characters: [{ name: 'Cassia', realmSlug: 'nightslayer' }] }]);
+    assert.deepEqual(calls[0], ['DELETE', '/api/guild/g1/claims/cl_1', {}]);
     assert.deepEqual(calls[1], ['GET', '/auth/bnet']);
-    assert.deepEqual(calls[2], ['DELETE', '/api/guild/g1/claims/cl_1', {}]);
     assert.equal(G.app.state.bnet.notice, 'Request for Eliora withdrawn.');
+    assert.equal(G.handlers.click['bnet-claim'], undefined, 'the dialog adds');
   });
 
-  await check('claim: a refused claim shows the server message on the page and turns the button back on', async () => {
-    G.app.state.bnet = { data: bnetData(), notice: '', alert: '' };
-    const button = el({ 'data-gid': 'g1', 'data-name': 'Cassia', 'data-realm': 'nightslayer' });
-    await withApi({ post: () => Promise.reject(new G.api.ApiError(409, { error: 'claim_pending', message: 'Cassia already has a claim waiting for officers.' })) }, async () => {
-      G.handlers.click['bnet-claim'](button);
-      await tick(); await tick();
-    });
-    assert.equal(button.disabled, false);
-    assert.equal(G.app.state.bnet.alert, 'Cassia already has a claim waiting for officers.');
-    const out = G.pages.bnet.charactersHtml({ data: G.app.state.bnet.data, alert: G.app.state.bnet.alert });
-    assert(out.includes('Cassia already has a claim waiting for officers.') && out.includes('role="alert"'));
+  await check('Request team: the built dialog opens from the guild head with this guild\'s characters, and this page\'s own submit posts the request', async () => {
+    const profile = [card('c1', 'Thornwick', 'DRUID', { isMain: true, team: { id: 't1', name: 'Alpha' } }), card('c2', 'Grimtoll', 'WARLOCK', { mainSpec: 'Destruction' })];
+    G.app.state.bnet = { data: bnetData({ guilds: [guildEntry({ profile, characters: [] })] }), notice: '', alert: '' };
+    G.app.state.guilds = { g1: guildData() };
+    const html = G.pages.bnet.requestDialogHtml(G.app.state.bnet.data.guilds[0]);
+    assert(html.includes('<h2 class="gs-dialog-title" id="dlg-title">Request a team</h2>') && html.includes('data-submit="chars-request-form"') && html.includes('data-gid="g1"') && !html.includes('data-submit="team-request-form"'));
+    assert(html.includes('value="c2"') && !html.includes('value="c1"'), 'only the character without a team can ask');
+    assert(html.includes('value="t2"') && !html.includes('value="t1"') && !html.includes('value="t3"'), 'not the team the person holds, not an archived one');
+    let opened = null;
+    const savedOpen = G.ui.openDialog;
+    const savedRun = G.ui.runDialog;
+    G.ui.openDialog = h => { opened = h; };
+    G.ui.runDialog = (form, promise, ok) => Promise.resolve(promise).then(ok);
+    const calls = [];
+    try {
+      G.handlers.click['chars-request-open'](el({ 'data-gid': 'g1' }));
+      assert(opened && opened.includes('data-submit="chars-request-form"'));
+      opened = null;
+      G.handlers.click['chars-request-open'](el({ 'data-gid': 'nope' }));
+      assert.equal(opened, null, 'an unknown guild opens nothing');
+      const radios = { characterId: { value: 'c2' }, teamId: { value: 't2' } };
+      const form = { getAttribute: k => ({ 'data-gid': 'g1' })[k], querySelector: sel => radios[/name="(\w+)"/.exec(sel)[1]] };
+      await withApi({
+        post: (url, body) => { calls.push(['POST', url, plain(body)]); return Promise.resolve({ request: { id: 'tr1' } }); },
+        get: url => { calls.push(['GET', url]); return Promise.resolve(bnetData()); },
+      }, async () => { G.handlers.submit['chars-request-form'](form); for (let i = 0; i < 8; i++) await tick(); });
+    } finally { G.ui.openDialog = savedOpen; G.ui.runDialog = savedRun; }
+    assert.deepEqual(calls[0], ['POST', '/api/guild/g1/team-requests', { characterId: 'c2', teamId: 't2' }]);
+    assert.deepEqual(calls[1], ['GET', '/auth/bnet']);
+    assert.equal(G.app.state.bnet.notice, 'Asked for Bravo for Grimtoll. A Team Lead decides; you can withdraw the request until then.');
+    G.app.state.guilds = {};
   });
 
   // ── Character claims on the review queue ───────────────────────
@@ -747,6 +906,11 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
 
   await check('guild.css and files: the Battle.net classes exist, nothing sets inline styles, and the scripts load in order before app.js', () => {
     for (const c of ['.gs-table-bnet', '.gs-bnet-state', '.gs-cclaim-form', '.gs-cclaim-plan.is-blocked', '.gs-bnet-filters', '.gs-bnet-ranks', '.gs-bnet-form']) assert(css.includes(c), c);
+    const mineCss = css.slice(css.indexOf('/* == B8b My characters (lane mychars) == */'), css.indexOf('/* == end B8b My characters == */'));
+    assert(mineCss.length > 500, 'the My characters block sits between its markers');
+    for (const c of ['.gs-chars-guild', '.gs-chars-gh', '.gs-chars-cards', '.gs-chars-card', '.gs-chars-card-name', '.gs-chars-lvl', '.gs-chars-chip-none', '.gs-chars-cc-druid', '.gs-chars-quiet', '.gs-chars-foot', '.gs-chars-chk']) assert(mineCss.includes(c), c);
+    assert(/@media \(width <= 600px\) \{[^}]*\.gs-chars-cards \{ grid-template-columns: minmax\(0, 1fr\)/.test(mineCss), 'one card per row on a phone');
+    assert(/\.gs-chars-card \{[^}]*min-height: 44px/.test(mineCss), 'a card is a 44 px target');
     const phone = css.split('@media (max-width: 600px)').slice(1).join('');
     assert(/\.gs-table-bnet, \.gs-table-bnet-import \{ min-width: 0; \}/.test(phone) && /\.gs-cclaim-form \{ width: 100%; \}/.test(phone));
     for (const f of ['pages-bnet.js', 'pages-import-bnet.js', 'pages-settings-bnet.js']) {

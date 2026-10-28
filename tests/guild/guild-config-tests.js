@@ -260,7 +260,7 @@ check('worker/realms.js: the data shape, dated header with sources, the three ve
   assert(!source.includes('Годовщина'), 'the unverified Russian entry is left out');
   const realms = await import('../../worker/realms.js');
   assert.deepEqual(realms.GAME_VERSIONS, [
-    { key: 'tbc', label: 'TBC Anniversary' }, { key: 'classic', label: 'Classic Era' }, { key: 'forever', label: 'WoW Forever' },
+    { key: 'tbc', label: 'TBC Anniversary', maxLevel: 70 }, { key: 'classic', label: 'Classic Era', maxLevel: 60 }, { key: 'forever', label: 'WoW Forever', maxLevel: 60 },
   ]);
   assert.deepEqual(realms.FOREVER_RULESETS, ['Normal', 'PvP', 'RP', 'Hardcore']);
   assert.deepEqual(Object.keys(realms.REALMS), ['tbc', 'classic', 'forever']);

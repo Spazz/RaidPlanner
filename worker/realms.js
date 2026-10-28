@@ -4,11 +4,19 @@
 // The Classic Era list may be stale (no current official Blizzard Era list exists). WoW Forever has no realms:
 // it uses rulesets instead. The server accepts any realm name; this list is a convenience that supplies slugs.
 
+// maxLevel: the level cap of the version. A Battle.net character at it joins a member's profile by itself (worker/bnet-auto-add.js); lower ones are picked by hand.
+// WoW Forever has no Battle.net namespace yet (worker/battlenet.js NAMESPACES), so the rule cannot fire there until Blizzard publishes one.
 export const GAME_VERSIONS = [
-  { key: 'tbc', label: 'TBC Anniversary' },
-  { key: 'classic', label: 'Classic Era' },
-  { key: 'forever', label: 'WoW Forever' },
+  { key: 'tbc', label: 'TBC Anniversary', maxLevel: 70 },
+  { key: 'classic', label: 'Classic Era', maxLevel: 60 },
+  { key: 'forever', label: 'WoW Forever', maxLevel: 60 },
 ];
+
+// The level cap of a game version, or null for a version this list does not know.
+export function maxLevelOf(gameVersion) {
+  const version = GAME_VERSIONS.find((row) => row.key === gameVersion);
+  return version ? version.maxLevel : null;
+}
 
 export const REGIONS = ['US', 'EU', 'KR', 'TW'];
 

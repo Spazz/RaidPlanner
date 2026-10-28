@@ -87,12 +87,15 @@ export async function planClaims(db, guild, claims) {
       `SELECT u.id, u.discord_id, ${memberSql('u.id', 'gc.gid', 'gc.sid')} AS member
          FROM users u, (SELECT ? AS gid, ? AS sid) gc WHERE u.id IN (SELECT value FROM json_each(?))`,
     ).bind(guild.id, guild.discord_server_id, userIds),
-    // The claimants' own people (players.user_id), and the unowned people that record a claimant's Discord ID (bookkeeping: they are not the claimant's).
+    // The claimants' own people (players.user_id), and the unowned people that record a claimant's Discord ID (bookkeeping: they are not the claimant's). Two index lookups
+    // (players_guild_user, players_guild_discord) joined by UNION ALL, not one OR: the OR walks every person of the guild, and the Battle.net callback reads this for each sign-in.
     db.prepare(
       `SELECT p.id, p.discord_user_id, p.user_id, m.name, m.team_id FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ? AND (p.user_id IN (SELECT value FROM json_each(?))
-                                  OR (p.user_id IS NULL AND p.discord_user_id IN (SELECT u.discord_id FROM users u WHERE u.id IN (SELECT value FROM json_each(?)))))`,
-    ).bind(guild.id, userIds, userIds),
+        WHERE p.guild_id = ? AND p.user_id IN (SELECT value FROM json_each(?))
+        UNION ALL
+       SELECT p.id, p.discord_user_id, p.user_id, m.name, m.team_id FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
+        WHERE p.guild_id = ? AND p.user_id IS NULL AND p.discord_user_id IN (SELECT u.discord_id FROM users u WHERE u.id IN (SELECT value FROM json_each(?)))`,
+    ).bind(guild.id, userIds, guild.id, userIds),
     db.prepare(
       `SELECT c.id AS character_id, c.name_key, c.realm_key, c.owner_proof, p.id AS player_id, p.discord_user_id, p.user_id, m.name AS main_name, m.team_id AS home_team_id
          FROM characters c JOIN players p ON p.id = c.player_id JOIN characters m ON m.player_id = p.id AND m.is_main = 1

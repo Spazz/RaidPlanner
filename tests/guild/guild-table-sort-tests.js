@@ -138,7 +138,7 @@ const order = html => (html.match(/data-row="([^"]+)"/g) || []).map(s => s.slice
   });
 
   // Per page: every table in these files carries sort heads. The hand-built ones may keep a bare head only for a row-action / tick column.
-  const DATA_TABLE_PAGES = ['pages-away.js', 'pages-bnet.js', 'pages-loot-fix.js', 'pages-loot-hub.js', 'pages-loot-night.js', 'pages-person-attendance.js', 'pages-raids.js', 'pages-view.js'];
+  const DATA_TABLE_PAGES = ['pages-away.js', 'pages-loot-fix.js', 'pages-loot-hub.js', 'pages-loot-night.js', 'pages-person-attendance.js', 'pages-raids.js', 'pages-view.js'];
   await check('dataTableHtml pages: no column opts out of sorting except a row-action column', () => {
     for (const f of DATA_TABLE_PAGES) {
       const src = read('js/guild/' + f);

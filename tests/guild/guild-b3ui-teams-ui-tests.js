@@ -489,12 +489,12 @@ function withState(fn) {
     assert(stripTags(off).includes('Connect Battle.net to see your characters') && stripTags(off).includes('Ashen Watch'), 'the invitation stays, the card follows');
     assert(stripTags(off).includes('Characters on the roster that nobody has linked yet. An officer confirms it is you.'));
     assert(chars(bnetData({ configured: false })).includes('id="bnet-not-set-up"') && chars(bnetData({ configured: false })).includes('data-input="tim-search"'), 'not set up on the server');
-    const linked = chars(bnetData({ link: LINK, guilds: [bnetGuild({ status: 'ok', characters: [{ name: 'Oakmender', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'DRUID', level: 70, state: 'new', claim: null, claimable: true }] })] }));
-    assert(linked.indexOf('data-input="tim-search"') < linked.indexOf('Oakmender'), 'the block is above the Battle.net list');
+    const linked = chars(bnetData({ link: LINK, guilds: [bnetGuild({ status: 'ok', maxLevel: 70, profile: [{ id: 'c1', name: 'Oakmender', class: 'DRUID', mainSpec: null, isMain: true, level: 70, team: null, request: null }], characters: [] })] }));
+    assert(linked.indexOf('data-input="tim-search"') < linked.indexOf('Oakmender'), 'the block is above the cards');
     const ingame = chars(bnetData({ link: LINK, guilds: [bnetGuild({ guildName: 'Vindicated', battlenetOnly: true, status: 'ok' })] }));
     assert(!ingame.includes('data-input="tim-search"') && stripTags(ingame).includes('Vindicated adds characters from Battle.net only.'));
     const ingameOff = chars(bnetData({ guilds: [bnetGuild({ guildName: 'Vindicated', battlenetOnly: true })] }));
-    assert(!ingameOff.includes('tim-search') && !ingameOff.includes('Vindicated adds characters'), 'not connected: an in-game guild has no card of its own');
+    assert(!ingameOff.includes('tim-search') && stripTags(ingameOff).includes('Vindicated adds characters from Battle.net only.') && stripTags(ingameOff).includes('Connect Battle.net to see your characters'), 'not connected: an in-game guild has its line above the invitation, and no typed block (board MC4)');
     assertNoRawAttrs(off + linked);
   }));
 
@@ -619,7 +619,7 @@ function withState(fn) {
     assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/roster/unlinked?q=Zz']);
   }));
 
-  await check('Battle.net outcomes (board 7): Add, Needs an officer with its reason, and a notice per outcome; the intro says characters go on your profile at once', () => {
+  await check('Battle.net outcomes (board 7): Add, Needs an officer with its reason, and a notice per outcome; the foot line names the one Battle.net link', () => {
     const rows = [
       { name: 'Oakheart', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'DRUID', level: 70, state: 'new', claim: null, claimable: true },
       { name: 'Dunmar', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'HUNTER', level: 70, state: 'taken', claim: { id: 'cl_1', status: 'pending' }, claimable: false },
@@ -627,10 +627,9 @@ function withState(fn) {
     ];
     const out = chars(bnetData({ link: LINK, guilds: [bnetGuild({ status: 'ok', characters: rows })] }));
     const t = stripTags(out);
-    assert(t.includes('Add the characters that are yours. They go on your profile at once.') && !t.includes('officers approve each claim'));
-    assert(out.includes('aria-label="Add Oakheart"') && out.includes('aria-label="Withdraw the request for Dunmar"'));
-    assert(/Needs an officer\s*<\/span>\s*<span class="gs-bnet-why">On another account/.test(out.replace(/<svg[\s\S]*?<\/svg>/g, '')) || t.includes('Needs an officer On another account'), t);
-    assert(t.includes('Needs an officer On a different roster entry than yours'));
+    assert(t.includes('From Battle.net as Ravenna#2210, loaded') && !t.includes('officers approve each claim'));
+    assert(t.includes('1 character on your Battle.net not on your profile yet') && out.includes('data-action="chars-add-open"') && out.includes('aria-label="Withdraw the request for Dunmar"'));
+    assert(out.includes('Hunter &middot; level 70 &middot; On another account') && out.includes('Rogue &middot; level 70 &middot; On a different roster entry than yours') && t.includes('Needs an officer'), t);
     const note = G.pages.bnet.claimNotice;
     assert.equal(note('Selvane', { status: 'applied', outcome: 'add_alt' }), 'Added Selvane to your characters.');
     assert.equal(note('Marrowind', { status: 'applied', outcome: 'link_person' }), 'Added Marrowind. It was on the roster already and is linked to you now.');

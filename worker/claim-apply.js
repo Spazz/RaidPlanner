@@ -154,40 +154,74 @@ export function claimAudit(ctx, guildId, actorId, applied, source) {
 //   applied   done: outcome add_alt | new_person | link_person, with personId and characterId
 //   pending   a conflict waiting for an officer: id (the claim), outcome needs_officer, reason other_person | link_person
 //   failed    the roster changed under the request: nothing was written for this character (reason changed)
-export async function applyPicks(ctx, guildContext, picks, { source, field = 'characters' }) {
+// auto (the max-level rule, worker/bnet-auto-add.js): { statementsLeft } the D1 statements the callback may still spend. The same plan and the same writes, but nothing is
+// refused: a pick a manual add would answer with 409 (already yours, taken, a claim waiting) is left out, so is a conflict an officer turned down before (it is not asked
+// again at every refresh; Add on My characters still asks) and one past the waiting limit, and the picks that do not fit the budget are left for the next refresh (a prefix
+// of the list, so a person made by the first pick is there for the next). The answer then also says how many D1 statements this call used and whether the budget cut picks: { claims, statements, trimmed }.
+export async function applyPicks(ctx, guildContext, picks, { source, field = 'characters', auto = null }) {
   const { db } = ctx;
   const guild = guildContext.guild;
   const claimant = { userId: ctx.session.user.id, discordId: ctx.session.user.discordId };
   const planned = await planPicks(ctx, guild, claimant, picks, { source });
+  let used = picks.length ? 3 : 0; // planClaims reads the claimants, their people and the owners in one batch of three
   const at = (entry) => ({ field, index: entry.pick.index });
-  for (const entry of planned) {
-    if (entry.kind === 'already') throw new HttpError(409, 'already_yours', `${entry.pick.name} is already on your record in this guild.`, at(entry));
-    if (entry.kind === 'taken') throw new HttpError(409, 'name_taken', `${entry.pick.name} is already on someone else's record in this guild.`, at(entry));
+  const keyOf = (entry) => `${nameKey(entry.pick.name)}|${entry.pick.realm.key}`;
+  if (!auto) {
+    for (const entry of planned) {
+      if (entry.kind === 'already') throw new HttpError(409, 'already_yours', `${entry.pick.name} is already on your record in this guild.`, at(entry));
+      if (entry.kind === 'taken') throw new HttpError(409, 'name_taken', `${entry.pick.name} is already on someone else's record in this guild.`, at(entry));
+    }
   }
-  const [pendingResult, openResult] = await db.batch([
+  const candidates = auto ? planned.filter((entry) => entry.kind !== 'already' && entry.kind !== 'taken') : planned;
+  if (auto && !candidates.length) return { claims: [], statements: used, trimmed: false };
+  const reads = [
     db.prepare("SELECT id, name_key, realm_key, level FROM character_claims WHERE guild_id = ? AND status = 'pending'").bind(guild.id),
     db.prepare("SELECT COUNT(*) AS n FROM character_claims WHERE guild_id = ? AND user_id = ? AND status = 'pending'").bind(guild.id, claimant.userId),
-  ]);
+    ...(auto ? [db.prepare("SELECT name_key, realm_key FROM character_claims WHERE guild_id = ? AND user_id = ? AND status = 'rejected'").bind(guild.id, claimant.userId)] : []),
+  ];
+  const [pendingResult, openResult, rejectedResult] = await db.batch(reads);
+  used += reads.length;
   const waitingBy = new Map(pendingResult.results.map((row) => [`${row.name_key}|${row.realm_key}`, row]));
+  const turnedDown = new Set(rejectedResult ? rejectedResult.results.map((row) => `${row.name_key}|${row.realm_key}`) : []);
+  const conflictRoom = MAX_PENDING_PER_GUILD - openResult.results[0].n;
   // A claim waiting on a name blocks a second one, except that a Battle.net claim closes a TYPED one (no level): typing a name proves nothing, the Battle.net list does.
-  const superseded = [];
-  for (const entry of planned) {
-    const waiting = waitingBy.get(`${nameKey(entry.pick.name)}|${entry.pick.realm.key}`);
-    if (!waiting) continue;
-    if (source === 'bnet' && waiting.level === null) {
-      superseded.push(waiting.id);
-      continue;
+  const closesTyped = (waiting) => source === 'bnet' && waiting.level === null;
+  let kept = [];
+  let trimmed = false;
+  let conflicts = 0;
+  for (const entry of candidates) {
+    if (auto && entry.kind === 'conflict' && (entry.reason === 'not_member' || turnedDown.has(keyOf(entry)) || conflicts >= conflictRoom)) continue;
+    const waiting = waitingBy.get(keyOf(entry));
+    if (waiting && !closesTyped(waiting)) {
+      if (auto) continue;
+      throw new HttpError(409, 'claim_pending', `${entry.pick.name} already has a claim waiting for officers.`, at(entry));
     }
-    throw new HttpError(409, 'claim_pending', `${entry.pick.name} already has a claim waiting for officers.`, at(entry));
+    if (entry.kind === 'conflict') conflicts++;
+    kept.push(entry);
   }
-  const conflicts = planned.filter((entry) => entry.kind === 'conflict').length;
-  if (conflicts && openResult.results[0].n + conflicts > MAX_PENDING_PER_GUILD) {
+  if (!auto && conflicts && openResult.results[0].n + conflicts > MAX_PENDING_PER_GUILD) {
     throw new HttpError(409, 'claim_limit', `You can have at most ${MAX_PENDING_PER_GUILD} claims waiting for officers in one guild.`);
   }
+  if (auto) {
+    // The most statements each pick writes: a conflict's claim and audit row; the rest their key writes, the audit row and the stale marking (a new person: its row and its
+    // Main), and two more when it closes a typed claim. The picks that fit are a prefix of the list.
+    const cost = (entry) => (entry.kind === 'conflict' ? 2 : entry.kind === 'new_person' ? 4 : 3) + (waitingBy.has(keyOf(entry)) ? 2 : 0);
+    let left = auto.statementsLeft - used;
+    const fits = [];
+    for (const entry of kept) {
+      if (cost(entry) > left) break;
+      left -= cost(entry);
+      fits.push(entry);
+    }
+    trimmed = fits.length < kept.length;
+    kept = fits;
+    if (!kept.length) return { claims: [], statements: used, trimmed };
+  }
+  // The typed claims the Battle.net picks close (in the same batch, first: the owner's claim takes the one open slot of the name).
+  const superseded = kept.map((entry) => waitingBy.get(keyOf(entry))).filter((waiting) => waiting && closesTyped(waiting)).map((waiting) => waiting.id);
 
   const now = ctx.now();
   const statements = [];
-  // Closed first, in the same batch: the pending claim of the Battle.net owner (if any) takes the one open slot of the name.
   for (const id of superseded) {
     statements.push(
       db.prepare("UPDATE character_claims SET status = 'rejected', decided_by = ?, decided_at = ? WHERE id = ? AND guild_id = ? AND status = 'pending' AND level IS NULL")
@@ -195,7 +229,7 @@ export async function applyPicks(ctx, guildContext, picks, { source, field = 'ch
       auditStatement(ctx, { guildId: guild.id, actorUserId: claimant.userId, action: 'claim.reject', entityType: 'claim', entityId: id, after: { superseded: true } }, CHANGED_ONE),
     );
   }
-  const slots = planned.map((entry) => {
+  const slots = kept.map((entry) => {
     const pick = entry.pick;
     if (entry.kind === 'conflict') {
       const id = newId('cl', ctx.randomBytes);
@@ -224,13 +258,13 @@ export async function applyPicks(ctx, guildContext, picks, { source, field = 'ch
     if (/UNIQUE constraint failed/i.test(String(error && error.message))) throw new HttpError(409, 'claim_pending', 'One of those characters already has a claim waiting for officers.');
     throw error;
   }
-  return {
-    claims: slots.map(({ entry, claimId, keyAt, applied }) => {
-      const pick = entry.pick;
-      const base = { name: pick.name, realm: pick.realm.realm, class: pick.class, level: pick.level ?? null };
-      if (entry.kind === 'conflict') return { ...base, id: claimId, status: 'pending', outcome: 'needs_officer', reason: entry.reason };
-      if (!wrote(results[keyAt])) return { ...base, status: 'failed', reason: 'changed' };
-      return { ...base, status: 'applied', outcome: entry.kind, personId: applied.personId, characterId: applied.characterId };
-    }),
-  };
+  used += statements.length;
+  const claims = slots.map(({ entry, claimId, keyAt, applied }) => {
+    const pick = entry.pick;
+    const base = { name: pick.name, realm: pick.realm.realm, class: pick.class, level: pick.level ?? null };
+    if (entry.kind === 'conflict') return { ...base, id: claimId, status: 'pending', outcome: 'needs_officer', reason: entry.reason };
+    if (!wrote(results[keyAt])) return { ...base, status: 'failed', reason: 'changed' };
+    return { ...base, status: 'applied', outcome: entry.kind, personId: applied.personId, characterId: applied.characterId };
+  });
+  return auto ? { claims, statements: used, trimmed } : { claims };
 }

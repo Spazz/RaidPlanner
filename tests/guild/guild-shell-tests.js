@@ -1542,7 +1542,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     env.loc.hash = '#/characters';
     await settle();
     assert.equal(env.fetched('/auth/bnet'), 2, 'every visit asks again');
-    assert(env.html('gs-main').includes('<h1 class="gs-h1" id="page-title" tabindex="-1">My characters</h1>') && env.html('gs-main').includes('data-action="bnet-claim"'));
+    assert(env.html('gs-main').includes('<h1 class="gs-h1" id="page-title" tabindex="-1">My characters</h1>') && env.html('gs-main').includes('data-action="chars-add-open"'));
     assert.equal(env.documentFake.title, 'My characters - Ravens - Raidsmith guild');
     // the avatar menu reaches both
     assert(env.html('shell-topbar-account').includes('href="#/characters"') && env.html('shell-topbar-account').includes('href="#/linked"'));

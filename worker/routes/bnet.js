@@ -17,17 +17,20 @@ import {
 import { CLAIM_BATCH_MAX, DATA_TTL_MS, loadMemberGuilds, parseSnapshot, realmDisplayName } from '../bnet-store.js';
 import { bnetNameOf, findUserByBnet, hasBnetSql, hasDiscordSql, insertBnetAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
-import { ownPersonStatement, personStanding } from '../membership.js';
+import { visibleCharacterSql } from '../character-visibility.js';
+import { ownPersonStatement, ownPlayerSql, personStanding } from '../membership.js';
 import { loadGuildContext } from '../permissions.js';
 import {
   BNET_CALLBACK_BUDGET, BNET_CALLBACK_BUDGET_KEY, BNET_CALLBACK_LIMIT, BNET_CALLBACK_WINDOW_MS, bnetCallbackKey, checkRateLimit, spendBudget,
 } from '../ratelimit.js';
+import { maxLevelOf } from '../realms.js';
 import { cleanCharacterName, nameKey } from '../roster-data.js';
 import {
   BNET_STATE_COOKIE, FRESH_MODE, bnetStateCookie, bnetStateMode, claimStateNonce, clearBnetStateCookie, hashToken, loadSession, newSessionToken,
   presentedToken, sessionCookie, signBnetSigninState, signBnetState, startSessionStatements, verifyBnetSigninState, verifyBnetState, verifyFreshState,
 } from '../session.js';
 import { applyPicks } from '../claim-apply.js';
+import { autoAddMaxLevel } from '../bnet-auto-add.js';
 import { bad, resolveRealm } from './roster.js';
 import { viewerOf } from '../roster-view.js';
 import { wrote } from '../d1-changes.js';
@@ -251,6 +254,8 @@ export async function bnetCallback(ctx) {
 
   // A BLOCKED account that links a NEW Battle.net account (a first link): the new account id is tombstoned for each of its blocks after the save (worker/block-tombstones.js).
   let tombstoneNewLink = false;
+  // The identity-change statements of a FIRST link (the grant check, its audit row) come on top of the three writes STATEMENTS_BEFORE_MATCH counts.
+  let firstLinkExtra = 0;
   try {
     if (mode === 'signin') return await finishSignin(ctx, info, snapshot, now, clear);
     // The same Battle.net account again refreshes its link; a DIFFERENT one never replaces it (disconnect first): swapping the sign-in of an
@@ -300,6 +305,7 @@ export async function bnetCallback(ctx) {
       auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'bnet.link', entityType: 'user', entityId: userId }, allOf(here, gate)),
     ]);
     if (act && !act.consumed(saved)) return fail('fresh_required');
+    firstLinkExtra = Math.max(0, saved.length - 3);
     if (!wrote(saved[act ? act.offset + 2 : 0])) {
       // Nothing was linked. A first link: the account became staff between the read and the write (fresh_required), or another Battle.net account is linked already. A refresh: another
       // Battle.net account is linked now (has_bnet), or none is any more (it was disconnected since the read: a lost race, 'state' = connect again).
@@ -316,14 +322,14 @@ export async function bnetCallback(ctx) {
   // The statements this adds count against the callback's budget, ahead of the match below; an account that blocks nowhere costs none.
   const tombstoned = tombstoneNewLink ? await tombstoneNewBnetAccount(ctx, { userId: session.user.id, bnetAccountId: info.id }) : 0;
   // A first link and the same Battle.net account again ("Re-verify with Battle.net") both prove the account's characters afresh.
-  await matchAfterCallback(ctx, { userId: session.user.id, bnetAccountId: info.id, snapshot, now, spent: STATEMENTS_BEFORE_MATCH.link + tombstoned });
+  await matchAfterCallback(ctx, { userId: session.user.id, bnetAccountId: info.id, snapshot, now, spent: STATEMENTS_BEFORE_MATCH.link + firstLinkExtra + tombstoned });
   return redirectResponse(CHARACTERS_REDIRECT, [clear]);
 }
 
 // The sign-in match runs after the callback's own writes and never fails the callback: whatever it could not do waits for the next sign-in. Then the tombstone match
 // for the guilds the in-game match did not handle itself (legacy and manual guilds, and the in-game ones it had nothing to do in): the account's Battle.net id and
 // proven characters are keys of a block like its Discord id is (sec A9-11). It takes what the match left of the callback's CALLBACK_STATEMENT_BUDGET; a guild that does
-// not fit waits for the next callback.
+// not fit waits for the next callback. Last, the max-level rule (worker/bnet-auto-add.js): the characters at the level cap join the member's profile with what is left of the budget.
 async function matchAfterCallback(ctx, input) {
   let matched = null;
   try {
@@ -332,11 +338,18 @@ async function matchAfterCallback(ctx, input) {
     ctx.log(`bnet match failed: ${error && error.message}`);
     return null;
   }
+  const tombstones = { statements: 0 };
   await matchAccountAtSignIn(ctx, input.userId, {
     budget: CALLBACK_STATEMENT_BUDGET - matched.statements,
     skip: matched.tombstoned,
     onDeferred: () => ctx.log('bnet match deferred: budget'),
+    report: tombstones,
   });
+  try {
+    await autoAddMaxLevel(ctx, { userId: input.userId, snapshot: input.snapshot, spent: matched.statements + tombstones.statements });
+  } catch (error) {
+    ctx.log(`bnet auto-add failed: ${error && error.message}`);
+  }
   return matched;
 }
 
@@ -444,6 +457,37 @@ function characterView(guild, character, owners, viewer, claims) {
 
 const byLevelThenName = (a, b) => (b.level || 0) - (a.level || 0) || a.name.localeCompare(b.name);
 
+// The characters on the viewer's own record in a guild (worker/membership.js ownPlayerSql), the ones still in the guild (not Former), each with its team and the team request
+// waiting for it: [{ id, name, class, mainSpec, isMain, team: { id, name } | null, request: { id, team: { id, name }, createdAt } | null, realm }] (My characters' cards). The Main
+// comes first, the rest by name. The level is not stored on a character: the caller reads it from the Battle.net snapshot.
+async function loadProfileCharacters(db, guildId, userId) {
+  const result = await db.prepare(
+    `SELECT c.id, c.name, c.name_key, c.realm, c.realm_key, c.class, c.main_spec, c.is_main, c.team_id, t.name AS team_name,
+            q.id AS request_id, q.team_id AS request_team_id, rt.name AS request_team_name, q.created_at AS request_at
+       FROM players p
+       JOIN characters c ON c.player_id = p.id AND c.guild_id = p.guild_id
+       LEFT JOIN teams t ON t.guild_id = c.guild_id AND t.id = c.team_id
+       LEFT JOIN team_requests q ON q.guild_id = c.guild_id AND q.character_id = c.id AND q.status = 'pending'
+       LEFT JOIN teams rt ON rt.guild_id = q.guild_id AND rt.id = q.team_id
+      WHERE p.guild_id = ? AND ${ownPlayerSql('p', '?')} AND c.left_on IS NULL AND ${visibleCharacterSql('c')}`,
+  ).bind(guildId, userId).all();
+  return result.results.map((row) => ({
+    id: row.id, name: row.name, class: row.class, mainSpec: row.main_spec, isMain: row.is_main === 1, realm: row.realm, realmKey: row.realm_key, nameKey: row.name_key,
+    team: row.team_id ? { id: row.team_id, name: row.team_name } : null,
+    request: row.request_id && !row.team_id ? { id: row.request_id, team: { id: row.request_team_id, name: row.request_team_name }, createdAt: row.request_at } : null,
+  })).sort((a, b) => Number(b.isMain) - Number(a.isMain) || a.name.localeCompare(b.name));
+}
+
+// The level a profile character has on Battle.net's list for the guild's namespace: Map("nameKey|realmKey" -> level). Empty without a list.
+function levelsOf(guild, characters) {
+  const levels = new Map();
+  for (const character of characters) {
+    const resolved = resolveRealm(guild, character.realm);
+    if (resolved && Number.isInteger(character.level)) levels.set(`${nameKey(character.name)}|${resolved.key}`, character.level);
+  }
+  return levels;
+}
+
 export async function getBnet(ctx) {
   const { db, env, session } = ctx;
   const link = await db.prepare('SELECT battletag, linked_at, snapshot, snapshot_at FROM bnet_links WHERE user_id = ?').bind(session.user.id).first();
@@ -455,13 +499,18 @@ export async function getBnet(ctx) {
     const support = bnetSupport(guild.game_version, guild.region);
     const view = {
       guildId: guild.id, guildName: guild.name, gameVersion: guild.game_version, region: guild.region, realm: guild.realm, realmKind: guild.realm_kind,
-      supportLabel: support.label, status: 'ok', message: null, characters: [],
+      supportLabel: support.label, status: 'ok', message: null, characters: [], maxLevel: maxLevelOf(guild.game_version), profile: [],
       // Is the viewer on this guild's roster already? My characters then says what Battle.net adds instead of asking them to connect it to see their own roster entry.
       onRoster: !!(await ownPersonStatement(db, guild.id, session.user.id).first()),
       // An in-game guild takes characters from Battle.net only (POST /me/characters answers 409 battlenet_only), so My characters offers no "This is me" there.
       battlenetOnly: (await db.prepare('SELECT rank_source FROM guilds WHERE id = ?').bind(guild.id).first() || {}).rank_source === 'ingame',
     };
     guilds.push(view);
+    const profile = await loadProfileCharacters(db, guild.id, session.user.id);
+    const entryOf = support.supported && link && !expired ? snapshot[support.namespace] : null;
+    const listed = entryOf && !entryOf.error && Array.isArray(entryOf.characters) ? entryOf.characters : [];
+    const levels = levelsOf(guild, listed);
+    view.profile = profile.map(({ realmKey: key, nameKey: name, realm, ...card }) => ({ ...card, level: levels.has(`${name}|${key}`) ? levels.get(`${name}|${key}`) : null }));
     if (!support.supported) { view.status = 'unsupported'; view.message = support.message; continue; }
     if (!link) { view.status = 'not_linked'; continue; }
     if (expired) { view.status = 'expired'; continue; }
