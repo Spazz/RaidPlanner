@@ -8,6 +8,7 @@
 //   Guild.fresh.stepHtml({ purpose, providers, linked, stepLabel, primaryLabel, text, provider })   the step as a whole confirm dialog (ui.dialogHtml); the form's submit is data-submit
 //                                                    "fresh-step-form", its Back "fresh-step-back" (handlers below)
 //   Guild.fresh.toStep({ form, error, gid, act, linked, stepLabel, primaryLabel, text })        swaps the open dialog's body for the step (Back restores it); false when it cannot
+//   Guild.fresh.openStep({ error, gid, act, linked, stepLabel, primaryLabel, text, returnTo })  the same step in a dialog of its own, for an act whose page has no dialog (an inline box); false when it cannot
 //   Guild.fresh.runDialog(form, promise, opts, onOk, onConflict)    ui.runDialog that turns a 403 fresh_required into the step (opts = toStep's, minus form and error)
 //   Guild.fresh.start({ gid, purpose, params, provider, act, returnTo })                          saves the pending act, POSTs the start, goes to the provider; rejects with the ApiError
 //   Guild.fresh.registerAct(kind, fn)                fn(pending) -> Promise<address | null>: repeats the act (the address is where to go next: '#/...' is a route, anything else a
@@ -120,7 +121,8 @@
   }
   const DEFAULT_LEAD = 'Sign in again so Raidsmith knows it is you. You come back to this page and the action runs.';
 
-  // opts: { purpose, providers (default: the purpose's), linked ({ bnet, discord } labels, default: no filter), stepLabel ("Delete guild - step 2 of 2"), primaryLabel, text (the lead sentence), provider (the one preselected) }
+  // opts: { purpose, providers (default: the purpose's), linked ({ bnet, discord } labels, default: no filter), stepLabel ("Delete guild - step 2 of 2"), primaryLabel, text (the lead sentence), provider (the one preselected),
+  //         noBack (no Back button: the step is the dialog's only body, Cancel closes it) }
   fresh.stepHtml = function (opts) {
     const o = opts || {};
     const options = optionsFor(o.purpose, o.linked, o.providers);
@@ -144,7 +146,7 @@
     }
     return G.ui.dialogHtml({
       kind: 'confirm', step: o.stepLabel, title: 'Confirm it is you', bodyHtml: body, className: 'gs-forge',
-      back: { attrs: { 'data-action': 'fresh-step-back', 'data-key': 'fresh-step-back' } }, primary: primary, formAttrs: { 'data-submit': 'fresh-step-form' },
+      back: o.noBack ? undefined : { attrs: { 'data-action': 'fresh-step-back', 'data-key': 'fresh-step-back' } }, primary: primary, formAttrs: { 'data-submit': 'fresh-step-form' },
     });
   };
 
@@ -214,22 +216,38 @@
   // ── the step inside an open dialog ──
   let step = null;
 
-  // opts: { form (the open dialog's form), error (the 403: purpose and params come from it), purpose, params, gid, act, linked, stepLabel, primaryLabel, text, returnTo }
-  fresh.toStep = function (opts) {
-    const o = opts || {};
+  // Remembers the act the step starts and returns the step's html, or null for a purpose this file does not know. backHtml: what Back restores.
+  function armStep(o, backHtml, noBack) {
     const err = o.error || null;
     const purpose = o.purpose || (err && err.purpose) || null;
-    if (!has(PURPOSES, purpose)) return false;
-    const dlg = o.form && o.form.closest ? o.form.closest('dialog') : null;
-    if (!dlg) return false;
+    if (!has(PURPOSES, purpose)) return null;
     const linked = o.linked || fresh.linkedOf(G.app && G.app.state ? G.app.state.me : null);
     const options = optionsFor(purpose, linked);
     step = {
       gid: o.gid || null, purpose: purpose, params: o.params || (err && err.params) || {}, act: o.act || { kind: purpose }, returnTo: o.returnTo || '',
-      provider: options[0] || null, options: options.length, backHtml: dlg.innerHTML,
+      provider: options[0] || null, options: options.length, backHtml: backHtml,
     };
-    G.ui.replaceDialogBody(dlg, fresh.stepHtml({ purpose: purpose, linked: linked, stepLabel: o.stepLabel, primaryLabel: o.primaryLabel, text: o.text }));
+    return fresh.stepHtml({ purpose: purpose, linked: linked, stepLabel: o.stepLabel, primaryLabel: o.primaryLabel, text: o.text, noBack: noBack });
+  }
+
+  // opts: { form (the open dialog's form), error (the 403: purpose and params come from it), purpose, params, gid, act, linked, stepLabel, primaryLabel, text, returnTo }
+  fresh.toStep = function (opts) {
+    const o = opts || {};
+    const dlg = o.form && o.form.closest ? o.form.closest('dialog') : null;
+    if (!dlg) return false;
+    const html = armStep(o, dlg.innerHTML, false);
+    if (html === null) return false;
+    G.ui.replaceDialogBody(dlg, html);
     return true;
+  };
+
+  // The step in a dialog of its own, for an act whose page has no dialog to swap (the delete box on the privacy page is inline). opts: toStep's, without `form`.
+  fresh.openStep = function (opts) {
+    const html = armStep(opts || {}, '', true);
+    if (html === null) return false;
+    if (G.ui.openDialog(html, { labelledBy: 'dlg-title' })) return true;
+    step = null;
+    return false;
   };
 
   // ui.runDialog for an act that may want the step: a 403 fresh_required swaps the dialog's body for the step (and the request is not "done": the returned promise settles only on

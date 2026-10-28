@@ -169,6 +169,11 @@
     G.api.del('/auth/me', { deleteGuildIds: ids }).then(function () {
       G.app.afterAccountDeleted();
     }, function (err) {
+      // A protected account, or a delete that takes a guild with it, signs in again first (403 fresh_required, purpose account_delete): the sign-in step opens in a dialog and the
+      // delete is repeated with the same guild list after #/fresh?done=account_delete.
+      if (G.fresh.isRequired(err) && err.purpose === 'account_delete' && G.fresh.openStep({
+        error: err, act: { kind: 'account_delete', data: { deleteGuildIds: ids } }, stepLabel: 'Delete my data - step 2 of 2', primaryLabel: 'Sign in and delete', returnTo: G.router.format({ name: 'privacy' }),
+      })) { el.disabled = false; return; }
       const c = G.api.classify(err);
       if (c.view === 'signin') { G.app.requireSignin(); return; }
       // 409 (hand over first / the guild list changed): show the server's message and re-read the impact.
@@ -176,6 +181,16 @@
       G.app.loadMe().then(function () { G.app.render(); });
     });
   };
+
+  // Repeats after the fresh sign-in (#/fresh?done=account_delete): the delete with the guild list the person confirmed, then where a delete ends (the signed-out start page). A refusal is
+  // shown by the #/fresh card with the Worker's sentence.
+  G.fresh.registerAct('account_delete', function (act) {
+    const ids = act.data && Array.isArray(act.data.deleteGuildIds) ? act.data.deleteGuildIds.filter(function (id) { return typeof id === 'string'; }) : [];
+    return G.api.del('/auth/me', { deleteGuildIds: ids }).then(function () {
+      G.app.afterAccountDeleted();
+      return '#/';
+    });
+  });
 
   G.pages.privacy = { CONTACT: CONTACT, privacyHtml: privacyHtml, deleteBoxHtml: deleteBoxHtml, autoPromoteHtml: autoPromoteHtml, successionHtml: successionHtml };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));
