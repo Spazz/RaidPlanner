@@ -3136,6 +3136,89 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 .gs-fresh-page .gs-alert { margin: 0; }
 
 /* == B8a Guild setup (lane setup) == */
+/* The In-game guild panel of Settings > Battle.net (board G0) and the Guild setup flow (T5, boards G1-G6, P1). Panels are .gs-hd-panel, group heads .gs-fg-gh, chips .gs-hd-chip, the one primary the molten button. */
+.gs-su-lead { margin: 0; font-size: 15px; color: var(--text-secondary); }
+.gs-su-facts { padding: 4px 20px 8px; }
+.gs-su-fact { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.gs-su-fact-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-su-fact .gs-ro-label, .gs-su-fact .gs-ro-value { margin: 0; }
+.gs-su-fact .gs-btn { flex: none; }
+.gs-su-sub { display: block; margin-top: 2px; }
+.gs-su-panel { margin: 0 0 16px; }
+.gs-su-panel .gs-card-sec-head { min-height: 60px; }
+.gs-su-form { padding: 4px 20px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 560px; }
+.gs-su-owner .gs-hd-chip { margin-right: 8px; vertical-align: middle; }
+.gs-su-owner.is-bad { border-color: rgba(244, 63, 94, 0.45); }
+.gs-setup-page .gs-card-sec.is-done { border-color: rgba(180, 231, 174, 0.35); }
+.gs-setup-page .gs-card-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px 0; min-height: 0; border-bottom: 0; }
+.gs-setup-page .gs-card-sec-head .gs-h2 { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); margin: 0; }
+.gs-setup-page .gs-ro-row + .gs-ro-row { border-top: 1px solid var(--hd-hair); padding-top: 12px; }
+.gs-setup-page .gs-banner { max-width: none; }
+.gs-setup-page.gs-forge .gs-input, .gs-setup-page.gs-forge select.gs-input { background: #131416; }
+.gs-setup-page.gs-forge .gs-input:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; border-color: var(--border-field); }
+.gs-setup-page.gs-forge .gs-input[readonly] { color: var(--text-secondary); border-style: dashed; }
+.gs-setup-page.gs-forge .gs-label { font: 500 14px/1.3 var(--font-body); color: var(--text-secondary); }
+.gs-setup-page.gs-forge .gs-fine { font-size: 14px; color: var(--text-muted); }
+.gs-setup-page .gs-flowbody { display: flex; flex-direction: column; gap: 16px; }
+.gs-bnet-form .gs-input[readonly] { color: var(--text-secondary); border-style: dashed; }
+
+/* Ranks table (step 2): 5 columns, a row 56 high, unused ranks muted, a used rank with no core rank flagged */
+.gs-table-ranks { min-width: 0; table-layout: fixed; width: 100%; }
+.gs-table-ranks th, .gs-table-ranks td { padding-left: 8px; padding-right: 8px; }
+.gs-table-ranks td, .gs-table-ranks th[scope="row"] { padding-top: 8px; padding-bottom: 8px; height: 56px; }
+.gs-table-ranks th:nth-child(1) { width: 14%; }
+.gs-table-ranks th:nth-child(2) { width: 26%; }
+.gs-table-ranks th:nth-child(3) { width: 20%; }
+.gs-table-ranks th:nth-child(4) { width: 28%; }
+.gs-table-ranks th:nth-child(5) { width: 12%; }
+.gs-table-ranks .gs-input { width: 100%; min-width: 0; padding-left: 10px; padding-right: 22px; font-size: 14px; text-overflow: ellipsis; }
+.gs-table-ranks .gs-num { text-align: right; font-variant-numeric: tabular-nums; }
+.gs-table-ranks tr.is-unused th[scope="row"], .gs-table-ranks tr.is-unused td { color: var(--text-muted); }
+.gs-table-ranks tr.is-gap td:nth-child(3) .gs-input { border-color: rgba(244, 63, 94, 0.6); }
+
+/* Preview (step 3): summary, five count tiles, four panels of groups (head with its count, a table of samples, Show all) */
+.gs-su-summary { margin: 0; font-size: 17px; color: var(--text-secondary); }
+.gs-su-summary strong { color: var(--hd-white); }
+.gs-su-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.gs-su-stat { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }
+.gs-su-stat-n { font: 700 32px/1.1 var(--font-cond); color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-su-list { display: flex; flex-direction: column; gap: 8px; padding: 16px 0 12px; }
+.gs-su-list-h { margin: 0 20px 4px; font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); }
+.gs-su-group { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; }
+.gs-su-group + .gs-su-group { border-top: 1px solid var(--hd-hair); padding-top: 16px; }
+.gs-su-group .gs-fg-gh { margin: 0 20px 4px; }
+.gs-su-group .gs-table-wrap { border: 0; background: transparent; }
+.gs-su-group .gs-table { min-width: 0; table-layout: fixed; width: 100%; }
+.gs-su-group .gs-table th, .gs-su-group .gs-table td { background: transparent; padding-left: 20px; }
+.gs-su-group .gs-table td, .gs-su-group .gs-table th[scope="row"] { height: 48px; padding-top: 6px; padding-bottom: 6px; }
+.gs-su-group .gs-num { text-align: right; padding-right: 20px; font-variant-numeric: tabular-nums; }
+.gs-su-showall { margin: 0; padding: 4px 20px 0; display: flex; align-items: center; gap: 12px; }
+.gs-su-none { margin: 0; padding: 4px 20px 8px; }
+.gs-su-name { font-weight: 600; }
+.gs-su-chkbox { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; cursor: pointer; }
+.gs-su-chk { width: 18px; height: 18px; margin: 0; accent-color: #d8dadb; cursor: pointer; }
+.gs-su-chk:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-su-joins { padding: 12px 0 4px; display: flex; flex-direction: column; }
+.gs-su-joins .gs-fg-lbl { margin: 0 20px 8px; }
+.gs-su-joins .gs-pr-kv:first-of-type { border-top: 1px solid var(--hd-hair); }
+.gs-su-group .gs-linkbtn { min-height: 0; }
+
+@media (width <= 600px) {
+  .gs-su-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gs-table-ranks th:nth-child(n) { width: auto; }
+  .gs-table-ranks td, .gs-table-ranks th[scope="row"] { height: auto; padding-left: 0; padding-right: 0; }
+  .gs-table-ranks .gs-input { font-size: 16px; height: 44px; }
+  .gs-su-group .gs-table td, .gs-su-group .gs-table th[scope="row"] { height: auto; }
+  .gs-su-group .gs-table th, .gs-su-group .gs-table td { padding-left: 0; }
+  .gs-su-group .gs-table tr { padding: 8px 20px; }
+  .gs-su-group .gs-num { padding-right: 0; text-align: left; }
+  .gs-su-fact { flex-direction: column; }
+  .gs-su-facts { padding: 4px 16px 8px; }
+  .gs-su-chkbox { width: 44px; height: 44px; margin-left: -10px; }
+  .gs-su-group .gs-linkbtn, .gs-su-showall .gs-linkbtn { min-height: 44px; }
+  .gs-setup-page .gs-card-sec-head { padding: 12px 16px 0; flex-wrap: wrap; }
+  .gs-su-form { padding-left: 16px; padding-right: 16px; }
+}
 /* == end B8a Guild setup == */
 
 /* == B8a Users (lane users) == */

@@ -826,8 +826,11 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
 
   await check('discord: load() keeps the answer in state.discordSettings', async () => {
     const data = discordData();
-    await withApi({ get: url => { assert.equal(url, '/api/guild/g1/discord'); return okRes(data); } }, async () => { await G.pages.settingsDiscord.load('g1'); });
-    assert.deepEqual(plain(G.app.state.discordSettings), { gid: 'g1', data: plain(data), notice: '' });
+    // The page also reads the guild's rank source (GET /bnet `pin.rankSource`, lane B8a-setup) to show one line instead of the form for a guild with a rank source; a failed read leaves the form.
+    const urls = [];
+    await withApi({ get: url => { urls.push(url); return url === '/api/guild/g1/bnet' ? Promise.reject(new G.api.ApiError(403, { error: 'forbidden' })) : okRes(data); } }, async () => { await G.pages.settingsDiscord.load('g1'); });
+    assert.deepEqual(urls.sort(), ['/api/guild/g1/bnet', '/api/guild/g1/discord']);
+    assert.deepEqual(plain(G.app.state.discordSettings), { gid: 'g1', data: { ...plain(discordData()), rankSource: null }, notice: '' });
     G.app.state.discordSettings = null;
   });
 
