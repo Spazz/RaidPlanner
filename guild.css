@@ -3196,7 +3196,7 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 .gs-su-none { margin: 0; padding: 4px 20px 8px; }
 .gs-su-name { font-weight: 600; }
 .gs-su-chkbox { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; cursor: pointer; }
-.gs-su-chk { width: 18px; height: 18px; margin: 0; accent-color: #d8dadb; cursor: pointer; }
+.gs-su-chk { width: 18px; height: 18px; margin: 0; accent-color: var(--text-primary); cursor: pointer; }
 .gs-su-chk:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 .gs-su-joins { padding: 12px 0 4px; display: flex; flex-direction: column; }
 .gs-su-joins .gs-fg-lbl { margin: 0 20px 8px; }
@@ -3406,6 +3406,42 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 /* == end B8a Owner == */
 
 /* == B8b Roster and team changes (lane roster) == */
+/* Roster after B8b (boards RO1, RO2, TC1 to TC6; js/guild/pages-roster.js, pages-roster-team.js, pages-person.js). Reuses the B8a Users parts (.gs-us-chkbox, .gs-us-selbar, .gs-us-hint, .gs-us-leave,
+   .gs-pick rows). Tokens only. */
+/* The in-game rank in a row's sub line: where there is no hover (phones, touch). A desktop row carries it in its title. */
+.gs-rs-ig { display: none; font-size: 12px; color: var(--text-muted); }
+@media (width <= 600px), (hover: none) { .gs-rs-ig { display: inline; } }
+
+/* Manage team: a row is a label with a checkbox, the whole row is the target */
+.gs-rs-pickable { cursor: pointer; gap: 6px; padding-left: 6px; }
+.gs-rs-pickable .gs-rs-id { min-width: 0; }
+.guild-page label.gs-rs-pickable:hover { background: rgba(255, 255, 255, 0.05); }
+.gs-rs-pickable.is-ticked { background: var(--seg-on-bg); }
+.gs-rs-pickable .gs-us-chkbox { width: 16px; height: 24px; }
+.gs-rs-pickable .gs-us-chk { width: 16px; height: 16px; margin: 0; accent-color: var(--text-primary); cursor: pointer; }
+.gs-rs-pickable .gs-us-chk:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-rs-pickable .gs-hd-chip { padding: 0 6px; }
+@media (width <= 600px) {
+  .gs-rs-pickable { gap: 4px; padding-left: 4px; }
+  .gs-rs-pickable .gs-us-chkbox { width: 44px; height: 44px; margin-left: -8px; }
+  .gs-rs-pickable .gs-us-chk { width: 22px; height: 22px; }
+}
+
+/* Off the roster: the team's placed Social and Former characters, above the people, in the same boxes */
+.gs-rs-off { padding: 0 0 8px; margin: 16px 0 0; }
+.gs-rs-off .gs-fg-gh { margin: 0; padding: 12px 16px 8px; }
+.gs-rs-offrows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 16px; padding: 0 4px; }
+@media (width <= 1100px) { .gs-rs-offrows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (width <= 600px) { .gs-rs-offrows { grid-template-columns: minmax(0, 1fr); padding: 0; } }
+
+/* Dialogs: the sign-ups a removal can take, the "What happens" facts of Add to team, the pick rows */
+.gs-rs-joins { padding: 12px 0 4px; display: flex; flex-direction: column; }
+.gs-rs-joins .gs-fg-lbl { margin: 0 20px 8px; }
+.gs-rs-joins .gs-pr-kv:first-of-type { border-top: 1px solid var(--hd-hair); }
+.gs-rs-kvsub { display: block; margin-top: 2px; }
+.gs-rs-alsochk { margin: 12px 0 4px; }
+.gs-pickrow input { flex: none; }
+.gs-pickrank { flex: none; font-size: 14px; color: var(--text-primary); }
 /* == end B8b Roster and team changes == */
 
 /* == B8b My characters (lane mychars) == */

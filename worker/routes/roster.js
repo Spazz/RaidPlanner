@@ -16,7 +16,7 @@ import { linkSignupsStatement, markPersonRaidsStale, markRaidsStale, weekFreeze 
 import { assertSenior, seniorityDeleteOk, seniorityOk } from '../seniority.js';
 import { trialClockStatement, zoneOffsetMinutes } from '../trial-clock.js';
 import {
-  guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
+  guildToday, homeTeamOf, loadOffRoster, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
 } from '../roster-view.js';
 import { wrote } from '../d1-changes.js';
 
@@ -249,22 +249,33 @@ export async function getRoster(ctx) {
   const query = new URL(ctx.request.url).searchParams;
   const teamId = query.get('team');
   if (!isId('t', teamId)) throw bad('Pick a team.', 'team');
-  // ?status=inactive is the Roster page's Inactive filter: the team's placed Social / Former people, for whoever may view the roster, exactly as before the
-  // default list left them out. RETIRED when the Users page ships (R4, lane B8a); see loadRosterRows.
-  const status = query.get('status');
-  if (status !== null && status !== 'inactive') throw bad('The only filter is inactive.', 'status');
+  // The Active / Everyone pair and the inactive list went with B8b: a Social or Former character is on no team roster view (U R6-Q2), so the list has no filter. The old
+  // ?status=inactive is refused (a page from before the deploy asks for it and shows the list without it).
+  if (query.get('status') !== null) throw bad('The roster has no filters.', 'status');
   const team = await ctx.db.prepare('SELECT id, name, archived, trial_days FROM teams WHERE id = ? AND guild_id = ?')
     .bind(teamId, guildContext.guild.id).first();
   if (!team) throw bad('That team does not exist in this guild.', 'team');
   const today = guildToday(guildContext.guild, ctx.now());
-  const people = await loadRosterRows(ctx.db, guildContext, team, today, viewerOf(ctx), { inactive: status === 'inactive' });
+  const { people, rankSegments } = await loadRosterRows(ctx.db, guildContext, team, today, viewerOf(ctx));
   return jsonResponse({
     team: { id: team.id, name: team.name, archived: team.archived === 1, trialDays: team.trial_days },
     today,
     can: { edit: allows(guildContext.can, 'roster.edit', team.id) },
-    ...(status === 'inactive' ? { filter: 'inactive' } : {}),
+    rankSegments,
     people,
   });
+}
+
+// GET /roster/off-roster?team=: the team's placed Social / Former characters, for Manage team (roster.edit on the team). See loadOffRoster.
+export async function getOffRoster(ctx) {
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
+  requireAction(guildContext, 'roster.view');
+  const teamId = new URL(ctx.request.url).searchParams.get('team');
+  if (!isId('t', teamId)) throw bad('Pick a team.', 'team');
+  requireEdit(guildContext, teamId);
+  const team = await ctx.db.prepare('SELECT id, name FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guildContext.guild.id).first();
+  if (!team) throw bad('That team does not exist in this guild.', 'team');
+  return jsonResponse({ team: { id: team.id, name: team.name }, characters: await loadOffRoster(ctx.db, guildContext.guild.id, team.id) });
 }
 
 export async function getLinkable(ctx) {

@@ -8,7 +8,7 @@
  * and ownTeamIds applies the same rule to team ACCESS (U R8-Q2): a teamless, a placed Social and a placed Former character each grant no team scope, another
  * visible character of the same person on that team still does.
  * LOOT is not a roster view: the public page and the API loot feed show every award, whoever won it (an alt with no team, a Social or a Former character).
- * The Roster page's Inactive filter (GET /roster?team=&status=inactive) keeps returning the team's placed Social / Former people until the Users page ships.
+ * The Roster page's Inactive filter is gone (B8b): GET /roster/off-roster?team= is the character-level read of the team's placed Social / Former characters, for Manage team.
  * The predicate itself (one definition in SQL and in JS) is pinned over every combination first.
  */
 const assert = require('node:assert/strict');
@@ -187,44 +187,44 @@ check('the Roster read lists only people on the team roster: a Social and a Form
   assert.deepEqual((await s.ok('gm', 'GET', `/roster?team=${s.bravo}`)).people, [], 'nobody is on Bravo');
 });
 
-check('the Inactive filter (GET /roster?team=&status=inactive) still returns the team\'s placed Social / Former people, for whoever may view the roster; retired when Users ships', async () => {
-  const { s, names } = await populated();
-  const inactive = await s.ok('gm', 'GET', `/roster?team=${s.alpha}&status=inactive`);
-  assert.equal(inactive.filter, 'inactive');
-  assert.deepEqual(inactive.people.map((p) => [p.shown.name, p.status]), [['Formmain', 'inactive'], ['Socmain', 'inactive']], 'the two inactive people of Alpha, as the page listed them before');
-  const former = inactive.people.find((p) => p.shown.name === 'Formmain');
-  assert.deepEqual([former.leftOn, former.leftReason, former.main.name, former.altCount, former.names], ['2027-01-02', 'left', 'Formmain', 0, ['Formmain']], 'the same row fields as the default list');
-  assert.deepEqual(Object.keys(former).sort(), Object.keys((await s.ok('gm', 'GET', `/roster?team=${s.alpha}`)).people[0]).sort(), 'the same row shape');
-  // Nobody of the default list is in it, and nobody of it is in the default list: Social / Former are not mixed in.
-  const roster = await s.ok('gm', 'GET', `/roster?team=${s.alpha}`);
-  assert.equal(roster.filter, undefined, 'the default answer is unchanged');
-  assert.deepEqual(roster.people.map((p) => p.shown.name).filter((name) => ['Socmain', 'Formmain'].includes(name)), []);
-  assert.deepEqual(inactive.people.map((p) => p.shown.name).filter((name) => names.visible.includes(name) || name === 'Rmain'), [], 'a person with a roster character is on the default list only (Rmain\'s Social alt does not make Rmain inactive)');
-  assert.deepEqual((await s.ok('gm', 'GET', `/roster?team=${s.bravo}&status=inactive`)).people, [], 'another team has none');
-  // Reaching and reactivating an inactive person between R1 and R4.
-  const socmain = inactive.people.find((p) => p.shown.name === 'Socmain');
-  await s.ok('gm', 'PATCH', `/roster/${socmain.id}`, { expectedVersion: socmain.version, status: 'raider' });
-  assert.deepEqual((await s.ok('gm', 'GET', `/roster?team=${s.alpha}&status=inactive`)).people.map((p) => p.shown.name), ['Formmain']);
-  assert.deepEqual((await s.ok('gm', 'GET', `/roster?team=${s.alpha}`)).people.map((p) => p.shown.name), ['Rmain', 'Socmain', 'Tlmain']);
-  // Only the one filter exists.
-  for (const bad of ['active', 'everyone', '']) {
+check('the Inactive filter is gone (B8b): GET /roster?team=&status= is a 400, and the roster answer carries no filter field', async () => {
+  const { s } = await populated();
+  for (const bad of ['inactive', 'active', 'everyone', '']) {
     const res = await s.call('gm', 'GET', `/roster?team=${s.alpha}&status=${bad}`);
     assert.equal(res.status, 400, bad);
     assert.equal(res.json.field, 'status');
   }
+  const roster = await s.ok('gm', 'GET', `/roster?team=${s.alpha}`);
+  assert.equal(roster.filter, undefined);
+  assert.deepEqual(roster.people.map((p) => p.shown.name).filter((name) => ['Socmain', 'Formmain', 'Socalt'].includes(name)), []);
 });
 
-check('the Inactive filter has the audience of the roster list: a Member who may view the roster gets the same answer as the default list does', async () => {
+check('Manage team reads the placed Social / Former characters per CHARACTER (GET /roster/off-roster?team=): kind, reason, in-game rank; for roster.edit on that team only', async () => {
+  const { s } = await populated();
+  const off = await s.ok('gm', 'GET', `/roster/off-roster?team=${s.alpha}`);
+  assert.deepEqual(off.team, { id: s.alpha, name: off.team.name });
+  assert.deepEqual(off.characters.map((c) => [c.name, c.kind, c.coreRank, c.leftOn, c.leftReason, c.inGameRank, c.person.name, c.isMain]), [
+    ['Formmain', 'former', 'social', '2027-01-02', 'left', null, 'Formmain', true],
+    ['Socalt', 'social', 'social', null, null, null, 'Rmain', false],
+    ['Socmain', 'social', 'social', null, null, null, 'Socmain', true],
+  ], 'the Former and the two Social characters of Alpha (a Social ALT of a raiding person counts: rank is per character); the teamless alt is on no team');
+  assert.deepEqual((await s.ok('gm', 'GET', `/roster/off-roster?team=${s.bravo}`)).characters, [], 'another team has none');
+  // Reactivating a person takes their characters off the list.
+  const socmain = (await s.rows('SELECT id FROM players WHERE id IN (SELECT player_id FROM characters WHERE name = ?)', 'Socmain'))[0];
+  await s.ok('gm', 'PATCH', `/roster/${socmain.id}`, { expectedVersion: 2, status: 'raider' });
+  assert.deepEqual((await s.ok('gm', 'GET', `/roster/off-roster?team=${s.alpha}`)).characters.map((c) => c.name), ['Formmain', 'Socalt']);
+  assert.deepEqual((await s.ok('gm', 'GET', `/roster?team=${s.alpha}`)).people.map((p) => p.shown.name), ['Rmain', 'Socmain', 'Tlmain']);
+  for (const bad of ['', '?team=', '?team=nope', '?team=t_AAAAAAAAAAAAAAAAAAAAAA']) assert.equal((await s.call('gm', 'GET', `/roster/off-roster${bad}`)).status, 400, bad);
+});
+
+check('the off-roster read has the audience of Manage team: a Member who may only view the roster gets a 403, and the team is the one asked for', async () => {
   const s = await scenario(['m1']);
   const sleeper = await s.person('Sleeper');
-  await s.person('Awake');
   await s.inactive(sleeper);
-  const asMember = await s.call('m1', 'GET', `/roster?team=${s.alpha}&status=inactive`);
-  const defaultList = await s.call('m1', 'GET', `/roster?team=${s.alpha}`);
-  assert.equal(asMember.status, defaultList.status, 'the same permission (roster.view) as the default list');
-  assert.equal(asMember.status, 200, asMember.text);
-  assert.deepEqual(asMember.json.people.map((p) => p.shown.name), ['Sleeper']);
-  assert.deepEqual(defaultList.json.people.map((p) => p.shown.name), ['Awake']);
+  assert.equal((await s.call('m1', 'GET', `/roster?team=${s.alpha}`)).status, 200);
+  const res = await s.call('m1', 'GET', `/roster/off-roster?team=${s.alpha}`);
+  assert.equal(res.status, 403, res.text);
+  assert.equal((await s.call('gm', 'GET', `/roster/off-roster?team=${s.alpha}`)).json.characters.length, 1);
 });
 
 check('the public page: the roster and attendance sections never show a Social, Former or teamless character; the loot section shows every award', async () => {

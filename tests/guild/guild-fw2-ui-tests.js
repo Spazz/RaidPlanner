@@ -236,9 +236,10 @@ const keys = items => plain(items.map(i => i.key));
     assert.equal(G.ui.signInLabel('not_yet'), 'Not signed in');
   });
 
-  await check('roster: the page head carries Add person as the one primary and the imports in the one More menu; the tab strip follows the glossary on every Roster page', () => {
+  await check('roster: the page head carries Add to team as the one primary and Manage team, Add person and the imports in the one More menu; the tab strip follows the glossary on every Roster page', () => {
     const out = rosterHtml([rp('p1', 'Aimer', 'signed_in')]);
-    assert(out.includes('<header class="gs-pagehead">') && out.includes('<span>Add person</span>') && count(out, /gs-btn-molten/g) === 1 && out.includes('id="roster-more"'));
+    assert(out.includes('<header class="gs-pagehead">') && out.includes('<span>Add to team</span>') && count(out, /gs-btn-molten/g) === 1 && out.includes('id="roster-more"'));
+    for (const label of ['Manage team', 'Add person']) assert(out.includes('>' + label + '<'), label);
     for (const label of ['Import from a Raid-Helper event', 'Import from a Warcraft Logs report', 'Import from the Battle.net guild roster', 'Import from a CSV file']) assert(out.includes(label), label);
     const tabs = plain(G.pages.rosterTabs.tabsFor(gd(OFFICER_CAN)).map(t => t.label));
     assert.deepEqual(tabs, ['Roster', 'Spec poll', 'Recruiting']);

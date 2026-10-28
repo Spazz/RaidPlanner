@@ -189,6 +189,15 @@
     start: function (gid, body) { return G.api.post(gid ? guildPath(gid, '/fresh/start') : '/api/fresh/start', body); },
   };
   function rosterPath(gid, pid, tail) { return guildPath(gid, '/roster/' + encodeURIComponent(pid) + (tail || '')); }
+  // B8b (lane roster): who is on a team. The team's placed Social / Former characters (Manage team), the characters Add to team offers (q = the start of a name), the sign-ups a release can
+  // take with it, place a character (the placement approves its waiting request for the team), and release it: ONE call per character, so each answer stands on its own.
+  G.api.teamChanges = {
+    offRoster: function (gid, teamId) { return G.api.get(guildPath(gid, '/roster/off-roster?team=' + encodeURIComponent(teamId))); },
+    unassigned: function (gid, teamId, q) { return G.api.get(guildPath(gid, '/roster/unassigned?team=' + encodeURIComponent(teamId) + (q ? '&q=' + encodeURIComponent(q) : ''))); },
+    signups: function (gid, pid, cid) { return G.api.get(rosterPath(gid, pid, '/characters/' + encodeURIComponent(cid) + '/team-signups')); },
+    place: function (gid, pid, cid, teamId) { return G.api.put(rosterPath(gid, pid, '/characters/' + encodeURIComponent(cid) + '/team'), { teamId: teamId }); },
+    release: function (gid, pid, cid, body) { return G.api.del(rosterPath(gid, pid, '/characters/' + encodeURIComponent(cid) + '/team'), body || {}); },
+  };
   G.api.trial = {
     get: function (gid, pid) { return G.api.get(rosterPath(gid, pid, '/trial')); },
     // The card's three buttons are PATCH /roster/:pid (status or trialEnd) and, for End trial with a note, PUT /roster/:pid/notes.

@@ -41,6 +41,7 @@ import {
   removeCharacter, saveNotes,
 } from './routes/roster.js';
 import { deleteCharacterTeam, getTeamSignups, listUnassigned, putCharacterTeam } from './routes/team-placement.js';
+import { getOffRoster } from './routes/roster.js';
 import { joinPerson } from './routes/person-join.js';
 import { matchToRoster } from './routes/roster-match.js';
 import { findUnlinked } from './routes/roster-unlinked.js';
@@ -172,6 +173,7 @@ export const ROUTES = [
   // Literal paths are registered before `:pid`, so "linkable" and "import" are never read as a person id.
   { method: 'GET', path: '/api/guild/:gid/roster/linkable', auth: true, handler: getLinkable },
   { method: 'GET', path: '/api/guild/:gid/roster/unassigned', auth: true, handler: listUnassigned },
+  { method: 'GET', path: '/api/guild/:gid/roster/off-roster', auth: true, handler: getOffRoster },
   { method: 'GET', path: '/api/guild/:gid/roster/unlinked', auth: true, handler: findUnlinked },
   { method: 'GET', path: '/api/guild/:gid/accounts', auth: true, handler: lookupAccounts },
   { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/preview', auth: true, handler: previewRaidHelper },

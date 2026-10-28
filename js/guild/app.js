@@ -37,7 +37,8 @@
     privacyMessage: '',
     signinNotice: '',
     roster: null,      // { gid, teamId, data } - GET /roster?team= for the open roster page
-    rosterUi: { status: 'active', query: '' },
+    rosterUi: { status: 'everyone', query: '' },
+    rosterManage: null, // { gid, teamId, ticked, off } - Manage team's tick mode on the open Roster (pages-roster-team.js)
     rosterShape: null, // { gid, teamId, status: loading | ready | error, data, cov } - GET /recruiting?team= for the officers' team shape
     rosterApps: null,  // { gid, teamId, status, list } - the New applications, read when the phone's Applicants segment is picked
     rosterNotice: '',
@@ -488,7 +489,7 @@
     if (r.name !== 'person') state.personSaved = null; // "Saved at 8:14 PM ET" on a person's Details lasts until another page opens
     state.currentGid = r.gid || null;
     if (r.name !== 'users') state.notice = ''; // the notice after a guild is created shows on Users
-    if (!(r.name === 'section' && r.section === 'roster')) state.rosterNotice = '';
+    if (!(r.name === 'section' && r.section === 'roster')) { state.rosterNotice = ''; state.rosterManage = null; }
     if (G.router.isViewerRoute(r)) return routeViewer(r, token);
 
     // A visit that skipped the session question (an anonymous planner view) asks it now.
@@ -632,23 +633,17 @@
   // ── roster routes ──
   function rosterUrl(gid, tail) { return '/api/guild/' + encodeURIComponent(gid) + '/roster' + (tail || ''); }
 
-  // Flagged-trial count for a team's badge: people whose home team is that team (the Worker sends it for editors only).
+  // Flagged-trial count for a team's badge: the Trial characters of this roster whose trial ends soon or ended (the Worker sends it for editors only).
   function setFlagFromRoster(gd, teamId, data) {
     if (!gd || !data || !data.can || !data.can.edit) return;
     gd.rosterFlags = Object.assign({}, gd.rosterFlags);
     gd.rosterFlags[teamId] = G.rosterSort.trialsToDecide(data.people, teamId).length;
   }
 
-  // The page's one list = the team's roster (GET /roster?team=) plus its inactive people (the same address with &status=inactive: the team's placed Social /
-  // Former people, which the roster list leaves out). They are one list again here, so the Inactive filter, its count and "Show inactive people" work exactly
-  // as before. A failed read of the inactive people never fails the page: the list shows without them. RETIRED when the Users page ships (R4, lane B8a):
-  // delete the second read (and the Worker's status=inactive).
+  // The page's one list = the team's roster (GET /roster?team=). Social and Former characters are on no roster view (U R6-Q2); Manage team reads the team's placed ones apart
+  // (GET /roster/off-roster, pages-roster-team.js).
   function fetchRoster(gid, teamId) {
-    const url = rosterUrl(gid, '?team=' + encodeURIComponent(teamId));
-    const inactive = G.api.get(url + '&status=inactive').then(function (res) { return res && Array.isArray(res.people) ? res.people : []; }, function () { return []; });
-    return Promise.all([G.api.get(url), inactive]).then(function (got) {
-      const data = got[0];
-      if (data && Array.isArray(data.people) && got[1].length) data.people = data.people.concat(got[1]);
+    return G.api.get(rosterUrl(gid, '?team=' + encodeURIComponent(teamId))).then(function (data) {
       state.roster = { gid: gid, teamId: teamId, data: data };
       setFlagFromRoster(state.guilds[gid], teamId, data);
       return data;
@@ -660,7 +655,7 @@
     const teamId = r.team || teamFor(gd);
     if (!teamId) { state.roster = { gid: gid, teamId: null, data: null }; return null; }
     if (state.roster && state.roster.teamId !== teamId) {
-      state.rosterUi.status = 'active'; state.rosterUi.query = '';
+      state.rosterUi.status = 'everyone'; state.rosterUi.query = ''; state.rosterManage = null;
     }
     // The team requests waiting for this team (Needs you, the badge) are read beside the list, for whoever may decide them (it never fails the page).
     const requests = G.shell.hasAction(gd.me && gd.me.can, 'roster.edit') ? G.pages.teamRequests.read(gid) : Promise.resolve(null);
@@ -802,7 +797,8 @@
     if (!rs.data) return P.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
     const shape = state.rosterShape && state.rosterShape.gid === gd.guild.id && state.rosterShape.teamId === rs.teamId ? state.rosterShape : null;
     const apps = state.rosterApps && state.rosterApps.gid === gd.guild.id && state.rosterApps.teamId === rs.teamId ? state.rosterApps : null;
-    return P.roster.rosterHtml({ guildData: gd, data: rs.data, view: state.rosterUi, notice: state.rosterNotice, alert: state.pageAlert, shape: shape, apps: apps, requests: P.teamRequests.pendingOf(gd.guild.id, rs.teamId) });
+    const manage = state.rosterManage && state.rosterManage.gid === gd.guild.id && state.rosterManage.teamId === rs.teamId ? state.rosterManage : null;
+    return P.roster.rosterHtml({ guildData: gd, data: rs.data, view: state.rosterUi, notice: state.rosterNotice, alert: state.pageAlert, shape: shape, apps: apps, requests: P.teamRequests.pendingOf(gd.guild.id, rs.teamId), manage: manage });
   }
 
   function mainFor(r, gd, ctx) {

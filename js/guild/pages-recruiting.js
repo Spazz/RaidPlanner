@@ -1,5 +1,5 @@
 // ── PAGE: ROSTER > RECRUITING (applications and recruitment needs; #/roster/recruiting and the old #/roster/applications) ───────────────
-// The left column is the applications inbox (pages-applications.js). The right column, for the team on screen: how many tanks, healers, melee and ranged DPS the active roster (Raider and Trial mains) has against officer-set targets (the
+// The left column is the applications inbox (pages-applications.js). The right column, for the team on screen: how many tanks, healers, melee and ranged DPS the active roster (Raider and Trial characters) has against officer-set targets (the
 // defaults of the team's raid size until an officer sets them), the open spec poll laid over the roster when there is one, which raid buffs and
 // debuffs that roster misses (coverage.js, the Planner's rules), and a plain-text recruiting post to copy: guild, realm or ruleset, raid days from the
 // weekly schedule, the roles and classes the team needs and the apply link. GET /recruiting?team=, PUT /teams/:tid/recruiting.
@@ -94,7 +94,7 @@
       ? '<div class="gs-rc-foot"><div class="gs-check"><input type="checkbox" id="rt-intent" data-change="recruiting-intent" data-key="rt-intent"' + (x.useIntent ? ' checked' : '') + '><label for="rt-intent">Count the open spec poll (' + esc(data.intent.title) + ')</label></div>' +
         '<span class="gs-fg-mut">' + esc(plural(data.intent.replaced, 'main', 'mains')) + ' replaced by a spec poll pick.</span></div>'
       : '';
-    const note = (data.customTargets ? '' : 'The usual targets for a ' + data.team.size + '-man raid. ') + (section.unknown ? plural(section.unknown, 'main has', 'mains have') + ' no spec set and ' + (section.unknown === 1 ? 'is' : 'are') + ' not counted.' : '');
+    const note = (data.customTargets ? '' : 'The usual targets for a ' + data.team.size + '-man raid. ') + (section.unknown ? plural(section.unknown, 'character has', 'characters have') + ' no spec set and ' + (section.unknown === 1 ? 'is' : 'are') + ' not counted.' : '');
     return '<section class="gs-hd-panel gs-rc-panel" aria-labelledby="rt-h"><div class="gs-rc-ph"><h2 class="gs-rc-h2" id="rt-h">Recruiting needs</h2>' +
       '<button type="button" class="gs-btn gs-btn-ghost" data-action="recruiting-edit" data-key="rt-edit"' + (x.busy ? ' disabled' : '') + '>Edit targets</button></div>' + rows +
       (note.trim() ? '<p class="gs-rc-note gs-fg-mut">' + esc(note.trim()) + '</p>' : '') + toggle + '</section>';
@@ -160,7 +160,7 @@
         '" value="' + esc(data.targets[role]) + '" data-field="' + role + '" data-key="rt-' + role + '"></div>';
     }).join('');
     return '<form class="gs-dialog-form" data-submit="recruiting-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Recruiting targets</h2>' +
-      '<p class="gs-fine" id="dlg-text">How many of each role ' + esc(data.team.name) + ' wants on the roster. The Roster counts Raider and Trial mains against them.</p>' + inputs +
+      '<p class="gs-fine" id="dlg-text">How many of each role ' + esc(data.team.name) + ' wants on the roster. The Roster counts Raider and Trial characters against them.</p>' + inputs +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions">' + (data.customTargets ? '<button type="button" class="gs-btn gs-btn-ghost" data-action="recruiting-reset" data-key="rt-reset">Use the ' + esc(data.team.size) + '-man defaults</button>' : '') +
       '<button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten" data-key="rt-save">Save targets</button></div></form>';

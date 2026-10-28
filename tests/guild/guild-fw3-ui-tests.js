@@ -421,11 +421,9 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
       const src = read('js/guild/' + f);
       for (const m of src.matchAll(/menuHtml\(\{([^}]*)\}/g)) {
         const label = /label: '([^']*)'/.exec(m[1].split('items:')[0]);
-        // The empty roster's chooser is the board's "Import" button (R2-7), not an overflow menu.
-        const importChooser = f === 'pages-roster.js' && /id: 'roster-import'/.test(m[1]);
         // The Raid facts panel's rows each have a small "Change" menu (design-spec 4, Fact panel; the head More keeps the page-level items).
         const factChange = f === 'pages-raid-facts.js' && /id: 'fact-'/.test(m[1]);
-        if (label) assert.equal(label[1], importChooser ? 'Import' : factChange ? 'Change' : 'More', f + ': ' + m[0].slice(0, 80));
+        if (label) assert.equal(label[1], factChange ? 'Change' : 'More', f + ': ' + m[0].slice(0, 80));
       }
     }
     const retired = ['Actions menu', 'Plan actions', 'Options menu'];

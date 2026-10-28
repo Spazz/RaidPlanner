@@ -1,4 +1,4 @@
-// Recruitment needs: for one team, the active roster (Raider and Trial Mains) counted by role against officer-set targets, with the team's open
+// Recruitment needs: for one team, the active roster (Raider and Trial characters placed on it) counted by role against officer-set targets, with the team's open
 // intent round laid over it when there is one (a person who picked a main for the round counts as that pick). Which raid buffs and debuffs the
 // roster covers is worked out in the browser with the Planner's rules (js/analysis.js rosterBuffCoverage); this route hands over the class/spec
 // lists, the raid days of the weekly schedule and where the application page is.
@@ -39,8 +39,9 @@ async function recruitingPayload(ctx, guildContext, team) {
   const { targets, custom } = targetsOf(team.recruit_targets, team.size);
   const [mainResult, roundResult, scheduleResult, guildResult] = await db.batch([
     db.prepare(
+      // One character per person per team, so a person counts once; rank and team are per character (H-Q18), so an alt placed here counts as the Main would.
       `SELECT m.player_id AS id, m.class, m.main_spec FROM characters m
-        WHERE m.guild_id = ? AND m.is_main = 1 AND ${onTeamRosterSql('m', '?')} AND m.core_rank IN ('raider', 'trial') ORDER BY m.name_key, m.player_id`,
+        WHERE m.guild_id = ? AND ${onTeamRosterSql('m', '?')} AND m.core_rank IN ('raider', 'trial') ORDER BY m.name_key, m.player_id`,
     ).bind(guild.id, team.id),
     db.prepare(
       `SELECT r.id, r.title, k.player_id, k.class, k.spec FROM intent_rounds r LEFT JOIN intent_picks k ON k.round_id = r.id AND k.kind = 'main'

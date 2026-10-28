@@ -120,7 +120,8 @@
       iconHtml: m ? G.ui.specIconHtml(m.class, m.mainSpec, 28) : '', titleClass: m ? G.ui.classClass(m.class) : '' };
   }
 
-  // More: Edit details, Add character, Add an away notice, a rule, Delete person (each only for who may).
+  // More: Edit details, Add character, Add an away notice, a rule, Remove from team (when the viewer may take one of the characters off its team: record.characters[].mayRelease) and Delete person
+  // (each only for who may).
   function moreOf(gd, record, can) {
     const pid = record.person.id;
     const away = G.pages.away && G.pages.away.canEditPerson ? G.pages.away.canEditPerson(gd, record) : can.edit;
@@ -129,8 +130,12 @@
       can.addCharacter ? { label: 'Add character', key: 'mi-char-add', data: { action: 'char-add' } } : null,
       can.edit && away ? { label: 'Add an away notice', key: 'mi-away-add', data: { action: 'away-add', ctx: 'person', pid: pid } } : null,
     ].filter(Boolean);
-    if (can.delete) items.push(items.length ? { separator: true } : null, { label: 'Delete person', key: 'person-delete', danger: true, data: { action: 'person-delete' } });
-    return items.length ? { id: 'person-more', key: 'person-more', items: items.filter(Boolean) } : null;
+    const risky = [
+      G.pages.rosterTeam && G.pages.rosterTeam.releasableOf(record).length ? { label: 'Remove from team', key: 'person-remove-team', danger: true, data: { action: 'person-remove-team' } } : null,
+      can.delete ? { label: 'Delete person', key: 'person-delete', danger: true, data: { action: 'person-delete' } } : null,
+    ].filter(Boolean);
+    if (risky.length) items.push.apply(items, (items.length ? [{ separator: true }] : []).concat(risky));
+    return items.length ? { id: 'person-more', key: 'person-more', items: items } : null;
   }
 
   // ask: the viewer's own team requests ({ mine }) on their own record, else null. The one secondary Request team button sits in the head while a character
@@ -170,6 +175,13 @@
     return edit + more;
   }
 
+  // "Raider (in-game Core Raider)": the character's own core rank and, in a guild with an in-game roster, the rank the guild's map gives it (rank is per character).
+  const CORE_RANK_LABELS = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', social: 'Social' };
+  function rankText(c) {
+    if (!c || !Object.prototype.hasOwnProperty.call(CORE_RANK_LABELS, c.coreRank)) return '';
+    return CORE_RANK_LABELS[c.coreRank] + (c.inGameRank ? ' (in-game ' + c.inGameRank + ')' : '');
+  }
+
   // ask: { record, mine } on the viewer's own record (their team requests): a character on no team then says "No team" or "Requested Team KJ" with Withdraw.
   function characterRowHtml(c, can, showTeam, ask) {
     const team = showTeam && c.team && c.team.id ? ' &middot; ' + esc(c.team.name) + (c.team.archived ? ' (archived)' : '') : '';
@@ -178,7 +190,7 @@
     const status = ask && teamless ? ' &middot; ' + G.pages.teamRequests.rowStatusHtml(request) : '';
     const end = (request ? G.pages.teamRequests.withdrawHtml(request, c) : '') + (can.edit ? charActionsHtml(c, can) : '');
     return '<div class="gs-pr-row gs-pr-char" data-cid="' + esc(c.id) + '">' + G.ui.specIconHtml(c.class, c.mainSpec, 20) + '<span class="gs-pr-cname">' + G.ui.classNameHtml(c.name, c.class) + '</span>' +
-      '<span class="gs-pr-what">' + G.ui.specLineHtml(c.class, c.mainSpec, c.offSpec) + team + (c.realm ? ' &middot; ' + esc(c.realm) : '') + status + '</span>' +
+      '<span class="gs-pr-what">' + G.ui.specLineHtml(c.class, c.mainSpec, c.offSpec) + team + (c.realm ? ' &middot; ' + esc(c.realm) : '') + (rankText(c) ? ' &middot; ' + esc(rankText(c)) : '') + status + '</span>' +
       '<span class="gs-hd-chip is-grey">' + (c.isMain ? 'Main' : 'Alt') + '</span>' + (end ? '<span class="gs-pr-end">' + end + '</span>' : '') + '</div>';
   }
 

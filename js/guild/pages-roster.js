@@ -1,8 +1,10 @@
 // ── PAGE: ROSTER ────────────────────────────────────────────────
-// The roster of one team (design: tasks/open/roster-redesign-brief.md, boards A1, R2-1, R2-6, R2-7). Officers see the team shape (tiles against the recruiting
-// targets) and a "Needs you" line above the list; everyone sees the people, a role column each (a phone: one directory list), search and Active / Everyone.
-// A person is a link to their record. Data comes from GET /roster?team= (people, with raidRole and trialFlag) and, for officers, GET /recruiting?team=
-// (targets, counts and the buff coverage); every mutation goes through the person record page's handlers or the import pages. The Add person dialog is here.
+// The roster of one team (design: tasks/open/roster-redesign-brief.md, boards A1, R2-1, R2-6, R2-7; B8b boards RO1, RO2, TC2, TC4). Officers see the team shape (tiles
+// against the recruiting targets) and a "Needs you" line above the list; everyone sees the people, a role column each (a phone: one directory list with a pill per core
+// rank the guild uses) and search. A person is a link to their record; the row shows the character that puts them on this team, with ITS OWN rank (H-Q18). Social and Former
+// characters are on no roster view (U R6-Q2). Data comes from GET /roster?team= (people, with raidRole, shown.coreRank / inGameRank / trialFlag, and rankSegments) and, for
+// officers, GET /recruiting?team= (targets, counts and the buff coverage). Add to team and Manage team (the tick mode, with the Off the roster group) are
+// pages-roster-team.js; the Add person dialog and the person record's handlers are here and in pages-person.js.
 (function (G) {
   'use strict';
 
@@ -10,9 +12,8 @@
   const ROLE_TITLES = { tank: 'Tanks', healer: 'Healers', melee: 'Melee DPS', ranged: 'Ranged DPS', none: 'No spec' };
   const DEFAULT_TRIAL_DAYS = 14;
   const MISSING_SHOWN = 3;
-  // The phone's segments for an officer; a member has Active and Everyone only.
-  const PHONE_SEGMENTS = [['active', 'Active'], ['raider', 'Raiders'], ['trial', 'Trials'], ['reserve', 'Reserve'], ['applicants', 'Applicants'], ['inactive', 'Inactive']];
-  const MEMBER_SEGMENTS = [['active', 'Active'], ['everyone', 'Everyone']];
+  // The phone's pills: Everyone, then the core ranks the guild uses (the Worker's rankSegments), then Applicants for an officer.
+  const RANK_SEGMENTS = [['raider', 'Raiders'], ['trial', 'Trials'], ['reserve', 'Reserve']];
 
   function personHref(gid, pid) { return G.router.format({ name: 'person', gid: gid, pid: pid }); }
   function importHref(gid, source) { return G.router.format({ name: 'import', gid: gid, source: source }); }
@@ -24,14 +25,30 @@
   // Every list is plain A-Z: the viewer is never moved to the top, only tinted and tagged You.
 
   // ── numbers ──
+  // The core rank of the character a row shows.
+  function rankOf(p) { return G.rosterSort.rankOf(p); }
+
   function countsOf(people) {
-    const out = { active: 0, everyone: 0, raider: 0, trial: 0, reserve: 0, inactive: 0 };
+    const out = { everyone: 0, raider: 0, trial: 0, reserve: 0 };
     (Array.isArray(people) ? people : []).forEach(function (p) {
       out.everyone++;
-      if (p.status !== 'inactive') out.active++;
-      if (Object.prototype.hasOwnProperty.call(out, p.status)) out[p.status]++;
+      const rank = rankOf(p);
+      if (rank === 'raider' || rank === 'trial' || rank === 'reserve') out[rank]++;
     });
     return out;
+  }
+
+  // The rank pills the page offers: the Worker's answer (in-game guild: the ranks its map uses; else the ranks held on the team), or the ranks the listed people hold.
+  function rankSegmentsOf(data, counts) {
+    if (data && Array.isArray(data.rankSegments)) return data.rankSegments.filter(function (id) { return RANK_SEGMENTS.some(function (s) { return s[0] === id; }); });
+    return RANK_SEGMENTS.filter(function (s) { return counts[s[0]] > 0; }).map(function (s) { return s[0]; });
+  }
+
+  // Everyone, the offered ranks, and Applicants (an officer's).
+  function segmentsOf(m) {
+    const list = [['everyone', 'Everyone']].concat(RANK_SEGMENTS.filter(function (s) { return m.rankSegments.indexOf(s[0]) >= 0; }));
+    if (m.canEdit) list.push(['applicants', 'Applicants']);
+    return list;
   }
 
   function contextText(data) {
@@ -61,7 +78,7 @@
   }
 
   function missingLine(cov) {
-    const lead = 'Counts Raider and Trial mains.';
+    const lead = 'Counts Raider and Trial characters on this team.';
     if (!cov || !Array.isArray(cov.buffs) || !Array.isArray(cov.debuffs)) return lead;
     const buffs = cov.buffs.filter(function (b) { return !b.covered; }).map(function (b) { return b.name; });
     const debuffs = cov.debuffs.filter(function (d) { return !d.covered; }).map(function (d) { return d.name; });
@@ -70,7 +87,7 @@
   }
 
   // ── pieces ──
-  // The Import choices and "Show inactive people" are items of the page's one More menu; Add person is the one primary.
+  // The head's one primary is Add to team; the page's one More menu holds Manage team, Add person and the Import choices (Manage team and Add person only outside the tick mode).
   function importItems(gid) {
     return [
       { label: 'Import from a Raid-Helper event', href: importHref(gid, 'raid-helper'), key: 'mi-import-rh' },
@@ -80,52 +97,65 @@
     ];
   }
 
-  function moreItems(gid, inactive, showing) {
-    const items = importItems(gid);
-    if (inactive > 0 && !showing) items.push({ separator: true }, { label: 'Show inactive people (' + inactive + ')', data: { action: 'roster-show-inactive' }, key: 'mi-show-inactive' });
-    return items;
+  function moreItems(gid, managing) {
+    const head = managing ? [] : [{ label: 'Manage team', data: { action: 'roster-manage' }, key: 'manage-team' }, { label: 'Add person', data: { action: 'roster-add' }, key: 'mi-add-person' }, { separator: true }];
+    return head.concat(importItems(gid));
   }
 
   function headOpts(gd, data, m) {
     const canAdd = !!(data.can && data.can.edit) && !(data.team && data.team.archived);
     const empty = !m.people.length;
     return { title: 'Roster', context: empty ? '' : contextText(data),
-      more: canAdd && !empty ? { id: 'roster-more', key: 'roster-more', items: moreItems(gd.guild.id, m.counts.inactive, m.status === 'everyone' || m.status === 'inactive') } : null,
-      primary: canAdd && !empty ? { label: 'Add person', attrs: { 'data-action': 'roster-add', 'data-key': 'roster-add' } } : null };
+      more: canAdd && !empty ? { id: 'roster-more', key: 'roster-more', items: moreItems(gd.guild.id, !!m.manage) } : null,
+      primary: canAdd && !empty && !m.manage ? { label: 'Add to team', attrs: { 'data-action': 'roster-add-team', 'data-key': 'roster-add-team' } } : null };
   }
 
   function chipHtml(tone, label) { return '<span class="gs-hd-chip is-' + tone + '">' + esc(label) + '</span>'; }
 
-  // One status word per person, only for the exception: rose = a trial to decide (officers), blue = Trial, grey = Reserve, Inactive, You.
+  // One status word per person, only for the exception: rose = a trial to decide (officers), blue = Trial, grey = Reserve, You. The rank is the shown character's own.
   function rowChipHtml(p, m) {
-    const flag = m.canEdit && G.rosterSort.isFlaggedHere(p, m.teamId) ? p.trialFlag : null;
+    const flag = m.canEdit ? G.rosterSort.trialFlagOf(p, m.teamId) : null;
     if (flag) return chipHtml('rose', flag.kind === 'ended' ? 'Trial ended' : G.ui.trialCopy(flag));
-    if (p.status === 'trial') return chipHtml('blue', 'Trial');
-    if (p.status === 'reserve') return chipHtml('grey', 'Reserve');
-    if (p.status === 'inactive') return chipHtml('grey', 'Inactive');
+    const rank = rankOf(p);
+    if (rank === 'trial') return chipHtml('blue', 'Trial');
+    if (rank === 'reserve') return chipHtml('grey', 'Reserve');
     if (p.isMe) return chipHtml('grey', 'You');
     return '';
   }
 
-  // A person: spec icon, the character's name in its class colour, the spec and "1 alt" in neutral grey, one chip. The whole row is the link to the record.
+  // The hover title: the in-game rank (when the guild has one for the character) and the core rank. A touch device has no hover: the sub line carries the in-game rank.
+  function rowTitle(p) {
+    const s = shownOf(p);
+    const parts = [];
+    if (s.inGameRank) parts.push('In-game rank: ' + s.inGameRank);
+    if (rankOf(p)) parts.push('Core rank: ' + G.ui.statusLabel(rankOf(p)));
+    return parts.join(' \u00b7 ');
+  }
+
+  // A person: spec icon, the character's name in its class colour, the spec, the in-game rank (touch only, CSS) and "1 alt" in neutral grey, one chip. The whole row is the link
+  // to the record; in the tick mode (m.manage) it is a label with a checkbox instead.
   function rowHtml(p, m) {
     const s = shownOf(p);
     const main = p.main || {};
     const alt = p.shown && p.main && p.shown.id !== p.main.id ? '<span class="gs-rs-alt">Alt of ' + esc(main.name) + '</span>' : (p.altCount > 0 ? '<span class="gs-rs-alt">' + esc(plural(p.altCount, 'alt', 'alts')) + '</span>' : '');
-    return '<a class="gs-rs-row' + (p.isMe ? ' is-you' : '') + '" href="' + esc(personHref(m.gid, p.id)) + '"' + (p.isMe ? ' data-you="true"' : '') + '>' + G.ui.specIconHtml(s.class, s.mainSpec, 20) +
+    const ig = s.inGameRank ? '<span class="gs-rs-ig">in-game ' + esc(s.inGameRank) + '</span>' : '';
+    const inner = G.ui.specIconHtml(s.class, s.mainSpec, 20) +
       '<span class="gs-rs-id"><span class="gs-rs-name ' + G.ui.classClass(s.class) + '">' + esc(s.name) + '</span>' +
-      '<span class="gs-rs-sub"><span class="gs-rs-spec">' + esc(s.mainSpec || G.ui.className(s.class)) + '</span>' + alt + '</span></span>' + rowChipHtml(p, m) + '</a>';
+      '<span class="gs-rs-sub"><span class="gs-rs-spec">' + esc(s.mainSpec || G.ui.className(s.class)) + '</span>' + ig + alt + '</span></span>' + rowChipHtml(p, m);
+    const title = rowTitle(p);
+    const titleAttr = title ? ' title="' + esc(title) + '"' : '';
+    if (m.manage) return G.pages.rosterTeam.pickRowHtml({ cid: s.id, pid: p.id, name: s.name, innerHtml: inner, titleAttr: titleAttr, ticked: !!m.manage.ticked[s.id] });
+    return '<a class="gs-rs-row' + (p.isMe ? ' is-you' : '') + '" href="' + esc(personHref(m.gid, p.id)) + '"' + titleAttr + (p.isMe ? ' data-you="true"' : '') + '>' + inner + '</a>';
   }
 
   // ── desktop: the four role columns ──
   function columnHtml(role, people, m) {
-    const main = people.filter(function (p) { return p.status === 'raider' || p.status === 'trial'; });
-    const reserve = people.filter(function (p) { return p.status === 'reserve'; });
-    const inactive = people.filter(function (p) { return p.status === 'inactive'; });
+    const main = people.filter(function (p) { return rankOf(p) === 'raider' || rankOf(p) === 'trial'; });
+    const reserve = people.filter(function (p) { return rankOf(p) === 'reserve'; });
     const want = m.shape ? (m.shape.roles.filter(function (r) { return r.role === role; })[0] || {}).want : null;
     const head = '<h3 class="gs-fg-gh gs-rs-colhead"><span class="gs-fg-ght">' + esc(ROLE_TITLES[role]) + '</span><span class="gs-fg-ghn">' + esc(main.length + (m.canEdit && want != null ? ' / ' + want : '')) + '</span></h3>';
     const label = function (text, list) { return list.length ? '<h4 class="gs-hd-sl gs-rs-sep">' + esc(text) + '</h4>' + list.slice().sort(byName).map(function (p) { return rowHtml(p, m); }).join('') : ''; };
-    const body = (main.length ? main.slice().sort(byName).map(function (p) { return rowHtml(p, m); }).join('') : (reserve.length || inactive.length ? '' : '<p class="gs-rs-none">No one</p>')) + label('Reserve', reserve) + label('Inactive', inactive);
+    const body = (main.length ? main.slice().sort(byName).map(function (p) { return rowHtml(p, m); }).join('') : (reserve.length ? '' : '<p class="gs-rs-none">No one</p>')) + label('Reserve', reserve);
     return '<div class="gs-hd-panel gs-rs-col" data-role="' + role + '">' + head + body + '</div>';
   }
 
@@ -141,7 +171,7 @@
     if (m.status === 'applicants') return applicantsHtml(m);
     const head = function (text) { return '<h2 class="gs-hd-sl gs-rs-pgroup">' + esc(text) + '</h2>'; };
     const rowsOf = function (list) { return list.map(function (p) { return rowHtml(p, m); }).join(''); };
-    if (m.canEdit && m.status === 'active') {
+    if (m.canEdit && m.status === 'everyone') {
       const flagged = G.rosterSort.trialsToDecide(rows, m.teamId);
       const rest = rows.filter(function (p) { return flagged.indexOf(p) < 0; });
       if (flagged.length) {
@@ -180,8 +210,7 @@
   }
 
   function resultsHtml(m) {
-    const deskStatus = m.status === 'everyone' ? 'everyone' : 'active';
-    const deskRows = filteredOf(m, deskStatus);
+    const deskRows = filteredOf(m, 'everyone');
     const phoneRows = m.status === 'applicants' ? [] : filteredOf(m, m.status);
     const desk = deskRows.length ? columnsHtml(deskRows, m) : noMatchHtml(m);
     const phone = m.status === 'applicants' ? phoneListHtml([], m) : (phoneRows.length ? '<section class="gs-hd-panel gs-rs-plist" aria-label="People">' + phoneListHtml(phoneRows, m) + '</section>' : noMatchHtml(m));
@@ -194,20 +223,13 @@
       '<input class="gs-rs-input" type="search" id="roster-search" placeholder="Search people or characters" data-input="roster-search" autocomplete="off" value="' + esc(m.query) + '"></div>';
   }
 
-  function deskSegsHtml(m) {
-    const on = m.status === 'everyone' ? 'everyone' : 'active';
-    return '<div class="gs-fg-segs gs-rs-dsegs" role="group" aria-label="Show">' + [['active', 'Active', m.counts.active], ['everyone', 'Everyone', m.counts.everyone]].map(function (s) {
-      return '<button type="button" class="gs-fg-seg" data-action="roster-seg" data-seg="' + s[0] + '" data-key="dseg-' + s[0] + '" aria-pressed="' + (on === s[0] ? 'true' : 'false') + '">' + s[1] + ' <span class="gs-fg-segn">' + s[2] + '</span></button>';
-    }).join('') + '</div>';
-  }
-
   function phoneSegsHtml(m) {
-    const list = m.canEdit ? PHONE_SEGMENTS : MEMBER_SEGMENTS;
-    const countOf = function (id) { return id === 'applicants' ? m.applicationCount : m.counts[id]; };
-    return '<div class="gs-rs-psegs' + (m.canEdit ? ' is-scroll' : '') + '"><div class="gs-fg-pills" role="group" aria-label="Filter people">' + list.map(function (s) {
-      const badge = s[0] === 'applicants' && countOf('applicants') > 0;
-      return '<button type="button" class="gs-fg-pill" data-action="roster-seg" data-seg="' + s[0] + '" data-key="pseg-' + s[0] + '" aria-pressed="' + (m.status === s[0] ? 'true' : 'false') + '">' + s[1] +
-        (badge ? ' <span class="gs-fg-cnt">' + countOf('applicants') + '</span>' : ' <span class="gs-fg-segn">' + countOf(s[0]) + '</span>') + '</button>';
+    const list = segmentsOf(m);
+    return '<div class="gs-rs-psegs' + (list.length > 3 ? ' is-scroll' : '') + '"><div class="gs-fg-pills" role="group" aria-label="Filter people">' + list.map(function (seg) {
+      const count = seg[0] === 'applicants' ? m.applicationCount : m.counts[seg[0]];
+      const badge = seg[0] === 'applicants' && count > 0;
+      return '<button type="button" class="gs-fg-pill" data-action="roster-seg" data-seg="' + seg[0] + '" data-key="pseg-' + seg[0] + '" aria-pressed="' + (m.status === seg[0] ? 'true' : 'false') + '">' + seg[1] +
+        (badge ? ' <span class="gs-fg-cnt">' + count + '</span>' : ' <span class="gs-fg-segn">' + count + '</span>') + '</button>';
     }).join('') + '</div></div>';
   }
 
@@ -266,11 +288,6 @@
       '<a class="gs-fg-u" href="' + esc(personHref(m.gid, me.id)) + '">Your record</a><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'away', gid: m.gid })) + '">Away notices</a></section>';
   }
 
-  function footHtml(m) {
-    if (!m.canEdit || m.counts.inactive < 1 || m.status === 'everyone' || m.status === 'inactive') return '';
-    return '<p class="gs-fg-mut gs-rs-foot">' + esc(plural(m.counts.inactive, 'inactive person is', 'inactive people are')) + ' hidden. <button type="button" class="gs-fg-linkbtn" data-action="roster-show-inactive" data-key="roster-show-inactive">Show them</button></p>';
-  }
-
   // ── states ──
   function stateCardHtml(opts) {
     return '<section class="gs-hd-panel gs-rs-state' + (opts.role ? '" role="' + opts.role : '') + '" aria-label="' + esc(opts.label) + '"><span class="gs-rs-tilebox" aria-hidden="true">' + G.icons.icon('roster', 28) + '</span>' +
@@ -282,9 +299,9 @@
     const gid = gd.guild.id;
     if (!canEdit) return stateCardHtml({ label: 'Empty roster', title: 'No one on the roster yet', text: 'Your officers haven\'t added anyone yet.' });
     return stateCardHtml({ label: 'Empty roster', title: 'No one on the roster yet',
-      text: 'Add people one at a time, or import them from a Raid-Helper event, a Warcraft Logs report, the Battle.net guild roster or a CSV file.',
-      actionsHtml: G.ui.buttonHtml({ label: 'Add person', variant: 'primary', attrs: { 'data-action': 'roster-add', 'data-key': 'roster-add' } }) +
-        G.ui.menuHtml({ id: 'roster-import', key: 'roster-import', label: 'Import', items: importItems(gid) }) });
+      text: 'Put a character on the team, add a person, or import people from a Raid-Helper event, a Warcraft Logs report, the Battle.net guild roster or a CSV file.',
+      actionsHtml: G.ui.buttonHtml({ label: 'Add to team', variant: 'primary', attrs: { 'data-action': 'roster-add-team', 'data-key': 'roster-add-team' } }) +
+        G.ui.menuHtml({ id: 'roster-empty-more', key: 'roster-empty-more', label: 'More', items: moreItems(gid, false) }) });
   }
 
   // A guild with no active team has no roster to show.
@@ -310,40 +327,52 @@
   }
 
   // ── the page ──
-  // opts: { guildData, data (GET /roster?team=), view: { status, query }, notice, alert, shape (the recruiting read: { status, data, cov }), apps ({ status, list }) }
+  // opts: { guildData, data (GET /roster?team=), view: { status, query }, notice, alert, shape (the recruiting read: { status, data, cov }), apps ({ status, list }),
+  //         requests (team requests waiting here), manage (the tick mode of Manage team: { ticked: { [characterId]: entry }, off: { status, list } } or null) }
   function modelOf(opts) {
     const gd = opts.guildData;
     const data = opts.data || { people: [], team: {}, can: {} };
     const people = Array.isArray(data.people) ? data.people : [];
-    const view = Object.assign({ status: 'active', query: '' }, opts.view || {});
+    const view = Object.assign({ status: 'everyone', query: '' }, opts.view || {});
     const teamId = data.team && data.team.id;
     const canEdit = !!(data.can && data.can.edit);
     const shapeRead = opts.shape && opts.shape.status === 'ready' ? opts.shape : null;
     const flags = gd.applicationFlags && teamId && Object.prototype.hasOwnProperty.call(gd.applicationFlags, teamId) ? Number(gd.applicationFlags[teamId]) : 0;
+    const counts = countsOf(people);
+    const rankSegments = rankSegmentsOf(data, counts);
+    const archived = !!(data.team && data.team.archived);
     return {
-      gd: gd, gid: gd.guild.id, data: data, people: people, teamId: teamId, canEdit: canEdit, archived: !!(data.team && data.team.archived),
-      status: view.status, query: String(view.query || ''), counts: countsOf(people),
+      gd: gd, gid: gd.guild.id, data: data, people: people, teamId: teamId, canEdit: canEdit, archived: archived, rankSegments: rankSegments,
+      manage: canEdit && !archived && opts.manage ? opts.manage : null,
+      status: view.status, query: String(view.query || ''), counts: counts,
       shape: canEdit && shapeRead ? shapeOf(shapeRead.data, shapeRead.cov) : null, shapeState: opts.shape ? opts.shape.status : 'loading',
       applicationCount: canEdit && isFinite(flags) && flags > 0 ? Math.floor(flags) : 0, apps: opts.apps || null,
       requests: canEdit && Array.isArray(opts.requests) ? opts.requests : [],
     };
   }
 
+  // A pill that is not offered (a rank this guild does not use, Applicants for a member) falls back to Everyone.
+  function statusOf(m) {
+    const known = segmentsOf(m).some(function (seg) { return seg[0] === m.status; });
+    return known ? m.status : 'everyone';
+  }
+
   function rosterHtml(opts) {
     const gd = opts.guildData;
     const m = modelOf(opts);
-    // A member has Active and Everyone only: a status only an officer's phone list knows falls back to Active.
-    if (!m.canEdit && !MEMBER_SEGMENTS.some(function (s) { return s[0] === m.status; })) m.status = 'active';
+    m.status = statusOf(m);
     const notices = G.pages.rosterTabs.html(gd, 'roster') +
       (m.archived ? '<div class="gs-rs-note" role="note">' + G.icons.icon('info', 18) + '<span>' + esc((m.data.team.name || 'This team') + ' is archived. Its people stay listed, but no one can be added.') + '</span></div>' : '') +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span><button type="button" class="gs-linkbtn" data-action="dismiss-roster-notice" data-key="dismiss-roster-notice">Dismiss</button></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert');
+    const manageHtml = m.manage ? G.pages.rosterTeam.hintHtml(m.data.team.name) + G.pages.rosterTeam.offGroupHtml(m.manage.off, m.manage.ticked) : '';
+    const barHtml = m.manage ? G.pages.rosterTeam.barHtml(m.manage) : '';
     if (!m.people.length) {
-      return '<div class="gs-page gs-list-page gs-forge gs-roster-page">' + G.ui.pageHeadHtml(headOpts(gd, m.data, m)) + notices + (m.requests.length ? needsHtml(m) : '') + emptyHtml(gd, m.data) + '</div>';
+      return '<div class="gs-page gs-list-page gs-forge gs-roster-page">' + G.ui.pageHeadHtml(headOpts(gd, m.data, m)) + notices + (m.requests.length ? needsHtml(m) : '') + manageHtml + emptyHtml(gd, m.data) + barHtml + '</div>';
     }
-    return '<div class="gs-page gs-list-page gs-forge gs-roster-page">' + G.ui.pageHeadHtml(headOpts(gd, m.data, m)) + notices + '<p class="gs-sr" id="roster-status" role="status"></p>' + tilesHtml(m) + needsHtml(m) + youHtml(m) +
-      '<section class="gs-rs-people" aria-label="People"><div class="gs-rs-bar">' + searchHtml(m) + deskSegsHtml(m) + phoneSegsHtml(m) + '</div>' +
-      '<div id="roster-results" class="gs-rs-results" aria-live="off">' + resultsHtml(m) + '</div>' + footHtml(m) + '</section></div>';
+    return '<div class="gs-page gs-list-page gs-forge gs-roster-page">' + G.ui.pageHeadHtml(headOpts(gd, m.data, m)) + notices + '<p class="gs-sr" id="roster-status" role="status"></p>' + tilesHtml(m) + needsHtml(m) + youHtml(m) + manageHtml +
+      '<section class="gs-rs-people" aria-label="People"><div class="gs-rs-bar">' + searchHtml(m) + phoneSegsHtml(m) + '</div>' +
+      '<div id="roster-results" class="gs-rs-results" aria-live="off">' + resultsHtml(m) + '</div></section>' + barHtml + '</div>';
   }
 
   // ── Add person dialog ──
@@ -423,17 +452,13 @@
 
   function rosterUi() {
     const s = st();
-    if (!s.rosterUi) s.rosterUi = { status: 'active', query: '' };
+    if (!s.rosterUi) s.rosterUi = { status: 'everyone', query: '' };
     return s.rosterUi;
   }
 
   function currentGd() {
     const s = st();
     return s.currentGid ? s.guilds[s.currentGid] : null;
-  }
-
-  function isPhone() {
-    return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px)').matches;
   }
 
   // The state's reads for the model: the recruiting answer (officers) and the applicants (the phone's segment) of the team on screen.
@@ -444,7 +469,8 @@
     const teamId = s.roster.teamId;
     const shape = s.rosterShape && s.rosterShape.gid === gd.guild.id && s.rosterShape.teamId === teamId ? s.rosterShape : null;
     const apps = s.rosterApps && s.rosterApps.gid === gd.guild.id && s.rosterApps.teamId === teamId ? s.rosterApps : null;
-    return { guildData: gd, data: s.roster.data, view: rosterUi(), shape: shape, apps: apps, requests: G.pages.teamRequests.pendingOf(gd.guild.id, teamId) };
+    const manage = s.rosterManage && s.rosterManage.gid === gd.guild.id && s.rosterManage.teamId === teamId ? s.rosterManage : null;
+    return { guildData: gd, data: s.roster.data, view: rosterUi(), shape: shape, apps: apps, requests: G.pages.teamRequests.pendingOf(gd.guild.id, teamId), manage: manage };
   }
 
   function refreshResults() {
@@ -482,7 +508,7 @@
 
   G.handlers.click['roster-seg'] = function (el) {
     const seg = el.getAttribute('data-seg');
-    const known = PHONE_SEGMENTS.concat(MEMBER_SEGMENTS).some(function (s) { return s[0] === seg; });
+    const known = RANK_SEGMENTS.concat([['everyone'], ['applicants']]).some(function (x) { return x[0] === seg; });
     if (!known) return;
     const gd = currentGd();
     const s = st();
@@ -500,10 +526,6 @@
     rosterUi().query = '';
     G.app.render();
     if (typeof document !== 'undefined') { const input = document.getElementById('roster-search'); if (input) input.focus(); }
-  };
-  G.handlers.click['roster-show-inactive'] = function () {
-    rosterUi().status = isPhone() ? 'inactive' : 'everyone';
-    G.app.render();
   };
   G.handlers.click['dismiss-roster-notice'] = function () {
     st().rosterNotice = '';
@@ -663,6 +685,9 @@
     needsHtml: function (opts) { return needsHtml(modelOf(opts)); },
     contextText: contextText,
     countsOf: countsOf,
+    segmentsOf: segmentsOf,
+    moreItems: moreItems,
+    rankOf: rankOf,
     shapeOf: shapeOf,
     missingLine: missingLine,
     emptyHtml: emptyHtml,
