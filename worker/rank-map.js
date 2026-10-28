@@ -121,6 +121,12 @@ const PROPOSED_MAP_CTE = `rank_map AS (SELECT json_extract(value, '$.rank') AS r
 export const newCoreRankSql = (c) => `COALESCE((SELECT COALESCE(m.core_rank, 'social') FROM guild_roster g LEFT JOIN rank_map m ON m.rank = g.rank
        WHERE g.guild_id = ${c}.guild_id AND g.namespace = ${c}.namespace AND g.blizzard_realm_id = ${c}.blizzard_realm_id AND g.blizzard_char_id = ${c}.blizzard_char_id), 'social')`;
 
+// SQL on a characters row (alias given): the guild's name for the in-game rank it holds on the stored roster (the map's label); NULL when it is not on the roster
+// or its rank has no map row. Shared by the roster feed, the person record and the character page (B8b).
+export const ingameRankLabelSql = (c) => `(SELECT m.label FROM guild_roster g JOIN source_rank_maps m ON m.guild_id = g.guild_id AND m.source = 'ingame' AND m.team_id IS NULL
+       AND m.source_key = CAST(g.rank AS TEXT) WHERE g.guild_id = ${c}.guild_id AND g.namespace = ${c}.namespace AND g.blizzard_realm_id = ${c}.blizzard_realm_id
+       AND g.blizzard_char_id = ${c}.blizzard_char_id)`;
+
 // Raids to recalculate: every raid whose log names a character whose rank is about to change (by its name today or any old name), and every raid with evidence of
 // the teams of the people they belong to whose week is still running (a rank change moves who is expected and the fill-in credit; a finished week keeps its result,
 // worker/attendance-store.js THE FREEZE). Runs BEFORE the rank UPDATE, like the sync's own stale step.

@@ -271,7 +271,7 @@ check('app: the routes are wired (titles, page keys) and the manifest lists the 
   const order = ['Guild setup', 'Users', 'Links and keys', 'Owner'].map((name) => css.indexOf(`/* == B8a ${name} (lane `));
   assert(order.every((n) => n > 0) && order.every((n, i) => i === 0 || n > order[i - 1]), 'the four marker blocks, in order');
   assert(css.indexOf('.gs-fresh-page') > 0 && css.indexOf('.gs-fresh-page') < order[0], 'the fresh styles sit above the four blocks');
-  assert(css.trimEnd().endsWith('/* == end B8a Owner == */'));
+  assert(css.indexOf('/* == end B8a Owner == */') > order[3], 'the Owner block is closed');
   // Every lane has filled its block: each pair of markers is there, in order, with the lane's own styles between them.
   const usersBlock = css.slice(css.indexOf('/* == B8a Users (lane users) == */'), css.indexOf('/* == end B8a Users == */'));
   assert(usersBlock.includes('.gs-us-selbar') && usersBlock.includes('.gs-us-urow'), 'Users: the lane\'s styles are between its markers');

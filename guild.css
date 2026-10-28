@@ -3404,3 +3404,12 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
   .gs-settings-page.gs-forge .gs-ow-done .gs-btn { min-height: 48px; justify-content: center; }
 }
 /* == end B8a Owner == */
+
+/* == B8b Roster and team changes (lane roster) == */
+/* == end B8b Roster and team changes == */
+
+/* == B8b My characters (lane mychars) == */
+/* == end B8b My characters == */
+
+/* == B8b Character page (lane character) == */
+/* == end B8b Character page == */
