@@ -50,7 +50,16 @@ export function rosterTarget(guild, settings, pin = null) {
 // ---------------------------------------------------------------------------
 // Settings
 
-function settingsView(guildContext, settings, env, pin = null) {
+// The in-game roster the guild has stored: how many members, and when it was last read well (null = never). One statement: the guild row by its key and the guild's roster rows by
+// the prefix of guild_roster's primary key (at most 1,000 rows); no scan, no migration. The In-game guild panel of Guild settings > Battle.net draws its Roster row from this.
+const ROSTER_STATUS_SQL = 'SELECT g.last_good_fetched_at AS fetched_at, (SELECT COUNT(*) FROM guild_roster r WHERE r.guild_id = g.id) AS members FROM guilds g WHERE g.id = ?';
+
+export async function loadRosterStatus(db, guildId) {
+  const row = await db.prepare(ROSTER_STATUS_SQL).bind(guildId).first();
+  return { members: row ? row.members : 0, fetchedAt: row && row.fetched_at !== null && row.fetched_at !== undefined ? row.fetched_at : null };
+}
+
+function settingsView(guildContext, settings, env, pin = null, roster = { members: 0, fetchedAt: null }) {
   const guild = guildContext.guild;
   const support = bnetSupport(guild.game_version, guild.region);
   const ruleset = guild.realm_kind === 'ruleset';
@@ -74,6 +83,8 @@ function settingsView(guildContext, settings, env, pin = null) {
       pinned: pin.touched, complete: pin.complete, rankSource: pin.rankSource, guildSlug: pin.guildSlug, realmSlug: pin.realmSlug, namespace: pin.namespace,
     } : null,
     pinOpen: pinOpen(env, guild.id),
+    // roster: { members (the stored roster's rows), fetchedAt (ms of the last good fetch, null = never read) }
+    roster,
   };
 }
 
@@ -82,8 +93,8 @@ export async function getBnetSettings(ctx) {
   if (!isGranted(guildContext.can['roster.edit']) && !isGranted(guildContext.can['guild.teams'])) {
     throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
   }
-  const [settings, pin] = await Promise.all([loadBnetSettings(ctx.db, guildContext.guild.id), loadPin(ctx.db, guildContext.guild.id)]);
-  return jsonResponse(settingsView(guildContext, settings, ctx.env, pin));
+  const [settings, pin, roster] = await Promise.all([loadBnetSettings(ctx.db, guildContext.guild.id), loadPin(ctx.db, guildContext.guild.id), loadRosterStatus(ctx.db, guildContext.guild.id)]);
+  return jsonResponse(settingsView(guildContext, settings, ctx.env, pin, roster));
 }
 
 // Body: { guildName: text | null, realmSlug: slug | null (ruleset guilds only), rankLabels: [ten texts, '' for none] }.
@@ -136,7 +147,7 @@ export async function putBnetSettings(ctx) {
       after: { guildName: !!guildName, realm: !!realmSlug, labels: labels.filter(Boolean).length },
     }),
   ]);
-  return jsonResponse(settingsView(guildContext, { guildName, realmSlug, rankLabels: labels }, ctx.env, pin));
+  return jsonResponse(settingsView(guildContext, { guildName, realmSlug, rankLabels: labels }, ctx.env, pin, await loadRosterStatus(db, guild.id)));
 }
 
 const pinnedError = (field) => new HttpError(409, 'pinned',

@@ -3,6 +3,8 @@
 // the server with a "Gives" choice (Not mapped, Officer, Team Lead for a team, or one of the guild's own roles). GET /api/guild/:gid/discord,
 // PUT .../discord/maps (replaces the whole list; the reply says how many Discord-given assignments went with a removed mapping). Needs guild.roles.
 // Colours are not shown (no inline styles): the role name says which role it is.
+// A guild with a rank source (the in-game guild roster, or ranks set by hand) gets no roles from Discord: the Worker refuses the mapping with 409 discord_roles_off. The page reads the guild's
+// rank source with the roles (GET /bnet `pin.rankSource`, kept on the answer as `rankSource`) and shows one line instead of the mapping form; a save that is refused turns the page into that line too.
 (function (G) {
   'use strict';
 
@@ -12,6 +14,10 @@
     rate_limited: 'Discord is busy right now. Try again in a minute.',
   };
   const NOT_SET_UP = 'The Raidsmith bot is not set up on this server, so Discord roles cannot be read yet. Whoever runs Raidsmith needs to finish that first.';
+  const RANK_SOURCE_LINE = {
+    ingame: 'This guild takes its roles from the in-game guild roster, so Discord roles do not give any here.',
+    manual: 'This guild sets its roles by hand, so Discord roles do not give any here.',
+  };
   const FINE_PRINT = 'The mapping applies at every sign-in and with Sync now on the People page. A role set by hand always wins and stays. ' +
     'The Guild Master cannot be given by a Discord role. Everyone in your Discord server is already a Member.';
 
@@ -110,7 +116,8 @@
         ? 'These Discord roles were deleted from your server. Set one to Not mapped and save to remove its mapping.'
         : 'These mappings are kept. Set one to Not mapped and save to remove it.';
       const any = rows.length || orphanRows.length;
-      body = statusHtml(d) +
+      const off = d.rankSource === 'ingame' || d.rankSource === 'manual' ? RANK_SOURCE_LINE[d.rankSource] : '';
+      body = off ? statusHtml(d) + '<p class="gs-fine" id="discord-roles-off" role="status">' + esc(off) + '</p>' : statusHtml(d) +
         (any
           ? '<form class="gs-form gs-dmap-form" id="discord-form" data-submit="discord-maps" novalidate' + G.ui.dirtyFormAttrs() + '>' +
             (rows.length ? '<h3 class="gs-h3" id="dmap-roles-h">Discord roles in your server</h3>' + tableHtml('Discord roles in your server', rows) : '') +
@@ -125,8 +132,15 @@
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + body + '</section>';
   }
 
+  // The guild's rank source (null = it follows Discord roles). A read that fails (the person may not hold the Battle.net settings) leaves the form on; the save then says so.
+  function readRankSource(gid) {
+    return G.api.get('/api/guild/' + encodeURIComponent(gid) + '/bnet').then(function (d) { return d && d.pin && typeof d.pin.rankSource === 'string' ? d.pin.rankSource : null; }, function () { return null; });
+  }
+
   function load(gid) {
-    return G.api.discord.get(gid).then(function (data) {
+    return Promise.all([G.api.discord.get(gid), readRankSource(gid)]).then(function (res) {
+      const data = res[0];
+      data.rankSource = res[1];
       st().discordSettings = { gid: gid, data: data, notice: '' };
       return data;
     });
@@ -190,6 +204,14 @@
       const c = G.api.classify(err);
       if (c.view === 'signin') { G.app.requireSignin(); return; }
       if (c.view === 'message') { G.app.showFailure(c.title, c.text); return; }
+      if (err && err.code === 'discord_roles_off') {
+        // The guild has a rank source now (or the page was stale): nothing was saved, the page says why instead of the form.
+        const cur = xs();
+        if (cur && cur.gid === x.gid) cur.data.rankSource = /by hand/.test(err.message || '') ? 'manual' : 'ingame';
+        st().pageAlert = '';
+        G.app.render();
+        return;
+      }
       if (err && err.code === 'conflict') {
         // A role or team changed under the page: read the roles again (the choices made here go) and say why.
         load(x.gid).then(function () { st().pageAlert = c.text; G.app.render(); }, function () { G.ui.setText('discord-form-error', c.text); });
@@ -199,5 +221,5 @@
     });
   };
 
-  G.pages.settingsDiscord = { PROBLEM_TEXT: PROBLEM_TEXT, NOT_SET_UP: NOT_SET_UP, FINE_PRINT: FINE_PRINT, settingsHtml: settingsHtml, load: load };
+  G.pages.settingsDiscord = { PROBLEM_TEXT: PROBLEM_TEXT, NOT_SET_UP: NOT_SET_UP, FINE_PRINT: FINE_PRINT, RANK_SOURCE_LINE: RANK_SOURCE_LINE, settingsHtml: settingsHtml, load: load };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

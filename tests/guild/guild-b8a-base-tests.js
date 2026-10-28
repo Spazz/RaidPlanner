@@ -245,7 +245,7 @@ check('shell: the crumbs of Users, a user, Guild setup and #/fresh; the stubs dr
   page(user, 'User');
   assert(user.includes('href="#/g/g1/users"') && user.includes('gs-back-link'), 'the user page has its back link to Users');
   const setup = G.pages.setup.main({ name: 'setup', gid: 'g1' }, gd);
-  page(setup, 'Guild setup');
+  assert(/<h1[^>]*>Guild setup<\/h1>/.test(setup) && !/\sstyle=|\son[a-z]+=/i.test(setup), 'Guild setup: the real head (lane B8a-setup fills the body: tests/guild/guild-b8a-setup-tests.js)');
   for (const step of ['In-game guild', 'Ranks', 'Preview', 'Switch over']) assert(setup.includes(step), step);
   assert(setup.includes('href="#/g/g1/settings/battlenet"'));
   const gdOwner = guildData({ 'guild.access': 'guild', 'guild.teams': 'guild' }, { owner: { you: true, reviewOpen: true } });
@@ -273,9 +273,10 @@ check('app: the routes are wired (titles, page keys) and the manifest lists the 
   assert(order.every((n) => n > 0) && order.every((n, i) => i === 0 || n > order[i - 1]), 'the four marker blocks, in order');
   assert(css.indexOf('.gs-fresh-page') > 0 && css.indexOf('.gs-fresh-page') < order[0], 'the fresh styles sit above the four blocks');
   assert(css.trimEnd().endsWith('/* == end B8a Owner == */'));
-  for (const [name, lane] of [['Guild setup', 'setup'], ['Users', 'users'], ['Links and keys', 'links'], ['Owner', 'owner']]) {
+  for (const [name, lane] of [['Users', 'users'], ['Links and keys', 'links'], ['Owner', 'owner']]) {
     assert(css.includes(`/* == B8a ${name} (lane ${lane}) == */\n/* == end B8a ${name} == */\n`), `${name}: an empty marker block`);
   }
+  assert(css.includes('/* == B8a Guild setup (lane setup) == */\n') && css.includes('/* == end B8a Guild setup == */\n'), 'Guild setup: its marker block (lane B8a-setup filled it)');
 });
 
 // ---------------------------------------------------------------------------
@@ -882,7 +883,7 @@ const appRoutes = (can, owner, extra) => ({
 const mainOf = async (env) => { await settle(); return env.html('gs-main'); };
 
 check('app: Users opens for guild.access (head and empty state, no data call yet), the user page has its back link, Guild setup is its own page; members are told they cannot open them', async () => {
-  const env = makeEnv({ url: '/#/g/g1/users', routes: appRoutes(OFFICER) });
+  const env = makeEnv({ url: '/#/g/g1/users', routes: appRoutes(OFFICER, undefined, { '/api/guild/g1/bnet': { status: 200, body: { configured: true, supported: true, realmKind: 'realm', realmSlug: 'dreamscythe', effectiveGuildName: 'Writers', rankDefaults: [], pin: { pinned: false, complete: false, rankSource: null }, pinOpen: false, roster: { members: 0, fetchedAt: null } } } }) });
   const users = await mainOf(env);
   assert(/<h1[^>]*>Users<\/h1>/.test(users) && users.includes('gs-empty2'), text(users));
   assert(env.html('shell-sidebar').includes('class="gs-nav-link is-active" href="#/g/g1/users"'), 'Users is the current nav item');
