@@ -1,4 +1,4 @@
-// The read-only data API (PM wave 7): GET /api/v1/<dataset>.csv and GET /api/v1/<dataset>.json, opened by a key an officer made (Guild settings > Data access).
+// The read-only data API (PM wave 7): GET /api/v1/<dataset>.csv and GET /api/v1/<dataset>.json, opened by a key an officer made (Guild settings > Links and keys).
 // There is no session: the key is the credential, and it names ONE guild (and one team or all of its teams) and the datasets it may read.
 //   .csv   ?key=rsk_...  (for Google Sheets IMPORTDATA, which cannot send a header) or  Authorization: Bearer rsk_...
 //   .json  Authorization: Bearer rsk_...   (a key in the address would end up in logs and history; JSON clients can send a header)
@@ -16,7 +16,7 @@ import { hashToken } from '../session.js';
 import { loadGuildRow } from '../viewer.js';
 
 const FILE = /^([a-z]{3,12})\.(csv|json)$/;
-const invalid = () => new HttpError(401, 'invalid_key', 'That key is not valid. Make a new one in Guild settings > Data access.');
+const invalid = () => new HttpError(401, 'invalid_key', 'That key is not valid. Make a new one in Guild settings > Links and keys.');
 
 // The key the request carries: a Bearer header, or (CSV only) ?key=. -> the token text or null.
 function presentedKey(request, format) {

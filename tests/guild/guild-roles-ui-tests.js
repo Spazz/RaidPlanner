@@ -29,7 +29,7 @@ const ROOT = require('path').join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const { GUILD_SCRIPTS, guildScriptsOf } = require('../guild-scripts');
 const css = (read('planner-forge.css') + '\n' + read('guild.css'));
-const NEW_FILES = ['pages-settings-roles', 'pages-settings-discord', 'pages-settings-guests', 'pages-settings-public', 'pages-view'];
+const NEW_FILES = ['pages-settings-roles', 'pages-settings-discord', 'pages-settings-public', 'pages-view'];
 
 function loadGuild(extra) {
   const sandbox = Object.assign({ console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, setTimeout }, extra || {});
@@ -140,23 +140,6 @@ function discordData(botExtra, extra) {
     targets: [{ roleId: 'officer', name: 'Officer', needsTeam: false, custom: false }, { roleId: 'team_lead', name: 'Team Lead', needsTeam: true, custom: false }, { roleId: 'cr_loot', name: 'Loot council', needsTeam: false, custom: true }],
   }, extra || {});
 }
-function link(id, extra) {
-  return Object.assign({
-    id, label: 'Recruits', role: { id: 'guest', name: 'Guest' }, sections: ['roster', 'raids'], team: null, status: 'active', expiresAt: T0 + 7 * DAY, revokedAt: null,
-    uses: 3, lastUsedAt: T0 - DAY, createdAt: T0 - 2 * DAY, createdBy: person('u1', 'Gale G'),
-  }, extra || {});
-}
-function guestData(extra) {
-  return Object.assign({
-    links: [
-      link('gl_1'),
-      link('gl_2', { label: null, status: 'expired', expiresAt: T0 - DAY, uses: 1, lastUsedAt: null, team: { id: 't1', name: 'Alpha' }, role: { id: 'cr_loot', name: 'Loot council' }, sections: ['loot'] }),
-      link('gl_3', { label: 'Old link', status: 'revoked', revokedAt: T0 - DAY, uses: 0, lastUsedAt: null, expiresAt: null, createdBy: null }),
-    ],
-    roles: [{ id: 'guest', name: 'Guest', sections: ['roster', 'raids', 'attendance'] }, { id: 'cr_loot', name: 'Loot council', sections: ['loot'] }, { id: 'cr_none', name: 'Nothing yet', sections: [] }],
-    expiries: ['1d', '7d', '30d', 'never'],
-  }, extra || {});
-}
 function publicData(extra) {
   return Object.assign({ enabled: true, sections: ['roster', 'raids'], allowed: { roster: true, raids: true, attendance: false, loot: true }, path: '/#/public/g1' }, extra || {});
 }
@@ -244,7 +227,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert.deepEqual(p('#/guest/' + TOKEN + '?utm=1'), { name: 'guest', token: TOKEN }, 'a query is ignored');
     assert.equal(G.router.format({ name: 'guest', token: 'short' }), '#/', 'a token that is not valid never reaches the address');
     assert.equal(G.router.format({ name: 'public', gid: '' }), '#/');
-    for (const tab of ['roles', 'discord', 'guests', 'dataaccess', 'public']) {
+    for (const tab of ['roles', 'discord', 'links', 'public']) {
       assert.deepEqual(p('#/g/g1/settings/' + tab), { name: 'settings', gid: 'g1', tab });
       assert.equal(G.router.format({ name: 'settings', gid: 'g1', tab }), '#/g/g1/settings/' + tab);
     }
@@ -259,15 +242,15 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
     const labels = can => plain(G.shell.settingsTabs(can).map(t => t.label));
     assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people', 'roles', 'discord', 'public']);
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'links', 'guests', 'dataaccess']);
-    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'links']);
+    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'links', 'public']);
     assert.deepEqual(tabs({ 'guild.roles': [] , 'guild.access': [] }), [], 'an empty team list is no permission');
     assert.deepEqual(tabs({}), []);
     assert.deepEqual(labels({ 'guild.roles': 'guild' }), ['Accounts', 'Roles', 'Discord roles', 'Public page']);
-    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['Accounts', 'Links and keys', 'Guest links', 'Data access']);
+    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['Accounts', 'Links and keys']);
     assert.equal(G.shell.canSeeSettings({ 'guild.roles': 'guild' }), true);
-    const frame = G.shell.settingsFrameHtml({ guildData: guildData() }, 'guests', '<p>x</p>');
-    assert(/aria-current="page">Guest links</.test(frame) && frame.includes('href="#/g/g1/settings/guests"') && frame.includes('href="#/g/g1/settings/public"'));
+    const frame = G.shell.settingsFrameHtml({ guildData: guildData() }, 'links', '<p>x</p>');
+    assert(/aria-current="page">Links and keys/.test(frame) && frame.includes('href="#/g/g1/settings/links"') && frame.includes('href="#/g/g1/settings/public"') && !frame.includes('settings/guests') && !frame.includes('settings/dataaccess'));
   });
 
   await check('shell: guest, view and public routes get their own breadcrumb (before the Sign in one), no guild nav and no rail; slots do not break signed out or in', () => {
@@ -849,180 +832,6 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
   });
 
   // =========================================================================
-  // Settings > Guest links
-  await check('Settings > Guest links: the intro, and a table with a label (or Untitled), role, team, status, uses, last used and when it ends; Turn off only for an active link', () => {
-    const out = G.pages.settingsGuests.settingsHtml({ guildData: guildData(), data: guestData() });
-    const t = text(out);
-    assert(t.includes('A guest link lets someone without an account read part of the guild. It never lets them change anything.'));
-    assert(out.includes('data-action="guest-new"') && out.includes('>New guest link<'));
-    const rows = out.split('<tr>').filter(r => r.includes('<th scope="row"'));
-    assert.equal(rows.length, 3);
-    const rt = rows.map(text);
-    assert(rt[0].includes('Recruits') && rt[0].includes('Guest') && rt[0].includes('Whole guild') && rt[0].includes('Shows: Roster, Raids') && !rt[0].includes('Active') && rt[0].includes('Opened 3 times') && rt[0].includes('Last opened') && rt[0].includes('Expires Oct 24, 2026'));
-    assert(rt[0].includes('Made Oct 15, 2026 by Gale G'));
-    assert(rt[1].includes('Untitled') && rt[1].includes('Loot council') && rt[1].includes('Alpha only') && rt[1].includes('Shows: Loot') && rt[1].includes('Expired') && rt[1].includes('Expired Oct 16, 2026') && rt[1].includes('Opened 1 time') && !rt[1].includes('Last opened'));
-    assert(rt[2].includes('Old link') && rt[2].includes('Turned off') && rt[2].includes('Turned off Oct 16, 2026') && rt[2].includes('Never opened'));
-    assert(!rows[0].includes('gs-hd-chip') && rows[1].includes('class="gs-hd-chip is-rose"') && rows[2].includes('class="gs-hd-chip is-grey"'));
-    assert(rows[0].includes('data-action="guest-revoke"') && rows[0].includes('data-link="gl_1"') && rows[0].includes('aria-label="Turn off guest link Recruits"'));
-    assert(!rows[1].includes('guest-revoke') && !rows[2].includes('guest-revoke'));
-    assert(text(G.pages.settingsGuests.settingsHtml({ guildData: guildData(), data: guestData({ links: [link('gl_9', { expiresAt: null })] }) })).includes('Never expires'));
-    assert(out.includes('class="gs-table gs-table-stack gs-table-guests"') && out.includes('data-label="Status"'));
-    assert(G.pages.settingsGuests.settingsHtml({ guildData: guildData(), data: guestData({ links: [] }) }).includes('No guest links yet.'));
-    assert(G.pages.settingsGuests.settingsHtml({ guildData: guildData(), data: null }).includes('Loading'));
-    assertNoRawAttrs(out);
-  });
-
-  await check('Settings > Guest links: hostile labels, role and team names, people and notices are escaped', () => {
-    const data = guestData({ links: [link('gl_x', { label: HOSTILE + QUOTES, role: { id: 'guest', name: HOSTILE + QUOTES }, team: { id: 't1', name: HOSTILE + QUOTES }, createdBy: person('u9', HOSTILE + QUOTES) })] });
-    const out = G.pages.settingsGuests.settingsHtml({ guildData: guildData(), data, notice: HOSTILE + QUOTES, alert: HOSTILE + QUOTES });
-    assertEscaped(out, 'guest page'); assertNoRawAttrs(out);
-    const gd = guildData(null, { teams: [{ id: 't1', name: HOSTILE + QUOTES, archived: false }] });
-    const dlg = G.pages.settingsGuests.createDialogHtml(guestData({ roles: [{ id: 'guest', name: HOSTILE + QUOTES, sections: ['roster'] }] }), gd);
-    assertEscaped(dlg, 'create dialog'); assertNoRawAttrs(dlg);
-    assertEscaped(G.pages.settingsGuests.revokeDialogHtml(data.links[0]), 'revoke dialog');
-    assertEscaped(G.pages.settingsGuests.createdDialogHtml('https://x/"><img src=x onerror=1>' + QUOTES), 'created dialog');
-  });
-
-  await check('guest create dialog: a role choice that says what it shows, Whole guild or an active team, how long, and an optional label of 40 characters', () => {
-    const out = G.pages.settingsGuests.createDialogHtml(guestData(), guildData());
-    const options = id => [...out.match(new RegExp('<select[^>]*id="' + id + '"[^>]*>([\\s\\S]*?)</select>'))[1].matchAll(/<option value="([^"]*)"( selected)?[^>]*>([^<]*)</g)].map(m => [m[1], !!m[2], m[3]]);
-    assert.deepEqual(options('dlg-guest-role'), [['guest', true, 'Guest - Shows: Roster, Raids, Attendance'], ['cr_loot', false, 'Loot council - Shows: Loot'], ['cr_none', false, 'Nothing yet - Shows: nothing yet']]);
-    assert.deepEqual(options('dlg-guest-team'), [['', true, 'Whole guild'], ['t1', false, 'Alpha'], ['t2', false, 'Bravo']], 'active teams only');
-    assert.deepEqual(options('dlg-guest-expiry'), [['1d', false, '1 day'], ['7d', true, '7 days'], ['30d', false, '30 days'], ['never', false, 'Never']]);
-    assert(out.includes('name="label"') && out.includes('maxlength="40"') && /<label[^>]*for="dlg-guest-label"/.test(out));
-    for (const f of ['roleId', 'teamId', 'expiresIn', 'label']) assert(out.includes('id="dlg-err-' + f + '"') && out.includes('data-field="' + f + '"'), f);
-    assert(out.includes('data-submit="guest-form"') && out.includes('id="dlg-error"') && out.includes('>Make link<') && out.includes('data-action="dialog-cancel"'));
-    assert(text(out).includes('shown once'));
-    assert.deepEqual(options('dlg-guest-expiry').length, 4);
-    const fallback = G.pages.settingsGuests.createDialogHtml({ roles: [{ id: 'guest', name: 'Guest', sections: [] }] }, null);
-    assert(fallback.includes('value="never"') && fallback.includes('value="7d" selected'), 'the usual expiries when the Worker sends none');
-  });
-
-  await check('guest created dialog: the full address in a read-only box, a Copy link button, and the words "Copy it now. It is shown only once."', () => {
-    const url = 'https://raidsmith.test/#/guest/' + TOKEN;
-    const out = G.pages.settingsGuests.createdDialogHtml(url);
-    assert(out.includes('<input class="gs-input gs-code" type="text" id="guest-url" readonly') && out.includes('value="' + url + '"'));
-    assert(text(out).includes('Copy it now. It is shown only once.') && out.includes('id="dlg-title">Guest link made<'));
-    assert(out.includes('data-action="guest-copy"') && out.includes('>Copy link<') && /<label[^>]*for="guest-url"/.test(out));
-    assert(/id="guest-copy-status" role="status"/.test(out));
-    assert(!/<form/.test(out), 'nothing to submit');
-    const revoke = G.pages.settingsGuests.revokeDialogHtml(link('gl_1'));
-    assert(revoke.includes('data-submit="guest-revoke-form"') && revoke.includes('data-link="gl_1"') && text(revoke).includes('Turn off this guest link?') && text(revoke).includes('Recruits') && revoke.includes('gs-btn-danger'));
-    assert(text(G.pages.settingsGuests.revokeDialogHtml(link('gl_2', { label: null }))).includes('Untitled'));
-  });
-
-  const guestForm = (roleId, teamId, expiresIn, label) => formEl({}, { roleId: { value: roleId }, teamId: { value: teamId }, expiresIn: { value: expiresIn }, label: { value: label } });
-
-  await check('guest-form: creating a link POSTs the choices, opens a dialog with origin + path, and keeps the token nowhere in the page state', async () => {
-    const s = G.app.state;
-    s.guilds.g1 = guildData(); s.currentGid = 'g1';
-    s.guestSettings = { gid: 'g1', data: guestData({ links: [] }), notice: '' };
-    clearFields();
-    for (const id of ['dlg-err-roleId', 'dlg-err-teamId', 'dlg-err-expiresIn', 'dlg-err-label', 'dlg-error']) field(id);
-    const after = guestData({ links: [link('gl_new')] });
-    const sent = [];
-    const savedOrigin = G.ui.pageOrigin;
-    G.ui.pageOrigin = () => 'https://raidsmith.test';
-    fields['guest-url'] = { select() { fields['guest-url'].selected = true; } };
-    await withApi({ post: (url, body) => { sent.push([url, plain(body)]); return okRes(Object.assign({}, after, { created: { id: 'gl_new', token: TOKEN, path: '/#/guest/' + TOKEN } })); } }, async probe => {
-      G.handlers.submit['guest-form'](guestForm('guest', 't1', '30d', '  Recruits  '));
-      await settle();
-      assert.deepEqual(sent, [['/api/guild/g1/guest-links', { roleId: 'guest', teamId: 't1', expiresIn: '30d', label: 'Recruits' }]]);
-      assert.equal(probe.opened.length, 1);
-      assert(probe.opened[0].html.includes('value="https://raidsmith.test/#/guest/' + TOKEN + '"') && probe.opened[0].html.includes('shown only once'));
-      assert.equal(fields['guest-url'].selected, true, 'the address is selected for Ctrl+C');
-      assert.equal(s.guestSettings.notice, 'Guest link made.');
-      assert.deepEqual(plain(s.guestSettings.data), plain(after));
-      assert(!JSON.stringify(plain(s.guestSettings)).includes(TOKEN) && !JSON.stringify(plain(s.pageAlert)).includes(TOKEN), 'the token is not kept');
-      assert(!JSON.stringify(plain(Object.assign({}, s, { guilds: null }))).includes(TOKEN) || true);
-      sent.length = 0;
-      G.handlers.submit['guest-form'](guestForm('cr_loot', '', 'never', '   '));
-      await settle();
-      assert.deepEqual(sent, [['/api/guild/g1/guest-links', { roleId: 'cr_loot', teamId: null, expiresIn: 'never' }]], 'no label key when it is empty; Whole guild is null');
-    });
-    G.ui.pageOrigin = savedOrigin;
-    s.guestSettings = null; clearFields();
-  });
-
-  await check('guest-form errors: the role problem and the 50-link cap sit at the role field; a server error elsewhere stays in the dialog', async () => {
-    const s = G.app.state;
-    s.guilds.g1 = guildData(); s.currentGid = 'g1';
-    s.guestSettings = { gid: 'g1', data: guestData(), notice: '' };
-    const run = async (status, body) => {
-      clearFields();
-      for (const id of ['dlg-err-roleId', 'dlg-err-expiresIn', 'dlg-error']) field(id);
-      const form = guestForm('guest', '', '7d', '');
-      form.querySelector = q => (q === '#dlg-err-roleId' ? {} : (q === '[data-field="roleId"]' ? { setAttribute() {}, focus() {} } : null));
-      await withApi({ post: () => rejectWith(status, body) }, async () => { G.handlers.submit['guest-form'](form); await settle(); });
-    };
-    await run(400, { error: 'bad_request', message: 'That role can see nothing a guest link shows.', field: 'roleId' });
-    assert.equal(fields['dlg-err-roleId'].textContent, 'That role can see nothing a guest link shows.');
-    await run(400, { error: 'bad_request', message: 'A guild can have at most 50 guest links that still work. Turn some off first.', field: 'roleId' });
-    assert(fields['dlg-err-roleId'].textContent.includes('at most 50 guest links'));
-    await run(429, { error: 'rate_limited', message: 'Too many.', retryAfter: 30 });
-    assert(fields['dlg-error'].textContent.includes('Too many'));
-    s.guestSettings = null; clearFields();
-  });
-
-  await check('guest links: Turn off asks first, then DELETEs the link and shows the list the Worker sent; only an active link can be turned off', async () => {
-    const s = G.app.state;
-    s.guilds.g1 = guildData(); s.currentGid = 'g1';
-    s.guestSettings = { gid: 'g1', data: guestData(), notice: '' };
-    const after = guestData({ links: [link('gl_1', { status: 'revoked', revokedAt: T0 })] });
-    const sent = [];
-    await withApi({ del: url => { sent.push(url); return okRes(after); } }, async probe => {
-      G.handlers.click['guest-revoke'](el({ 'data-link': 'gl_1' }));
-      G.handlers.click['guest-revoke'](el({ 'data-link': 'gl_2' }));
-      G.handlers.click['guest-revoke'](el({ 'data-link': 'nope' }));
-      assert.equal(probe.opened.length, 1);
-      assert(probe.opened[0].html.includes('data-link="gl_1"'));
-      assert.deepEqual(sent, [], 'nothing is sent before the confirm');
-      G.handlers.submit['guest-revoke-form'](formEl({ 'data-link': 'gl_1' }));
-      await settle();
-      assert.deepEqual(sent, ['/api/guild/g1/guest-links/gl_1']);
-      assert.equal(s.guestSettings.notice, 'Turned off Recruits.');
-      assert.equal(s.guestSettings.data, after);
-      G.handlers.click['guest-new'](el());
-      assert.equal(probe.opened.length, 2);
-      assert(probe.opened[1].html.includes('data-submit="guest-form"') && probe.opened[1].html.includes('Alpha'));
-    });
-    s.guestSettings = null;
-  });
-
-  await check('guest links: Copy link copies the address with the clipboard where there is one, else selects it; the status says which', async () => {
-    clearFields();
-    const written = [];
-    const input = { value: 'https://raidsmith.test/#/guest/' + TOKEN, selected: 0, focused: 0, select() { this.selected++; }, focus() { this.focused++; } };
-    fields['guest-url'] = input;
-    field('guest-copy-status');
-    ctx.navigator = { clipboard: { writeText: t => { written.push(t); return Promise.resolve(); } } };
-    G.handlers.click['guest-copy'](el());
-    await settle();
-    assert.deepEqual(written, [input.value]);
-    assert.equal(fields['guest-copy-status'].textContent, 'Copied.');
-    ctx.navigator = { clipboard: { writeText: () => Promise.reject(new Error('blocked')) } };
-    ctx.document.execCommand = cmd => cmd === 'copy';
-    G.handlers.click['guest-copy'](el());
-    await settle();
-    assert.equal(input.selected, 1); assert.equal(fields['guest-copy-status'].textContent, 'Copied.');
-    delete ctx.navigator;
-    ctx.document.execCommand = () => false;
-    G.handlers.click['guest-copy'](el());
-    await settle();
-    assert.equal(input.selected, 2);
-    assert.equal(fields['guest-copy-status'].textContent, 'Press Ctrl+C to copy the selected link.');
-    delete ctx.document.execCommand;
-    clearFields();
-  });
-
-  await check('guests: load() keeps the list in state.guestSettings', async () => {
-    const data = guestData();
-    await withApi({ get: url => { assert.equal(url, '/api/guild/g1/guest-links'); return okRes(data); } }, async () => { await G.pages.settingsGuests.load('g1'); });
-    assert.deepEqual(plain(G.app.state.guestSettings), { gid: 'g1', data: plain(data), notice: '' });
-    G.app.state.guestSettings = null;
-  });
-
-  // =========================================================================
   // Settings > Public page
   await check('Settings > Public page: off by default in words, a switch, four sections, a closed one disabled with why, the address (with Copy) only while the page is on', () => {
     const out = G.pages.settingsPublic.settingsHtml({ guildData: guildData(), data: publicData(), origin: 'https://raidsmith.test' });
@@ -1504,7 +1313,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert(/\.gs-perm-row \{ grid-template-columns: minmax\(0, 1fr\); \}/.test(phone));
     const at = n => GUILD_SCRIPTS.indexOf('/js/guild/' + n + '.js');
     for (const n of NEW_FILES) assert(at(n) > at('pages-settings-people') && at(n) < at('app'), n);
-    assert(at('pages-settings-people') < at('pages-settings-roles') && at('pages-settings-roles') < at('pages-settings-discord') && at('pages-settings-discord') < at('pages-settings-guests') && at('pages-settings-guests') < at('pages-settings-public') && at('pages-settings-public') < at('pages-view'));
+    assert(at('pages-settings-people') < at('pages-settings-roles') && at('pages-settings-roles') < at('pages-settings-discord') && at('pages-settings-discord') < at('pages-settings-links') && at('pages-settings-links') < at('pages-settings-public') && at('pages-settings-public') < at('pages-view'));
     const order = page => guildScriptsOf(read(page));
     for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert.deepEqual(order(page), GUILD_SCRIPTS.filter(s => s.indexOf('/js/guild/') === 0), page);
   });
@@ -1697,27 +1506,25 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
       '/api/guild/g1': { status: 200, body: guildBody(signedIn) },
       '/api/guild/g1/roles': { status: 200, body: rolesData() },
       '/api/guild/g1/discord': { status: 200, body: discordData() },
-      '/api/guild/g1/guest-links': { status: 200, body: guestData() },
       '/api/guild/g1/public': { status: 200, body: publicData() },
       'PATCH /auth/prefs': { status: 200, body: { prefs: USER.prefs } },
     });
-    for (const [tab, url, needle, stateKey] of [['roles', '/api/guild/g1/roles', 'Raid leader', 'rolesSettings'], ['discord', '/api/guild/g1/discord', 'Connected: 3 Discord roles', 'discordSettings'],
-      ['guests', '/api/guild/g1/guest-links', 'Recruits', 'guestSettings'], ['public', '/api/guild/g1/public', 'Show a public page', 'publicSettings']]) {
+    for (const [tab, url, needle, stateKey] of [['roles', '/api/guild/g1/roles', 'Raid leader', 'rolesSettings'], ['discord', '/api/guild/g1/discord', 'Connected: 3 Discord roles', 'discordSettings'], ['public', '/api/guild/g1/public', 'Show a public page', 'publicSettings']]) {
       const env = makeEnv({ url: '/#/g/g1/settings/' + tab, routes: routes(OFFICER) });
       await settle();
       assert.equal(env.fetched(url).length, 1, tab);
       const main = env.main();
       assert(main.includes(needle) && main.includes('Guild settings') && main.includes('aria-current="page"'), tab);
-      assert(new RegExp('aria-current="page">' + { roles: 'Roles', discord: 'Discord roles', guests: 'Guest links', public: 'Public page' }[tab] + '<').test(main), tab + ' tab is current');
+      assert(new RegExp('aria-current="page">' + { roles: 'Roles', discord: 'Discord roles', public: 'Public page' }[tab] + '<').test(main), tab + ' tab is current');
       assert.equal(env.G.app.state[stateKey].gid, 'g1');
       assert.equal(env.G.app.state[stateKey].notice, '');
       assert.equal(env.sandbox.document.title, 'Guild settings - Ember - Raidsmith guild');
     }
-    for (const [tab, can] of [['roles', { 'roster.view': 'guild', 'guild.access': 'guild' }], ['discord', { 'roster.view': 'guild', 'guild.access': 'guild' }], ['public', { 'roster.view': 'guild', 'guild.access': 'guild' }], ['guests', { 'roster.view': 'guild', 'guild.roles': 'guild' }]]) {
+    for (const [tab, can] of [['roles', { 'roster.view': 'guild', 'guild.access': 'guild' }], ['discord', { 'roster.view': 'guild', 'guild.access': 'guild' }], ['public', { 'roster.view': 'guild', 'guild.access': 'guild' }], ['links', { 'roster.view': 'guild', 'guild.roles': 'guild' }]]) {
       const env = makeEnv({ url: '/#/g/g1/settings/' + tab, routes: routes(can) });
       await settle();
       assert(text(env.main()).includes('Your role does not include this part of Guild settings.'), tab);
-      assert.equal(env.fetchCalls.filter(c => /\/(roles|discord|guest-links|public)$/.test(c.url)).length, 0, tab + ': nothing is read');
+      assert.equal(env.fetchCalls.filter(c => /\/(roles|discord|guest-links|api-keys|join-links|public)$/.test(c.url)).length, 0, tab + ': nothing is read');
     }
     const first = makeEnv({ url: '/#/g/g1/settings', routes: routes({ 'guild.roles': 'guild' }) });
     await settle();
@@ -1749,12 +1556,12 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     } });
     await settle();
     const s = env.G.app.state;
-    s.guestSettings = { gid: 'g1', data: {}, notice: '' }; s.discordSettings = { gid: 'g1', data: {}, notice: '' }; s.publicSettings = { gid: 'g1', data: {}, notice: '' }; s.view = { kind: 'guest' };
+    s.linksSettings = { gid: 'g1', keys: {}, guests: {}, joins: {}, notice: '' }; s.discordSettings = { gid: 'g1', data: {}, notice: '' }; s.publicSettings = { gid: 'g1', data: {}, notice: '' }; s.view = { kind: 'guest' };
     assert(s.rolesSettings && s.rolesList.g1);
     env.click({ 'data-action': 'sign-out' });
     await settle();
     assert.equal(s.rolesSettings, null); assert.deepEqual(plain(s.rolesList), {});
-    assert.equal(s.guestSettings, null); assert.equal(s.discordSettings, null); assert.equal(s.publicSettings, null); assert.equal(s.view, null);
+    assert.equal(s.linksSettings, null); assert.equal(s.discordSettings, null); assert.equal(s.publicSettings, null); assert.equal(s.view, null);
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

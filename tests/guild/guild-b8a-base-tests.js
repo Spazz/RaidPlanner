@@ -148,7 +148,8 @@ check('router: the keys are encoded safely, strangers are not found, and a done 
 });
 
 check('router: nothing retired - people, accounts, guests and dataaccess still open, TABS and TAB_ALIASES stay one entry per line', () => {
-  for (const tab of ['people', 'guests', 'dataaccess']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'settings', gid: 'g1', tab });
+  for (const tab of ['people']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'settings', gid: 'g1', tab });
+  for (const tab of ['guests', 'dataaccess']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'settings', gid: 'g1', tab: 'links' }, `${tab} reads as Links and keys`);
   assert.deepEqual(plain(G.router.parse('#/g/g1/settings/accounts')), { name: 'settings', gid: 'g1', tab: 'people' });
   const source = read('js/guild/router.js');
   const block = (name) => source.slice(source.indexOf(`const ${name} = `), source.indexOf('];\n', source.indexOf(`const ${name} = `)) + 2);
@@ -214,8 +215,9 @@ check('shell: Links and keys (Sharing, guild.access, New) and Owner review (the 
   assert(names(everything, owner, { name: 'A', you: true, reviewOpen: true }).includes('claimreview'));
   assert.equal(names(everything, owner, { reviewOpen: true })[1], 'claimreview', 'it follows General in the Guild group');
   assert.deepEqual(plain(G.shell.settingsGroups(everything, owner, { reviewOpen: true })[0].items.map((item) => item.label)).slice(0, 2), ['General', 'Owner review']);
-  // Accounts, Guest links and Data access stay in the list for now.
-  for (const tab of ['people', 'guests', 'dataaccess']) assert(names(everything, owner).includes(tab), tab);
+  // Accounts stays in the list for now; Guest links and Data access are gone (Links and keys replaced them).
+  for (const tab of ['people']) assert(names(everything, owner).includes(tab), tab);
+  for (const tab of ['guests', 'dataaccess']) assert(!names(everything, owner).includes(tab), tab);
   // The frame lists it for the Owner and carries the page's own heading.
   const gd = guildData(everything, { owner: { name: 'A', you: true, reviewOpen: true } });
   gd.me.roles = owner;
@@ -250,8 +252,6 @@ check('shell: the crumbs of Users, a user, Guild setup and #/fresh; the stubs dr
   assert(setup.includes('href="#/g/g1/settings/battlenet"'));
   const gdOwner = guildData({ 'guild.access': 'guild', 'guild.teams': 'guild' }, { owner: { you: true, reviewOpen: true } });
   gdOwner.me.roles = [{ role: 'guild_master' }];
-  const linksPage = G.pages.settingsLinks.main({ name: 'settings', gid: 'g1', tab: 'links' }, gdOwner, { guildData: gdOwner });
-  assert(/<h2[^>]*>Links and keys<\/h2>/.test(linksPage) && /gs-empty2/.test(linksPage));
   const reviewPage = G.pages.settingsClaimReview.main({ name: 'settings', gid: 'g1', tab: 'claimreview' }, gdOwner, { guildData: gdOwner });
   assert(/<h2[^>]*>Owner review<\/h2>/.test(reviewPage) && /gs-empty2/.test(reviewPage));
   for (const fn of [G.pages.users.load, G.pages.user.load, G.pages.setup.load, G.pages.settingsLinks.load, G.pages.settingsClaimReview.load]) assert.equal(typeof fn, 'function');
@@ -273,7 +273,7 @@ check('app: the routes are wired (titles, page keys) and the manifest lists the 
   assert(order.every((n) => n > 0) && order.every((n, i) => i === 0 || n > order[i - 1]), 'the four marker blocks, in order');
   assert(css.indexOf('.gs-fresh-page') > 0 && css.indexOf('.gs-fresh-page') < order[0], 'the fresh styles sit above the four blocks');
   assert(css.trimEnd().endsWith('/* == end B8a Owner == */'));
-  for (const [name, lane] of [['Guild setup', 'setup'], ['Users', 'users'], ['Links and keys', 'links'], ['Owner', 'owner']]) {
+  for (const [name, lane] of [['Guild setup', 'setup'], ['Users', 'users'], ['Owner', 'owner']]) {
     assert(css.includes(`/* == B8a ${name} (lane ${lane}) == */\n/* == end B8a ${name} == */\n`), `${name}: an empty marker block`);
   }
 });
@@ -905,7 +905,10 @@ check('app: Users opens for guild.access (head and empty state, no data call yet
 });
 
 check('app: the settings tabs links and claimreview open through app.js; Owner review only for the Owner while owner.reviewOpen, and the list shows it', async () => {
-  const env = makeEnv({ url: '/#/g/g1/settings/links', routes: appRoutes(OFFICER) });
+  const env = makeEnv({ url: '/#/g/g1/settings/links', routes: appRoutes(OFFICER, null, {
+    '/api/guild/g1/api-keys': { status: 200, body: { keys: [], datasets: [], expiries: [], limits: {} } }, '/api/guild/g1/guest-links': { status: 200, body: { links: [], roles: [], expiries: [] } },
+    '/api/guild/g1/join-links': { status: 200, body: { links: [], limits: {} } },
+  }) });
   const links = await mainOf(env);
   assert(/<h2[^>]*>Links and keys<\/h2>/.test(links) && links.includes('gs-sitem is-active'), text(links));
   env.loc.hash = '#/g/g1/settings/claimreview';

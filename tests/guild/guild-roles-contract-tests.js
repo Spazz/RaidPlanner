@@ -239,26 +239,28 @@ check('discord page: the bot states from the real Worker (connected, not in the 
   s.world.discord.botIn = true;
 });
 
-check('guest links: the page draws the real list, the created token appears once (in the dialog, never in the list), and a turned-off link shows as off', async () => {
+check('guest links (Links and keys): the page draws the real list, the created token appears once (in the dialog, never in the list), and a turned-off link shows as off', async () => {
   const s = await scenario();
   const { G } = s;
   const created = await G.api.guests.create(s.gid, { roleId: 'guest', teamId: s.teamA, expiresIn: '7d', label: 'Recruits' });
   const { token, id } = created.created;
   const url = `${ORIGIN}${created.created.path}`;
-  const dialog = G.pages.settingsGuests.createdDialogHtml(url);
+  const L = G.pages.settingsLinks;
+  const read = async () => ({ keys: await G.api.dataKeys.list(s.gid), guests: await G.api.guests.list(s.gid), joins: await G.api.joinLinks.guildList(s.gid) });
+  const dialog = L.guestCreatedDialogHtml(url);
   assert(dialog.includes(token) && /only once/i.test(stripTags(dialog)), 'the dialog shows the link and says it is shown once');
   const list = await G.api.guests.list(s.gid);
-  const html = G.pages.settingsGuests.settingsHtml({ guildData: s.guildData, data: list, alert: '', notice: '' });
+  const html = L.settingsHtml({ guildData: s.guildData, data: await read(), alert: '', notice: '' });
   const text = stripTags(html);
   assert(!html.includes(token) && !JSON.stringify(list).includes(token), 'the list never holds the token');
   assert(text.includes('Recruits') && text.includes('Guest') && text.includes('Alpha'), text);
   assert(/Roster/.test(text) && /Attendance/.test(text), 'what the role shows');
-  assert(new RegExp(`data-action="guest-revoke"[^>]*${id}|${id}[^>]*data-action="guest-revoke"`).test(html), 'a Turn off button for the active link');
-  const create = G.pages.settingsGuests.createDialogHtml(list, s.guildData);
+  assert(new RegExp(`data-action="lk-guest-off"[^>]*${id}|${id}[^>]*data-action="lk-guest-off"`).test(html), 'a Turn off button for the active link');
+  const create = L.guestCreateDialogHtml(list, s.guildData);
   assert(/Alpha/.test(stripTags(create)) && /1 day/.test(stripTags(create)) && /Never/.test(stripTags(create)));
   await G.api.guests.revoke(s.gid, id);
-  const off = stripTags(G.pages.settingsGuests.settingsHtml({ guildData: s.guildData, data: await G.api.guests.list(s.gid), alert: '', notice: '' }));
-  assert(/turned off|off/i.test(off) && !/data-action="guest-revoke"/.test(G.pages.settingsGuests.settingsHtml({ guildData: s.guildData, data: await G.api.guests.list(s.gid), alert: '', notice: '' })));
+  const offHtml = L.settingsHtml({ guildData: s.guildData, data: await read(), alert: '', notice: '' });
+  assert(/turned off/i.test(stripTags(offHtml)) && !/data-action="lk-guest-off"/.test(offHtml));
 });
 
 check('guest view: the real guest and public views draw names, percentages and loot, state the role and team, and carry nothing private', async () => {
@@ -403,7 +405,7 @@ check('router and shell: the viewer routes round-trip, the new Guild settings ta
     const P = loadPages(s.world, jar);
     return plain(P.shell.settingsTabs((await P.api.get(s.base)).me.can).map((t) => t.tab));
   };
-  assert.deepEqual(await tabsFor(s.jar), ['general', 'teams', 'schedule', 'people', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess', 'attendance', 'loot', 'notifications', 'applications', 'battlenet', 'activity']);
+  assert.deepEqual(await tabsFor(s.jar), ['general', 'teams', 'schedule', 'people', 'roles', 'discord', 'links', 'public', 'attendance', 'loot', 'notifications', 'applications', 'battlenet', 'activity']);
   assert.deepEqual(await tabsFor(s.daveJar), []);
 });
 

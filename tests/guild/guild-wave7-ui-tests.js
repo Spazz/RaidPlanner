@@ -1,5 +1,5 @@
 /**
- * Raidsmith guild UI, PM wave 7 - tests for Guild settings > Data access (read-only API keys), the team progress board (Raids > Progress and the public
+ * Raidsmith guild UI, PM wave 7 - tests for the team progress board (Raids > Progress and the public
  * page's Progress section) and the rank ladder (the ladder editor, the rank chip and suggestions on Attendance, the person's attendance page, Home).
  * Run: node tests/guild/guild-wave7-ui-tests.js
  *
@@ -45,7 +45,6 @@ const settle = async () => { for (let i = 0; i < 14; i++) await tick(); };
 const text = html => html.replace(/<[^>]*>/g, ' ').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&middot;/g, '-').replace(/\s+/g, ' ');
 const DAY = 86400000;
 const T0 = Date.UTC(2026, 9, 17, 12);
-const TOKEN = 'rsk_' + 'A'.repeat(20) + '-_' + 'b'.repeat(21);
 const HOSTILE = '<img src=x onerror=1>';
 
 function assertNoRawAttrs(out) {
@@ -66,7 +65,6 @@ function guildData(can, extra) {
     rosterOptions: null,
   }, extra || {});
 }
-const person = (id, name) => ({ id, displayName: name, username: name.toLowerCase(), avatar: null });
 
 function withApi(stubs, fn) {
   const saved = {};
@@ -93,160 +91,19 @@ function formEl(attrs, elements, lists) {
   };
 }
 const el = attrs => ({ disabled: false, hidden: false, getAttribute: k => (attrs || {})[k], closest: () => null, focus() {}, select() {} });
-const box = (checked, value) => Object.assign(el({ value }), { checked, value });
 function field(id) { fields[id] = { textContent: '', hidden: true }; return fields[id]; }
 function clearFields() { for (const k of Object.keys(fields)) delete fields[k]; }
 const okRes = body => Promise.resolve(body);
 const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, body));
 
-function keyData(extra) {
-  const key = (id, over) => Object.assign({
-    id, name: 'Loot sheet', team: null, datasets: ['roster', 'loot'], status: 'active', expiresAt: T0 + 30 * DAY, revokedAt: null, uses: 3, lastUsedAt: T0 - DAY, createdAt: T0 - 2 * DAY, createdBy: person('u1', 'Gale'),
-  }, over || {});
-  return Object.assign({
-    keys: [key('ak_1'), key('ak_2', { name: 'Old', status: 'expired', expiresAt: T0 - DAY, uses: 0, lastUsedAt: null, team: { id: 't1', name: 'Alpha' }, datasets: ['attendance'] }),
-      key('ak_3', { name: 'Gone', status: 'revoked', revokedAt: T0 - DAY, expiresAt: null, createdBy: null })],
-    datasets: [{ id: 'roster', label: 'Roster', available: true }, { id: 'attendance', label: 'Attendance', available: true }, { id: 'loot', label: 'Loot', available: false }, { id: 'raids', label: 'Raids', available: true }],
-    expiries: ['30d', '90d', '365d', 'never'], limits: { perHour: 60, maxActive: 20 },
-  }, extra || {});
-}
-
 (async () => {
   const { DEFAULT_POLICY } = await import(pathToFileURL(path.join(ROOT, 'worker/attendance-policy.js')).href);
 
   // =========================================================================
-  // Data access
+  // Data access moved to Guild settings > Links and keys (guild-b8a-links-tests.js); the data API itself stays here
 
-  await check('router and shell: Data access is a Guild settings tab for guild.access, after Guest links; the address round-trips', () => {
-    assert(G.router.TABS.includes('dataaccess'));
-    assert.deepEqual(plain(G.router.parse('#/g/g1/settings/dataaccess')), { name: 'settings', gid: 'g1', tab: 'dataaccess' });
-    assert.equal(G.router.format({ name: 'settings', gid: 'g1', tab: 'dataaccess' }), '#/g/g1/settings/dataaccess');
-    const tabs = can => G.shell.settingsTabs(can, []).map(t => t.tab);
-    assert.deepEqual(plain(tabs({ 'guild.access': 'guild' })), ['people', 'links', 'guests', 'dataaccess']);
-    assert.equal(tabs({ 'guild.roles': 'guild' }).includes('dataaccess'), false);
-    assert.equal(G.shell.settingsTabs({ 'guild.access': 'guild' }, []).find(t => t.tab === 'dataaccess').label, 'Data access');
-    // The tab is wired like the Phase 7 tabs: a state key, a page, the manifest.
-    assert(G.pages.settingsDataKeys && typeof G.pages.settingsDataKeys.load === 'function');
-    assert(GUILD_SCRIPTS.includes('/js/guild/pages-settings-dataaccess.js'));
-  });
-
-  await check('data access page: loading, empty, and the keys with a status pill, what they read, use and end; the token and hash are never drawn; text is escaped', () => {
-    const S = G.pages.settingsDataKeys;
-    assert(text(S.settingsHtml({ guildData: guildData(), data: null })).includes('Loading'));
-    const empty = S.settingsHtml({ guildData: guildData(), data: keyData({ keys: [] }) });
-    assert(text(empty).includes('No data keys yet.') && empty.includes('data-action="dkey-new"') && empty.includes('>New key<'));
-    const out = S.settingsHtml({ guildData: guildData(), data: keyData(), notice: 'Data key made.', alert: '' });
-    const t = text(out);
-    assert(t.includes('Loot sheet') && t.includes('Whole guild') && t.includes('Roster, Loot') && t.includes('Used 3 times') && t.includes('Never used'), t);
-    assert(t.includes('Alpha') && t.includes('Attendance') && t.includes('Expired') && t.includes('Turned off') && !t.includes('Active'), t); // an active key shows no status word (spec 2.3)
-    assert(t.includes('Expires ') && t.includes('Expired ') && t.includes('Turned off Oct'), t);
-    assert(text(S.settingsHtml({ guildData: guildData(), data: keyData({ keys: [Object.assign({}, keyData().keys[0], { expiresAt: null })] }) })).includes('Never expires'));
-    assert(t.includes('Data key made.') && t.includes('60 times an hour'), t);
-    assert.equal((out.match(/data-action="dkey-revoke"/g) || []).length, 1, 'only the working key can be turned off');
-    assert(out.includes('aria-label="Turn off key Loot sheet"'));
-    assert(!/rsk_|token|hash/i.test(out.replace(/Data keys|data key/gi, '')), 'no token word in the table');
-    const hostile = S.settingsHtml({ guildData: guildData(), data: keyData({ keys: [keyData().keys[0]].map(k => Object.assign({}, k, { name: HOSTILE })) }) });
-    assert(!hostile.includes('<img src=x'));
-    assertNoRawAttrs(out);
-    assert(/<table[^>]*aria-label="Data keys"/.test(out) && /<th scope="col" aria-sort="none"><button[^>]*data-sort="key"[^>]*>Key/.test(out));
-  });
-
-  await check('data access dialogs: the form (name, team, what it reads with a dataset members cannot see disabled, expiry), the one-time key with its links, the turn-off question', () => {
-    const S = G.pages.settingsDataKeys;
-    const form = S.createDialogHtml(keyData(), guildData());
-    assert(form.includes('data-submit="dkey-form"') && form.includes('id="dlg-title">New data key<') && form.includes('name="name"') && form.includes('maxlength="40"'));
-    assert(/<option value="" selected>Whole guild<\/option>/.test(form) && form.includes('>Alpha<') && form.includes('>Bravo<'));
-    assert(/<input type="checkbox" id="dlg-dkey-ds-0" name="datasets" value="roster" checked/.test(form));
-    assert(/name="datasets" value="loot" disabled/.test(form) && text(form).includes('Members cannot see this in your guild, so a key cannot read it.'));
-    assert(/<option value="90d" selected>90 days<\/option>/.test(form), 'the default expiry');
-    assert(form.includes('data-action="dialog-cancel"') && form.includes('>Make key<') && form.includes('id="dlg-error"'));
-    assert(/for="dlg-dkey-name"/.test(form) && /for="dlg-dkey-team"/.test(form) && /for="dlg-dkey-expiry"/.test(form));
-    const done = S.createdDialogHtml('https://raidsmith.test', TOKEN, ['roster', 'loot']);
-    assert(done.includes('id="dkey-token"') && done.includes('readonly') && done.includes('value="' + TOKEN + '"'));
-    assert(done.includes('value="https://raidsmith.test/api/v1/roster.csv?key=' + TOKEN + '"') && done.includes('value="https://raidsmith.test/api/v1/loot.csv?key=' + TOKEN + '"'));
-    assert(text(done).includes('Copy it now. It is shown only once.') && text(done).includes('IMPORTDATA') && text(done).includes('Authorization: Bearer'));
-    assert(text(done).includes('/api/v1/roster.json'), 'the JSON address, without the key');
-    assert(!done.includes('roster.json?key='), 'a JSON address never carries the key');
-    assert(done.includes('data-action="dkey-copy"') && done.includes('data-target="dkey-csv-0"') && /id="dkey-copy-status" role="status"/.test(done) && !/<form/.test(done));
-    assert.deepEqual(plain(S.linksFor('https://x.test', TOKEN, ['raids'])), [{ id: 'raids', label: 'Raids', csv: 'https://x.test/api/v1/raids.csv?key=' + TOKEN, json: 'https://x.test/api/v1/raids.json' }]);
-    const off = S.revokeDialogHtml(keyData().keys[0]);
-    assert(off.includes('data-submit="dkey-revoke-form"') && off.includes('data-key-id="ak_1"') && text(off).includes('Turn off this key?') && text(off).includes('Loot sheet') && off.includes('gs-btn-danger'));
-    assertNoRawAttrs(form); assertNoRawAttrs(done); assertNoRawAttrs(off);
-  });
-
-  await check('dkey-form: POSTs the choices, opens the one-time dialog with origin + key, and keeps the token nowhere in the page state; a refusal stays in the dialog', async () => {
-    const s = G.app.state;
-    s.guilds.g1 = guildData(); s.currentGid = 'g1';
-    s.dataKeySettings = { gid: 'g1', data: keyData({ keys: [] }), notice: '' };
-    clearFields();
-    for (const id of ['dlg-err-name', 'dlg-err-teamId', 'dlg-err-datasets', 'dlg-err-expiresIn', 'dlg-error']) field(id);
-    fields['dkey-token'] = { select() { fields['dkey-token'].selected = true; } };
-    const makeForm = (name, teamId, expiresIn, checked) => formEl({}, { name: { value: name }, teamId: { value: teamId }, expiresIn: { value: expiresIn } },
-      { 'input[name="datasets"]': ['roster', 'attendance', 'loot', 'raids'].map(id => box(checked.includes(id), id)) });
-    const sent = [];
-    const savedOrigin = G.ui.pageOrigin;
-    G.ui.pageOrigin = () => 'https://raidsmith.test';
-    const after = keyData({ keys: [keyData().keys[0]] });
-    await withApi({ post: (url, body) => { sent.push([url, plain(body)]); return okRes(Object.assign({}, after, { created: { id: 'ak_new', token: TOKEN } })); } }, async probe => {
-      G.handlers.submit['dkey-form'](makeForm('  Loot sheet  ', 't1', '30d', ['roster', 'raids']));
-      await settle();
-      assert.deepEqual(sent, [['/api/guild/g1/api-keys', { name: 'Loot sheet', teamId: 't1', datasets: ['roster', 'raids'], expiresIn: '30d' }]]);
-      assert.equal(probe.opened.length, 1);
-      assert(probe.opened[0].html.includes('value="' + TOKEN + '"') && probe.opened[0].html.includes('https://raidsmith.test/api/v1/roster.csv?key=' + TOKEN));
-      assert(probe.opened[0].html.includes('/api/v1/raids.csv') && !probe.opened[0].html.includes('/api/v1/loot.csv'), 'a link for each dataset the key reads');
-      assert.equal(fields['dkey-token'].selected, true, 'the key is selected for Ctrl+C');
-      assert.equal(s.dataKeySettings.notice, 'Data key made.');
-      assert.deepEqual(plain(s.dataKeySettings.data), plain(after));
-      assert(!JSON.stringify(plain(s.dataKeySettings)).includes(TOKEN) && !JSON.stringify(plain(s.pageAlert)).includes(TOKEN), 'the token is not kept');
-      sent.length = 0;
-      G.handlers.submit['dkey-form'](makeForm('Everything', '', 'never', ['roster']));
-      await settle();
-      assert.deepEqual(sent[0][1], { name: 'Everything', teamId: null, datasets: ['roster'], expiresIn: 'never' }, 'Whole guild is null');
-    });
-    // A refusal from the Worker is shown at its field.
-    clearFields();
-    for (const id of ['dlg-err-name', 'dlg-err-teamId', 'dlg-err-datasets', 'dlg-err-expiresIn', 'dlg-error']) field(id);
-    await withApi({ post: () => rejectWith(400, { error: 'bad_request', message: 'Pick what the key reads: roster.', field: 'datasets' }) }, async probe => {
-      G.handlers.submit['dkey-form'](makeForm('x', '', '30d', []));
-      await settle();
-      assert.equal(probe.opened.length, 0);
-    });
-    G.ui.pageOrigin = savedOrigin;
-    s.dataKeySettings = null; clearFields();
-  });
-
-  await check('dkey-revoke: the question opens for a working key only; turning it off replaces the list and says so', async () => {
-    const s = G.app.state;
-    s.guilds.g1 = guildData(); s.currentGid = 'g1';
-    s.dataKeySettings = { gid: 'g1', data: keyData(), notice: '' };
-    await withApi({ del: (url) => okRes(Object.assign(keyData(), { keys: keyData().keys.map(k => (k.id === 'ak_1' ? Object.assign({}, k, { status: 'revoked', revokedAt: T0 }) : k)), url })) }, async probe => {
-      G.handlers.click['dkey-revoke'](el({ 'data-key-id': 'ak_3' }));
-      assert.equal(probe.opened.length, 0, 'a key that is already off');
-      G.handlers.click['dkey-revoke'](el({ 'data-key-id': 'ak_1' }));
-      assert.equal(probe.opened.length, 1);
-      G.handlers.submit['dkey-revoke-form'](formEl({ 'data-key-id': 'ak_1' }));
-      await settle();
-      assert.equal(s.dataKeySettings.notice, 'Turned off Loot sheet.');
-      assert.equal(s.dataKeySettings.data.keys[0].status, 'revoked');
-    });
-    s.dataKeySettings = null;
-  });
-
-  await check('data access: the API client calls the key routes, and the page is wired into app.js like the other Guild settings tabs', async () => {
-    const calls = [];
-    await withApi({
-      get: (url) => { calls.push(['get', url]); return okRes(keyData()); },
-      post: (url, body) => { calls.push(['post', url, plain(body)]); return okRes({}); },
-      del: (url, body) => { calls.push(['del', url, plain(body)]); return okRes({}); },
-    }, async () => {
-      await G.api.dataKeys.list('g1');
-      await G.api.dataKeys.create('g1', { name: 'x' });
-      await G.api.dataKeys.revoke('g1', 'ak_1');
-    });
-    assert.deepEqual(calls, [['get', '/api/guild/g1/api-keys'], ['post', '/api/guild/g1/api-keys', { name: 'x' }], ['del', '/api/guild/g1/api-keys/ak_1', {}]]);
-    const src = read('js/guild/app.js');
-    assert(/dataaccess: \{ state: 'dataKeySettings', page: 'settingsDataKeys' \}/.test(src) && /state\.dataKeySettings = null;/.test(src), 'a tab entry and a sign-out reset');
-    assert(/wrangler/.test('wrangler') && /"\/api\/v1\/\*"/.test(read('wrangler.jsonc')), 'the Worker runs first for /api/v1/*');
+  await check('data API: the Worker runs first for /api/v1/*', () => {
+    assert(/"\/api\/v1\/\*"/.test(read('wrangler.jsonc')), 'the Worker runs first for /api/v1/*');
   });
 
   // =========================================================================
@@ -564,11 +421,11 @@ function keyData(extra) {
 
   await check('wave 7 wiring: the new scripts are in the manifest after the pages they extend; no inline styles or handlers; the styles exist', () => {
     const manifest = GUILD_SCRIPTS.map(s => s.replace('/js/guild/', ''));
-    for (const [file, after] of [['pages-settings-dataaccess.js', 'pages-settings-guests.js'], ['pages-progress.js', 'pages-raids.js'], ['pages-ranks.js', 'pages-person-attendance.js']]) {
+    for (const [file, after] of [['pages-progress.js', 'pages-raids.js'], ['pages-ranks.js', 'pages-person-attendance.js']]) {
       assert(manifest.indexOf(file) > manifest.indexOf(after) && manifest.indexOf(file) < manifest.indexOf('app.js'), file);
     }
     for (const cls of ['gs-prog-board', 'gs-table-prog', 'gs-rank-line', 'gs-rank-suggest', 'gs-rank-list', 'gs-rank-row', 'gs-rank-rules', 'gs-rank-rule', 'gs-rank-set']) assert(css.includes('.' + cls), cls);
-    for (const file of ['pages-settings-dataaccess.js', 'pages-progress.js', 'pages-ranks.js']) assert(!/\sstyle=|\sonclick=/.test(read('js/guild/' + file)), file);
+    for (const file of ['pages-progress.js', 'pages-ranks.js']) assert(!/\sstyle=|\sonclick=/.test(read('js/guild/' + file)), file);
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

@@ -3142,6 +3142,36 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 /* == end B8a Users == */
 
 /* == B8a Links and keys (lane links) == */
+/* Links and keys (js/guild/pages-settings-links.js, boards L1 to L4): three groups on one settings page, each with its head and a New button; slim rows on one grid
+   (Link, Opens, Used, Ends, action). The settings detail column is narrow beside the nav and the list of pages, so below 1200 px the table gives way to the Roster's phone
+   list rows (.gs-rs-desk / .gs-rs-phone / .gs-rs-plist) with Turn off in the row; the Roster itself swaps at 600 px. */
+.gs-lk { display: flex; flex-direction: column; gap: 24px; }
+.gs-lk-group { display: flex; flex-direction: column; gap: 8px; }
+.gs-lk-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gs-lk-head .gs-fg-gh { margin: 0; }
+.gs-lk-group > .gs-empty { margin: 0; }
+.gs-lk-group .gs-table-links { table-layout: fixed; width: 100%; min-width: 0; }
+.gs-lk-group .gs-table-links th:nth-child(1) { width: 28%; }
+.gs-lk-group .gs-table-links th:nth-child(2) { width: 22%; }
+.gs-lk-group .gs-table-links th:nth-child(3) { width: 22%; }
+.gs-lk-group .gs-table-links th:nth-child(4) { width: 16%; }
+.gs-lk-group .gs-table-links th:nth-child(5) { width: 12%; }
+.gs-lk-group .gs-table-links th[scope="row"] { font: 600 14px/1.3 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--text-primary); white-space: normal; overflow-wrap: anywhere; }
+.gs-lk-group .gs-table-links td { vertical-align: middle; font-size: 14px; overflow-wrap: anywhere; }
+.gs-lk-group .gs-table-links td .gs-fine, .gs-lk-group .gs-table-links th .gs-fine { display: block; font: 400 13px/1.35 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+.gs-lk-name { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.gs-lk-title { font: 600 14px/1.3 var(--font-body); letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
+.gs-lk-l1 { display: block; font-size: 14px; color: var(--text-primary); }
+.gs-lk-group .gs-row-actions { justify-content: flex-end; }
+.gs-lk-row { align-items: center; }
+.gs-lk-row .gs-btn { flex: none; min-height: 44px; }
+.gs-lk-l1row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
+.gs-lk-row .gs-rs-sub { font-size: 13px; color: var(--text-muted); }
+@media (width < 1200px) { .gs-lk-group .gs-rs-desk { display: none; } .gs-lk-group .gs-rs-phone { display: block; } }
+.gs-lk-group .gs-rs-plist { padding: 4px 8px; }
+.gs-lk-group .gs-rs-plist .gs-lk-row { min-height: 56px; gap: 12px; padding: 8px; border-top: 1px solid var(--hd-hair); border-radius: 0; }
+.gs-lk-group .gs-rs-plist .gs-lk-row:first-child { border-top: 0; }
+.gs-lk-group .gs-rs-plist .gs-rs-name { font-size: 16px; }
 /* == end B8a Links and keys == */
 
 /* == B8a Owner (lane owner) == */

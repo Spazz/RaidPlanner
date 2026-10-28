@@ -290,7 +290,7 @@
   G.api.reminders = {
     optOut: function (optOut) { return G.api.put('/auth/reminders', { optOut: !!optOut }); },
   };
-  // PM wave 7: read-only API keys (Guild settings > Data access; the token comes back once, from dataKeys.create), a team's progress board, and the rank
+  // PM wave 7: read-only API keys (Guild settings > Links and keys; the token comes back once, from dataKeys.create), a team's progress board, and the rank
   // ladder's accept / manual set / dismiss. Same rule: through G.api.get / post / ... at call time.
   G.api.dataKeys = {
     list: function (gid) { return G.api.get(guildPath(gid, '/api-keys')); },
@@ -319,6 +319,9 @@
     create: function (gid, rid, body) { return G.api.post(raidPath(gid, rid, '/join-links'), body || {}); },
     revoke: function (gid, rid, jid) { return G.api.del(raidPath(gid, rid, '/join-links/' + enc(jid)), {}); },
     removeGuest: function (gid, rid, signupId) { return G.api.del(raidPath(gid, rid, '/guests/' + enc(signupId)), {}); },
+    // The guild's own list (Guild settings > Links and keys): every link of a raid that has not started, whoever made it. Anyone with guild.access turns any of them off.
+    guildList: function (gid) { return G.api.get(guildPath(gid, '/join-links')); },
+    guildRevoke: function (gid, jid) { return G.api.del(guildPath(gid, '/join-links/' + enc(jid)), {}); },
   };
   G.api.join = {
     view: function (token) { return G.api.post('/api/join/view', { token: token }); },

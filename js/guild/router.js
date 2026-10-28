@@ -3,9 +3,9 @@
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list for officers, the member's own page for everyone else)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{general,teams,schedule,people,roles,discord,guests,dataaccess,public,applications,notifications,attendance,loot,battlenet,activity,data}]
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{general,teams,schedule,people,roles,discord,links,public,applications,notifications,attendance,loot,battlenet,activity,data}]
 //   (settings: the bare address opens the first page on a wide screen and the list of pages on a phone; 'accounts' is read as 'people', the page's new name)
-//   (settings also has 'links' (Links and keys) and 'claimreview' (Owner review, the new Owner's page after a claim))
+//   ('guests' (Guest links) and 'dataaccess' (Data access), the two pages Links and keys replaced, are read as 'links'; settings also has 'claimreview' (Owner review, the new Owner's page after a claim))
 //   #/g/:gid/users[/{members,former,non-members,blocked}]  #/g/:gid/users/u/:key  (the Users list, its segments, and one user by the key GET /users hands out)
 //   #/g/:gid/setup  (Guild setup, the in-game guild flow; its own page under Guild settings)
 //   #/fresh[?done=<purpose>|?error=<reason>[&purpose=<purpose>]]  (where the fresh sign-in comes back to; the Worker's callbacks redirect here)
@@ -33,8 +33,6 @@
     'people',
     'roles',
     'discord',
-    'guests',
-    'dataaccess',
     'links',
     'claimreview',
     'public',
@@ -50,6 +48,8 @@
   // Names a settings page was or may be called by, read as the address it has had since it was built (Settings "People" became "Accounts").
   const TAB_ALIASES = {
     accounts: 'people',
+    guests: 'links',
+    dataaccess: 'links',
   };
   const ROSTER_TABS = ['intent', 'recruiting', 'applications', 'launch'];
   const LOOT_VIEWS = ['raids', 'items'];

@@ -336,7 +336,7 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/notifications', auth: true, handler: getNotifications },
   { method: 'PUT', path: '/api/guild/:gid/teams/:tid/notifications', auth: true, handler: putTeamNotifications },
   { method: 'POST', path: '/api/guild/:gid/teams/:tid/notifications/test', auth: true, handler: postTestNotification },
-  // PM wave 7: read-only API keys (Guild settings > Data access), the data they open (no session: the key is the credential, and it is the one place a
+  // PM wave 7: read-only API keys (Guild settings > Links and keys), the data they open (no session: the key is the credential, and it is the one place a
   // key may sit in the address, for CSV), the team progress board, and the rank ladder's accept / dismiss. /api/v1/:dataset is classified in the isolation suite.
   { method: 'GET', path: '/api/guild/:gid/api-keys', auth: true, handler: listApiKeys },
   { method: 'POST', path: '/api/guild/:gid/api-keys', auth: true, handler: createApiKey },
