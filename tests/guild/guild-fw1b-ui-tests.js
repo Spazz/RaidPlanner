@@ -132,7 +132,7 @@ function withState(fn) {
     assert(withRaid.includes('class="gs-onboard is-line" id="setup"'), 'one line once the guild has a raid');
     const text = stripTags(withRaid);
     assert(text.includes('Setup') && text.includes('4 of 6 steps done. Next: invite your officers .'), text);
-    assert(withRaid.includes('<a class="gs-onboard-link" href="#/g/g1/settings/people">invite your officers</a>'), 'the next step is the link');
+    assert(withRaid.includes('<a class="gs-onboard-link" href="#/g/g1/users">invite your officers</a>'), 'the next step is the link');
     assert(withRaid.includes('data-action="copy-invite" data-key="copy-invite-line"') && withRaid.includes('<span>All steps</span>'));
     assert(!withRaid.includes('<ol class="gs-onboard-steps">'), 'the steps are folded');
     // The officer's own choice wins: All steps opens the list (with Hide steps), Hide steps folds it again; before a raid there is no Hide.

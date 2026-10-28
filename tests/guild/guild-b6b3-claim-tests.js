@@ -554,7 +554,7 @@ check('claim-review: the Owner only (403 for the previous Owner, an Officer and 
   }
   const before = await s.ok('gm', 'GET', '/claim-review', undefined, 200);
   assert.equal(before.claim, null, 'no claim yet');
-  assert.deepEqual(before.bearer, { name: 'settings', tab: 'dataaccess', apiKeys: 1, guestLinks: 1, joinLinks: 0, webhooks: 0 }, 'live artifacts only (the revoked key is not counted)');
+  assert.deepEqual(before.bearer, { name: 'settings', tab: 'links', apiKeys: 1, guestLinks: 1, joinLinks: 0, webhooks: 0 }, 'live artifacts only (the revoked key is not counted)');
 
   assert.equal((await claim(s, 'igm')).location, DONE);
   const gone = await s.call('gm', 'GET', '/claim-review');
@@ -577,7 +577,7 @@ check('claim-review: the Owner only (403 for the previous Owner, an Officer and 
   assert.deepEqual(review.handLinks.persons.map((entry) => [entry.userId, entry.mainName]), [[s.uids.mem, 'Memberone']]);
   assert.deepEqual(review.handLinks.characters.map((entry) => [entry.name, entry.proof]), [['Memberone', 'officer']]);
   assert.equal(review.handLinks.truncated, false);
-  assert.deepEqual(review.bearer, { name: 'settings', tab: 'dataaccess', apiKeys: 1, guestLinks: 1, joinLinks: 0, webhooks: 0 }, 'a claim touches none of them');
+  assert.deepEqual(review.bearer, { name: 'settings', tab: 'links', apiKeys: 1, guestLinks: 1, joinLinks: 0, webhooks: 0 }, 'a claim touches none of them');
   // A dev View-as never passes an Owner gate.
   assert.equal((await s.call('mem', 'GET', '/claim-review')).status, 403);
 });

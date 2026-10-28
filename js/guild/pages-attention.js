@@ -12,6 +12,9 @@
 //   hidden  what a shared Hide / Snooze hides now, with who did it (Restore); counts { teamId: { watchOpen, rankOpen } } feed the Guild box and More links
 // The count in the sidebar's Home badge is `total`; app.js keeps the last answer per guild. Hide / Snooze (More menu) and Restore go through
 // POST / DELETE /attention/dismissals: the client names the item, the Worker decides what hiding it means.
+// The Owner's three guild-level items (lane B8a-owner): unmapped_ranks (Open ranks -> Settings > Battle.net) and block_review (the Worker's link) cannot be hidden; claim_review ("Review what
+// <previous Owner> set up", the Owner review page of Guild settings) can, and its Hidden twin has Restore. A Guild Master whose role comes from the in-game rank and who does not hold the Owner
+// seat gets the claim offer banner above the head (board O1): its button opens the confirm of the claim (O2), whose second step is the Battle.net sign-in (Guild.fresh, purpose gm_claim).
 (function (G) {
   'use strict';
 
@@ -24,6 +27,9 @@
     { id: 'claims', severity: 'action', heading: 'Character claims', action: 'Review claims' },
     { id: 'applications', severity: 'action', heading: 'New applications', action: 'Review' },
     { id: 'team_requests', severity: 'action', heading: 'Team requests', action: 'Open roster' },
+    { id: 'unmapped_ranks', severity: 'action', heading: 'In-game ranks not mapped', action: 'Open ranks' },
+    { id: 'block_review', severity: 'action', heading: 'Blocks to review', action: 'Review' },
+    { id: 'claim_review', severity: 'action', heading: 'Owner review', action: 'Review' },
     { id: 'trial', severity: 'action', heading: 'Trials', action: 'Open roster' },
     { id: 'no_loot', severity: 'action', heading: 'Raids without loot', action: 'Add loot' },
     { id: 'low_signups', severity: 'action', heading: 'Raids short on sign-ups', action: 'Open raid' },
@@ -35,7 +41,7 @@
     { id: 'unlocked', severity: 'info', heading: 'Sign-ups still open', action: 'Open raid' },
   ];
   // Route names an item link may use (an address built from anything else falls back to the Roster).
-  const LINK_NAMES = ['raid', 'review', 'person', 'personatt', 'applications', 'settings'];
+  const LINK_NAMES = ['raid', 'review', 'person', 'personatt', 'applications', 'settings', 'users'];
   // Where "and N more" goes for each kind: the page where that kind of work is done.
   const MORE_LINKS = {
     review: { name: 'review' },
@@ -44,6 +50,9 @@
     claims: { name: 'review' },
     applications: { name: 'applications' },
     team_requests: { name: 'section', section: 'roster' },
+    unmapped_ranks: { name: 'settings', tab: 'battlenet' },
+    block_review: { name: 'users', segment: null },
+    claim_review: { name: 'settings', tab: 'claimreview' },
     trial: { name: 'section', section: 'roster' },
     no_loot: { name: 'section', section: 'raids' },
     low_signups: { name: 'section', section: 'raids' },
@@ -62,7 +71,7 @@
     { id: 'roster', title: 'Import your roster', hint: 'From Raid-Helper, Warcraft Logs or Battle.net, or add people by hand.', route: { name: 'section', section: 'roster' } },
     { id: 'attendance', title: 'Set the attendance rules', hint: 'What counts as attended, late or absent, and when someone is on the watch list.', route: { name: 'settings', tab: 'attendance' } },
     { id: 'raid', title: 'Add your first raid', hint: 'From a Warcraft Logs report, a Raid-Helper event or by hand.', route: { name: 'raidnew' } },
-    { id: 'officers', title: 'Invite your officers', hint: 'Give officers their role, by hand or from a Discord role. Send them the invite message first.', route: { name: 'settings', tab: 'people' }, invite: true },
+    { id: 'officers', title: 'Invite your officers', hint: 'Give officers their role, by hand or from a Discord role. Send them the invite message first.', route: { name: 'users', segment: null }, invite: true },
     { id: 'loot', title: 'Import loot', hint: 'Bring in a Gargul export for a raid.', route: { name: 'section', section: 'loot' } },
   ];
 
@@ -86,6 +95,15 @@
       case 'claims': return plural(n, 'character claim', 'character claims') + (n === 1 ? ' is' : ' are') + ' waiting';
       case 'applications': return plural(n, 'new application', 'new applications') + ' waiting';
       case 'team_requests': return plural(n, 'team request', 'team requests') + ' waiting';
+      case 'unmapped_ranks': return plural(n, 'in-game rank is', 'in-game ranks are') + ' not mapped yet: ' + plural(num(it.characters), 'character counts', 'characters count') + ' as Social';
+      case 'block_review': {
+        const pending = num(it.pending);
+        const held = num(it.held);
+        const waits = plural(pending, 'block', 'blocks') + ' that matched an earlier block ' + (pending === 1 ? 'waits' : 'wait') + ' for review';
+        const kept = plural(held, 'person', 'people') + ' who matched an earlier block ' + (held === 1 ? 'was' : 'were') + ' held back';
+        return pending > 0 && held > 0 ? waits + ', and ' + kept : (pending > 0 ? waits : kept);
+      }
+      case 'claim_review': return 'Review what ' + (it.previousName ? String(it.previousName) : 'the previous Owner') + ' set up';
       case 'trial': {
         const days = Math.abs(num(it.days));
         const copy = G.ui.trialCopy({ kind: it.ended ? 'ended' : 'ends', days: days });
@@ -205,6 +223,7 @@
     log_missing: { note: 'No log for this raid' },
     trial: { snoozeDays: 3 },
     webhook_off: { snoozeDays: 7 },
+    claim_review: { label: 'Hide', note: 'The Owner review page closes too' },
   };
 
   // Raid zones: the short name on a tile and its tint class (guild.css, .gs-hd-tile.is-<tint>), and `art`: the key of the loading-screen crop in
@@ -319,7 +338,10 @@
     // nothing waits). A row stands in for its count item; asks leave the generic "N character claims are waiting" line only the claims they do not cover.
     const requests = Array.isArray(opts.requests) && (data.items || []).some(function (it) { return it && it.kind === 'team_requests'; }) ? opts.requests : [];
     const asks = Array.isArray(opts.asks) && (data.items || []).some(function (it) { return it && it.kind === 'claims'; }) ? opts.asks : [];
-    const items = (Array.isArray(data.items) ? data.items : []).filter(function (it) { return it && !it.readiness && !!kindOf(it.kind); })
+    // The claim_review row names the previous Owner (read beside GET /attention, opts.previousOwner); without the name it says "the previous Owner".
+    const previous = typeof opts.previousOwner === 'string' ? opts.previousOwner : '';
+    const named = function (it) { return it && it.kind === 'claim_review' && previous ? Object.assign({}, it, { previousName: previous }) : it; };
+    const items = (Array.isArray(data.items) ? data.items : []).filter(function (it) { return it && !it.readiness && !!kindOf(it.kind); }).map(named)
       .filter(function (it) { return !(it.kind === 'team_requests' && requests.length); })
       .map(function (it) { return it.kind === 'claims' && asks.length ? Object.assign({}, it, { count: num(it.count) - asks.length }) : it; })
       .filter(function (it) { return !(it.kind === 'claims' && num(it.count) <= 0); });
@@ -338,7 +360,7 @@
       const date = start ? shiftDay(start, i) : '';
       days.push({ date: date, isToday: !!date && date === today, raids: raids.filter(function (w) { return w.date === date; }) });
     }
-    const hidden = (Array.isArray(data.hidden) ? data.hidden : []).filter(function (h) { return h && h.item; });
+    const hidden = (Array.isArray(data.hidden) ? data.hidden : []).filter(function (h) { return h && h.item; }).map(function (h) { return Object.assign({}, h, { item: named(h.item) }); });
     const counts = data.counts && typeof data.counts === 'object' ? data.counts : {};
     const nextTodos = next ? todosOf(next.raidId) : [];
     const phoneList = nextTodos.concat(items.filter(function (it) { return nextTodos.indexOf(it) < 0; }));
@@ -476,7 +498,7 @@
     if (!rule || !item.id) return '';
     const entry = rule.snoozeDays
       ? { label: 'Snooze ' + rule.snoozeDays + ' days', data: { action: 'home-hide', item: item.id } }
-      : { label: 'Hide for all officers', note: rule.note, data: { action: 'home-hide', item: item.id } };
+      : { label: rule.label || 'Hide for all officers', note: rule.note, data: { action: 'home-hide', item: item.id } };
     return G.ui.menuHtml({ id: prefix + '-more-' + safeId(item.id), label: 'More', ariaLabel: 'More for ' + title, triggerClass: 'gs-btn gs-btn-ghost gs-btn-sm', align: 'left', items: [entry] });
   }
 
@@ -695,13 +717,44 @@
   }
 
   // ── the page ──
-  // opts: { guildData, data (GET /attention), week (an arrow's answer), weekBusy, pick, now, refreshing, error, errorTitle, dismissing, setupOpen, sel, hiddenOpen, seeAll, toast, busyItem }
+  // ── Take the Owner seat (boards O1, O2; worker/gm-claim.js is what the claim does) ──
+  // Who is offered it: a Guild Master whose role comes from the in-game rank (me.roles carries fromRank) and who does not hold the seat (GET /api/guild/:gid owner.you is false).
+  // The banner names the holder and whether they are suspended; its button is secondary. '' for everyone else.
+  function claimOfferHtml(gd) {
+    const owner = gd && gd.owner && typeof gd.owner === 'object' ? gd.owner : null;
+    if (!owner || owner.you !== false) return '';
+    const roles = gd.me && Array.isArray(gd.me.roles) ? gd.me.roles : [];
+    if (!roles.some(function (r) { return r && r.role === 'guild_master' && r.fromRank === true; })) return '';
+    const holder = typeof owner.name === 'string' && owner.name ? owner.name : '';
+    const who = holder ? holder + ' holds the Owner seat' + (owner.suspended === true ? ' and is suspended' : '') + '.' : 'The Owner seat is vacant.';
+    return '<div class="gs-ow-offer">' + G.ui.bannerHtml({
+      tone: 'info', dismissible: false, id: 'owner-offer', title: 'You are the Guild Master in game. ' + who, text: 'Take the seat to run Guild setup, ranks and hand-overs.',
+      actions: [{ label: 'Take the Owner seat', attrs: { 'data-action': 'claim-open', 'data-key': 'claim-open' } }],
+    }) + '</div>';
+  }
+
+  // Step 1 of the claim: what the claim batch does (worker/gm-claim.js: the seat moves, the previous holder keeps their rank powers and hand-set roles, links, keys and webhooks are not touched,
+  // the public page goes off, unused previews are cancelled). Step 2 is the Battle.net sign-in (the claim-confirm handler below).
+  function claimDialogHtml(gd) {
+    const holder = gd.owner && typeof gd.owner.name === 'string' ? gd.owner.name : '';
+    const fact = function (label, value) { return '<div class="gs-pr-kv"><span class="gs-pr-k">' + esc(label) + '</span><span class="gs-pr-v">' + esc(value) + '</span></div>'; };
+    const rows = [fact('Owner', holder ? 'You take the seat from ' + holder : 'You take the vacant seat')];
+    if (holder) rows.push(fact(holder, 'Keeps the powers of their in-game rank and every role set by hand'));
+    rows.push(fact('Links and keys', 'Keep working. You can turn any of them off'), fact('Public page', 'Switched off until you publish it again'), fact('Previews', 'Unused previews are cancelled'));
+    return G.ui.dialogHtml({
+      kind: 'confirm', title: 'Take the Owner seat of ' + gd.guild.name + '?', text: 'Only the Guild Master in game can do this, and Raidsmith checks it on Battle.net.',
+      bodyHtml: '<div class="gs-hd-panel gs-ow-what"><h3 class="gs-fg-lbl">What happens</h3>' + rows.join('') + '</div>', primary: { label: 'Take the seat' }, className: 'gs-forge',
+      formAttrs: { 'data-submit': 'claim-confirm' },
+    });
+  }
+
+  // opts: { guildData, data (GET /attention), week (an arrow's answer), weekBusy, pick, now, refreshing, error, errorTitle, dismissing, setupOpen, sel, hiddenOpen, seeAll, toast, busyItem, previousOwner (name) }
   function attentionHtml(opts) {
     const gd = opts.guildData;
     const m = modelOf(opts);
     const head = headHtml(m);
     const setup = onboardingHtml(gd.guild.id, m.data.onboarding, !!opts.dismissing, opts.setupOpen);
-    return '<div class="gs-page gs-home-page gs-home gs-forge">' + head + '<p class="gs-sr" id="attn-status" role="status"></p><p class="gs-sr" id="invite-status" role="status"></p>' +
+    return '<div class="gs-page gs-home-page gs-home gs-forge">' + claimOfferHtml(gd) + head + '<p class="gs-sr" id="attn-status" role="status"></p><p class="gs-sr" id="invite-status" role="status"></p>' +
       weekHtml(m, opts) + briefingHtml(m, opts) + setup + toastHtml(opts.toast) + '</div>';
   }
 
@@ -717,12 +770,35 @@
     const jobs = [];
     if (kinds.team_requests) jobs.push(G.pages.teamRequests.read(gid));
     if (kinds.claims) jobs.push(G.pages.thisIsMe.readAsks(gid));
+    const previous = readPreviousOwner(gid, data);
+    if (previous) jobs.push(previous);
     return Promise.all(jobs);
+  }
+
+  // The previous Owner's name for the claim_review row ("Review what Brandon set up"): the claim review read (Owner only), once per visit and only where the item, or its Hidden twin,
+  // exists. A failed read leaves the row saying "the previous Owner".
+  const previousOwners = {};
+  function readPreviousOwner(gid, data) {
+    const isReview = function (it) { return !!it && it.kind === 'claim_review'; };
+    const wanted = (data && Array.isArray(data.items) && data.items.some(isReview)) || (data && Array.isArray(data.hidden) && data.hidden.some(function (h) { return !!h && isReview(h.item); }));
+    if (!wanted || typeof previousOwners[gid] === 'string') return null;
+    return G.pages.settingsClaimReview.read(gid).then(function (res) {
+      const name = res && res.claim && res.claim.previousOwner ? res.claim.previousOwner.name : '';
+      previousOwners[gid] = typeof name === 'string' ? name : '';
+    }, function () { previousOwners[gid] = ''; });
+  }
+
+  // The Owner review tab of Guild settings follows the guild payload's owner.reviewOpen (only the Owner has it). Home learns first when the item is hidden or restored, so the cached payload follows.
+  function syncReviewOpen(gid, data) {
+    const gd = st().guilds && st().guilds[gid];
+    if (!gd || !gd.owner || typeof gd.owner.reviewOpen !== 'boolean') return;
+    gd.owner.reviewOpen = !!(data && Array.isArray(data.items) && data.items.some(function (it) { return !!it && it.kind === 'claim_review'; }));
   }
 
   function load(r, gd) {
     if (!isOfficerHome(gd)) return G.pages.homeMember.load(r, gd);
     const gid = gd.guild.id;
+    delete previousOwners[gid];
     return G.api.attention.get(gid).then(function (data) {
       a().attention = { gid: gid, data: data, refreshing: false, error: '' };
       G.app.setAttention(gid, data);
@@ -744,7 +820,7 @@
     const rows = rowsOf(gd.guild.id);
     return attentionHtml({
       guildData: gd, data: x.data, week: x.weekOverride, weekBusy: x.weekBusy, pick: x.pick, refreshing: x.refreshing, error: x.error, errorTitle: x.errorTitle, dismissing: x.dismissing, setupOpen: x.setupOpen,
-      sel: x.sel, hiddenOpen: x.hiddenOpen, seeAll: x.seeAll, toast: x.toast, busyItem: x.busyItem, requests: rows.requests, asks: rows.asks,
+      sel: x.sel, hiddenOpen: x.hiddenOpen, seeAll: x.seeAll, toast: x.toast, busyItem: x.busyItem, requests: rows.requests, asks: rows.asks, previousOwner: previousOwners[gd.guild.id] || '',
     });
   }
 
@@ -764,6 +840,7 @@
   function reread(x) {
     return G.api.attention.get(x.gid).then(function (data) {
       x.data = data;
+      syncReviewOpen(x.gid, data);
       G.app.setAttention(x.gid, data);
       return readRows(x.gid, data).then(function () { return data; });
     });
@@ -1024,8 +1101,32 @@
     if (gid && teamId) G.app.selectTeam(gid, teamId);
   };
 
+  // Take the Owner seat (board O1 -> O2): the banner's button opens the confirm; its submit swaps the dialog's body for the Battle.net sign-in (Guild.fresh, purpose gm_claim). The sign-in
+  // goes to Battle.net and the callback runs the claim (the Worker redirects to #/fresh?done=gm_claim or ?error=<reason>&purpose=gm_claim, pages-fresh.js). A refused start (409
+  // claim_not_available, already_owner, identity_not_linked) is said in the step by Guild.fresh itself.
+  function currentGuild() { return st().currentGid ? st().guilds[st().currentGid] : null; }
+
+  G.handlers.click['claim-open'] = function () {
+    const gd = currentGuild();
+    if (!gd || !claimOfferHtml(gd)) return null;
+    G.ui.openDialog(claimDialogHtml(gd), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+    return null;
+  };
+
+  G.handlers.submit['claim-confirm'] = function (form) {
+    const gd = currentGuild();
+    if (!gd) return;
+    G.fresh.toStep({
+      form: form, gid: gd.guild.id, purpose: 'gm_claim', act: { kind: 'gm_claim' }, stepLabel: 'Take the Owner seat - step 2 of 2', primaryLabel: 'Sign in with Battle.net',
+      text: 'Sign in with Battle.net. Raidsmith checks that your Battle.net account holds the rank 0 character of the ' + gd.guild.name + ' guild roster, then gives you the seat. You come back to Home.',
+      returnTo: G.router.format({ name: 'section', gid: gd.guild.id, section: 'home' }),
+    });
+  };
+
   G.pages.attention = {
     KINDS: KINDS,
+    claimOfferHtml: claimOfferHtml,
+    claimDialogHtml: claimDialogHtml,
     itemText: itemText,
     itemHref: itemHref,
     ONBOARDING: ONBOARDING,

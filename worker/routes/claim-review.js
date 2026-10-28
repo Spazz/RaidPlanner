@@ -12,8 +12,8 @@
 //   handLinks: { persons: [{ personId, userId, accountName, mainName }], characters: [{ id, name, class, personId, proof }], truncated, setBy: null, setAt: null }
 //            persons linked to an account that holds no character of theirs proved by Battle.net, and characters whose proof is an officer's or a hand (owner_proof 'officer' | 'hand');
 //            the schema records who linked or typed them nowhere (Activity has person.account_link / character.* rows); at most 300 of each, truncated says there are more
-//   bearer:  { name: 'settings', tab: 'dataaccess', apiKeys, guestLinks, joinLinks, webhooks }   how many of each is live now; the tab is where Settings lists API keys (guest links are
-//            on 'guests', webhooks on 'notifications')
+//   bearer:  { name: 'settings', tab: 'links', apiKeys, guestLinks, joinLinks, webhooks }   how many of each is live now; the tab is the Links and keys page, which lists API keys, guest
+//            links and raid join links (webhooks are on 'notifications')
 // }
 import { jsonResponse } from '../http.js';
 import { visibleCharacterSql } from '../character-visibility.js';
@@ -107,6 +107,6 @@ export async function getClaimReview(ctx) {
       setAt: null,
     },
     rolesTruncated: roleResult.results.length > LIST_CAP,
-    bearer: { name: 'settings', tab: 'dataaccess', apiKeys: bearer.api_keys, guestLinks: bearer.guest_links, joinLinks: bearer.join_links, webhooks: bearer.webhooks },
+    bearer: { name: 'settings', tab: 'links', apiKeys: bearer.api_keys, guestLinks: bearer.guest_links, joinLinks: bearer.join_links, webhooks: bearer.webhooks },
   });
 }

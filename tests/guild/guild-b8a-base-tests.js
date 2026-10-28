@@ -253,7 +253,7 @@ check('shell: the crumbs of Users, a user, Guild setup and #/fresh; the stubs dr
   const linksPage = G.pages.settingsLinks.main({ name: 'settings', gid: 'g1', tab: 'links' }, gdOwner, { guildData: gdOwner });
   assert(/<h2[^>]*>Links and keys<\/h2>/.test(linksPage) && /gs-empty2/.test(linksPage));
   const reviewPage = G.pages.settingsClaimReview.main({ name: 'settings', gid: 'g1', tab: 'claimreview' }, gdOwner, { guildData: gdOwner });
-  assert(/<h2[^>]*>Owner review<\/h2>/.test(reviewPage) && /gs-empty2/.test(reviewPage));
+  assert(/<h2[^>]*>Owner review<\/h2>/.test(reviewPage), 'the Owner review draws its head (its body is tested in guild-b8a-owner-tests.js)');
   for (const fn of [G.pages.users.load, G.pages.user.load, G.pages.setup.load, G.pages.settingsLinks.load, G.pages.settingsClaimReview.load]) assert.equal(typeof fn, 'function');
 });
 
@@ -273,7 +273,7 @@ check('app: the routes are wired (titles, page keys) and the manifest lists the 
   assert(order.every((n) => n > 0) && order.every((n, i) => i === 0 || n > order[i - 1]), 'the four marker blocks, in order');
   assert(css.indexOf('.gs-fresh-page') > 0 && css.indexOf('.gs-fresh-page') < order[0], 'the fresh styles sit above the four blocks');
   assert(css.trimEnd().endsWith('/* == end B8a Owner == */'));
-  for (const [name, lane] of [['Guild setup', 'setup'], ['Users', 'users'], ['Links and keys', 'links'], ['Owner', 'owner']]) {
+  for (const [name, lane] of [['Guild setup', 'setup'], ['Users', 'users'], ['Links and keys', 'links']]) {
     assert(css.includes(`/* == B8a ${name} (lane ${lane}) == */\n/* == end B8a ${name} == */\n`), `${name}: an empty marker block`);
   }
 });
