@@ -19,6 +19,8 @@
  *       the Guild Master user. Without it GUILD_CREATOR_ALLOWLIST is the Guild Master's Discord ID, as in the pilot.
  *       --port is the Worker's port (8790-8799, default the first free one); the fakes sit on port+10000 (Discord), +11000 (sources), +12000 (Battle.net).
  *       Every Worker secret is a placeholder passed with --var, so a local .env is never read for them and no real service is called.
+ *       Each background process (the fakes, the Worker) runs behind tools/guild-smoke-host.js, the only thing started detached: it keeps the
+ *       whole tree in a console without a window, so no console window ever opens on Windows. The pids in the JSON are the hosts'.
  *   down  stops everything `up` started (process trees) and deletes the state dir. Safe to run twice.
  *   run   runs a node script with the `up` values injected: environment GUILD_SMOKE_JSON (the JSON above) plus GUILD_SMOKE_BASE; in the script,
  *           const smoke = require('<repo>/tools/guild-smoke.js').fromEnv();   // { base, cookies, ids, ..., api(who, method, route, body) }
@@ -33,6 +35,7 @@ const { spawn, spawnSync } = require('node:child_process');
 const dev = require('./guild-dev.js');
 
 const REPO_ROOT = path.join(__dirname, '..');
+const HOST_SCRIPT = path.join(__dirname, 'guild-smoke-host.js');
 const COMMANDS = ['up', 'down', 'run'];
 const FAKES = ['discord', 'sources', 'bnet'];
 const DEFAULT_FAKES = ['discord', 'sources'];
@@ -172,10 +175,13 @@ function portIsFree(port) {
   });
 }
 
+// Starts plan in the background so it outlives this process. Only the HOST is detached: on Windows a detached process has no console, so every
+// console program it starts (workerd, esbuild) would open its own visible window. The host runs the plan inside a console without a window
+// (see guild-smoke-host.js); the host's own stdout/stderr go to the log too, next to the plan's output. The PID is the host's: kill its tree.
 function startDetached(plan, logFile, extraEnv = {}) {
   const fd = fs.openSync(logFile, 'a');
-  const child = spawn(plan.command, plan.args, {
-    cwd: REPO_ROOT, detached: true, shell: !!plan.shell, windowsHide: true, stdio: ['ignore', fd, fd],
+  const child = spawn(process.execPath, [HOST_SCRIPT, '--log', logFile, ...(plan.shell ? ['--shell'] : []), '--', plan.command, ...plan.args], {
+    cwd: REPO_ROOT, detached: true, windowsHide: true, stdio: ['ignore', fd, fd],
     env: { ...process.env, WRANGLER_SEND_METRICS: 'false', ...extraEnv },
   });
   fs.closeSync(fd);
@@ -467,6 +473,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  parseArgs, readPort, readFakes, stateDirFor, isDeletableStateDir, fakePort, fakeUrl, workerVars, fromEnv, fromJson, signIn,
+  parseArgs, readPort, readFakes, stateDirFor, isDeletableStateDir, fakePort, fakeUrl, workerVars, fromEnv, fromJson, signIn, startDetached, killTree,
   PORT_MIN, PORT_MAX, DEFAULT_FAKES, FAKES, STATE_FILE,
 };

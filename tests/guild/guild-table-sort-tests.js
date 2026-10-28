@@ -154,7 +154,7 @@ const order = html => (html.match(/data-row="([^"]+)"/g) || []).map(s => s.slice
   const HAND_BUILT = {
     'pages-backfill.js': ['backfill'], 'pages-import.js': ['rh-new', 'wcl-decide'], 'pages-import-csv.js': ['csv-rows'], 'pages-import-bnet.js': ['bnet-import'],
     'pages-launch.js': ['launch-roles', 'launch-people'], 'pages-progress.js': ["-bosses'", "-nights'"], 'pages-settings-activity.js': ['settings-activity'],
-    'pages-settings-dataaccess.js': ['dkeys'], 'pages-settings-guests.js': ['guest-links'], 'pages-settings-teams.js': ['settings-teams'],
+    'pages-settings-links.js': ['lk-keys', 'lk-guests', 'lk-joins'], 'pages-settings-teams.js': ['settings-teams'],
   };
   await check('hand-built tables: every data head is a sortThHtml, its rows go through sortItems', () => {
     for (const [f, keys] of Object.entries(HAND_BUILT)) {

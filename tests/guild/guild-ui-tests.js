@@ -309,9 +309,9 @@ function assertEscaped(out, label) {
   await check('visibility: Guild settings tabs follow the actions (Teams and Battle.net: guild.teams; Roles: guild.roles; Accounts is retired into Users)', () => {
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
     assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['general', 'teams', 'notifications', 'applications', 'battlenet']);
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['links', 'guests', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['links']);
     assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['roles', 'discord', 'public']);
-    assert.deepEqual(tabs(ALL_CAN), ['general', 'teams', 'roles', 'discord', 'links', 'guests', 'public', 'dataaccess', 'notifications', 'applications', 'battlenet']);
+    assert.deepEqual(tabs(ALL_CAN), ['general', 'teams', 'roles', 'discord', 'links', 'public', 'notifications', 'applications', 'battlenet']);
     assert.deepEqual(tabs({}), []);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData({ 'guild.access': 'guild' }) }, 'links', '<p>x</p>');
     assert(frame.includes('Links and keys'));
@@ -440,9 +440,9 @@ function assertEscaped(out, label) {
   await check('delete: handOverFirst blocks the button and names the guilds', () => {
     const out = G.pages.privacy.deleteBoxHtml({ handOverFirst: [{ id: 'g1', name: 'Ravens' }, { id: 'g2', name: 'Owls' }], guildsDeleted: [] }, '');
     assert(/disabled[^>]*id="delete-open"/.test(out), 'open button disabled');
-    assert(out.includes('delete-blocked') && out.includes('<strong>Ravens</strong>') && out.includes('<strong>Owls</strong>') && out.includes('Make Guild Master'));
+    assert(out.includes('delete-blocked') && out.includes('<strong>Ravens</strong>') && out.includes('<strong>Owls</strong>') && out.includes('Edit permission and the Owner seat'));
     assert(!out.includes('id="delete-confirm"') && !out.includes('id="delete-go"'), 'no confirm path while blocked');
-    assert(out.includes('href="#/g/g1/users"'), 'the way to hand a guild over is Users (Accounts is retired)');
+    assert(out.includes('href="#/g/g1/users"'), 'the guild names link to the Users page');
   });
 
   await check('delete: with nothing in the way the confirm needs "I understand" before the button enables', () => {

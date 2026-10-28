@@ -65,7 +65,7 @@ const BODY = { serverId: S[0], gameVersion: 'tbc', region: 'US', realm: 'Nightsl
     let html = G.pages.attention.main({}, guildData, {});
     assert(html.includes('Set up your guild') && stripTags(html).includes('1 of 6 steps done'), stripTags(html).slice(0, 300));
     const hrefs = [...html.matchAll(/class="gs-onboard-link" href="([^"]*)"/g)].map((m) => m[1]);
-    assert.deepEqual(hrefs.map((href) => G.router.parse(href).name), ['settings', 'section', 'settings', 'raidnew', 'users', 'section'], 'every link is a route the shell knows');
+    assert.deepEqual(hrefs.map((href) => G.router.parse(href).name), ['settings', 'section', 'settings', 'raidnew', 'users', 'section'], 'every link is a route the shell knows (officers: the Users page)');
     // A person is added: the next read ticks "Import your roster".
     assert.equal((await w.call(jar, 'POST', `/api/guild/${gid}/roster`, { teamId: made.json.teams[0].id, name: 'Thornwick', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' })).status, 201);
     await G.handlers.click['attn-refresh'](el({}));

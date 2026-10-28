@@ -64,13 +64,9 @@
     { tab: 'discord', label: 'Discord roles', group: 'People and access', needs: ['guild.roles'],
       purpose: 'Which Raidsmith role each role of your Discord server gives.' },
     { tab: 'links', label: 'Links and keys', group: 'Sharing', needs: ['guild.access'], isNew: true,
-      purpose: 'The API keys, guest links and raid join links of the guild.' },
-    { tab: 'guests', label: 'Guest links', group: 'Sharing', needs: ['guild.access'],
-      purpose: 'Read-only links for people without an account.' },
+      purpose: 'Every link and key that opens your guild\'s data without a sign-in, and who made it.' },
     { tab: 'public', label: 'Public page', group: 'Sharing', needs: ['guild.roles'],
       purpose: 'A page anyone with the address can read, and what it shows.' },
-    { tab: 'dataaccess', label: 'Data access', group: 'Sharing', needs: ['guild.access'],
-      purpose: 'Read-only keys that let a spreadsheet or a script read your guild\'s data.' },
     { tab: 'attendance', label: 'Attendance', group: 'Raid rules', needs: ['attendance.policy'],
       purpose: 'What counts as attended, how late and bench are treated, and when someone is on the watch list.' },
     { tab: 'loot', label: 'Loot', group: 'Raid rules', needs: ['loot.policy'],
@@ -685,6 +681,65 @@
     return '<div class="gs-notice gs-claim-banner" role="status"><span>This guild has no Guild Master. You can claim it.</span><a href="' + esc(baseOf(ctx) + '#/new') + '">Claim it on Create guild</a></div>';
   }
 
+  // ── The suspended Owner (lane B8a-owner, board O4) ──
+  // The seat holder whose Battle.net proof is gone (GET /api/guild/:gid owner.you and owner.suspended) sees a warning on every guild page with one button: the normal Battle.net sign-in, whose
+  // callback runs the sign-in match. When that match confirms a character the payload stops saying suspended and ONE success banner says so: the last state seen per guild is kept in
+  // sessionStorage (it survives the round trip to Battle.net in this tab; storage that is blocked just means no success banner). The success banner stays on the page it appeared on.
+  const OWNER_SEEN_KEY = 'raidsmith.ownerSuspended.';
+  let ownerBack = null; // { gid, route }: the success banner is showing for this guild on this route
+
+  function ownerSeen(gid, value) {
+    try {
+      const store = typeof window !== 'undefined' ? window.sessionStorage : null;
+      if (!store) return null;
+      if (value === undefined) return store.getItem(OWNER_SEEN_KEY + gid);
+      store.setItem(OWNER_SEEN_KEY + gid, value);
+      return value;
+    } catch (e) { return null; }
+  }
+
+  function routeKeyOf(ctx) {
+    try { return ctx.route ? JSON.stringify(ctx.route) : ''; } catch (e) { return ''; }
+  }
+
+  function ownerStripHtml(inner) { return '<div class="gs-ow-strip">' + inner + '</div>'; }
+
+  function suspendedBannerHtml(ctx) {
+    const gd = guildOf(ctx);
+    const owner = gd && gd.owner && typeof gd.owner === 'object' ? gd.owner : null;
+    if (!owner || owner.you !== true) return '';
+    const gid = gd.guild.id;
+    if (owner.suspended === true) {
+      ownerSeen(gid, 'suspended');
+      ownerBack = null;
+      // An account with no Battle.net linked cannot sign in with it (that would make a second account): it connects it first.
+      const linked = G.fresh && typeof G.fresh.linkedOf === 'function' ? G.fresh.linkedOf(ctx.me) : null;
+      const action = linked && !linked.bnet ? { label: 'Connect Battle.net', href: baseOf(ctx) + '#/linked' } : { label: 'Sign in with Battle.net', href: '/auth/bnet/login?mode=signin' };
+      return ownerStripHtml(G.ui.bannerHtml({
+        tone: 'warning', dismissible: false, id: 'owner-suspended', title: 'Your Owner powers are paused.',
+        text: 'Raidsmith cannot confirm through Battle.net that you hold a character on the ' + gd.guild.name + ' guild roster. You keep the seat, but only the powers of your in-game rank apply.',
+        actions: [action],
+      }));
+    }
+    const route = routeKeyOf(ctx);
+    if (ownerSeen(gid) === 'suspended') {
+      ownerSeen(gid, 'live');
+      ownerBack = { gid: gid, route: route };
+    }
+    if (!ownerBack || ownerBack.gid !== gid || ownerBack.route !== route) { ownerBack = null; return ''; }
+    const banner = G.ui.bannerHtml({
+      tone: 'success', dismissible: false, id: 'owner-back', title: 'Your Owner powers are back.', text: 'Battle.net confirmed a character of yours on the ' + gd.guild.name + ' guild roster again.',
+    });
+    const close = '<button type="button" class="gs-icon-btn gs-banner-x" aria-label="Dismiss message" data-action="owner-back-dismiss">' + G.icons.icon('close', 18) + '</button>';
+    return ownerStripHtml(banner.replace(/<\/div>$/, close + '</div>'));
+  }
+
+  G.handlers.click['owner-back-dismiss'] = function (el) {
+    ownerBack = null;
+    const strip = el && el.closest ? el.closest('.gs-ow-strip') : null;
+    if (strip && strip.remove) strip.remove();
+  };
+
   // Dev-only "View as" bar (GET /api/guild/:gid carries `dev` only for a real Guild Master on a local run with DEV_VIEW_AS=1). Blue "info" tones, never the
   // orange of the primary button. The live region says what the switch did; app.js keeps the sentence in ctx.devNotice across the redraw.
   function devBarHtml(ctx) {
@@ -723,7 +778,7 @@
       sidebar: sidebarHtml(ctx),
       lead: leadHtml(ctx),
       account: accountSlotHtml(ctx),
-      banner: sectionOf(ctx) === 'guild' && guildOf(ctx) ? claimNoticeHtml(ctx) : '',
+      banner: sectionOf(ctx) === 'guild' && guildOf(ctx) ? claimNoticeHtml(ctx) + suspendedBannerHtml(ctx) : '',
       tabs: tabsHtml(ctx),
       drawer: drawerHtml(ctx),
     };
@@ -773,6 +828,7 @@
     sidebarHtml: sidebarHtml,
     phonePickHtml: phonePickHtml,
     claimNoticeHtml: claimNoticeHtml,
+    suspendedBannerHtml: suspendedBannerHtml,
     devBarHtml: devBarHtml,
     slots: slots,
     render: render,

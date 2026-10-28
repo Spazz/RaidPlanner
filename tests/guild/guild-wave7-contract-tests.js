@@ -1,5 +1,5 @@
 /**
- * Raidsmith guild tracker - PM wave 7 CONTRACT tests (Worker <-> pages): read-only API keys, the team progress board and the rank ladder
+ * Raidsmith guild tracker - PM wave 7 CONTRACT tests (Worker <-> pages): read-only API keys (on Guild settings > Links and keys), the team progress board and the rank ladder
  * Run: node tests/guild/guild-wave7-contract-tests.js [name-filter]
  *
  * guild-wave7-worker-tests.js and guild-wave7-ui-tests.js each work with hand-made data on the other side. This suite joins them, the way
@@ -160,31 +160,35 @@ const exec = (s, sql, ...values) => s.world.db.prepare(sql).bind(...values).run(
 const getCsv = async (world, url) => world.app.handle(new Request(url));
 const urlsIn = (html) => [...html.matchAll(/value="(https:\/\/[^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, '&'));
 
-check('Data access: an officer makes a key through the real dialog, the link in it opens the real CSV, the list shows the key, turning it off closes the link; a member cannot even list', async () => {
+check('Links and keys: an officer makes a key through the real dialog, the link in it opens the real CSV, the three lists show it, turning each kind off closes it, and a join link another account made can be turned off; a member cannot even list', async () => {
   const s = await scenario();
   const { A, E } = s;
   await s.person('Aldric');
   await s.person('Brindle', 'MAGE', s.erinUser);
   await s.refresh();
   const S = pageState(s, A);
+  const L = A.pages.settingsLinks;
   A.ui.pageOrigin = () => ORIGIN;
-  await A.pages.settingsDataKeys.load(s.gid);
-  assert(stripTags(A.pages.settingsDataKeys.settingsHtml({ guildData: A.guildData, data: S.dataKeySettings.data })).includes('No data keys yet.'));
+  await L.load(s.gid);
+  const draw = () => L.settingsHtml({ guildData: A.guildData, data: S.linksSettings, now: NOW });
+  const empty = stripTags(draw());
+  assert(empty.includes('No API keys yet.') && empty.includes('No guest links yet.') && empty.includes('No raid join links yet.'), empty);
   // The create dialog is drawn from the real answer: every dataset is on offer to a stock guild.
-  const dialog = A.pages.settingsDataKeys.createDialogHtml(S.dataKeySettings.data, A.guildData);
+  const dialog = L.keyCreateDialogHtml(S.linksSettings.keys, A.guildData);
   assert.equal((dialog.match(/name="datasets" value="[a-z]+" checked/g) || []).length, 4, dialog.slice(0, 300));
   const form = {
     elements: { name: ctrl('Roster sheet'), teamId: ctrl(''), expiresIn: ctrl('90d') },
     querySelectorAll: (sel) => (sel === 'input[name="datasets"]' ? ['roster', 'attendance'].map((id) => ctrl(id, { checked: true })) : []),
     closest: () => null,
   };
-  A.handlers.submit['dkey-form'](form);
+  A.handlers.submit['lk-key-form'](form);
   await settle();
   assert.equal(A.dialogs.length, 1, JSON.stringify(A.errors));
   const [csv, attendanceCsv] = urlsIn(A.dialogs[0]).filter((url) => url.includes('.csv?key='));
   assert(csv.startsWith(`${ORIGIN}/api/v1/roster.csv?key=rsk_`) && attendanceCsv.startsWith(`${ORIGIN}/api/v1/attendance.csv?key=rsk_`), A.dialogs[0].slice(0, 400));
   const token = new URL(csv).searchParams.get('key');
-  assert(!JSON.stringify(plain(S.dataKeySettings)).includes(token), 'the page keeps no token');
+  assert(!JSON.stringify(plain(S.linksSettings)).includes(token), 'the page keeps no token');
+  assert.equal(S.linksSettings.notice, 'API key made.');
   // The link works for a spreadsheet: no cookie, plain text/csv, the roster.
   const fetched = await getCsv(s.world, csv);
   assert.equal(fetched.status, 200);
@@ -192,21 +196,62 @@ check('Data access: an officer makes a key through the real dialog, the link in 
   const body = await fetched.text();
   assert(body.startsWith('team,character,realm,class,role,main_spec,off_spec,main,status,joined_on\r\n') && body.includes('Aldric') && body.includes('Brindle'), body);
   assert.equal((await getCsv(s.world, `${ORIGIN}/api/v1/loot.csv?key=${token}`)).status, 403, 'it was not made for loot');
-  // The list now has the key (and the use).
-  await A.pages.settingsDataKeys.load(s.gid);
-  const listed = stripTags(A.pages.settingsDataKeys.settingsHtml({ guildData: A.guildData, data: S.dataKeySettings.data }));
-  assert(listed.includes('Roster sheet') && listed.includes('Whole guild') && listed.includes('Roster, Attendance') && listed.includes('Used 1 time') && !listed.includes('Active'), listed); // an active key shows no status word (spec 2.3)
-  assert(!listed.includes(token));
-  // A member sees nothing of it.
-  await assert.rejects(E.api.dataKeys.list(s.gid), (error) => error.status === 403);
-  // Turn it off through the real dialog: the link stops at once.
-  const id = S.dataKeySettings.data.keys[0].id;
-  A.handlers.click['dkey-revoke'](el({ 'data-key-id': id }));
-  assert(stripTags(A.dialogs[A.dialogs.length - 1]).includes('Turn off this key?'));
-  A.handlers.submit['dkey-revoke-form']({ getAttribute: (k) => (k === 'data-key-id' ? id : null), elements: {}, querySelectorAll: () => [], closest: () => null });
+  // A guest link through the real dialog: the address is the Worker's path, and the token stays out of the page.
+  const guestForm = { elements: { roleId: ctrl('guest'), teamId: ctrl(''), expiresIn: ctrl('7d'), label: ctrl('Recruits') }, querySelectorAll: () => [], closest: () => null };
+  A.handlers.submit['lk-guest-form'](guestForm);
   await settle();
-  assert.equal(S.dataKeySettings.data.keys[0].status, 'revoked');
+  assert.equal(A.dialogs.length, 2, JSON.stringify(A.errors));
+  const guestUrl = urlsIn(A.dialogs[1])[0];
+  assert(guestUrl.startsWith(`${ORIGIN}/#/guest/`), A.dialogs[1].slice(0, 300));
+  const guestToken = guestUrl.slice(`${ORIGIN}/#/guest/`.length);
+  assert(!JSON.stringify(plain(S.linksSettings)).includes(guestToken), 'the page keeps no guest token');
+  // A raid in the future with two join links: one made by the officer, one by another account (Erin).
+  const raid = (await A.api.post(`${s.base}/raids`, { teamId: s.teamId, raidOn: '2027-02-10', startTime: '20:00', zone: "Gruul's Lair" })).raid.id;
+  const ERIN_LINK = 'jl_' + 'E'.repeat(22); // a join link id is jl_ and 22 characters
+  const mine = (await A.api.joinLinks.create(s.gid, raid, { maxUses: 3 })).created;
+  await exec(s, 'INSERT INTO raid_join_links (id, guild_id, raid_id, token_hash, max_uses, uses, revoked_at, created_by, created_at) VALUES (?, ?, ?, ?, ?, 0, NULL, ?, ?)', ERIN_LINK, s.gid, raid, 'h'.repeat(64), 5, s.erinUser, NOW - 1000);
+  await L.load(s.gid);
+  const listed = draw();
+  const t = stripTags(listed);
+  assert(t.includes('Roster sheet') && t.includes('Whole guild') && t.includes('Roster, Attendance') && t.includes('1 use') && !t.includes('Active'), t); // a working key shows no status word (spec 2.3)
+  assert(t.includes('Recruits') && t.includes('Guest, whole guild') && t.includes('Never opened'), t);
+  assert(t.includes("Gruul's Lair") && t.includes('Guest sign-up') && t.includes('0 of 3 sign-ups') && t.includes('0 of 5 sign-ups') && t.includes('Feb 10') && t.includes('8:00 PM ET'), t);
+  assert(t.includes('by Erin E') && t.includes('by Alice A'), 'the maker is shown for display');
+  assert(!listed.includes(token) && !listed.includes(guestToken) && !listed.includes(mine.token), 'no list holds a token');
+  assert.equal((listed.match(/data-action="lk-join-off"/g) || []).length, 4, 'a Turn off in the table and the phone list, for each of the two live join links');
+  // A member sees nothing of any of the three lists.
+  await assert.rejects(E.api.dataKeys.list(s.gid), (error) => error.status === 403);
+  await assert.rejects(E.api.guests.list(s.gid), (error) => error.status === 403);
+  await assert.rejects(E.api.joinLinks.guildList(s.gid), (error) => error.status === 403);
+  // Turn each off through the real dialogs.
+  const submit = (attrs) => ({ getAttribute: (k) => (k in attrs ? attrs[k] : null), elements: {}, querySelectorAll: () => [], closest: () => null });
+  const keyId = S.linksSettings.keys.keys[0].id;
+  A.handlers.click['lk-key-off'](el({ 'data-key-id': keyId }));
+  assert(stripTags(A.dialogs[A.dialogs.length - 1]).includes('Turn off this key?'));
+  A.handlers.submit['lk-key-off-form'](submit({ 'data-key-id': keyId }));
+  await settle();
+  assert.equal(S.linksSettings.keys.keys[0].status, 'revoked');
   assert.equal((await getCsv(s.world, csv)).status, 401);
+  const linkId = S.linksSettings.guests.links[0].id;
+  A.handlers.click['lk-guest-off'](el({ 'data-link': linkId }));
+  assert(stripTags(A.dialogs[A.dialogs.length - 1]).includes('Turn off this guest link?'));
+  A.handlers.submit['lk-guest-off-form'](submit({ 'data-link': linkId }));
+  await settle();
+  assert.equal(S.linksSettings.guests.links[0].status, 'revoked');
+  await assert.rejects(A.api.post('/auth/guest', { token: guestToken }), (error) => error.status >= 400, 'a turned-off guest link no longer opens');
+  A.handlers.click['lk-join-off'](el({ 'data-join-id': ERIN_LINK }));
+  const confirm = stripTags(A.dialogs[A.dialogs.length - 1]);
+  assert(confirm.includes('Turn off this sign-up link?') && confirm.includes("Gruul's Lair") && !confirm.includes('Erin'), confirm);
+  A.handlers.submit['lk-join-off-form'](submit({ 'data-join-id': ERIN_LINK }));
+  await settle();
+  assert.equal(S.linksSettings.joins.links.find((l) => l.id === ERIN_LINK).status, 'revoked', 'a link another account made');
+  assert.equal(S.linksSettings.joins.links.find((l) => l.id === mine.id).status, 'active');
+  A.handlers.submit['lk-join-off-form'](submit({ 'data-join-id': mine.id }));
+  await settle();
+  assert.equal(S.linksSettings.joins.links.find((l) => l.id === mine.id).status, 'revoked');
+  await assert.rejects(A.api.join.view(mine.token), (error) => error.status === 410, 'the visitor is told the link was turned off');
+  assert.equal((draw().match(/data-action="lk-(key|guest|join)-off"/g) || []).length, 0, 'nothing left to turn off');
+  assert(stripTags(draw()).includes('Turned off'));
 });
 
 const T0 = Date.parse('2026-12-01T01:00:00Z');

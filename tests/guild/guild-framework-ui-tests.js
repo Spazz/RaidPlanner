@@ -173,7 +173,7 @@ function assertNoRawAttrs(out) {
     assert(read('js/guild/pages-settings-activity.js').includes("G.ui.dateTimeInZone(ms, timeZone, { year: 'auto', now: now })"));
     assert(read('js/guild/pages-join.js').includes('G.ui.dateTimeInZone(raid.startsAt, zone)') && read('js/guild/pages-join.js').includes('data.guild.timeZone'), 'the guest sign-up writes the start in the guild zone');
     assert(read('js/app.js').includes('guild.ui.timeInZone(Date.now()'), 'the Planner\'s "Saved to the raid at" uses the guild clock');
-    for (const f of ['pages-applications', 'pages-settings-guests', 'pages-settings-dataaccess']) assert(read('js/guild/' + f + '.js').includes('G.ui.guildZone()'), f);
+    for (const f of ['pages-applications', 'pages-settings-links']) assert(read('js/guild/' + f + '.js').includes('G.ui.guildZone()'), f);
   });
 
   // ═══ 3. Buttons, chips, badges, segments ═══

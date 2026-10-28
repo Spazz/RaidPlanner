@@ -52,8 +52,7 @@
     attention: {},     // gid -> { data: GET /api/guild/:gid/attention (or null), at: ms }: the Home count for the nav badge (the Home page keeps its own copy in att.attention)
     rolesSettings: null, // Guild settings > Roles: { gid, data: GET /api/guild/:gid/roles, notice } (see pages-settings-roles.js)
     discordSettings: null, // Guild settings > Discord roles: { gid, data: GET /api/guild/:gid/discord, notice } (see pages-settings-discord.js)
-    dataKeySettings: null, // Guild settings > Data access: { gid, data: GET /api/guild/:gid/api-keys, notice }; the token is never kept here (see pages-settings-dataaccess.js)
-    guestSettings: null, // Guild settings > Guest links: { gid, data: GET /api/guild/:gid/guest-links, notice }; the token is never kept here (see pages-settings-guests.js)
+    linksSettings: null, // Guild settings > Links and keys: { gid, keys: GET /api-keys, guests: GET /guest-links, joins: GET /join-links, notice }; a token is never kept here (see pages-settings-links.js)
     publicSettings: null, // Guild settings > Public page: { gid, data: GET /api/guild/:gid/public, notice } (see pages-settings-public.js)
     notifySettings: null, // Guild settings > Notifications: { gid, data: GET /api/guild/:gid/notifications, notice } (see pages-settings-notifications.js)
     rolesList: {},     // gid -> GET /api/guild/:gid/roles, for the Edit permission dialog's "Other roles" (the Users page reads it when the dialog opens, for people who can manage roles)
@@ -67,8 +66,6 @@
   const ROLE_TABS = {
     roles: { state: 'rolesSettings', page: 'settingsRoles' },
     discord: { state: 'discordSettings', page: 'settingsDiscord' },
-    guests: { state: 'guestSettings', page: 'settingsGuests' },
-    dataaccess: { state: 'dataKeySettings', page: 'settingsDataKeys' },
     public: { state: 'publicSettings', page: 'settingsPublic' },
     notifications: { state: 'notifySettings', page: 'settingsNotify' },
   };
@@ -326,8 +323,7 @@
     sessionGen++;
     state.rolesSettings = null;
     state.discordSettings = null;
-    state.guestSettings = null;
-    state.dataKeySettings = null;
+    state.linksSettings = null;
     state.publicSettings = null;
     state.notifySettings = null;
     state.rolesList = {};

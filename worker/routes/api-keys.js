@@ -1,4 +1,4 @@
-// Read-only API keys (PM wave 7), the officers' side: Guild settings > Data access. A key opens CSV and JSON links to a team's (or the guild's) roster,
+// Read-only API keys (PM wave 7), the officers' side: Guild settings > Links and keys. A key opens CSV and JSON links to a team's (or the guild's) roster,
 // attendance, loot and raids, for a spreadsheet or a script. Needs guild.access (Guild Master and the Officer role).
 //   GET    /api/guild/:gid/api-keys           the keys and what a new one may be
 //   POST   /api/guild/:gid/api-keys           make a key: the token comes back ONCE, in `created`

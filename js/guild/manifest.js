@@ -24,8 +24,6 @@
     '/js/guild/pages-users.js',
     '/js/guild/pages-settings-roles.js',
     '/js/guild/pages-settings-discord.js',
-    '/js/guild/pages-settings-guests.js',
-    '/js/guild/pages-settings-dataaccess.js',
     '/js/guild/pages-settings-links.js',
     '/js/guild/pages-settings-public.js',
     '/js/guild/pages-settings-applications.js',

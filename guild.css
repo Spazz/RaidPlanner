@@ -3136,6 +3136,89 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 .gs-fresh-page .gs-alert { margin: 0; }
 
 /* == B8a Guild setup (lane setup) == */
+/* The In-game guild panel of Settings > Battle.net (board G0) and the Guild setup flow (T5, boards G1-G6, P1). Panels are .gs-hd-panel, group heads .gs-fg-gh, chips .gs-hd-chip, the one primary the molten button. */
+.gs-su-lead { margin: 0; font-size: 15px; color: var(--text-secondary); }
+.gs-su-facts { padding: 4px 20px 8px; }
+.gs-su-fact { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.gs-su-fact-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-su-fact .gs-ro-label, .gs-su-fact .gs-ro-value { margin: 0; }
+.gs-su-fact .gs-btn { flex: none; }
+.gs-su-sub { display: block; margin-top: 2px; }
+.gs-su-panel { margin: 0 0 16px; }
+.gs-su-panel .gs-card-sec-head { min-height: 60px; }
+.gs-su-form { padding: 4px 20px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 560px; }
+.gs-su-owner .gs-hd-chip { margin-right: 8px; vertical-align: middle; }
+.gs-su-owner.is-bad { border-color: rgba(244, 63, 94, 0.45); }
+.gs-setup-page .gs-card-sec.is-done { border-color: rgba(180, 231, 174, 0.35); }
+.gs-setup-page .gs-card-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px 0; min-height: 0; border-bottom: 0; }
+.gs-setup-page .gs-card-sec-head .gs-h2 { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); margin: 0; }
+.gs-setup-page .gs-ro-row + .gs-ro-row { border-top: 1px solid var(--hd-hair); padding-top: 12px; }
+.gs-setup-page .gs-banner { max-width: none; }
+.gs-setup-page.gs-forge .gs-input, .gs-setup-page.gs-forge select.gs-input { background: #131416; }
+.gs-setup-page.gs-forge .gs-input:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; border-color: var(--border-field); }
+.gs-setup-page.gs-forge .gs-input[readonly] { color: var(--text-secondary); border-style: dashed; }
+.gs-setup-page.gs-forge .gs-label { font: 500 14px/1.3 var(--font-body); color: var(--text-secondary); }
+.gs-setup-page.gs-forge .gs-fine { font-size: 14px; color: var(--text-muted); }
+.gs-setup-page .gs-flowbody { display: flex; flex-direction: column; gap: 16px; }
+.gs-bnet-form .gs-input[readonly] { color: var(--text-secondary); border-style: dashed; }
+
+/* Ranks table (step 2): 5 columns, a row 56 high, unused ranks muted, a used rank with no core rank flagged */
+.gs-table-ranks { min-width: 0; table-layout: fixed; width: 100%; }
+.gs-table-ranks th, .gs-table-ranks td { padding-left: 8px; padding-right: 8px; }
+.gs-table-ranks td, .gs-table-ranks th[scope="row"] { padding-top: 8px; padding-bottom: 8px; height: 56px; }
+.gs-table-ranks th:nth-child(1) { width: 14%; }
+.gs-table-ranks th:nth-child(2) { width: 26%; }
+.gs-table-ranks th:nth-child(3) { width: 20%; }
+.gs-table-ranks th:nth-child(4) { width: 28%; }
+.gs-table-ranks th:nth-child(5) { width: 12%; }
+.gs-table-ranks .gs-input { width: 100%; min-width: 0; padding-left: 10px; padding-right: 22px; font-size: 14px; text-overflow: ellipsis; }
+.gs-table-ranks .gs-num { text-align: right; font-variant-numeric: tabular-nums; }
+.gs-table-ranks tr.is-unused th[scope="row"], .gs-table-ranks tr.is-unused td { color: var(--text-muted); }
+.gs-table-ranks tr.is-gap td:nth-child(3) .gs-input { border-color: rgba(244, 63, 94, 0.6); }
+
+/* Preview (step 3): summary, five count tiles, four panels of groups (head with its count, a table of samples, Show all) */
+.gs-su-summary { margin: 0; font-size: 17px; color: var(--text-secondary); }
+.gs-su-summary strong { color: var(--hd-white); }
+.gs-su-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.gs-su-stat { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }
+.gs-su-stat-n { font: 700 32px/1.1 var(--font-cond); color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-su-list { display: flex; flex-direction: column; gap: 8px; padding: 16px 0 12px; }
+.gs-su-list-h { margin: 0 20px 4px; font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--hd-white); }
+.gs-su-group { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; }
+.gs-su-group + .gs-su-group { border-top: 1px solid var(--hd-hair); padding-top: 16px; }
+.gs-su-group .gs-fg-gh { margin: 0 20px 4px; }
+.gs-su-group .gs-table-wrap { border: 0; background: transparent; }
+.gs-su-group .gs-table { min-width: 0; table-layout: fixed; width: 100%; }
+.gs-su-group .gs-table th, .gs-su-group .gs-table td { background: transparent; padding-left: 20px; }
+.gs-su-group .gs-table td, .gs-su-group .gs-table th[scope="row"] { height: 48px; padding-top: 6px; padding-bottom: 6px; }
+.gs-su-group .gs-num { text-align: right; padding-right: 20px; font-variant-numeric: tabular-nums; }
+.gs-su-showall { margin: 0; padding: 4px 20px 0; display: flex; align-items: center; gap: 12px; }
+.gs-su-none { margin: 0; padding: 4px 20px 8px; }
+.gs-su-name { font-weight: 600; }
+.gs-su-chkbox { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; cursor: pointer; }
+.gs-su-chk { width: 18px; height: 18px; margin: 0; accent-color: #d8dadb; cursor: pointer; }
+.gs-su-chk:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-su-joins { padding: 12px 0 4px; display: flex; flex-direction: column; }
+.gs-su-joins .gs-fg-lbl { margin: 0 20px 8px; }
+.gs-su-joins .gs-pr-kv:first-of-type { border-top: 1px solid var(--hd-hair); }
+.gs-su-group .gs-linkbtn { min-height: 0; }
+
+@media (width <= 600px) {
+  .gs-su-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gs-table-ranks th:nth-child(n) { width: auto; }
+  .gs-table-ranks td, .gs-table-ranks th[scope="row"] { height: auto; padding-left: 0; padding-right: 0; }
+  .gs-table-ranks .gs-input { font-size: 16px; height: 44px; }
+  .gs-su-group .gs-table td, .gs-su-group .gs-table th[scope="row"] { height: auto; }
+  .gs-su-group .gs-table th, .gs-su-group .gs-table td { padding-left: 0; }
+  .gs-su-group .gs-table tr { padding: 8px 20px; }
+  .gs-su-group .gs-num { padding-right: 0; text-align: left; }
+  .gs-su-fact { flex-direction: column; }
+  .gs-su-facts { padding: 4px 16px 8px; }
+  .gs-su-chkbox { width: 44px; height: 44px; margin-left: -10px; }
+  .gs-su-group .gs-linkbtn, .gs-su-showall .gs-linkbtn { min-height: 44px; }
+  .gs-setup-page .gs-card-sec-head { padding: 12px 16px 0; flex-wrap: wrap; }
+  .gs-su-form { padding-left: 16px; padding-right: 16px; }
+}
 /* == end B8a Guild setup == */
 
 /* == B8a Users (lane users) == */
@@ -3234,7 +3317,80 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 /* == end B8a Users == */
 
 /* == B8a Links and keys (lane links) == */
+/* Links and keys (js/guild/pages-settings-links.js, boards L1 to L4): three groups on one settings page, each with its head and a New button; slim rows on one grid
+   (Link, Opens, Used, Ends, action). The settings detail column is narrow beside the nav and the list of pages, so below 1200 px the table gives way to the Roster's phone
+   list rows (.gs-rs-desk / .gs-rs-phone / .gs-rs-plist) with Turn off in the row; the Roster itself swaps at 600 px. */
+.gs-lk { display: flex; flex-direction: column; gap: 24px; }
+.gs-lk-group { display: flex; flex-direction: column; gap: 8px; }
+.gs-lk-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gs-lk-head .gs-fg-gh { margin: 0; }
+.gs-lk-group > .gs-empty { margin: 0; }
+.gs-lk-group .gs-table-links { table-layout: fixed; width: 100%; min-width: 0; }
+.gs-lk-group .gs-table-links th:nth-child(1) { width: 28%; }
+.gs-lk-group .gs-table-links th:nth-child(2) { width: 22%; }
+.gs-lk-group .gs-table-links th:nth-child(3) { width: 22%; }
+.gs-lk-group .gs-table-links th:nth-child(4) { width: 16%; }
+.gs-lk-group .gs-table-links th:nth-child(5) { width: 12%; }
+.gs-lk-group .gs-table-links th[scope="row"] { font: 600 14px/1.3 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--text-primary); white-space: normal; overflow-wrap: anywhere; }
+.gs-lk-group .gs-table-links td { vertical-align: middle; font-size: 14px; overflow-wrap: anywhere; }
+.gs-lk-group .gs-table-links td .gs-fine, .gs-lk-group .gs-table-links th .gs-fine { display: block; font: 400 13px/1.35 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+.gs-lk-name { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.gs-lk-title { font: 600 14px/1.3 var(--font-body); letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
+.gs-lk-l1 { display: block; font-size: 14px; color: var(--text-primary); }
+.gs-lk-group .gs-row-actions { justify-content: flex-end; }
+.gs-lk-row { align-items: center; }
+.gs-lk-row .gs-btn { flex: none; min-height: 44px; }
+.gs-lk-l1row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
+.gs-lk-row .gs-rs-sub { font-size: 13px; color: var(--text-muted); }
+@media (width < 1200px) { .gs-lk-group .gs-rs-desk { display: none; } .gs-lk-group .gs-rs-phone { display: block; } }
+.gs-lk-group .gs-rs-plist { padding: 4px 8px; }
+.gs-lk-group .gs-rs-plist .gs-lk-row { min-height: 56px; gap: 12px; padding: 8px; border-top: 1px solid var(--hd-hair); border-radius: 0; }
+.gs-lk-group .gs-rs-plist .gs-lk-row:first-child { border-top: 0; }
+.gs-lk-group .gs-rs-plist .gs-rs-name { font-size: 16px; }
 /* == end B8a Links and keys == */
 
 /* == B8a Owner (lane owner) == */
+/* The Owner seat (boards O1, O2, O4, O5, P1): the claim offer on Home, the suspended-Owner strip under the top bar of every guild page, the claim dialog's fact panel and the Owner
+   review page of Guild settings. Banners keep their own look (.gs-banner); this block only places them. */
+.gs-ow-strip { box-sizing: border-box; padding: var(--sp-6) var(--sp-8) 0; }
+.gs-ow-strip .gs-banner { max-width: 1200px; margin: 0; }
+.gs-ow-offer { margin: 0 0 var(--sp-6); }
+.gs-ow-offer .gs-banner { margin: 0; }
+.gs-ow-what { padding: 12px 0 4px; display: flex; flex-direction: column; }
+.gs-ow-what .gs-fg-lbl { margin: 0 20px 8px; }
+.gs-ow-what .gs-pr-kv:first-of-type { border-top: 1px solid var(--hd-hair); }
+
+.gs-ow-review { display: flex; flex-direction: column; gap: 28px; }
+.gs-ow-review .gs-banner { margin: 0; }
+.gs-ow-sec { display: flex; flex-direction: column; gap: 8px; }
+.gs-ow-sec > .gs-fine { margin: 0; }
+.gs-ow-sechead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gs-ow-sechead .gs-fg-gh { margin: 0; }
+.gs-ow-grid { table-layout: auto; min-width: 0; width: 100%; }
+.gs-ow-grid th, .gs-ow-grid td { padding-left: 16px; padding-right: 12px; }
+.gs-ow-grid td, .gs-ow-grid th[scope="row"] { height: 48px; padding-top: 6px; padding-bottom: 6px; font-size: 14px; }
+.gs-ow-grid th.gs-cell-strong { font: 600 14px/1.3 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--text-primary); }
+.guild-page a.gs-ow-link { color: var(--text-primary); text-decoration: none; }
+.guild-page a.gs-ow-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.guild-page .gs-fine a.gs-ow-link { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+.guild-page .gs-fine a.gs-ow-link:hover { color: var(--text-primary); }
+.gs-ow-facts .gs-ro-list { padding: 4px 20px 8px; gap: 0; }
+.gs-settings-page.gs-forge .gs-ow-fact { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--hd-hair); }
+.gs-settings-page.gs-forge .gs-ow-fact:first-child { border-top: 0; }
+.gs-ow-fact-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-ow-fact .gs-ro-label, .gs-ow-fact .gs-ro-value { margin: 0; }
+.gs-ow-fact .gs-btn { flex: none; }
+.gs-ow-done { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.gs-ow-done .gs-alert { margin: 0; }
+@media screen and (max-width: 600px) {
+  .gs-ow-strip { padding: var(--sp-4) var(--sp-4) 0; }
+  .gs-ow-offer { margin-bottom: var(--sp-4); }
+  .gs-ow-offer .gs-banner-actions .gs-btn, .gs-ow-strip .gs-banner-actions .gs-btn { min-height: 44px; flex: 1 1 100%; justify-content: center; }
+  .gs-ow-grid td, .gs-ow-grid th[scope="row"] { height: auto; padding-left: 0; padding-right: 0; }
+  .gs-settings-page.gs-forge .gs-ow-fact { flex-direction: column; align-items: stretch; gap: 12px; }
+  .gs-ow-fact .gs-btn, .gs-ow-sechead .gs-btn { min-height: 44px; justify-content: center; }
+  .gs-ow-sechead { flex-wrap: wrap; }
+  .gs-ow-done { align-items: stretch; }
+  .gs-settings-page.gs-forge .gs-ow-done .gs-btn { min-height: 48px; justify-content: center; }
+}
 /* == end B8a Owner == */

@@ -147,9 +147,9 @@ check('router: the keys are encoded safely, strangers are not found, and a done 
   assert.equal(G.router.parse('#/linked?error=fresh_required').error, 'fresh_required');
 });
 
-check('router: nothing retired but Accounts - guests and dataaccess still open, people and accounts open Users, TABS and TAB_ALIASES stay one entry per line', () => {
-  for (const tab of ['guests', 'dataaccess']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'settings', gid: 'g1', tab });
-  for (const tab of ['people', 'accounts']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'users', gid: 'g1', segment: null }, 'Settings > Accounts is retired into Users');
+check('router: nothing lost - people and accounts open Users (Accounts is retired), guests and dataaccess read as Links and keys, TABS and TAB_ALIASES stay one entry per line', () => {
+  for (const tab of ['people', 'accounts']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'users', gid: 'g1', segment: null }, `${tab}: Settings > Accounts is retired into Users`);
+  for (const tab of ['guests', 'dataaccess']) assert.deepEqual(plain(G.router.parse(`#/g/g1/settings/${tab}`)), { name: 'settings', gid: 'g1', tab: 'links' }, `${tab} reads as Links and keys`);
   const source = read('js/guild/router.js');
   const block = (name) => source.slice(source.indexOf(`const ${name} = `), source.indexOf('];\n', source.indexOf(`const ${name} = `)) + 2);
   const tabs = block('TABS');
@@ -214,9 +214,8 @@ check('shell: Links and keys (Sharing, guild.access, New) and Owner review (the 
   assert(names(everything, owner, { name: 'A', you: true, reviewOpen: true }).includes('claimreview'));
   assert.equal(names(everything, owner, { reviewOpen: true })[1], 'claimreview', 'it follows General in the Guild group');
   assert.deepEqual(plain(G.shell.settingsGroups(everything, owner, { reviewOpen: true })[0].items.map((item) => item.label)).slice(0, 2), ['General', 'Owner review']);
-  // Guest links and Data access stay in the list for now (Accounts is retired into Users).
-  for (const tab of ['guests', 'dataaccess']) assert(names(everything, owner).includes(tab), tab);
-  assert(!names(everything, owner).includes('people'), 'Accounts is gone from the list');
+  // Accounts (retired into Users), Guest links and Data access (Links and keys replaced them) are gone from the list.
+  for (const tab of ['people', 'guests', 'dataaccess']) assert(!names(everything, owner).includes(tab), tab);
   // The frame lists it for the Owner and carries the page's own heading.
   const gd = guildData(everything, { owner: { name: 'A', you: true, reviewOpen: true } });
   gd.me.roles = owner;
@@ -247,15 +246,13 @@ check('shell: the crumbs of Users, a user, Guild setup and #/fresh; the pages dr
   assert(/<h1[^>]*>User<\/h1>/.test(user) && !/\sstyle=|\son[a-z]+=/i.test(user), 'User: the real head while the read is not in');
   assert(user.includes('href="#/g/g1/users"') && user.includes('gs-back-link'), 'the user page has its back link to Users');
   const setup = G.pages.setup.main({ name: 'setup', gid: 'g1' }, gd);
-  page(setup, 'Guild setup');
+  assert(/<h1[^>]*>Guild setup<\/h1>/.test(setup) && !/\sstyle=|\son[a-z]+=/i.test(setup), 'Guild setup: the real head (lane B8a-setup fills the body: tests/guild/guild-b8a-setup-tests.js)');
   for (const step of ['In-game guild', 'Ranks', 'Preview', 'Switch over']) assert(setup.includes(step), step);
   assert(setup.includes('href="#/g/g1/settings/battlenet"'));
   const gdOwner = guildData({ 'guild.access': 'guild', 'guild.teams': 'guild' }, { owner: { you: true, reviewOpen: true } });
   gdOwner.me.roles = [{ role: 'guild_master' }];
-  const linksPage = G.pages.settingsLinks.main({ name: 'settings', gid: 'g1', tab: 'links' }, gdOwner, { guildData: gdOwner });
-  assert(/<h2[^>]*>Links and keys<\/h2>/.test(linksPage) && /gs-empty2/.test(linksPage));
   const reviewPage = G.pages.settingsClaimReview.main({ name: 'settings', gid: 'g1', tab: 'claimreview' }, gdOwner, { guildData: gdOwner });
-  assert(/<h2[^>]*>Owner review<\/h2>/.test(reviewPage) && /gs-empty2/.test(reviewPage));
+  assert(/<h2[^>]*>Owner review<\/h2>/.test(reviewPage), 'the Owner review draws its head (its body is tested in guild-b8a-owner-tests.js)');
   for (const fn of [G.pages.users.load, G.pages.user.load, G.pages.setup.load, G.pages.settingsLinks.load, G.pages.settingsClaimReview.load]) assert.equal(typeof fn, 'function');
 });
 
@@ -275,11 +272,10 @@ check('app: the routes are wired (titles, page keys) and the manifest lists the 
   assert(order.every((n) => n > 0) && order.every((n, i) => i === 0 || n > order[i - 1]), 'the four marker blocks, in order');
   assert(css.indexOf('.gs-fresh-page') > 0 && css.indexOf('.gs-fresh-page') < order[0], 'the fresh styles sit above the four blocks');
   assert(css.trimEnd().endsWith('/* == end B8a Owner == */'));
-  for (const [name, lane] of [['Guild setup', 'setup'], ['Links and keys', 'links'], ['Owner', 'owner']]) {
-    assert(css.includes(`/* == B8a ${name} (lane ${lane}) == */\n/* == end B8a ${name} == */\n`), `${name}: an empty marker block`);
-  }
+  // Every lane has filled its block: each pair of markers is there, in order, with the lane's own styles between them.
   const usersBlock = css.slice(css.indexOf('/* == B8a Users (lane users) == */'), css.indexOf('/* == end B8a Users == */'));
   assert(usersBlock.includes('.gs-us-selbar') && usersBlock.includes('.gs-us-urow'), 'Users: the lane\'s styles are between its markers');
+  assert(css.includes('/* == B8a Guild setup (lane setup) == */\n') && css.includes('/* == end B8a Guild setup == */\n'), 'Guild setup: its marker block');
 });
 
 // ---------------------------------------------------------------------------
@@ -890,6 +886,7 @@ check('app: Users opens for guild.access (head and the first rows of the segment
     '/api/guild/g1/users?segment=members&sort=user&dir=asc&offset=0&limit=10': { status: 200, body: { segment: 'members', rows: [{ key: 'u_abcdefghijklmnopqrstuv', kind: 'account', name: 'Ashgrove', main: null, permission: 'Officer', lastSeen: '2026-10-26', tags: [], flags: {} }], more: false, counts: { members: 1, former: 0, nonmembers: 0, blocked: 0 }, sort: 'user', dir: 'asc', battlenetOnly: false, coreRanks: ['raider', 'trial', 'reserve', 'social'] } },
     '/api/guild/g1/users/u_abcdefghijklmnopqrstuv': { status: 200, body: { key: 'u_abcdefghijklmnopqrstuv', kind: 'account', segment: 'members', name: 'Ashgrove', identity: { account: { displayName: 'Ashgrove' }, battlenet: false, signInMethods: [] }, main: null, characters: [], permission: 'Officer', permissions: [], lastSeen: '2026-10-26', block: { blocked: false, pendingReview: false, blockedOn: null }, flags: {}, tags: [], sightings: [], battlenetOnly: false, ownerSeat: true } },
   };
+  usersRoutes['/api/guild/g1/bnet'] = { status: 200, body: { configured: true, supported: true, realmKind: 'realm', realmSlug: 'dreamscythe', effectiveGuildName: 'Writers', rankDefaults: [], pin: { pinned: false, complete: false, rankSource: null }, pinOpen: false, roster: { members: 0, fetchedAt: null } } };
   const env = makeEnv({ url: '/#/g/g1/users', routes: appRoutes(OFFICER, null, usersRoutes) });
   const users = await mainOf(env);
   assert(/<h1[^>]*>Users<\/h1>/.test(users) && users.includes('Ashgrove') && users.includes('Members <span class="gs-fg-segn">1</span>'), text(users));
@@ -914,7 +911,10 @@ check('app: Users opens for guild.access (head and the first rows of the segment
 });
 
 check('app: the settings tabs links and claimreview open through app.js; Owner review only for the Owner while owner.reviewOpen, and the list shows it', async () => {
-  const env = makeEnv({ url: '/#/g/g1/settings/links', routes: appRoutes(OFFICER) });
+  const env = makeEnv({ url: '/#/g/g1/settings/links', routes: appRoutes(OFFICER, null, {
+    '/api/guild/g1/api-keys': { status: 200, body: { keys: [], datasets: [], expiries: [], limits: {} } }, '/api/guild/g1/guest-links': { status: 200, body: { links: [], roles: [], expiries: [] } },
+    '/api/guild/g1/join-links': { status: 200, body: { links: [], limits: {} } },
+  }) });
   const links = await mainOf(env);
   assert(/<h2[^>]*>Links and keys<\/h2>/.test(links) && links.includes('gs-sitem is-active'), text(links));
   env.loc.hash = '#/g/g1/settings/claimreview';

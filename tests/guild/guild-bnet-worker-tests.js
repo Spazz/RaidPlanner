@@ -1054,6 +1054,8 @@ check('settings: officers read and write the Battle.net settings, team leads can
     rankDefaults: ['Guild Master', 'Rank 1', 'Rank 2', 'Rank 3', 'Rank 4', 'Rank 5', 'Rank 6', 'Rank 7', 'Rank 8', 'Rank 9'], canEdit: true,
     // The link to the in-game guild (lane B6b part 3a): nothing pinned yet, and the operator's allowlist (SETUP_PIN_GUILDS) is unset here.
     pin: { pinned: false, complete: false, rankSource: null, guildSlug: null, realmSlug: null, namespace: null }, pinOpen: false,
+    // The stored in-game roster (lane B8a-setup): nothing read yet.
+    roster: { members: 0, fetchedAt: null },
   });
   assert.equal((await get('carol')).json.canEdit, false);
   const labels = ['Guild Master', 'Officer', '', 'Raider', ' Trial ', '', '', '', '', ''];
