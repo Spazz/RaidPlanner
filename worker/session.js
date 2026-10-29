@@ -215,14 +215,56 @@ export function clearBnetStateCookie() {
   return serializeCookie(BNET_STATE_COOKIE, '', { maxAge: 0, path: '/' });
 }
 
-export function signBnetState(env, userId, nonce, issuedAt) {
+// A link may carry the app page to land on afterwards (?return= on /auth/bnet/login). The rule, applied at the begin step and again when the state is read:
+// "#/" and one to many segments of letters, digits, "_" and "-", split by single "/", 200 characters at most. That leaves no "//", no "..", no ".", no query, no "%",
+// no scheme and no host; the callback's Location is "/" + the route, so it is always a page of this app. Anything else is "no return" (the old target, My characters).
+const BNET_RETURN_PATTERN = /^#(?:\/[A-Za-z0-9_-]+)+$/;
+const BNET_RETURN_MAX = 200;
+
+// -> the route when it passes the rule, else null.
+export function bnetReturnRoute(value) {
+  return typeof value === 'string' && value.length <= BNET_RETURN_MAX && BNET_RETURN_PATTERN.test(value) ? value : null;
+}
+
+// The two link-state shapes. Without a return (and every state issued before returns existed): <nonce>.<issued>.<mac>, the MAC over user, nonce, issue time.
+// With one: back.<route without "#/">.<nonce>.<issued>.<mac>, under its own key domain, the MAC also over the route, so the route cannot be swapped or added.
+// The route has no ".", so it is one part of the dotted state; at most about 290 characters, well inside a cookie and a query value (a fresh-auth state is longer).
+const BNET_STATE_DOMAIN = 'raidsmith-bnet-state';
+const BNET_RETURN_DOMAIN = 'raidsmith-bnet-state-return';
+const BNET_RETURN_MODE = 'back';
+
+export function signBnetState(env, userId, nonce, issuedAt, returnTo = null) {
   if (typeof userId !== 'string') throw new TypeError('a link state is bound to a user id');
-  return signStateWith({ secret: env.BNET_CLIENT_SECRET, domain: 'raidsmith-bnet-state', mode: null, userId, nonce, issuedAt });
+  const route = returnTo === null ? null : bnetReturnRoute(returnTo);
+  if (returnTo !== null && !route) throw new TypeError('a link state returns to an app route only');
+  if (!route) return signStateWith({ secret: env.BNET_CLIENT_SECRET, domain: BNET_STATE_DOMAIN, mode: null, userId, nonce, issuedAt });
+  return signStateWith({
+    secret: env.BNET_CLIENT_SECRET, domain: BNET_RETURN_DOMAIN, mode: `${BNET_RETURN_MODE}.${route.slice(2)}`, userId, nonce, issuedAt, bind: [route],
+  });
+}
+
+// Shape only: the parts of a state that carries a return -> { route, nonce, issuedAt, mac } or null.
+function returnStateParts(state) {
+  if (typeof state !== 'string') return null;
+  const parts = state.split('.');
+  if (parts.length !== 5 || parts[0] !== BNET_RETURN_MODE) return null;
+  const route = bnetReturnRoute(`#/${parts[1]}`);
+  const tail = tailOf(parts);
+  return route && tail ? { route, ...tail } : null;
+}
+
+// The route a link state returns to, or null. Shape only: the callback reads it AFTER verifyBnetState passed (the MAC covers the route).
+export function bnetStateReturn(state) {
+  const parts = returnStateParts(state);
+  return parts ? parts.route : null;
 }
 
 export async function verifyBnetState(env, userId, state, now) {
   if (typeof userId !== 'string') return false;
-  return verifyStateWith({ secret: env.BNET_CLIENT_SECRET, domain: 'raidsmith-bnet-state', mode: null, userId, state, now });
+  const parts = returnStateParts(state);
+  if (!parts) return verifyStateWith({ secret: env.BNET_CLIENT_SECRET, domain: BNET_STATE_DOMAIN, mode: null, userId, state, now });
+  if (!env.BNET_CLIENT_SECRET || !isCurrent(parts.issuedAt, now)) return false;
+  return safeEqual(parts.mac, await macOf(env.BNET_CLIENT_SECRET, BNET_RETURN_DOMAIN, macText(userId, parts.nonce, parts.issuedAt, [parts.route])));
 }
 
 // Battle.net sign-in.

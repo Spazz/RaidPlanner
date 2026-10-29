@@ -244,7 +244,7 @@ check('the open-raid page in an in-game guild: Connect Battle.net without a link
   await D.pages.openRaid.load(route);
   let out = draw(D);
   let t = ws(stripTags(out));
-  assert(t.includes('Connect Battle.net to sign up') && t.includes('Vindicated takes guests who have Battle.net connected.') && out.includes('href="/auth/bnet/login"') && !out.includes('data-submit'), t);
+  assert(t.includes('Connect Battle.net to sign up') && t.includes('Vindicated takes guests who have Battle.net connected.') && out.includes(`href="/auth/bnet/login?return=${encodeURIComponent(`#/open/${s.gid}/${rid}`)}"`) && !out.includes('data-submit'), t);
   assert(t.includes('11 spots left.'));
   // Connected: the list, highest level first, the first one picked, the specs of its class.
   s.bnetList('dave', [WARLOCK, MAGE]);

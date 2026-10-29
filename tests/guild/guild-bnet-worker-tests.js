@@ -363,6 +363,128 @@ check('link: login redirects to Battle.net with the scopes, the registered redir
   assert.equal(await verifyBnetState(s.w.env, s.ids.erin, 'x', now), false);
 });
 
+// A link may say where to land afterwards (?return=<app route>): the route rides inside the signed state, and the callback ends there instead of on My characters.
+const stateOfLogin = (res) => new URL(res.headers.get('Location')).searchParams.get('state');
+const OLD_STATE = /^[A-Za-z0-9_-]{22}\.\d{13}\.[A-Za-z0-9_-]{43}$/;
+const callbackOf = (s, name, query, cookieState) => s.w.req('GET', `/auth/bnet/callback?${query}`, { jar: cookieState === undefined ? s.jars[name] : { ...s.jars[name], '__Host-rs_bnet_state': cookieState } });
+
+check('link: ?return= puts the app route into the signed state, and the callback lands there (a failure keeps its own target)', async () => {
+  const s = await scenario();
+  s.w.bnet.state.account = { id: ACCOUNT.erin, battletag: TAG('erin') };
+  const route = `#/g/${s.guildId}/setup`;
+  const login = await s.w.req('GET', `/auth/bnet/login?return=${encodeURIComponent(route)}`, { jar: s.jars.erin });
+  assert.equal(login.status, 302);
+  const state = stateOfLogin(login);
+  assert.equal(state.split('.').length, 5);
+  assert(state.startsWith(`back.g/${s.guildId}/setup.`), state);
+  assert.match(state, /^back\.[A-Za-z0-9/_-]+\.[A-Za-z0-9_-]{22}\.\d{13}\.[A-Za-z0-9_-]{43}$/);
+  assert(state.length < 300, `state size ${state.length}`);
+  const cookie = login.headers.getSetCookie().find((line) => line.startsWith('__Host-rs_bnet_state='));
+  assert(cookie.includes(`=${state};`) && /HttpOnly/.test(cookie) && /Secure/.test(cookie) && /Max-Age=600/.test(cookie));
+  const { verifyBnetState, bnetStateReturn, bnetStateMode } = await load('worker/session.js');
+  const now = s.w.clock.now;
+  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, state, now), true);
+  assert.equal(bnetStateReturn(state), route);
+  assert.equal(bnetStateMode(state), 'link');
+  assert.equal(await verifyBnetState(s.w.env, s.ids.gina, state, now), false, 'bound to the member who started it');
+  assert.equal(await verifyBnetState({ ...s.w.env, BNET_CLIENT_SECRET: 'other' }, s.ids.erin, state, now), false);
+  // The route is under the MAC: swapped or dropped, the state is refused and never reaches Battle.net.
+  const parts = state.split('.');
+  const swapped = [parts[0], 'g/other/setup', ...parts.slice(2)].join('.');
+  const dropped = parts.slice(2).join('.');
+  for (const forged of [swapped, dropped, `back.g/evil/setup.${dropped}`]) {
+    assert.equal(await verifyBnetState(s.w.env, s.ids.erin, forged, now), false, forged);
+    assert.equal((await callbackOf(s, 'erin', `code=abc&state=${encodeURIComponent(forged)}`, forged)).headers.get('Location'), '/#/linked?error=state', forged);
+  }
+  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, state, now + 11 * 60 * 1000), false, 'the same ten-minute window');
+  assert.deepEqual(s.w.asked(), [], 'no forged state reached Battle.net');
+  // A refused round trip keeps its own target.
+  const denied = await s.w.req('GET', `/auth/bnet/login?return=${encodeURIComponent(route)}`, { jar: s.jars.erin });
+  assert.equal((await callbackOf(s, 'erin', `error=access_denied&state=${encodeURIComponent(stateOfLogin(denied))}`, stateOfLogin(denied))).headers.get('Location'), '/#/linked?error=denied');
+  // The good round trip ends on the route, and the link is made as ever.
+  const done = await callbackOf(s, 'erin', `code=abc&state=${encodeURIComponent(state)}`, state);
+  assert.equal(done.status, 302);
+  assert.equal(done.headers.get('Location'), `/#/g/${s.guildId}/setup`);
+  assert(done.headers.getSetCookie().some((line) => line.startsWith('__Host-rs_bnet_state=;') && /Max-Age=0/.test(line)), 'the state cookie is cleared');
+  const mine = await s.w.call(s.jars.erin, 'GET', '/auth/bnet');
+  assert.equal(mine.status, 200);
+  assert.equal(mine.json.link && mine.json.link.battletag, TAG('erin'), 'Battle.net is linked');
+  assert.equal((await callbackOf(s, 'erin', `code=abc&state=${encodeURIComponent(state)}`, state)).headers.get('Location'), '/#/linked?error=state', 'single use');
+});
+
+check('link: a state issued before ?return= existed still verifies and the callback goes to My characters', async () => {
+  const s = await scenario();
+  s.w.bnet.state.account = { id: ACCOUNT.erin, battletag: TAG('erin') };
+  // Minted the way the earlier code did: <nonce>.<issued>.<mac>, the MAC over user.nonce.issued under the key of "raidsmith-bnet-state".
+  const nodeCrypto = require('node:crypto');
+  const nonce = 'N'.repeat(22);
+  const issuedAt = s.w.clock.now;
+  const key = nodeCrypto.createHash('sha256').update(`raidsmith-bnet-state:${s.w.env.BNET_CLIENT_SECRET}`).digest();
+  const old = `${nonce}.${issuedAt}.${nodeCrypto.createHmac('sha256', key).update(`${s.ids.erin}.${nonce}.${issuedAt}`).digest('base64url')}`;
+  const { verifyBnetState, bnetStateReturn } = await load('worker/session.js');
+  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, old, s.w.clock.now), true);
+  assert.equal(bnetStateReturn(old), null);
+  const res = await callbackOf(s, 'erin', `code=abc&state=${encodeURIComponent(old)}`, old);
+  assert.equal(res.headers.get('Location'), '/#/characters');
+  // And a login without a return still mints that shape.
+  assert.match(stateOfLogin(await s.w.req('GET', '/auth/bnet/login', { jar: s.jars.gina })), OLD_STATE);
+});
+
+check('link: a return that is not a plain app route is dropped silently and the link ends on My characters as before', async () => {
+  const s = await scenario();
+  const good = ['#/g/g_abc/setup', '#/open/g_abc/r_def', '#/characters', '#/a-b_C9', `#/${'a'.repeat(198)}`];
+  const bad = [
+    'https://evil.test/x', 'http://evil.test', '//evil.test', '#//evil.test', '#/g//setup', 'javascript:alert(1)', '#javascript:alert(1)', '/#/g/x/setup', '#/g/x/', '#/g/../x', '#/..', '#/g/x.y', '#/g/x?y=1',
+    '#/g/x#y', '#/g/x%2Fy', '#/g\\x', ' #/g/x', '#/g/x ', '#/g/x\n', '#/', '#', '', `#/${'a'.repeat(199)}`, `#/${'a/'.repeat(120)}b`,
+  ];
+  const stateFor = async (value) => {
+    s.w.advance(11 * 60 * 1000); // starting a link is limited to 10 a window per member
+    return stateOfLogin(await s.w.req('GET', `/auth/bnet/login?return=${encodeURIComponent(value)}`, { jar: s.jars.erin }));
+  };
+  for (const value of good) {
+    const state = await stateFor(value);
+    assert(state.startsWith('back.'), `${JSON.stringify(value)} is accepted: ${state}`);
+    assert(state.length < 300, `state size ${state.length}`);
+  }
+  for (const value of bad) {
+    const state = await stateFor(value);
+    assert.match(state, OLD_STATE, `${JSON.stringify(value)} is ignored`);
+  }
+  // One full round trip with a bad value: the old target.
+  s.w.advance(11 * 60 * 1000);
+  s.w.bnet.state.account = { id: ACCOUNT.erin, battletag: TAG('erin') };
+  const login = await s.w.req('GET', `/auth/bnet/login?return=${encodeURIComponent('https://evil.test/x')}`, { jar: s.jars.erin });
+  assert.equal(login.status, 302);
+  assert(login.headers.get('Location').startsWith(s.w.env.BNET_API_BASE), 'the login still goes to Battle.net');
+  const res = await callbackOf(s, 'erin', `code=abc&state=${encodeURIComponent(stateOfLogin(login))}`);
+  assert.equal(res.headers.get('Location'), '/#/characters');
+  // The state code refuses a route that fails the rule at the source, too.
+  const { signBnetState, verifyBnetState } = await load('worker/session.js');
+  assert.throws(() => signBnetState(s.w.env, s.ids.erin, 'M'.repeat(22), s.w.clock.now, '//evil.test'), TypeError);
+  assert.throws(() => signBnetState(s.w.env, s.ids.erin, 'M'.repeat(22), s.w.clock.now, 'javascript:alert(1)'), TypeError);
+  const crafted = `back.${'a'.repeat(250)}.${'M'.repeat(22)}.${s.w.clock.now}.${'A'.repeat(43)}`;
+  assert.equal(await verifyBnetState(s.w.env, s.ids.erin, crafted, s.w.clock.now), false, 'a route over 200 characters in a state');
+});
+
+check('link: the wrong-origin redirect carries a valid return to the right origin and drops a bad one; a sign-in ignores return', async () => {
+  const s = await scenario();
+  const route = `#/g/${s.guildId}/setup`;
+  const cookieHeader = Object.entries(s.jars.erin).map(([k, v]) => `${k}=${v}`).join('; ');
+  const elsewhere = async (query) => (await s.w.app.handle(new Request(`https://elsewhere.test/auth/bnet/login${query}`, { headers: { Cookie: cookieHeader } }))).headers.get('Location');
+  assert.equal(await elsewhere(`?return=${encodeURIComponent(route)}`), `${ORIGIN}/auth/bnet/login?return=${encodeURIComponent(route)}`);
+  assert.equal(await elsewhere(`?return=${encodeURIComponent('//evil.test')}`), `${ORIGIN}/auth/bnet/login`);
+  assert.equal(await elsewhere(''), `${ORIGIN}/auth/bnet/login`);
+  assert.equal(await elsewhere(`?mode=signin&return=${encodeURIComponent(route)}`), `${ORIGIN}/auth/bnet/login?mode=signin`, 'a sign-in drops the return');
+  // A sign-in on the right origin: the signin state, no return in it.
+  const signin = await s.w.req('GET', `/auth/bnet/login?mode=signin&return=${encodeURIComponent(route)}`);
+  assert.equal(signin.status, 302);
+  const state = stateOfLogin(signin);
+  assert.match(state, /^signin\.[A-Za-z0-9_-]{22}\.\d{13}\.[A-Za-z0-9_-]{43}$/);
+  const { bnetStateMode, bnetStateReturn } = await load('worker/session.js');
+  assert.equal(bnetStateMode(state), 'signin');
+  assert.equal(bnetStateReturn(state), null);
+});
+
 check('link: starting the link is limited to 10 a window per member', async () => {
   const s = await scenario();
   for (let i = 0; i < 10; i++) assert.equal((await s.w.req('GET', '/auth/bnet/login', { jar: s.jars.erin })).headers.get('Location').startsWith(s.w.env.BNET_API_BASE), true);

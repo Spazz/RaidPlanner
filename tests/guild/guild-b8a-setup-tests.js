@@ -679,6 +679,51 @@ check('Guild setup, step 3: a tick per character bound by name, default ticked; 
   assert(G.pages.setup.confirmedIds(view).includes('c_2'));
 });
 
+check('Guild setup: the link in the Owner panel to Battle.net leaves a one-shot marker, and the page opened again after the round trip is the Preview again (not the first step)', async () => {
+  const DRY = 'POST /api/guild/g1/flip/dry-run';
+  const KEY = 'gs-setup-resume';
+  // The click on the link (a plain link: the handler only writes the marker).
+  const suspended = previewOf({ owner: { exists: true, userId: 'u_o', name: 'Brandon', source: 'stored_guild_master', live: false, willBeSuspended: true, reason: 'no_proven_character', via: null, rosterStored: true, rosterFetchedAt: T0 } });
+  const first = await atPreview({ preview: suspended });
+  assert(first.html().includes('data-action="setup-reverify"'));
+  assert.equal(storage.getItem(KEY), null);
+  G.handlers.click['setup-reverify']();
+  assert.equal(JSON.parse(storage.getItem(KEY)).gid, 'g1');
+  // The page loaded fresh at #/g/g1/setup (nothing in memory): the Preview runs again, the marker is gone.
+  G.pages.setup.reset();
+  let opened = await openSetup({ bnet: LINKED(), extra: { [DRY]: () => previewOf() } });
+  assert.equal(opened.view.step, 3, 'the Preview');
+  assert(opened.view.preview && opened.calls.some((c) => c.method === 'POST' && c.path === '/api/guild/g1/flip/dry-run'), 'the dry run ran again');
+  assert(text(opened.html()).includes('is on the roster and confirmed by Battle.net'), 'the Owner panel reads the new answer');
+  assert.equal(storage.getItem(KEY), null, 'taken once');
+  // Opened again without a click: the first step, no dry run.
+  G.pages.setup.reset();
+  opened = await openSetup({ bnet: LINKED(), extra: { [DRY]: () => previewOf() } });
+  assert.equal(opened.view.step, 1);
+  assert(!opened.calls.some((c) => c.path === '/api/guild/g1/flip/dry-run'));
+  // A marker that is old, or for another guild, or a broken one: the first step, and the marker is gone either way.
+  for (const marker of [JSON.stringify({ gid: 'g1', at: Date.now() - 16 * 60 * 1000 }), JSON.stringify({ gid: 'g2', at: Date.now() }), '{not json']) {
+    storage.setItem(KEY, marker);
+    G.pages.setup.reset();
+    opened = await openSetup({ bnet: LINKED(), extra: { [DRY]: () => previewOf() } });
+    assert.equal(opened.view.step, 1, marker);
+    assert.equal(storage.getItem(KEY), null, 'gone either way');
+  }
+  // The marker does not move a page that has nothing to preview: a guild not linked yet, or a roster not read.
+  for (const bnet of [bnetOf(), LINKED({ roster: { members: 0, fetchedAt: null } })]) {
+    storage.setItem(KEY, JSON.stringify({ gid: 'g1', at: Date.now() }));
+    G.pages.setup.reset();
+    opened = await openSetup({ bnet, extra: { [DRY]: () => previewOf() } });
+    assert.equal(opened.view.step, 1);
+  }
+  // Without storage nothing breaks.
+  sandbox.window = { location: { hash: '#/g/g1/setup' } };
+  assert.doesNotThrow(() => G.handlers.click['setup-reverify']());
+  G.pages.setup.reset();
+  opened = await openSetup({ bnet: LINKED(), extra: { [DRY]: () => previewOf() } });
+  assert.equal(opened.view.step, 1);
+});
+
 check('Guild setup, step 3: a preview that the flip would refuse says so; Next stays off (G6 #2)', async () => {
   const suspended = previewOf({
     owner: { exists: true, userId: 'u_o', name: 'Brandon', source: 'stored_guild_master', live: false, willBeSuspended: true, reason: 'no_proven_character', via: null, rosterStored: true, rosterFetchedAt: T0 },
@@ -687,7 +732,7 @@ check('Guild setup, step 3: a preview that the flip would refuse says so; Next s
   });
   const { html } = await atPreview({ preview: suspended });
   const page = html();
-  assert(page.includes('gs-su-owner is-bad') && text(page).includes('Would be suspended') && page.includes('href="/auth/bnet/login"') && text(page).includes('Sign in with Battle.net'), 'the Owner panel, with the way to prove a character');
+  assert(page.includes('gs-su-owner is-bad') && text(page).includes('Would be suspended') && page.includes('href="/auth/bnet/login?return=%23%2Fg%2Fg1%2Fsetup"') && text(page).includes('Sign in with Battle.net'), 'the Owner panel, with the way to prove a character, back to this page');
   assert(text(page).includes('Lose permissions 1 Account Permission Why Brandon Guild Master The Owner would be suspended'));
   assert(text(bar(page)).includes('Sign in with Battle.net before you switch.') && /<button[^>]*disabled[^>]*>(?:<span>)?Next/.test(page), 'the reason beside the disabled Next');
   G.handlers.click['setup-preview-next']();

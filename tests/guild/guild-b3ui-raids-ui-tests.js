@@ -303,7 +303,7 @@ check('open sign-up, Battle.net guild (6a): the account\'s characters as radio r
   assert(out.includes('<span class="gs-char-name gs-class-druid">Oakmender</span><span class="gs-picksub">Druid - Level 64 - Dreamscythe</span>'));
   assert(out.includes('src="/icons/classicon_rogue.jpg"') && out.includes('class="gs-spec-icon"'));
   assert(out.includes('<p class="gs-fine" id="jn-char-help">From your Battle.net, Corvane#4821.</p>'));
-  assert(out.includes('<a class="gs-btn gs-btn-ghost gs-btn-sm" href="/auth/bnet/login" data-action="open-connect" data-key="bnet-refresh"><span>Refresh from Battle.net</span></a>'));
+  assert(out.includes('<a class="gs-btn gs-btn-ghost gs-btn-sm" href="/auth/bnet/login?return=%23%2Fopen%2Fg1%2Fr1" data-key="bnet-refresh"><span>Refresh from Battle.net</span></a>'), 'the Refresh link comes back to this open raid');
   assert.deepEqual(specsOf(out), ['', 'Assassination', 'Combat', 'Subtlety'], 'the Spec select lists the picked character\'s class');
   assert(!out.includes('name="name"') && !out.includes('name="class"'), 'nothing is typed in an in-game guild');
   assert(out.includes('data-submit="open-form"') && out.includes('name="website"') && out.includes('class="gs-hp"'));
@@ -336,13 +336,13 @@ check('open sign-up, Battle.net states (6c / 8b): not connected is one Connect B
   const connect = page({ data: OPEN_DATA({ signUp: BNET({ status: 'not_linked', battletag: null, characters: [] }) }) });
   const t = text(connect);
   assert(connect.includes('<h2 class="gs-empty2-title">Connect Battle.net to sign up</h2>') && t.includes('Vindicated takes guests who have Battle.net connected. You pick your character from your list.'));
-  assert(connect.includes('<a class="gs-btn gs-btn-molten" href="/auth/bnet/login" data-action="open-connect" data-key="bnet-connect">') && t.includes('Connect Battle.net'));
+  assert(connect.includes('<a class="gs-btn gs-btn-molten" href="/auth/bnet/login?return=%23%2Fopen%2Fg1%2Fr1" data-key="bnet-connect">') && t.includes('Connect Battle.net'), 'the Connect link comes back to this open raid');
   assert.equal((connect.match(/gs-btn-molten/g) || []).length, 1, 'the one primary');
   assert(t.includes('Vindicated opened this raid to guests. 11 spots left.') && !connect.includes('data-submit="open-form"') && !connect.includes('gs-pickrow'));
   const refresh = status => page({ data: OPEN_DATA({ signUp: BNET({ status, characters: [] }) }) });
   for (const status of ['expired', 'needs_refresh']) {
     const out = refresh(status);
-    assert(text(out).includes('Load your characters from Battle.net') && text(out).includes('Refresh from Battle.net') && out.includes('href="/auth/bnet/login"') && !out.includes('data-submit="open-form"'), status);
+    assert(text(out).includes('Load your characters from Battle.net') && text(out).includes('Refresh from Battle.net') && out.includes('href="/auth/bnet/login?return=%23%2Fopen%2Fg1%2Fr1"') && !out.includes('data-submit="open-form"'), status);
   }
   assert(text(refresh('unavailable')).includes('Battle.net did not answer'));
   assert(text(page({ data: OPEN_DATA({ signUp: BNET({ status: 'ok', characters: [] }) }) })).includes('No characters found') && text(page({ data: OPEN_DATA({ signUp: BNET({ status: 'ok', characters: [] }) }) })).includes('Corvane#4821'));
@@ -554,11 +554,9 @@ check('the way back: a short-lived marker is kept before sign-in or a Battle.net
     assert.equal(O.takeReturn(), '');
     store['gs-open-return'] = JSON.stringify({ hash: '#/open/g1/r1', at: Date.now() - 60 * 1000 });
     assert.equal(O.takeReturn(), '#/open/g1/r1', 'a minute old is fine');
-    // The links that leave the page set it.
+    // The sign-in link that leaves the page sets it; the Battle.net links name the raid as their ?return= and set nothing.
     S_join(OPEN_STATE());
-    G.handlers.click['open-connect']();
-    assert.equal(JSON.parse(store['gs-open-return']).hash, '#/open/g1/r1');
-    delete store['gs-open-return'];
+    assert.equal(G.handlers.click['open-connect'], undefined, 'no marker handler on the Battle.net links');
     G.handlers.click['open-signin']();
     assert.equal(JSON.parse(store['gs-open-return']).hash, '#/open/g1/r1');
     // Without storage nothing breaks.

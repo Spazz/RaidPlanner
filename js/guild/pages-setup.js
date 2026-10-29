@@ -26,7 +26,11 @@
   const RANKS_LEAD = 'Battle.net gives guild ranks as numbers only. Name each rank for the site, say what it counts as, and give it a permission if it needs one. Ranks nobody holds can stay unmapped.';
   const OUT_OF_DATE = 'This preview is out of date: the guild changed since you ran it. Run it again to see what would change now.';
   const TICKS_CHANGED = 'You changed which characters are matched. The counts and lists above are for the earlier ticks.';
+  const CONNECT_HREF = '/auth/bnet/login?return='; // the Battle.net link; the Worker sends the member back to the page named by `return` (worker/session.js bnetReturnRoute)
   const SIGN_IN_TEXT = 'Sign in with Battle.net, then the switch runs. You come back to this page.';
+
+  const RESUME_KEY = 'gs-setup-resume'; // sessionStorage: the Owner panel's Battle.net link was clicked, so the page opens on the Preview when the round trip ends here
+  const RESUME_TTL_MS = 15 * 60 * 1000;
 
   let view = null;    // the page's state (see newView)
   let handoff = null; // what a repeated act leaves for the page it returns to: { gid, pin, banner, flip, switched, rerun }
@@ -39,6 +43,25 @@
   function list(v) { return Array.isArray(v) ? v : []; }
   function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
   function nowMs() { return G.fresh.now(); }
+  function store() {
+    try { return typeof window !== 'undefined' && window.sessionStorage ? window.sessionStorage : null; } catch (e) { return null; }
+  }
+  function rememberResume(gid) {
+    const s = store();
+    if (!s || !gid) return;
+    try { s.setItem(RESUME_KEY, JSON.stringify({ gid: gid, at: nowMs() })); } catch (e) { /* storage may be blocked: the page opens on its first step */ }
+  }
+  // true once, for this guild, within 15 minutes of the click; the marker is gone either way.
+  function takeResume(gid) {
+    const s = store();
+    if (!s) return false;
+    let raw = null;
+    try { raw = s.getItem(RESUME_KEY); s.removeItem(RESUME_KEY); } catch (e) { return false; }
+    if (!raw) return false;
+    let found = null;
+    try { found = JSON.parse(raw); } catch (e) { return false; }
+    return !!found && found.gid === gid && typeof found.at === 'number' && nowMs() - found.at <= RESUME_TTL_MS;
+  }
 
   // ── names (pure) ──
   const loose = function (text) { return String(text == null ? '' : text).toLowerCase().replace(/[^a-z0-9]+/g, ''); };
@@ -323,6 +346,7 @@
 
   function load(r, gd) {
     const carried = takeHandoff(r.gid);
+    const resume = takeResume(r.gid);
     const v = view = newView(r.gid, gd, carried);
     return G.api.get(path(r.gid, '/bnet')).then(function (d) {
       if (view !== v) return null;
@@ -333,8 +357,9 @@
       if (info.state === 'ingame') { v.step = STEPS.length + 1; v.pinResult = null; return null; }
       if (carried.pin && !v.banner) v.banner = pinBanner(v);
       if (!v.owner || info.state !== 'linked') return null;
-      if (carried.rerun && num(d.roster && d.roster.members) > 0) {
+      if ((carried.rerun || resume) && num(d.roster && d.roster.members) > 0) {
         // A repeated switch could not run (the preview was out of date, or the flip refused): the Preview step again, with the reason above it.
+        // The same after the Owner panel's Battle.net round trip (a full page load, nothing carried but the marker): the Preview again, now with the account's characters re-read.
         v.step = 3;
         return ensureMap(v).then(function () { return runPreview(v, Array.isArray(carried.ids) ? carried.ids : null, false); }, function () { return null; });
       }
@@ -548,7 +573,7 @@
     }
     return factPanel('Owner', fact(name, chip('rose', 'Would be suspended') +
       sub('No character of this account is confirmed on the guild roster. After the switch the Owner seat would be suspended and only the powers of your in-game rank would remain.'),
-      G.ui.buttonHtml({ label: 'Sign in with Battle.net', href: '/auth/bnet/login' })), { cls: 'gs-su-owner is-bad' });
+      G.ui.buttonHtml({ label: 'Sign in with Battle.net', href: CONNECT_HREF + encodeURIComponent(setupHref(v.gid)), attrs: { 'data-action': 'setup-reverify', 'data-key': 'setup-reverify' } })), { cls: 'gs-su-owner is-bad' });
   }
 
   function tickHtml(id, label, on, key, off) {
@@ -780,6 +805,12 @@
 
   G.handlers.input['setup-pin-name'] = function (el) { const v = cur(); if (v) v.pinName = el.value; };
   G.handlers.input['setup-pin-realm'] = function (el) { const v = cur(); if (v) v.pinRealm = el.value; };
+
+  // The Owner panel's plain link to Battle.net: remember the page, so the round trip ends on the Preview and not on the first step.
+  G.handlers.click['setup-reverify'] = function () {
+    const v = cur();
+    if (v) rememberResume(v.gid);
+  };
 
   // Step 1: the sign-in carries the name; the act `pin` posts it on the way back.
   G.handlers.click['setup-pin'] = function () {

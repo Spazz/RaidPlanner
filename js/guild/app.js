@@ -529,8 +529,8 @@
     const me = state.me;
     const guilds = Array.isArray(me.guilds) ? me.guilds : [];
 
-    // Back to the open raid a visitor left to sign in or to connect Battle.net (pages-open-raid.js sets the marker): the sign-in lands on the start page, the
-    // Battle.net link on My characters. A refused or cancelled round trip (#/linked) only clears the marker.
+    // Back to the open raid a visitor left to sign in (pages-open-raid.js sets the marker): the sign-in lands on the start page. The page's Battle.net links name the raid
+    // themselves (?return=) and set no marker. A refused or cancelled round trip (#/linked) only clears the marker.
     if (r.name === 'home' || r.name === 'signin' || r.name === 'characters' || r.name === 'linked') {
       const back = G.pages.openRaid.takeReturn();
       if (back && r.name !== 'linked') {

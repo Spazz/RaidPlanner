@@ -6,12 +6,14 @@
 //            Not connected -> one Connect Battle.net empty state. A stale or empty list -> Refresh from Battle.net.
 //   'typed'  every other guild: the join link's fields (character name, class, spec, note).
 // Done = a banner, the character, and "Withdraw my sign-up" (no confirm: signing up again is one form away). A member of the guild is sent to the raid page; a signed-out
-// visitor is asked to sign in and comes back here (rememberReturn / takeReturn: a short-lived sessionStorage marker, also set before a Battle.net round trip).
+// visitor is asked to sign in and comes back here (rememberReturn / takeReturn: a short-lived sessionStorage marker). The Battle.net links name this page as their `return` and come straight back.
 // GET / POST / DELETE /api/open/:gid/raids/:rid. The raid's start is written in the guild's zone, as on the join page.
 (function (G) {
   'use strict';
 
   const CONNECT_HREF = '/auth/bnet/login';
+  // The Battle.net link for THIS raid: the Worker sends the member back to the open raid's own page (worker/session.js bnetReturnRoute), not to My characters.
+  function connectHref(x) { return CONNECT_HREF + '?return=' + encodeURIComponent(hashOf(x)); }
   const RETURN_KEY = 'gs-open-return';
   const RETURN_TTL_MS = 15 * 60 * 1000;
 
@@ -69,12 +71,12 @@
       return G.ui.emptyStateHtml({ icon: 'alert', title: 'Battle.net has no characters for this game', text: guild + ' takes guests through Battle.net, which cannot list characters for this game yet.' });
     }
     if (status === 'not_linked') {
-      return G.ui.emptyStateHtml({ icon: 'link', title: 'Connect Battle.net to sign up', text: guild + ' takes guests who have Battle.net connected. You pick your character from your list.', actions: [{ label: 'Connect Battle.net', href: CONNECT_HREF, icon: 'link', attrs: { 'data-action': 'open-connect', 'data-key': 'bnet-connect' } }] });
+      return G.ui.emptyStateHtml({ icon: 'link', title: 'Connect Battle.net to sign up', text: guild + ' takes guests who have Battle.net connected. You pick your character from your list.', actions: [{ label: 'Connect Battle.net', href: connectHref(x), icon: 'link', attrs: { 'data-key': 'bnet-connect' } }] });
     }
     const why = status === 'unavailable' ? { title: 'Battle.net did not answer', text: 'Your characters could not be loaded just now. Try again in a moment.' }
       : status === 'ok' ? { title: 'No characters found', text: 'Battle.net lists no character for this game on ' + (bnet.battletag || 'your account') + '. If you made one recently, refresh the list.' }
         : { title: 'Load your characters from Battle.net', text: 'Your Battle.net character list is out of date. Refresh it to pick your character.' };
-    return G.ui.emptyStateHtml({ icon: 'link', title: why.title, text: why.text, actions: [{ label: 'Refresh from Battle.net', href: CONNECT_HREF, icon: 'link', attrs: { 'data-action': 'open-connect', 'data-key': 'bnet-connect' } }] });
+    return G.ui.emptyStateHtml({ icon: 'link', title: why.title, text: why.text, actions: [{ label: 'Refresh from Battle.net', href: connectHref(x), icon: 'link', attrs: { 'data-key': 'bnet-connect' } }] });
   }
 
   function characterKey(c) { return c.realmSlug + '|' + c.name; }
@@ -103,7 +105,7 @@
       bnet.characters.map(function (c) { return characterRowHtml(c, characterKey(c) === key); }).join('') + '</ul>' +
       '<p class="gs-fine" id="jn-char-help">From your Battle.net' + (bnet.battletag ? ', ' + esc(bnet.battletag) : '') + '.</p>' +
       '<p class="gs-field-error" id="jn-character-err" role="alert" hidden></p>' +
-      '<div class="gs-pickact">' + G.ui.buttonHtml({ label: 'Refresh from Battle.net', variant: 'ghost', size: 'sm', href: CONNECT_HREF, attrs: { 'data-action': 'open-connect', 'data-key': 'bnet-refresh' } }) + '</div></div>';
+      '<div class="gs-pickact">' + G.ui.buttonHtml({ label: 'Refresh from Battle.net', variant: 'ghost', size: 'sm', href: connectHref(x), attrs: { 'data-key': 'bnet-refresh' } }) + '</div></div>';
   }
 
   function formHtml(x) {
@@ -203,11 +205,7 @@
   }
 
   // ── Handlers ──
-  // The way out to Battle.net (a plain link): remember the page, so the round trip ends back here.
-  G.handlers.click['open-connect'] = function () {
-    const x = st().join;
-    if (x && x.open) rememberReturn(hashOf(x));
-  };
+  // The way out to sign in (a plain link): remember the page, so the round trip ends back here. The Battle.net links need no marker: they name this page themselves (connectHref).
   G.handlers.click['open-signin'] = function () {
     const x = st().join;
     if (x && x.open) rememberReturn(hashOf(x));

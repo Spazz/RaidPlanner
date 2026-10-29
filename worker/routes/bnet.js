@@ -26,7 +26,7 @@ import {
 import { maxLevelOf } from '../realms.js';
 import { cleanCharacterName, nameKey } from '../roster-data.js';
 import {
-  BNET_STATE_COOKIE, FRESH_MODE, bnetStateCookie, bnetStateMode, claimStateNonce, clearBnetStateCookie, hashToken, loadSession, newSessionToken,
+  BNET_STATE_COOKIE, FRESH_MODE, bnetReturnRoute, bnetStateCookie, bnetStateMode, bnetStateReturn, claimStateNonce, clearBnetStateCookie, hashToken, loadSession, newSessionToken,
   presentedToken, sessionCookie, signBnetSigninState, signBnetState, startSessionStatements, verifyBnetSigninState, verifyBnetState, verifyFreshState,
 } from '../session.js';
 import { applyPicks, snapshotIdentity } from '../claim-apply.js';
@@ -35,7 +35,8 @@ import { bad, resolveRealm } from './roster.js';
 import { viewerOf } from '../roster-view.js';
 import { wrote } from '../d1-changes.js';
 
-// Fixed targets inside the app shell; the hash router reads them. No user input reaches a Location header.
+// Fixed targets inside the app shell; the hash router reads them. The only input that reaches a Location header is a link's return route, and only one that passed
+// bnetReturnRoute and came back out of a MAC-verified state (session.js).
 const SIGNIN_REDIRECT = '/#/signin';
 const HOME_REDIRECT = '/#/';
 const CHARACTERS_REDIRECT = '/#/characters';
@@ -55,10 +56,13 @@ export const STATEMENTS_BEFORE_CLAIM = 5;
 // Link
 
 // ?mode=signin starts a sign-in or sign-up (nobody needs to be signed in); without it the signed-in member links Battle.net to their account.
+// A link may also say ?return=<app route> (bnetReturnRoute: "#/g/<gid>/setup"): the callback then ends there instead of on My characters. A sign-in ignores it (its landing is
+// the sign-in's own); a value that fails the rule is dropped without a word and the link ends on My characters as before.
 export async function bnetLogin(ctx) {
   const { env, db } = ctx;
   const url = new URL(ctx.request.url);
   const signin = url.searchParams.get('mode') === 'signin';
+  const returnTo = signin ? null : bnetReturnRoute(url.searchParams.get('return'));
   const failTo = signin ? signinRedirect : linkedRedirect;
   let session = null;
   if (!signin) {
@@ -67,7 +71,7 @@ export async function bnetLogin(ctx) {
   }
   if (!isConfigured(env)) return redirectResponse(failTo('not_configured'));
   const canonical = canonicalOrigin(env);
-  if (url.origin !== canonical) return redirectResponse(`${canonical}/auth/bnet/login${signin ? '?mode=signin' : ''}`);
+  if (url.origin !== canonical) return redirectResponse(`${canonical}/auth/bnet/login${signin ? '?mode=signin' : returnTo ? `?return=${encodeURIComponent(returnTo)}` : ''}`);
   if (signin) {
     const state = await signBnetSigninState(env, base64url(ctx.randomBytes(16)), ctx.now());
     return redirectResponse(authorizeUrl(env, state), [bnetStateCookie(state)]);
@@ -77,7 +81,7 @@ export async function bnetLogin(ctx) {
   // A first link on an account that holds the Owner seat or any staff role needs a fresh grant for this change first (worker/fresh.js identity-change protection).
   const linked = await db.prepare('SELECT 1 AS found FROM bnet_links WHERE user_id = ?').bind(session.user.id).first();
   if (!linked && (await identityChangeBlocked({ ...ctx, session }, { userId: session.user.id, change: 'link_bnet' }))) return redirectResponse(linkedRedirect('fresh_required'));
-  const state = await signBnetState(env, session.user.id, base64url(ctx.randomBytes(16)), ctx.now());
+  const state = await signBnetState(env, session.user.id, base64url(ctx.randomBytes(16)), ctx.now(), returnTo);
   return redirectResponse(authorizeUrl(env, state), [bnetStateCookie(state)]);
 }
 
@@ -323,7 +327,9 @@ export async function bnetCallback(ctx) {
   const tombstoned = tombstoneNewLink ? await tombstoneNewBnetAccount(ctx, { userId: session.user.id, bnetAccountId: info.id }) : 0;
   // A first link and the same Battle.net account again ("Re-verify with Battle.net") both prove the account's characters afresh.
   await matchAfterCallback(ctx, { userId: session.user.id, bnetAccountId: info.id, snapshot, now, spent: STATEMENTS_BEFORE_MATCH.link + firstLinkExtra + tombstoned });
-  return redirectResponse(CHARACTERS_REDIRECT, [clear]);
+  // The state was verified above, so the route it carries is the one the member's own begin step signed.
+  const returnTo = bnetStateReturn(state);
+  return redirectResponse(returnTo ? `/${returnTo}` : CHARACTERS_REDIRECT, [clear]);
 }
 
 // The sign-in match runs after the callback's own writes and never fails the callback: whatever it could not do waits for the next sign-in. Then the tombstone match
