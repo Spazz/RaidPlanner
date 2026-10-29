@@ -191,7 +191,7 @@ async function bnetFreshCallback(ctx, { url, state, now, clear }) {
   // The setup pin reads the account's characters in the guild's namespace afresh HERE, with the token in hand: the pin route (a later request) decides on them and on the live roster
   // (worker/routes/bnet-pin.js). The grant below is written only when that read worked.
   if (parsed.purpose === 'pin') {
-    const identity = await checkFreshIdentity(ctx, { session, provider: 'bnet', identityId: info.id, purpose: parsed.purpose, nowMs: now });
+    const identity = await checkFreshIdentity(ctx, { session, provider: 'bnet', identityId: info.id, purpose: parsed.purpose });
     if (!identity.ok) {
       await noteFreshFailure(ctx, { userId: session.user.id, guildId: parsed.guildId, purpose: parsed.purpose, reason: identity.reason });
       return fail(identity.reason, parsed.purpose);

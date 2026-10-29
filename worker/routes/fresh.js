@@ -9,7 +9,7 @@
 //   identity_change and account_delete. Left out, the account's only linked identity is used; with both linked, 400 provider_required.
 // Writes nothing (the state is stateless until its callback claims the nonce). 10 per SESSION per 10 minutes, and 30 per account above that, FAIL CLOSED: a limiter that cannot answer
 // refuses (503). Per session, so whoever holds a stolen cookie can only use up that session's own budget, never the real Owner's.
-// Errors: 400 bad_request (purpose, params, provider), 403 forbidden (not the Owner / not a member) or identity_too_new { provider, eligibleAt }, 404 not_found (gm_claim for a
+// Errors: 400 bad_request (purpose, params, provider), 403 forbidden (not the Owner / not a member), 404 not_found (gm_claim for a
 // guild that does not exist), 409 not_configured | identity_not_linked | wrong_origin | claim_not_available (gm_claim: the guild's rank source is not 'ingame' or its pin is
 // incomplete) | already_owner (gm_claim: the caller holds the seat and is not suspended), 429 / 503 rate_limited. The Owner purposes (handover, guild_delete, pin, source_switch) ask the Owner
 // question FIRST (worker/owner-gate.js): an Owner who is no member under the guild's rank source is not refused as a non-member. 403 pin_not_open: SETUP_PIN_GUILDS does not name the guild.
@@ -17,7 +17,7 @@ import { HttpError, jsonResponse } from '../http.js';
 import { authorizeUrl as bnetAuthorizeUrl, bnetSupport, canonicalOrigin as bnetOrigin, isConfigured as bnetConfigured } from '../battlenet.js';
 import { authorizeUrl as discordAuthorizeUrl, canonicalOrigin as discordOrigin, isConfigured as discordConfigured } from '../discord.js';
 import {
-  FRESH_PURPOSES, FRESH_START_ACCOUNT_LIMIT, FRESH_START_LIMIT, FRESH_START_WINDOW_MS, freshAccountKey, freshHash, freshSessionKey, identityStanding, isFreshPurpose, loadIdentityRow,
+  FRESH_PURPOSES, FRESH_START_ACCOUNT_LIMIT, FRESH_START_LIMIT, FRESH_START_WINDOW_MS, freshAccountKey, freshHash, freshSessionKey, heldIdentityId, isFreshPurpose, loadIdentityRow,
   paramsProblem,
 } from '../fresh.js';
 import { claimPreflight } from '../gm-claim.js';
@@ -69,7 +69,7 @@ export async function startFresh(ctx) {
 
   const row = await loadIdentityRow(db, userId);
   if (!row) throw new HttpError(401, 'signed_out', 'Sign in to continue.');
-  const options = spec.providers.filter((candidate) => identityStanding(row, candidate, ctx.now()).held);
+  const options = spec.providers.filter((candidate) => heldIdentityId(row, candidate));
   let provider = body.provider;
   if (provider === undefined) {
     if (options.length > 1) throw bad('Say which sign-in to use: bnet or discord.', 'provider');
@@ -78,14 +78,8 @@ export async function startFresh(ctx) {
   if (!spec.providers.includes(provider)) {
     throw bad(`That act is confirmed with ${spec.providers.map((name) => (name === 'bnet' ? 'Battle.net' : 'Discord')).join(' or ')}.`, 'provider');
   }
-  const standing = identityStanding(row, provider, ctx.now());
-  if (!standing.held) {
+  if (!heldIdentityId(row, provider)) {
     throw new HttpError(409, 'identity_not_linked', `Connect ${provider === 'bnet' ? 'Battle.net' : 'Discord'} to your account first, then repeat this.`, { provider });
-  }
-  if (spec.identityRule && !standing.passes) {
-    throw new HttpError(403, 'identity_too_new',
-      `That sign-in was connected to this account recently. Use the sign-in the account was made with, or wait until ${new Date(standing.eligibleAt).toISOString().slice(0, 10)}.`,
-      { provider, ...(standing.eligibleAt ? { eligibleAt: standing.eligibleAt } : {}) });
   }
 
   const configured = provider === 'bnet' ? bnetConfigured(env) : discordConfigured(env);

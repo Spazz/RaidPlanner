@@ -118,7 +118,7 @@ check('F1: a protected account that takes a guild with it needs a grant (403 fre
   assert.deepEqual([guildRoute.status, guildRoute.json.field], [400, 'purpose'], 'it belongs to the account, not to a guild');
   const withParams = await s.call('gm', 'POST', '/api/fresh/start', { purpose: 'account_delete', params: { x: 1 }, provider: 'discord' });
   assert.deepEqual([withParams.status, withParams.json.field], [400, 'params']);
-  // The real flow: start, Discord (the founding identity), callback, then the act.
+  // The real flow: start, Discord, callback, then the act.
   await s.allowDelete('gm');
   const done = await s.accountDelete('gm', [gid]);
   assert.equal(done.status, 200, done.text);
@@ -347,7 +347,7 @@ check('F5: a Battle.net refresh whose link was removed (or swapped for another a
   assert.deepEqual(await s.one('SELECT bnet_account_id, battletag, first_linked_at FROM bnet_links WHERE user_id = ?', s.uids.gm), { bnet_account_id: BNET.other.id, battletag: 'Other#9', first_linked_at: 1 });
 });
 
-check('F7: a Battle.net link with no first_linked_at gets its OLD link time on the next refresh and then ages (rule (a) passes); a set value never moves', async () => {
+check('F7: a Battle.net link with no first_linked_at gets its OLD link time on the next refresh and then ages (the fallback stays correct even though no rule reads it now); a set value never moves', async () => {
   const s = await world();
   await s.bnetSignUp('ivy', BNET.ivy);
   s.w.advance(12 * DAY);
@@ -361,7 +361,7 @@ check('F7: a Battle.net link with no first_linked_at gets its OLD link time on t
   const row = await s.one('SELECT linked_at, first_linked_at FROM bnet_links WHERE user_id = ?', s.uids.ivy);
   assert.equal(row.first_linked_at, tenDaysAgo, 'filled in with the link time as it stood BEFORE the refresh');
   assert(row.linked_at > tenDaysAgo);
-  assert.equal((await identityChange(BNET.ivy)).location, '/#/fresh?done=identity_change', 'still passes after the refresh (before: refused identity_new for ever)');
+  assert.equal((await identityChange(BNET.ivy)).location, '/#/fresh?done=identity_change', 'still passes after the refresh');
   // Refreshing again moves linked_at only.
   s.exec(`UPDATE sessions SET fresh_purpose = NULL, fresh_hash = NULL, fresh_at = NULL WHERE user_id = '${s.uids.ivy}'`);
   assert.equal(await s.linkBnet('ivy', BNET.ivy), '/#/characters');

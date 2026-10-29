@@ -134,7 +134,7 @@ export async function callback(ctx) {
 
 // The fresh-auth callback for Discord: the Discord account that comes back must be the one linked to the signed-in account. It reads the Discord id and nothing else (scope
 // identify), never mints or rotates a session, and ends on a fixed app route. Order: session, state cookie (compared with the state), MAC of THIS user and THIS session, the
-// age window, the single-use nonce, the exchange, then the grant (worker/fresh.js writeFreshGrant: identity equality, rule (a), the write).
+// age window, the single-use nonce, the exchange, then the grant (worker/fresh.js writeFreshGrant: identity equality, the write).
 async function discordFreshCallback(ctx, { url, state, cookieState, now, clear }) {
   const { env, db } = ctx;
   const session = await loadSession(ctx);

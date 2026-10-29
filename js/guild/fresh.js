@@ -151,14 +151,10 @@
   };
 
   // One sentence for a refused start (the step shows it inline).
-  fresh.errorText = function (err, purpose, optionCount) {
+  fresh.errorText = function (err, purpose) {
     const code = err && err.code;
     const spec = has(PURPOSES, purpose) ? PURPOSES[purpose] : null;
     const providerOf = function () { return err && err.body && known(err.body.provider) ? PROVIDER_LABEL[err.body.provider] : 'That sign-in'; };
-    if (code === 'identity_too_new') {
-      const when = err && err.body && typeof err.body.eligibleAt === 'number' ? G.ui.formatDate(err.body.eligibleAt) : '';
-      return providerOf() + ' was linked to your account recently. It can confirm this' + (when ? ' from ' + when : ' in a few days') + '.' + (optionCount > 1 ? ' Pick the other sign-in to go on now.' : '');
-    }
     if (code === 'forbidden') return spec && spec.owner ? 'Only the Owner of the guild can confirm this.' : (err.message || 'You do not have permission to do that.');
     if (code === 'identity_not_linked') return 'Connect ' + (err.body && known(err.body.provider) ? PROVIDER_LABEL[err.body.provider] : 'that sign-in') + ' to your account first, then repeat this.';
     if (code === 'not_configured') return providerOf() + ' sign-in is not set up on this server.';
@@ -281,7 +277,7 @@
     fresh.start({ gid: current.gid, purpose: current.purpose, params: current.params, provider: chosenProvider(form) || current.provider, act: current.act, returnTo: current.returnTo }).then(null, function (err) {
       G.ui.setBusy(form, false);
       if (G.api.classify(err).view === 'signin') { G.app.requireSignin(); return; }
-      G.ui.setText('dlg-error', fresh.errorText(err, current.purpose, current.options));
+      G.ui.setText('dlg-error', fresh.errorText(err, current.purpose));
     });
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

@@ -23,8 +23,7 @@
  *       pin to the switch-over without hand-made rows. It implies --with bnet. The stock fake cannot do this alone: its profile characters carry ids 7000 + n and its roster ids 8000 + n,
  *       and the Worker matches by id. Two things are done: the fake Battle.net is started with --owner-on-roster (tools/fake-battlenet.js: the account's profile holds Thornwick with the
  *       roster's id 8000), and gm links that Battle.net account through the real flow (login -> fake authorize -> callback) (1) right after the first sign-in, BEFORE the guild exists - a
- *       first link of an account that holds a staff role needs a fresh grant, so it cannot come later - which makes it the account's FOUNDING identity (linked within 60 s of the account's
- *       creation: worker/fresh.js rule (a) accepts it for the Owner acts without the 7 days) and (2) once more after the seed, which is what stamps Thornwick's key and Battle.net proof
+ *       first link of an account that holds a staff role needs a fresh grant (identity-change protection), so it cannot come later - and (2) once more after the seed, which is what stamps Thornwick's key and Battle.net proof
  *       (the sign-in match of a legacy guild). Pin (--pin-open) then finds him on the roster and the flip dry run says the Owner is live. No clock is moved and no database is written.
  *       --port is the Worker's port (8790-8799, default the first free one); the fakes sit on port+10000 (Discord), +11000 (sources), +12000 (Battle.net).
  *       Every Worker secret is a placeholder passed with --var, so a local .env is never read for them and no real service is called.
@@ -318,21 +317,16 @@ async function linkBattlenet(base, cookie) {
   if (callback.status !== 302 || /error=/.test(where)) throw new Error(`/auth/bnet/callback answered ${callback.status} ${where}`);
 }
 
-// ownerOnRoster: see the header. The first link has to be made within this long of the account's creation to be its founding identity (worker/fresh.js FOUNDING_WINDOW_MS is 60 s).
-const FOUNDING_LINK_MS = 45 * 1000;
-
 async function seed(base, fakes, discord, { ownerOnRoster = false } = {}) {
   const need = async (who, cookie, method, route, body, status = [200, 201]) => {
     const res = await request(base, cookie, method, route, body);
     if (!status.includes(res.status)) throw new Error(`seed: ${who} ${method} ${route} -> ${res.status} ${res.text.slice(0, 200)}`);
     return res.json;
   };
-  const founded = Date.now();
   const gm = await signIn(base, discord, PEOPLE.gm, MANAGE_SERVER);
   if (ownerOnRoster) {
-    // Before the guild exists: gm holds no role yet, so this first link needs no fresh grant; and it is made within seconds of the account's creation.
+    // Before the guild exists: gm holds no role yet, so this first link needs no fresh grant.
     await linkBattlenet(base, gm.cookie);
-    if (Date.now() - founded > FOUNDING_LINK_MS) throw new Error('seed: the Battle.net link came more than 45 s after the account was created, so it is not the founding identity; run it again');
   }
   const created = await need('gm', gm.cookie, 'POST', '/api/guild', {
     serverId: DISCORD_SERVER_ID, gameVersion: 'tbc', region: 'US', realm: 'Dreamscythe', name: 'Smoke Guard', timeZone: 'America/New_York', multipleTeams: false,

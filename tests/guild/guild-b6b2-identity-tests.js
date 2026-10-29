@@ -3,13 +3,13 @@
  * Run: node tests/guild/guild-b6b2-identity-tests.js
  *
  *   - every writer sets the first-link time (users.discord_linked_at, bnet_links.first_linked_at) and nothing moves it but unlink + link;
- *   - rule (a): fresh-auth for hand-over, guild delete, pin and source switch accepts an identity only if it is the founding identity (first linked within 60 s of the account's
- *     creation) or was first linked at least 7 days ago; the GM claim and in-game creation are exempt; the SQL guard and the pure standing agree;
+ *   - no age rule (the former rule (a) was removed by user decision 2026-10-29): every identity linked to the account confirms hand-over, guild delete, pin and source switch at once,
+ *     however young the link; the SQL guard and the pure read agree;
  *   - rule (b): on an account that holds the Owner seat or any stored or derived staff role anywhere, linking, replacing or unlinking either identity is itself a fresh-auth act
  *     (purpose identity_change, params { change }), consumed inside the batch; any other account needs none;
  *   - rule (c): every identity change nulls the account's grants and is audited (identity.change, never pruned) in each guild the account is a member of;
- *   - the scenarios of the plan: link your own Battle.net in the session, then hand-over / delete / pin are refused; a Battle.net refresh then pin passes; unlink + relink then pin is
- *     refused for 7 days; the founding identity passes at once; a Discord-first Guild Master links Battle.net and claims at once.
+ *   - the scenarios of the plan: link your own Battle.net in the session, then hand-over / delete / pin / source switch pass at once; a Battle.net refresh then pin passes; unlink +
+ *     relink then pin passes at once; a Discord-first Guild Master links Battle.net and claims at once.
  * Drives worker/index.js over the node:sqlite D1 stand-in, Discord faked by an injected fetch, Battle.net by tools/fake-battlenet.js on a local port.
  */
 const assert = require('node:assert/strict');
@@ -41,12 +41,12 @@ const SWITCH = { from: null, to: 'manual' };
 async function world(options = {}) {
   const s = await freshScenario({ ...options, env: { SETUP_PIN_GUILDS: '*', ...(options.env || {}) } });
   globalThis.__identityWorlds.push(s);
-  // The accounts of the scenario were made a moment ago; an identity linked now is "founding" for 60 s. A day on, a link made by a test is a young one.
+  // The accounts of the scenario were made a moment ago; a day on, a link made by a test is a young one (it must still confirm every act).
   s.w.advance(DAY);
   s.user = (key) => s.one('SELECT created_at, discord_id, discord_linked_at FROM users WHERE id = ?', s.uids[key]);
   s.bnetOf = async (key) => s.one('SELECT bnet_account_id, linked_at, first_linked_at FROM bnet_links WHERE user_id = ?', s.uids[key]);
   s.change = (change) => ({ purpose: 'identity_change', params: { change } });
-  // The real flow: fresh-auth for the change with the account's own Discord (the founding identity of a Discord account), then the change.
+  // The real flow: fresh-auth for the change with the account's own Discord, then the change.
   s.allow = async (key, change, provider = 'discord') => {
     const flow = await s.fresh(key, { ...s.change(change), provider });
     assert.equal(flow.location, '/#/fresh?done=identity_change', `${key} ${change}: ${flow.location}`);
@@ -62,7 +62,7 @@ async function world(options = {}) {
 check('the first-link times: a Discord account\'s discord_linked_at is its creation, a Battle.net account\'s first_linked_at is its creation, a refresh moves neither, unlink + link starts over', async () => {
   const s = await world();
   const gm = await s.user('gm');
-  assert.equal(gm.discord_linked_at, gm.created_at, 'a new Discord account: the Discord identity is the founding one');
+  assert.equal(gm.discord_linked_at, gm.created_at, 'a new Discord account: the Discord identity is first linked at creation');
   s.w.advance(3 * DAY);
   const again = await signIn(s.w, s.discordOf('gm'), [adminOf(s.serverId)]);
   assert.equal((await s.user('gm')).discord_linked_at, gm.created_at, 'a returning Discord sign-in does not touch it');
@@ -131,56 +131,37 @@ check('CI grep: every worker statement that attaches a Discord id to an account 
 });
 
 // ---------------------------------------------------------------------------
-// 2. Rule (a): the standing of an identity
+// 2. No age rule: every identity linked to the account confirms a purpose at once (the former rule (a) was removed by user decision 2026-10-29)
 
-check('rule (a): founding = within 60 s of the creation (inclusive), otherwise 7 days (inclusive); a missing Discord time never passes, a missing Battle.net time falls back to the link time; the SQL guard says the same', async () => {
+check('no age rule: heldIdentityId and identityGuard accept any linked identity whatever its first-link time (missing, just now, long ago) and nothing else', async () => {
   const s = await world();
   const fresh = await load('worker/fresh.js');
   const created = 1_700_000_000_000;
-  const rows = (o) => ({ created_at: created, discord_id: '1', discord_linked_at: null, bnet_account_id: '2', bnet_first_linked_at: null, ...o });
-  const soon = created + 3 * DAY; // an account three days old: only the founding window can let an identity through
-  const later = created + 100 * DAY;
-  const cases = [
-    ['discord', rows({ discord_linked_at: created }), soon, true],
-    ['discord', rows({ discord_linked_at: created + 60_000 }), soon, true],
-    ['discord', rows({ discord_linked_at: created + 60_001 }), soon, false],
-    ['discord', rows({ discord_linked_at: later - 7 * DAY }), later, true],
-    ['discord', rows({ discord_linked_at: later - 7 * DAY + 1 }), later, false],
-    ['discord', rows({ discord_linked_at: null }), later, false],
-    ['discord', rows({ discord_id: null, discord_linked_at: created }), soon, false],
-    ['bnet', rows({ bnet_first_linked_at: created }), soon, true],
-    ['bnet', rows({ bnet_first_linked_at: created + 60_000 }), soon, true],
-    ['bnet', rows({ bnet_first_linked_at: created + 60_001 }), soon, false],
-    ['bnet', rows({ bnet_first_linked_at: later - 7 * DAY }), later, true],
-    ['bnet', rows({ bnet_first_linked_at: later - 7 * DAY + 1 }), later, false],
-    ['bnet', rows({ bnet_account_id: null, bnet_first_linked_at: created }), soon, false],
-  ];
-  for (const [provider, row, now, expected] of cases) {
-    const standing = fresh.identityStanding(row, provider, now);
-    assert.equal(standing.passes, expected, JSON.stringify([provider, row]));
-    // The SQL guard over a real row says the same.
-    const userId = `u_std${Math.random().toString(36).slice(2, 14)}`;
-    s.exec(`INSERT INTO users (id, account_key, discord_id, username, prefs, created_at, last_seen_at, discord_linked_at) VALUES ('${userId}', '${userId}', ${row.discord_id ? `'${userId}d'` : 'NULL'}, 'x', '{}', ${created}, ${created}, ${row.discord_linked_at === null ? 'NULL' : row.discord_linked_at})`);
-    if (row.bnet_account_id) {
-      s.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES ('${userId}', '${String(Math.floor(Math.random() * 1e9) + 1)}', 'T#1', ${row.bnet_first_linked_at === null ? created + 5 : row.bnet_first_linked_at}, '{}', 1, NULL)`);
-      s.exec(`UPDATE bnet_links SET first_linked_at = ${row.bnet_first_linked_at === null ? 'NULL' : row.bnet_first_linked_at} WHERE user_id = '${userId}'`);
-    }
-    const identity = provider === 'discord' ? (row.discord_id ? `${userId}d` : null) : s.w.db.sqlite.prepare('SELECT bnet_account_id FROM bnet_links WHERE user_id = ?').get(userId)?.bnet_account_id;
-    if (identity) {
-      const guard = fresh.identityGuard(provider, userId, identity, { rule: true, nowMs: now });
-      const held = (await s.w.db.prepare(`SELECT ${guard.sql} AS ok`).bind(...guard.params).first()).ok === 1;
-      const noRule = fresh.identityGuard(provider, userId, identity, { rule: false, nowMs: now });
-      assert.equal((await s.w.db.prepare(`SELECT ${noRule.sql} AS ok`).bind(...noRule.params).first()).ok, 1, `held without the rule ${JSON.stringify([provider, row, userId, identity])}`);
-      // A Battle.net link with no first-link time falls back to its link time (created + 5 s here), which is inside the founding window.
-      const expectedSql = provider === 'bnet' && row.bnet_first_linked_at === null ? true : expected;
-      assert.equal(held, expectedSql, `SQL: ${JSON.stringify([provider, row])}`);
+  const both = { discord_id: '1', bnet_account_id: '2' };
+  assert.equal(fresh.heldIdentityId(both, 'discord'), '1');
+  assert.equal(fresh.heldIdentityId(both, 'bnet'), '2');
+  assert.equal(fresh.heldIdentityId({ ...both, discord_id: null }, 'discord'), null);
+  assert.equal(fresh.heldIdentityId({ ...both, bnet_account_id: null }, 'bnet'), null);
+  const okOf = async (guard) => (await s.w.db.prepare(`SELECT ${guard.sql} AS ok`).bind(...guard.params).first()).ok;
+  let serial = 0;
+  for (const linkedAt of [null, created, created + 1, created + 60_001, created + 100 * DAY]) {
+    serial += 1;
+    const userId = `u_held${serial}`;
+    const bnetId = `75000000${serial}`;
+    const stamp = linkedAt === null ? 'NULL' : linkedAt;
+    s.exec(`INSERT INTO users (id, account_key, discord_id, username, prefs, created_at, last_seen_at, discord_linked_at) VALUES ('${userId}', '${userId}', '${userId}d', 'x', '{}', ${created}, ${created}, ${stamp})`);
+    s.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES ('${userId}', '${bnetId}', 'T#1', ${created + 100 * DAY}, '{}', 1, ${stamp})`);
+    const row = await fresh.loadIdentityRow(s.w.db, userId);
+    assert.deepEqual([fresh.heldIdentityId(row, 'discord'), fresh.heldIdentityId(row, 'bnet')], [`${userId}d`, bnetId], `first-link time ${linkedAt}`);
+    for (const [provider, identity] of [['discord', `${userId}d`], ['bnet', bnetId]]) {
+      assert.equal(await okOf(fresh.identityGuard(provider, userId, identity)), 1, `${provider} linked at ${linkedAt}`);
+      assert.equal(await okOf(fresh.identityGuard(provider, userId, `${identity}x`)), 0, `${provider}: another identity does not hold`);
+      assert.equal(await okOf(fresh.identityGuard(provider, `${userId}x`, identity)), 0, `${provider}: another account does not hold it`);
     }
   }
-  const missing = fresh.identityStanding(rows({ bnet_first_linked_at: null }), 'bnet', later);
-  assert.equal(missing.passes, false, 'the pure form with no Battle.net time at all does not pass (the SQL read supplies the link time)');
 });
 
-check('the plan\'s scenario: a Discord-first Owner links Battle.net in the session (a fresh Discord sign-in first), then hand-over, delete and pin with the NEW Battle.net are refused; the founding Discord passes at once; the GM claim is exempt', async () => {
+check('a Discord-first Owner links Battle.net in the session (a fresh Discord sign-in first); the NEW Battle.net identity confirms hand-over, guild delete, pin and source switch at once; the GM claim and in-game creation work as before', async () => {
   const s = await world();
   await s.member('mem', 'Plainmember');
   const bareLogin = await s.w.req('GET', '/auth/bnet/login', { jar: s.jars.gm });
@@ -189,22 +170,21 @@ check('the plan\'s scenario: a Discord-first Owner links Battle.net in the sessi
   await s.allow('gm', 'link_bnet');
   assert.equal(await s.linkBnet('gm', BNET.gm), '/#/characters');
   const link = await s.bnetOf('gm');
-  assert.equal(link.first_linked_at, s.w.clock.now, 'the new Battle.net identity starts its 7 days now');
+  assert.equal(link.first_linked_at, s.w.clock.now, 'the new Battle.net identity was first linked just now');
   await s.nothing('gm');
-  // The new identity cannot confirm an Owner act.
+  // The new identity confirms every Owner act at once.
   for (const [purpose, params] of [['handover', { targetUserId: s.uids.mem }], ['guild_delete', {}], ['pin', PIN], ['source_switch', SWITCH]]) {
-    const start = await s.call('gm', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose, params, provider: 'bnet' });
-    assert.equal(start.status, 403, `${purpose}: ${start.text}`);
-    assert.equal(start.json.error, 'identity_too_new');
-    assert.equal(start.json.provider, 'bnet');
-    assert.equal(start.json.eligibleAt, link.first_linked_at + 7 * DAY);
+    const done = await s.fresh('gm', { purpose, guildId: s.gid, params, provider: 'bnet', account: BNET.gm });
+    assert.equal(done.start.status, 200, `${purpose}: ${done.start.text}`);
+    assert.equal(done.location, `/#/fresh?done=${purpose}`, purpose);
+    assert.equal((await s.grantOf('gm')).fresh_purpose, purpose);
   }
-  // The founding Discord passes at once.
-  const founding = await s.fresh('gm', { purpose: 'handover', guildId: s.gid, params: { targetUserId: s.uids.mem }, provider: 'discord' });
-  assert.equal(founding.location, '/#/fresh?done=handover');
-  // The GM claim and in-game creation are exempt: their authority is live Blizzard data.
+  // So does the Discord identity.
+  const discord = await s.fresh('gm', { purpose: 'handover', guildId: s.gid, params: { targetUserId: s.uids.mem }, provider: 'discord' });
+  assert.equal(discord.location, '/#/fresh?done=handover');
+  // The GM claim and in-game creation never looked at the identity's age: their authority is live Blizzard data.
   // (The guild must have an in-game seat to claim, lane B6b part 2b; the claim then runs inside the callback and writes no grant. The fake's roster has another rank-0 member than
-  // this account's characters, so the answer is not_gm: what matters is that the young Battle.net identity is never turned away: no identity_too_new at the start, no identity_new.)
+  // this account's characters, so the answer is not_gm: what matters is that the Battle.net identity is not turned away at the start.)
   s.exec(`UPDATE guilds SET rank_source = 'ingame', pinned_guild_slug = 'writers-b3', pinned_realm_slug = 'nightslayer', pinned_namespace = 'profile-classicann-us', blizzard_guild_id = 3000, blizzard_realm_id = 4001 WHERE id = '${s.gid}'`);
   const claim = await s.fresh('gm', { purpose: 'gm_claim', guildId: s.gid, provider: 'bnet', account: BNET.gm });
   assert.equal(claim.start.status, 200, claim.start.text);
@@ -213,66 +193,53 @@ check('the plan\'s scenario: a Discord-first Owner links Battle.net in the sessi
   s.exec(`UPDATE guilds SET rank_source = NULL, pinned_guild_slug = NULL, pinned_realm_slug = NULL, pinned_namespace = NULL, blizzard_guild_id = NULL, blizzard_realm_id = NULL WHERE id = '${s.gid}'`);
   await s.fresh('gm', { purpose: 'ingame_create', params: { realm: 'x' }, provider: 'bnet', account: BNET.gm });
   assert.equal((await s.grantOf('gm')).fresh_purpose, 'ingame_create');
-  // After 7 days the Battle.net identity confirms an Owner act (pin and source switch are Battle.net acts). A request advances the test clock by 2 s first.
-  const eligible = link.first_linked_at + 7 * DAY;
-  s.w.clock.now = eligible - 2000 - 1;
-  assert.equal((await s.call('gm', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: PIN, provider: 'bnet' })).status, 403, 'one millisecond short');
-  s.w.clock.now = eligible - 2000;
-  const pin = await s.fresh('gm', { purpose: 'pin', guildId: s.gid, params: PIN, provider: 'bnet', account: BNET.gm });
-  assert.equal(pin.location, '/#/fresh?done=pin');
 });
 
-check('the callback checks the rule again: an identity that became "new" between the start and the callback gets no grant and is counted as fresh.failed', async () => {
+check('a Battle.net link made a minute ago passes fresh-auth for pin and source_switch (the account is a day old)', async () => {
   const s = await world();
-  s.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES ('${s.uids.gm}', '${BNET.gm.id}', 'Gm#1', 1, '{}', 1, 1)`);
-  const start = await s.call('gm', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: PIN, provider: 'bnet' });
-  assert.equal(start.status, 200, start.text);
-  s.at('gm', s.w.clock.now); // the link was swapped for a young one after the start
-  const state = new URL(start.json.authorizeUrl).searchParams.get('state');
-  s.bnet.state.account = BNET.gm;
-  s.w.advance(1000);
-  const callback = await s.w.req('GET', `/auth/bnet/callback?code=abc&state=${encodeURIComponent(state)}`, { jar: { ...s.jars.gm, '__Host-rs_bnet_state': state } });
-  assert.equal(callback.headers.get('Location'), '/#/fresh?error=identity_new&purpose=pin');
-  await s.nothing('gm');
-  const failed = await s.rows("SELECT guild_id, actor_user_id, after FROM audit_log WHERE action = 'fresh.failed'");
-  assert.equal(failed.length, 1);
-  assert.equal(JSON.parse(failed[0].after).detail, 'pin:identity_new');
+  await s.member('kai', 'Kaione');
+  s.w.advance(DAY); // the account is a day old
+  await s.setOwner('kai');
+  const linkedAt = s.w.clock.now - 60_000;
+  s.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES ('${s.uids.kai}', '${BNET.kai.id}', 'Kai#3', ${linkedAt}, '{}', 1, ${linkedAt})`);
+  const user = await s.user('kai');
+  assert(linkedAt > user.created_at + 60_000, 'the link is a minute old and the account a day old');
+  for (const [purpose, params] of [['pin', PIN], ['source_switch', SWITCH]]) {
+    const done = await s.fresh('kai', { purpose, guildId: s.gid, params, provider: 'bnet', account: BNET.kai });
+    assert.equal(done.start.status, 200, `${purpose}: ${done.start.text}`);
+    assert.equal(done.location, `/#/fresh?done=${purpose}`, purpose);
+    assert.equal((await s.grantOf('kai')).fresh_purpose, purpose, `${purpose}: the grant is on the session`);
+  }
 });
 
-check('a Battle.net refresh then pin passes; unlink + relink then pin is refused for 7 days (to the second); the founding Battle.net identity passes at once', async () => {
+check('a Battle.net refresh then pin passes; unlink + relink then pin passes at once too (the first-link time starts over, nothing waits on it)', async () => {
   const s = await world();
-  // ivy: made with Battle.net (the founding identity is Battle.net), Owner by the seat, a member through a linked person.
+  // ivy: made with Battle.net, Owner by the seat, a member through a linked person.
   await s.bnetSignUp('ivy', BNET.ivy);
   const made = await s.person({ name: 'Ivymain' });
-    s.exec(`UPDATE players SET user_id = '${s.uids.ivy}' WHERE id = '${made.pid}'`);
+  s.exec(`UPDATE players SET user_id = '${s.uids.ivy}' WHERE id = '${made.pid}'`);
   await s.setOwner('ivy');
   s.exec(`DELETE FROM role_assignments WHERE guild_id = '${s.gid}' AND role_id = 'guild_master'`);
   const pin = (key, account) => s.fresh(key, { purpose: 'pin', guildId: s.gid, params: PIN, provider: 'bnet', account });
-  assert.equal((await pin('ivy', BNET.ivy)).location, '/#/fresh?done=pin', 'founding: at once');
+  assert.equal((await pin('ivy', BNET.ivy)).location, '/#/fresh?done=pin');
   // A refresh weeks later moves linked_at, not first_linked_at, and the pin still passes.
   s.w.advance(10 * DAY);
   assert.equal(await s.linkBnet('ivy', BNET.ivy), '/#/characters');
   assert((await s.bnetOf('ivy')).linked_at > (await s.bnetOf('ivy')).first_linked_at);
   assert.equal((await pin('ivy', BNET.ivy)).location, '/#/fresh?done=pin', 'a Battle.net refresh then pin passes');
-  // kai: Discord-founded Owner; a Battle.net identity that is old enough passes.
+  // kai: Discord-first Owner with a Battle.net identity linked long ago.
   await s.member('kai', 'Kaione');
-  s.w.advance(DAY); // past kai's founding window
+  s.w.advance(DAY);
   await s.setOwner('kai');
   s.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES ('${s.uids.kai}', '${BNET.kai.id}', 'Kai#3', 1, '{}', 1, 1)`);
   assert.equal((await pin('kai', BNET.kai)).location, '/#/fresh?done=pin', 'linked long ago: passes');
-  // Unlink and relink: the clock starts over.
+  // Unlink and relink: the first-link time starts over, and the pin passes at once.
   await s.allow('kai', 'unlink_bnet');
   assert.equal((await s.call('kai', 'DELETE', '/auth/bnet', {})).status, 200);
   await s.allow('kai', 'link_bnet');
   assert.equal(await s.linkBnet('kai', BNET.kai), '/#/characters');
-  const relinked = (await s.bnetOf('kai')).first_linked_at;
-  assert.equal(relinked, s.w.clock.now);
-  const refused = await s.call('kai', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: PIN, provider: 'bnet' });
-  assert.deepEqual([refused.status, refused.json.error, refused.json.eligibleAt], [403, 'identity_too_new', relinked + 7 * DAY]);
-  s.w.clock.now = relinked + 7 * DAY - 2000 - 1;
-  assert.equal((await s.call('kai', 'POST', `/api/guild/${s.gid}/fresh/start`, { purpose: 'pin', params: PIN, provider: 'bnet' })).status, 403, '7 days minus a millisecond');
-  s.w.clock.now = relinked + 7 * DAY - 2000;
-  assert.equal((await pin('kai', BNET.kai)).location, '/#/fresh?done=pin', 'exactly 7 days after the first link');
+  assert.equal((await s.bnetOf('kai')).first_linked_at, s.w.clock.now);
+  assert.equal((await pin('kai', BNET.kai)).location, '/#/fresh?done=pin', 'relinked just now: passes at once');
 });
 
 // ---------------------------------------------------------------------------
@@ -372,7 +339,7 @@ check('the link starts (GET /auth/login?mode=link, GET /auth/bnet/login) turn a 
   assert.equal(await s.linkDiscord('ivy', discordIvy), '/#/linked');
   const ivy = await s.user('ivy');
   assert.equal(ivy.discord_id, discordIvy.id);
-  assert.equal(ivy.discord_linked_at, s.w.clock.now, 'the Discord identity starts its own 7 days');
+  assert.equal(ivy.discord_linked_at, s.w.clock.now, 'the Discord identity has its own first-link time');
   await s.nothing('ivy');
   assert.equal(await s.w.count('fresh_act_markers'), 1);
 });

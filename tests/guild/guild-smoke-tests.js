@@ -206,7 +206,7 @@ check('up: --owner-on-roster makes the Owner a character on the roster; it takes
   usageError(['run', '--name', 'x', '--owner-on-roster', 'a.js'], /unknown option --owner-on-roster/);
   usageError(['up', '--name', 'x', '--owner-on-roster', '--owner-on-roster'], /--owner-on-roster was given twice/);
   const header = require('node:fs').readFileSync(path.join(__dirname, '..', '..', 'tools', 'guild-smoke.js'), 'utf8').split('*/')[0];
-  assert(header.includes('--owner-on-roster') && /founding/i.test(header) && header.includes('8000') && header.includes('--with bnet'), 'the header documents it and says why it works');
+  assert(header.includes('--owner-on-roster') && /identity-change protection/i.test(header) && header.includes('8000') && header.includes('--with bnet'), 'the header documents it and says why it works');
   assert(/\[--owner-on-roster\]/.test(header.slice(0, header.indexOf('up    migrates'))), 'the usage lines name it');
 });
 

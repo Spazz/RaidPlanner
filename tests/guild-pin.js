@@ -2,7 +2,7 @@
 // check and closes every world in it afterwards.
 //   const s = await pinWorld({ env, members })   a LEGACY guild (rank_source NULL, the Guild Master 'gm' is the Owner by the stored row), the setup pin open for every guild
 //                                                (SETUP_PIN_GUILDS '*'), Battle.net = tools/fake-battlenet.js with its profile and roster answers overridden: s.live = { roster, profiles,
-//                                                guildId, realmId } is what the fake serves. 'gm' has a Battle.net link made long ago (the identity rule (a) passes) and the character
+//                                                guildId, realmId } is what the fake serves. 'gm' has a Battle.net link made long ago (the age of a link never matters) and the character
 //                                                Gmmain (id 9301, rank 4) on the live roster; the rank-0 member Thelead (id 9300) is nobody's.
 //   await grantPin(s, key, target)               the real fresh flow for the pin (start, provider, callback) -> { start, location }
 //   await pin(s, key, target, { grant })         grantPin, then POST .../bnet/pin -> the response ({ status, json, text }) with .flow
@@ -38,7 +38,7 @@ async function pinWorld({ env = {}, members = null, setupOpen = '*' } = {}) {
   const override = s.bnet.state.override;
   override.profile = ({ account }) => profileOf(s.live.profiles[account.id] || []);
   override.roster = () => rosterBody(s.live.roster, { guildId: s.live.guildId, realmId: s.live.realmId });
-  // The Owner is a Discord-first account with a Battle.net link made long ago (identity rule (a): the link is older than 7 days) and a character on the live roster.
+  // The Owner is a Discord-first account with a Battle.net link made long ago (the age of a link never matters) and a character on the live roster.
   s.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at, first_linked_at) VALUES ('${s.uids.gm}', '${ACC.gm.id}', '${ACC.gm.battletag}', 1, '{}', 1, 1)`);
   s.live.profiles[ACC.gm.id] = [entry('Gmmain', ID.gm)];
   return s;

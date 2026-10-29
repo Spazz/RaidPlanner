@@ -74,7 +74,7 @@ export async function postBnetPin(ctx) {
   if (!proofRow) throw freshRequiredError('pin', params);
   const act = await beginFreshAct(ctx, {
     purpose: 'pin', guildId, params,
-    extra: allOf(ownerGuard(guildId, userId), identityGuard('bnet', userId, proofRow.bnet_account_id, { rule: true, nowMs: ctx.now() }), expectedPinGuard(guildId, expected)),
+    extra: allOf(ownerGuard(guildId, userId), identityGuard('bnet', userId, proofRow.bnet_account_id), expectedPinGuard(guildId, expected)),
   });
   await enforceRateLimit(db, userId, ctx.now(), { key: pinKey(userId), limit: PIN_LIMIT, windowMs: PIN_WINDOW_MS, failClosed: true });
 

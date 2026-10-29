@@ -46,7 +46,7 @@ export const hasBnetSql = (userExpr) => `EXISTS (SELECT 1 FROM bnet_links hb WHE
 // A Discord sign-in: the account that holds this Discord ID gets its profile refreshed; a Discord ID nobody holds becomes a NEW account
 // (newUserId, whose own id is its account_key, see 0012). The conflict target is the unique index on users.discord_id.
 // discord_linked_at (identity-change protection, plan "Identity-change") is written by the INSERT only: a returning sign-in never touches it, so the age of the
-// Discord identity is the age of its first link. A new account's value equals its created_at (the founding identity).
+// Discord identity is the age of its first link. A new account's value equals its created_at. Kept as a record only: nothing reads it since the age rule (a) was removed (2026-10-29).
 export function upsertDiscordAccountStatement(db, { newUserId, discord, now }) {
   return db.prepare(
     `INSERT INTO users (id, account_key, discord_id, username, global_name, avatar, prefs, created_at, last_seen_at, discord_linked_at)

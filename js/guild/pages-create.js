@@ -432,7 +432,7 @@
     G.fresh.start({ gid: gid, purpose: 'gm_claim', params: {}, act: { kind: 'gm_claim' }, returnTo: G.router.format({ name: 'new' }) }).then(null, function (err) {
       el.disabled = false;
       if (G.api.classify(err).view === 'signin') { G.app.requireSignin(); return; }
-      G.ui.setText('claim-gm-error', G.fresh.errorText(err, 'gm_claim', 1));
+      G.ui.setText('claim-gm-error', G.fresh.errorText(err, 'gm_claim'));
     });
   };
 

@@ -7,7 +7,7 @@
 //                          the function its page registered (Guild.fresh.registerAct): the page shows "signed in again" for the moment the act takes, then goes on to the address the act
 //                          answers (a hash address is a route change that replaces this entry, so Back never repeats the act). No pending act, an old one or an act nobody registered:
 //                          a plain done card with the way back.
-//   error=<reason>         every reason the callbacks name has its sentence: not_gm, conflict (the claim), mismatch, identity_new, provider and busy (the sign-in did not finish), state and
+//   error=<reason>         every reason the callbacks name has its sentence: not_gm, conflict (the claim), mismatch, provider and busy (the sign-in did not finish), state and
 //                          denied (cancelled), not_configured; any other reason gets the default. The way on is Try again (the same sign-in again, from the pending act) or the page the person came from.
 // The pending act is taken (cleared) the moment it is used.
 (function (G) {
@@ -81,8 +81,6 @@
         return warn('The guild changed while you were signing in.', 'Nothing was changed. ' + (m.guildName ? 'Open ' + m.guildName : 'Open Home') + ' and try again.', [way.open]);
       case 'mismatch':
         return warn('That is not the ' + account + ' linked here.', 'Sign in with the ' + account + ' linked to your Raidsmith account.', [way.retry]);
-      case 'identity_new':
-        return warn('This ' + (provider ? WHO[provider] : 'sign-in') + ' was linked recently.', 'It can confirm hand-overs, deleting a guild and the switch once it has been linked for 7 days.', [way.back]);
       case 'provider':
       case 'busy':
         return warn('The sign-in did not finish.', named + ' did not answer, or there were too many sign-ins at once. Try again in a minute.', [way.retry]);
@@ -212,7 +210,7 @@
     G.fresh.start({ gid: rec.gid, purpose: rec.purpose, params: rec.params, provider: rec.provider, act: { kind: rec.kind, data: rec.data }, returnTo: rec.returnTo }).then(null, function (err) {
       if (el) el.disabled = false;
       if (G.api.classify(err).view === 'signin') { G.app.requireSignin(); return; }
-      G.ui.setText('fresh-error', G.fresh.errorText(err, rec.purpose, G.fresh.optionsFor(rec.purpose, G.fresh.linkedOf(st().me)).length));
+      G.ui.setText('fresh-error', G.fresh.errorText(err, rec.purpose));
     });
   };
 

@@ -147,13 +147,6 @@
     // the pin and its sign-in
     pin_not_open: { title: 'Linking to the in-game guild is not open yet.', text: 'Whoever runs this server switches it on for a guild.' },
     forbidden: { title: 'Only the Owner can do this.', text: OWNER_ONLY },
-    identity_too_new: {
-      title: 'This Battle.net account was linked a few days ago.',
-      text: function (err) {
-        const at = err && err.body && typeof err.body.eligibleAt === 'number' ? G.ui.formatDate(err.body.eligibleAt) : '';
-        return at ? 'It can confirm this from ' + at + '.' : 'It can confirm this once it has been linked for 7 days.';
-      },
-    },
     identity_not_linked: { title: 'Link Battle.net to your account first.', text: 'The guild roster is read through Battle.net.', actions: [ACTION_LINKED] },
     bnet_unsupported: { title: 'Battle.net cannot read guilds of this game version.', text: function (err) { return err.message; } },
     bnet_not_configured: { title: 'Battle.net is not set up on this server.', text: 'Whoever runs this server has to set it up before a guild can be linked.' },

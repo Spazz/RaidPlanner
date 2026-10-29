@@ -415,7 +415,7 @@ check('fresh: in a dialog a 403 fresh_required becomes the second step (never a 
   void shown;
 });
 
-check('fresh: the step shows its refusals inline - rate_limited, identity_too_new, forbidden, bad_request - and keeps the person in the step', async () => {
+check('fresh: the step shows its refusals inline - rate_limited, not_configured, forbidden, bad_request - and keeps the person in the step', async () => {
   resetBrowser('#/x');
   G.app.state.me = { user: { id: 'u1' }, ...BOTH };
   const { dlg, form } = fakeDialog();
@@ -431,8 +431,8 @@ check('fresh: the step shows its refusals inline - rate_limited, identity_too_ne
   assert(!shown.hidden && shown.textContent.includes('Too many sign-in checks') && shown.textContent.includes('2 minutes'), shown.textContent);
   shown = await submit(apiError(503, { error: 'rate_limited', message: 'Sign-in checks are paused for a moment. Try again shortly.' }), 'bnet');
   assert(shown.textContent.includes('paused for a moment'), shown.textContent);
-  shown = await submit(apiError(403, { error: 'identity_too_new', message: 'x', provider: 'discord', eligibleAt: Date.UTC(2026, 10, 5, 12) }), 'discord');
-  assert(shown.textContent.includes('Discord was linked to your account recently') && shown.textContent.includes('Nov 5, 2026') && shown.textContent.includes('Pick the other sign-in'), shown.textContent);
+  shown = await submit(apiError(409, { error: 'not_configured', message: 'x', provider: 'discord' }), 'discord');
+  assert.equal(shown.textContent, 'Discord sign-in is not set up on this server.');
   shown = await submit(apiError(403, { error: 'forbidden', message: 'You do not have permission to do that.' }), 'bnet');
   assert.equal(shown.textContent, 'Only the Owner of the guild can confirm this.');
   shown = await submit(apiError(400, { error: 'bad_request', message: 'params must be exactly the act\'s.', field: 'params' }), 'bnet');
@@ -597,7 +597,6 @@ check('#/fresh?error=<reason>: every reason has its sentence and its way on, and
     not_gm: { purpose: 'gm_claim', title: 'Owner seat', banner: 'This Battle.net account is not the Guild Master of Writers.', text: 'Only the character at rank 0 of the guild roster can take the Owner seat.', way: 'Open Writers' },
     conflict: { purpose: 'gm_claim', title: 'Owner seat', banner: 'The guild changed while you were signing in.', text: 'Nothing was changed. Open Writers and try again.', way: 'Open Writers' },
     mismatch: { purpose: 'pin', title: 'Confirm it is you', banner: 'That is not the Battle.net account linked here.', text: 'Sign in with the Battle.net account linked to your Raidsmith account.', way: 'Try again' },
-    identity_new: { purpose: 'pin', title: 'Confirm it is you', banner: 'This Battle.net account was linked recently.', text: 'It can confirm hand-overs, deleting a guild and the switch once it has been linked for 7 days.', way: 'Back to Guild setup' },
     provider: { purpose: 'pin', title: 'Confirm it is you', banner: 'The sign-in did not finish.', text: 'Battle.net did not answer, or there were too many sign-ins at once. Try again in a minute.', way: 'Try again' },
     busy: { purpose: 'pin', title: 'Confirm it is you', banner: 'The sign-in did not finish.', text: 'Battle.net did not answer, or there were too many sign-ins at once. Try again in a minute.', way: 'Try again' },
     state: { purpose: 'pin', title: 'Confirm it is you', banner: 'The sign-in was cancelled.', text: 'The link expired, was used already, or you did not allow Raidsmith to read your Battle.net account. Start again.', way: 'Try again' },
@@ -647,12 +646,12 @@ check('#/fresh?error=...: Try again starts the same sign-in from the pending act
   assert.deepEqual(calls[0], { method: 'POST', path: '/api/guild/g1/fresh/start', body: { purpose: 'pin', params: { slug: 'writers' }, provider: 'bnet' } });
   assert.deepEqual(navigations, [AUTHORIZE]);
   assert.equal(G.fresh.pending().data.n, 1);
-  calls = scriptApi({ 'POST /api/guild/g1/fresh/start': () => { throw apiError(403, { error: 'identity_too_new', message: 'x', provider: 'bnet' }); } });
+  calls = scriptApi({ 'POST /api/guild/g1/fresh/start': () => { throw apiError(409, { error: 'not_configured', message: 'x', provider: 'bnet' }); } });
   const again = { disabled: false };
   G.handlers.click['fresh-retry'](again);
   await settle();
   assert.equal(again.disabled, false);
-  assert(fields['fresh-error'].textContent.includes('Battle.net was linked to your account recently'), fields['fresh-error'].textContent);
+  assert(fields['fresh-error'].textContent.includes('Battle.net sign-in is not set up on this server'), fields['fresh-error'].textContent);
 });
 
 // ---------------------------------------------------------------------------
@@ -737,11 +736,11 @@ check('identity: #/linked?error=fresh_required offers the sign-in the account ha
   // A refused sign-in start is said next to the banner.
   resetBrowser();
   field('fresh-start-error');
-  scriptApi({ 'POST /api/fresh/start': () => { throw apiError(403, { error: 'identity_too_new', message: 'x', provider: 'bnet', eligibleAt: Date.UTC(2026, 10, 5, 12) }); } });
+  scriptApi({ 'POST /api/fresh/start': () => { throw apiError(409, { error: 'not_configured', message: 'x', provider: 'bnet' }); } });
   const el = { disabled: false, getAttribute: (name) => ({ 'data-change': 'link_discord', 'data-provider': 'bnet' })[name] };
   G.handlers.click['identity-fresh-start'](el);
   await settle();
-  assert(fields['fresh-start-error'].textContent.includes('Battle.net was linked to your account recently'));
+  assert(fields['fresh-start-error'].textContent.includes('Battle.net sign-in is not set up on this server'));
   assert.equal(el.disabled, false);
 });
 

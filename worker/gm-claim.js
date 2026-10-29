@@ -112,7 +112,7 @@ export function claimHeadStatements(ctx, { guildId, userId, from, bnetAccountId,
   return {
     guard,
     statements: [
-      moveSeatStatement(db, { guildId, from, to: userId, guards: [identityGuard('bnet', userId, bnetAccountId, { rule: false, nowMs }), pinHolds(guildId, pin)] }),
+      moveSeatStatement(db, { guildId, from, to: userId, guards: [identityGuard('bnet', userId, bnetAccountId), pinHolds(guildId, pin)] }),
       claimMarkerStatement(db, { markerId, tokenHash, nowMs, guildId, userId }),
       db.prepare(`DELETE FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND ${guard.sql}`).bind(guildId, userId, ...guard.params),
       db.prepare(
@@ -132,7 +132,7 @@ export const claimAuditStatement = (ctx, { guildId, userId, from, suspended, unp
 }, guard);
 
 // The claim, inside the Battle.net fresh-auth callback. input: { session, parsed ({ purpose, guildId }), accessToken, info ({ id, battletag }), now, spent (the D1 statements the
-// callback has used so far) }. -> { ok: true, deferred: [reason] } | { ok: false, reason: 'mismatch' | 'identity_new' | 'provider' | 'not_gm' | 'conflict' } (the redirect reasons of
+// callback has used so far) }. -> { ok: true, deferred: [reason] } | { ok: false, reason: 'mismatch' | 'provider' | 'not_gm' | 'conflict' } (the redirect reasons of
 // worker/fresh.js plus not_gm and conflict). A refused verdict is counted with B7a's helper (audit guild.claim_failed, one row per user, guild and hour); a roster that is
 // malformed in itself is 'provider' (try again later) and counts nothing (see claimVerdict).
 export async function runGmClaim(ctx, { session, parsed, accessToken, info, now, spent }) {
@@ -144,7 +144,7 @@ export async function runGmClaim(ctx, { session, parsed, accessToken, info, now,
   const deferred = new Set();
 
   // The Battle.net account that came back must be the one linked to this account (the same check the grants make, and again inside the batch).
-  const identity = await checkFreshIdentity(ctx, { session, provider: 'bnet', identityId: info.id, purpose: CLAIM_PURPOSE, nowMs: now });
+  const identity = await checkFreshIdentity(ctx, { session, provider: 'bnet', identityId: info.id, purpose: CLAIM_PURPOSE });
   used += 1;
   if (!identity.ok) {
     if (identity.reason !== 'provider') await noteFreshFailure(ctx, { userId, guildId, purpose: CLAIM_PURPOSE, reason: identity.reason });

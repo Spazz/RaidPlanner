@@ -481,10 +481,10 @@ check('Guild setup, step 1: the act\'s refusals land on step 1 as a banner (G6 #
   // The refused start (before the trip to Battle.net) is the same banner.
   resetBrowser();
   const { html } = await openSetup();
-  scriptApi({ 'POST /api/guild/g1/fresh/start': () => { throw apiError(403, { error: 'identity_too_new', message: 'x', provider: 'bnet', eligibleAt: Date.UTC(2026, 10, 3, 12) }); } });
+  scriptApi({ 'POST /api/guild/g1/fresh/start': () => { throw apiError(409, { error: 'identity_not_linked', message: 'x', provider: 'bnet' }); } });
   G.handlers.click['setup-pin']();
   await settle();
-  assert(text(html()).includes('This Battle.net account was linked a few days ago.') && text(html()).includes('It can confirm this from Nov 3, 2026.'), text(html()));
+  assert(text(html()).includes('Link Battle.net to your account first.') && text(html()).includes('The guild roster is read through Battle.net.'), text(html()));
   scriptApi({ 'POST /api/guild/g1/fresh/start': () => { throw apiError(403, { error: 'pin_not_open', message: 'x' }); } });
   G.handlers.click['setup-pin']();
   await settle();
@@ -1155,7 +1155,7 @@ const REFUSAL_CASES = [
   [409, 'bnet_unsupported', 'game version'], [403, 'fresh_required', 'did not count'], [429, 'rate_limited', 'Too many tries'], [404, 'bnet_guild_not_found', 'no guild called Writers'],
   [502, 'bnet_guild_refused', 'would not show'], [502, 'bnet_unavailable', 'did not answer'], [502, 'bnet_roster_invalid', 'incomplete'], [409, 'pin_locked', 'another in-game guild'],
   [409, 'roster_too_large', 'too large'], [409, 'roster_over_caps', 'too many members'], [403, 'pin_not_on_roster', 'None of your characters'], [409, 'pin_taken', 'Another Raidsmith guild'],
-  [409, 'conflict', 'changed while'], [403, 'identity_too_new', 'linked a few days ago'], [409, 'identity_not_linked', 'Link Battle.net'],
+  [409, 'conflict', 'changed while'], [409, 'identity_not_linked', 'Link Battle.net'],
   [400, 'rank_zero_only', 'Only rank 0'], [400, 'approval_required', 'approval'], [409, 'approval_invalid', 'out of date'], [409, 'approval_stale', 'out of date'],
   [503, 'effective_roles_missing', 'cannot run'], [409, 'already_ingame', 'already follows'], [400, 'confirmation_required', 'Say which characters'], [400, 'bad_confirmation', 'not on the preview'], [409, 'confirmation_changed', 'ticked characters changed'],
   [409, 'source_not_legacy', 'does not take its members'], [409, 'not_pinned', 'Link the guild first'], [409, 'no_good_sync', 'has not been read'], [409, 'no_owner', 'no Owner'],
@@ -1179,8 +1179,7 @@ check('refusals: every error code the contracts list has its title and sentence;
   assert.equal(unknown.title, 'That did not go through.');
   assert.equal(unknown.text, 'The Worker words.');
   assert.equal(G.pages.setup.refusalOf(apiError(0, null)).text, 'Could not reach Raidsmith. Check your connection and try again.');
-  // The details that come from the answer: the date of the 7-day rule, the ranks that are not mapped.
-  assert(G.pages.setup.refusalOf(apiError(403, { error: 'identity_too_new', eligibleAt: Date.UTC(2026, 10, 3, 12) })).text.includes('Nov 3, 2026'));
+  // The details that come from the answer: the ranks that are not mapped.
   assert(G.pages.setup.refusalOf(apiError(409, { error: 'rank_map_incomplete', ranks: [{ rank: 3, members: 27 }, { rank: 9, members: 1 }] })).text === 'Not mapped yet: Rank 3 (27 members), Rank 9 (1 member).');
 });
 

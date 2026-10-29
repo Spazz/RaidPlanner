@@ -66,7 +66,7 @@ check('the claim: the GM of a live roster takes the seat from a live Owner and i
   assert.equal(await s.w.count('fresh_act_markers', "purpose = 'gm_claim'"), 1, 'one marker');
   // What the callback has used when the claim starts (the first statement of the claim is the identity read): the constant the claim counts its own statements on top of.
   const { STATEMENTS_BEFORE_CLAIM } = await load('worker/routes/bnet.js');
-  const before = outcome.statements.findIndex((statement) => /u.discord_linked_at/.test(statement.sql));
+  const before = outcome.statements.findIndex((statement) => /SELECT u.discord_id, b.bnet_account_id FROM users u/.test(statement.sql));
   assert(before > 0 && before <= STATEMENTS_BEFORE_CLAIM, `the callback used ${before} statements before the claim; STATEMENTS_BEFORE_CLAIM says ${STATEMENTS_BEFORE_CLAIM}`);
   console.log(`      measured: the claim callback ran ${outcome.statements.length} D1 statements (${before} before the claim) and ${outcome.blizzard.length} Blizzard requests`);
 });

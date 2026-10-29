@@ -577,7 +577,7 @@
     G.fresh.start({ purpose: 'identity_change', params: { change: change }, provider: provider, act: { kind: LINK_CHANGES[change].kind }, returnTo: G.router.format({ name: 'linked' }) }).then(null, function (err) {
       el.disabled = false;
       if (G.api.classify(err).view === 'signin') { G.app.requireSignin(); return; }
-      G.ui.setText('fresh-start-error', G.fresh.errorText(err, 'identity_change', 1));
+      G.ui.setText('fresh-start-error', G.fresh.errorText(err, 'identity_change'));
     });
   };
 

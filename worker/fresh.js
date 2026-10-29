@@ -16,12 +16,12 @@
 //              Later acts (the flip in lane B9, in-game creation in B10, the setup pin in part 3a, the source switch in B9) do the same. The GM claim (lane B6b part 2b) is the exception: it
 //              runs INSIDE the Battle.net callback that holds the user token and writes no grant (worker/gm-claim.js; checkFreshIdentity below is its identity check).
 //
-// IDENTITY RULE (a): for the purposes marked identityRule, an identity is accepted only if it is the account's FOUNDING identity (first linked within 60 s of users.created_at)
-// or was first linked at least 7 days ago. users.discord_linked_at and bnet_links.first_linked_at carry the first-link time (migration 0031; the link UPSERT never moves it, only
-// unlink + link does). The GM claim and in-game creation are exempt: their authority is live Blizzard data, not the identity's age.
+// NO AGE RULE: every identity linked to the account confirms a purpose at once, however young the link is (the former identity rule (a), a 7-day / founding-identity wait, was
+// removed by user decision 2026-10-29: "a gaming guild app, not a bank"). What stays: the fresh sign-in itself, the purpose binding, and Battle.net-only where a purpose needs it.
+// users.discord_linked_at and bnet_links.first_linked_at are still written (migration 0031) but nothing reads them any more.
 //
 // IDENTITY-CHANGE PROTECTION (b)/(c): on an account that holds the Owner seat or any stored or derived staff role anywhere, linking or unlinking either identity is itself a
-// fresh-auth act (purpose identity_change, performed with an identity that passes (a)); every identity change nulls the account's grants and is audited in each guild the
+// fresh-auth act (purpose identity_change, performed with any identity linked to the account); every identity change nulls the account's grants and is audited in each guild the
 // account is a member of (identity.change, never pruned).
 import { auditEachMemberGuildStatement, failureAuditStatements } from './audit.js';
 import { HttpError } from './http.js';
@@ -34,8 +34,6 @@ import { hashToken } from './session.js';
 import { wrote } from './d1-changes.js';
 
 export const FRESH_TTL_MS = 15 * 60 * 1000;
-export const FOUNDING_WINDOW_MS = 60 * 1000;
-export const NEW_IDENTITY_MS = 7 * 24 * 60 * 60 * 1000;
 // POST .../fresh/start, fail closed (a limiter that cannot answer refuses): per SESSION (a thief with one cookie runs out of its own budget and leaves the real Owner's
 // session untouched) and, above it, a higher ceiling per account.
 export const FRESH_START_LIMIT = 10;
@@ -47,16 +45,16 @@ export const freshAccountKey = (userId) => `fresh:${userId}`;
 export const IDENTITY_CHANGES = Object.freeze(['link_discord', 'unlink_discord', 'link_bnet', 'unlink_bnet']);
 
 // scope 'guild': the act belongs to a guild (it is in the state and the parameter hash); 'account': it does not. owner: the start route refuses anyone who is not the Owner
-// (the act checks again inside its batch). providers: which identity may be used. identityRule: rule (a) applies.
+// (the act checks again inside its batch). providers: which identity may be used.
 export const FRESH_PURPOSES = Object.freeze({
-  handover: { providers: ['bnet', 'discord'], identityRule: true, scope: 'guild', owner: true },
-  guild_delete: { providers: ['bnet', 'discord'], identityRule: true, scope: 'guild', owner: true },
-  pin: { providers: ['bnet'], identityRule: true, scope: 'guild', owner: true },
-  source_switch: { providers: ['bnet'], identityRule: true, scope: 'guild', owner: true },
-  gm_claim: { providers: ['bnet'], identityRule: false, scope: 'guild', owner: false },
-  ingame_create: { providers: ['bnet'], identityRule: false, scope: 'account', owner: false },
-  identity_change: { providers: ['bnet', 'discord'], identityRule: true, scope: 'account', owner: false },
-  account_delete: { providers: ['bnet', 'discord'], identityRule: true, scope: 'account', owner: false },
+  handover: { providers: ['bnet', 'discord'], scope: 'guild', owner: true },
+  guild_delete: { providers: ['bnet', 'discord'], scope: 'guild', owner: true },
+  pin: { providers: ['bnet'], scope: 'guild', owner: true },
+  source_switch: { providers: ['bnet'], scope: 'guild', owner: true },
+  gm_claim: { providers: ['bnet'], scope: 'guild', owner: false },
+  ingame_create: { providers: ['bnet'], scope: 'account', owner: false },
+  identity_change: { providers: ['bnet', 'discord'], scope: 'account', owner: false },
+  account_delete: { providers: ['bnet', 'discord'], scope: 'account', owner: false },
 });
 export const isFreshPurpose = (purpose) => typeof purpose === 'string' && Object.prototype.hasOwnProperty.call(FRESH_PURPOSES, purpose);
 
@@ -188,65 +186,46 @@ export async function noteFreshFailure(ctx, { userId, guildId, purpose, reason, 
 }
 
 // ---------------------------------------------------------------------------
-// The identity rule (a)
+// The identities the account holds
 
-// row: the account's identity facts (loadIdentityRow) -> { held, id, linkedAt, passes, eligibleAt }. passes: founding (first linked within 60 s of the account's creation) or
-// first linked at least 7 days ago. A first-link time that is missing (a link written by code from before the column existed) never passes for Discord; Battle.net falls back to
-// the time of the link (linked_at, which a refresh only moves later).
-export function identityStanding(row, provider, nowMs) {
-  const id = provider === 'discord' ? row.discord_id : row.bnet_account_id;
-  const linkedAt = provider === 'discord' ? row.discord_linked_at : row.bnet_first_linked_at;
-  if (!id) return { held: false, id: null, linkedAt: null, passes: false, eligibleAt: null };
-  if (linkedAt === null || linkedAt === undefined) return { held: true, id, linkedAt: null, passes: false, eligibleAt: null };
-  const founding = linkedAt <= row.created_at + FOUNDING_WINDOW_MS;
-  const old = linkedAt <= nowMs - NEW_IDENTITY_MS;
-  return { held: true, id, linkedAt, passes: founding || old, eligibleAt: founding ? linkedAt : linkedAt + NEW_IDENTITY_MS };
+// row: the account's identity facts (loadIdentityRow) -> the id of the provider's linked identity, or null when none is linked. No age or founding test: every linked identity counts.
+export function heldIdentityId(row, provider) {
+  return (provider === 'discord' ? row.discord_id : row.bnet_account_id) || null;
 }
 
 export function loadIdentityRow(db, userId) {
   return db.prepare(
-    `SELECT u.created_at, u.discord_id, u.discord_linked_at, b.bnet_account_id, COALESCE(b.first_linked_at, b.linked_at) AS bnet_first_linked_at
-       FROM users u LEFT JOIN bnet_links b ON b.user_id = u.id WHERE u.id = ?`,
+    `SELECT u.discord_id, b.bnet_account_id FROM users u LEFT JOIN bnet_links b ON b.user_id = u.id WHERE u.id = ?`,
   ).bind(userId).first();
 }
 
-// { sql, params }: the account holds this identity NOW (and, with rule, it passes (a) at nowMs). The same test as identityStanding, inside the write that depends on it.
-export function identityGuard(provider, userId, identityId, { rule, nowMs }) {
+// { sql, params }: the account holds this identity NOW. The same test as heldIdentityId, inside the write that depends on it.
+export function identityGuard(provider, userId, identityId) {
   if (provider === 'discord') {
-    return {
-      sql: `EXISTS (SELECT 1 FROM users fu WHERE fu.id = ? AND fu.discord_id = ?${rule
-        ? ' AND fu.discord_linked_at IS NOT NULL AND (fu.discord_linked_at <= fu.created_at + ? OR fu.discord_linked_at <= ?)' : ''})`,
-      params: [userId, identityId, ...(rule ? [FOUNDING_WINDOW_MS, nowMs - NEW_IDENTITY_MS] : [])],
-    };
+    return { sql: 'EXISTS (SELECT 1 FROM users fu WHERE fu.id = ? AND fu.discord_id = ?)', params: [userId, identityId] };
   }
-  return {
-    sql: `EXISTS (SELECT 1 FROM bnet_links fb JOIN users fu ON fu.id = fb.user_id WHERE fb.user_id = ? AND fb.bnet_account_id = ?${rule
-      ? ' AND (COALESCE(fb.first_linked_at, fb.linked_at) <= fu.created_at + ? OR COALESCE(fb.first_linked_at, fb.linked_at) <= ?)' : ''})`,
-    params: [userId, identityId, ...(rule ? [FOUNDING_WINDOW_MS, nowMs - NEW_IDENTITY_MS] : [])],
-  };
+  return { sql: 'EXISTS (SELECT 1 FROM bnet_links fb WHERE fb.user_id = ? AND fb.bnet_account_id = ?)', params: [userId, identityId] };
 }
 
-// The callback side, first half: did the provider return the identity linked to the signed-in account (and, for a purpose with rule (a), does it pass)? One read.
-// -> { ok: true, spec } | { ok: false, reason: 'provider' | 'mismatch' | 'identity_new' }. The GM claim (worker/gm-claim.js) checks the identity here and writes no grant at all.
-export async function checkFreshIdentity(ctx, { session, provider, identityId, purpose, nowMs }) {
+// The callback side, first half: did the provider return the identity linked to the signed-in account? One read.
+// -> { ok: true, spec } | { ok: false, reason: 'provider' | 'mismatch' }. The GM claim (worker/gm-claim.js) checks the identity here and writes no grant at all.
+export async function checkFreshIdentity(ctx, { session, provider, identityId, purpose }) {
   const spec = FRESH_PURPOSES[purpose];
   if (!spec || !spec.providers.includes(provider)) return { ok: false, reason: 'provider' };
   const row = await loadIdentityRow(ctx.db, session.user.id);
   if (!row) return { ok: false, reason: 'mismatch' };
-  const standing = identityStanding(row, provider, nowMs);
-  if (!standing.held || standing.id !== identityId) return { ok: false, reason: 'mismatch' };
-  if (spec.identityRule && !standing.passes) return { ok: false, reason: 'identity_new' };
+  const held = heldIdentityId(row, provider);
+  if (!held || held !== identityId) return { ok: false, reason: 'mismatch' };
   return { ok: true, spec };
 }
 
 // The callback side: write the grant for a verified state. parsed: { purpose, guildId, paramsHash } from verifyFreshState. identityId: what the provider returned.
-// -> { ok: true } | { ok: false, reason: 'provider' | 'mismatch' | 'identity_new' }. Never touches the session's token, cookie or expiry.
+// -> { ok: true } | { ok: false, reason: 'provider' | 'mismatch' }. Never touches the session's token, cookie or expiry.
 export async function writeFreshGrant(ctx, { session, provider, identityId, parsed, nowMs }) {
-  const checked = await checkFreshIdentity(ctx, { session, provider, identityId, purpose: parsed.purpose, nowMs });
+  const checked = await checkFreshIdentity(ctx, { session, provider, identityId, purpose: parsed.purpose });
   if (!checked.ok) return checked;
-  const spec = checked.spec;
   // The identity is checked again inside the write: a swap between the read and the UPDATE grants nothing.
-  const holds = identityGuard(provider, session.user.id, identityId, { rule: spec.identityRule, nowMs });
+  const holds = identityGuard(provider, session.user.id, identityId);
   const result = await ctx.db.prepare(
     `UPDATE sessions SET fresh_purpose = ?, fresh_hash = ?, fresh_at = ? WHERE token_hash = ? AND user_id = ? AND expires_at > ? AND ${holds.sql}`,
   ).bind(parsed.purpose, parsed.paramsHash, nowMs, session.tokenHash, session.user.id, nowMs, ...holds.params).run();
