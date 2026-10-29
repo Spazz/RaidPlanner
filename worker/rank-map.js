@@ -127,6 +127,12 @@ export const ingameRankLabelSql = (c) => `(SELECT m.label FROM guild_roster g JO
        AND m.source_key = CAST(g.rank AS TEXT) WHERE g.guild_id = ${c}.guild_id AND g.namespace = ${c}.namespace AND g.blizzard_realm_id = ${c}.blizzard_realm_id
        AND g.blizzard_char_id = ${c}.blizzard_char_id)`;
 
+// The same two facts for a guild_roster row itself (alias given), for a roster row no character carries (the Users list, 2026-10-29): the map's label for its in-game rank, NULL
+// when the rank has no map row; and the core rank the map gives it, Social when the rank has no row (the rule newCoreRankSql applies to a character on the roster).
+const rosterMapRowSql = (g, column) => `SELECT m.${column} FROM source_rank_maps m WHERE m.guild_id = ${g}.guild_id AND m.source = 'ingame' AND m.team_id IS NULL AND m.source_key = CAST(${g}.rank AS TEXT)`;
+export const rosterRankLabelSql = (g) => `(${rosterMapRowSql(g, 'label')})`;
+export const rosterCoreRankSql = (g) => `COALESCE((${rosterMapRowSql(g, 'core_rank')}), 'social')`;
+
 // Raids to recalculate: every raid whose log names a character whose rank is about to change (by its name today or any old name), and every raid with evidence of
 // the teams of the people they belong to whose week is still running (a rank change moves who is expected and the fill-in credit; a finished week keeps its result,
 // worker/attendance-store.js THE FREEZE). Runs BEFORE the rank UPDATE, like the sync's own stale step.

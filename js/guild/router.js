@@ -69,7 +69,7 @@
   // The Users list's segments: the Worker's word (GET /users?segment=) and the word the address carries ('nonmembers' reads 'non-members' there).
   const USER_SEGMENTS = ['members', 'former', 'nonmembers', 'blocked'];
   const USER_SEGMENT_WORDS = { members: 'members', former: 'former', nonmembers: 'non-members', blocked: 'blocked' };
-  // A user's key as GET /users hands it out ('u_' / 'p_' + 22 characters, or 'n_' + the hex of a name); the Worker decides whether it names anyone.
+  // A user's key as GET /users hands it out ('u_' / 'p_' + 22 characters, or 'n_' / 'r_' + the hex of a name); the Worker decides whether it names anyone.
   const USER_KEY = /^[A-Za-z0-9_-]{1,520}$/;
   // The acts the fresh sign-in is for (worker/fresh.js FRESH_PURPOSES; a test pins the two lists together) and the shape of a reason the Worker's callbacks name. An unknown reason is kept:
   // the page has a sentence for every reason it knows and a default for the rest.

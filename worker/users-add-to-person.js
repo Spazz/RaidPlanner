@@ -45,7 +45,7 @@ const notFound = (message) => new HttpError(404, 'not_found', message);
 export function parseAddBody(body) {
   const object = body && typeof body === 'object' ? body : {};
   const person = typeof object.person === 'string' ? parseUserKey(object.person) : null;
-  if (!person || person.kind === 'name') throw bad('Pick the person to add the names to.', 'person');
+  if (!person || person.kind === 'name' || person.kind === 'roster') throw bad('Pick the person to add the names to.', 'person');
   if (!Array.isArray(object.names) || !object.names.length) throw bad('Pick at least one name.', 'names');
   if (object.names.length > BULK_MAX_KEYS) throw bad(`At most ${BULK_MAX_KEYS} names in one request.`, 'names');
   const seen = new Set();

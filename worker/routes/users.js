@@ -1,6 +1,6 @@
 // The Users list of a guild and the page of one user (user-hierarchy build, lane B7b part 1; plan "Users API/UI"), and Manage users (part 2). worker/users-list.js has the queries.
 //   GET  /api/guild/:gid/users?segment=members|former|nonmembers|blocked&sort=user|main|permission|lastSeen&dir=asc|desc&offset=&limit=&q=&rank=&from=     (+ battlenetOnly, ownerSeat, coreRanks)
-//   GET  /api/guild/:gid/users/:ukey     (+ battlenetOnly, ownerSeat)
+//   GET  /api/guild/:gid/users/:ukey     (+ battlenetOnly, ownerSeat)     ukey: u_ account, p_ person, n_ name, r_ in-game roster member that no character carries
 //   POST /api/guild/:gid/users/block | /users/unblock     { keys: [ukey, ...], reason? }       worker/users-bulk.js
 //   POST /api/guild/:gid/users/add-to-person              { person: ukey, names: [{ key, class? }] }   worker/users-add-to-person.js
 // The gate of the reads is the People list's (guild.access or guild.roles), the rate limit is per user and shared by both routes (a read of the whole guild is not free). Manage users

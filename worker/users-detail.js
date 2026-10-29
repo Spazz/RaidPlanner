@@ -1,18 +1,19 @@
 // The page of one user (user-hierarchy build, lane B7b part 1): GET /api/guild/:gid/users/:ukey. READ ONLY; the key comes from the Users list (worker/users-list.js).
 //
-//   { key, kind, segment, name, personId?,         personId: the roster person of an account or of an account-less person (the "Open roster record" link); left out for a name and for an account with no person
+//   { key, kind, segment, name, personId?,         kind: account | person | name | roster (a member of the in-game roster that no character carries: `roster` = { class, level, realm, ingameRank: { rank, label | null }, coreRank }, and `main` is the character itself); personId: the roster person of an account or of an account-less person (the "Open roster record" link); left out for a name and for an account with no person
 //     identity: { account: { displayName } | null, battlenet, signInMethods: ['discord', 'battlenet'] },     never a Discord id, a Battle.net account id or a BattleTag
 //     main, characters: [{ name, class, realm, ingameRank: { rank, label } | null, coreRank, team: { id, name } | null, isMain, former, leftOn }],
 //     permission, permissions: [{ role, label, teamId?, teamName?, sources }], lastSeen,
 //     block: { blocked, pendingReview, blockedOn, reason?, blockedBy? }, flags, tags, sightings: [{ source, date, detail }] }
-// 404 for an unknown key, the key of another guild, a person who has an account (the page is the account's), and a name that is on the roster or was never seen.
+// 404 for an unknown key, the key of another guild, a person who has an account (the page is the account's), a name that is on the roster or was never seen, and a roster row that a
+// character carries by now (the person's page is its own).
 import { HttpError } from './http.js';
 import { visibleCharacterSql } from './character-visibility.js';
 import { ownerSql, seatHeldBySql } from './owner.js';
 import { todayIn } from './roster-data.js';
 import {
   ACCOUNT_TAGS, LAST_SEEN_INCLUDES_SIGN_IN, ROLE_LABELS, USERS_TAGS, accountSegmentSql, accountTagSql, accountsCte, bestBuiltinSql, customNameSql, lastSeenSql, newScope,
-  flag, ignoredBlockSql, permissionOf, personNameSql, personOfAccountSql, personSegmentSql, personsCte, sortedTags, unresolvedSql, viewerOf,
+  flag, ignoredBlockSql, permissionOf, personNameSql, personOfAccountSql, personSegmentSql, personsCte, rosterCte, rosterSegmentSql, rosterView, sortedTags, unresolvedSql, viewerOf,
 } from './users-list.js';
 
 // How many sightings a page lists per source.
@@ -21,17 +22,21 @@ export const SIGHTINGS_PER_SOURCE = 10;
 const notFound = () => new HttpError(404, 'not_found', 'That user was not found.');
 const displayNameOf = (row) => row.display_name || row.global_name || row.username;
 
-// 'u_...' / 'p_...' / 'n_<hex of the lower-cased name key>' -> { kind, id } | { kind: 'name', nameKey } | null (a key this module never hands out).
+// 'u_...' / 'p_...' / 'n_<hex of the lower-cased name key>' / 'r_<hex of name key, "/", realm slug>' -> { kind, id } | { kind: 'name', nameKey } | { kind: 'roster', nameKey, realmSlug } | null
+// (a key this module never hands out).
 export function parseUserKey(key) {
   if (typeof key !== 'string') return null;
   if (/^u_[A-Za-z0-9_-]{22}$/.test(key)) return { kind: 'account', id: key };
   if (/^p_[A-Za-z0-9_-]{22}$/.test(key)) return { kind: 'person', id: key };
-  const named = /^n_((?:[0-9a-f]{2}){1,256})$/.exec(key);
+  const named = /^([nr])_((?:[0-9a-f]{2}){1,256})$/.exec(key);
   if (!named) return null;
   try {
-    const bytes = Uint8Array.from(named[1].match(/../g).map((pair) => parseInt(pair, 16)));
-    const nameKey = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    return nameKey ? { kind: 'name', nameKey } : null;
+    const bytes = Uint8Array.from(named[2].match(/../g).map((pair) => parseInt(pair, 16)));
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    if (named[1] === 'n') return text ? { kind: 'name', nameKey: text } : null;
+    // A name key is letters only, so the first "/" ends it; the realm slug is the rest.
+    const slash = text.indexOf('/');
+    return slash > 0 && slash < text.length - 1 ? { kind: 'roster', nameKey: text.slice(0, slash), realmSlug: text.slice(slash + 1) } : null;
   } catch {
     return null;
   }
@@ -126,6 +131,7 @@ export async function loadUserDetail(ctx, guildContext, key, { signIn = LAST_SEE
   const mayDecide = guildContext.can['guild.access'] === 'guild';
   if (parsed.kind === 'account') return accountPage(ctx, scope, guildContext, parsed.id, mayDecide);
   if (parsed.kind === 'person') return personPage(ctx, scope, guildContext, parsed.id, mayDecide);
+  if (parsed.kind === 'roster') return rosterPage(ctx, scope, guildContext, parsed);
   return namePage(ctx, scope, parsed.nameKey);
 }
 
@@ -236,6 +242,34 @@ async function personPage(ctx, scope, guildContext, personId, mayDecide) {
     block: blockView(results[2].results[0] || null, guildContext.guild.time_zone, mayDecide),
     flags: {},
     tags: [],
+    sightings: [],
+  };
+}
+
+// A member of the in-game roster that no character carries: the in-game facts only (class, level, realm, in-game rank, core rank). One statement. The segment is the roster's own
+// (Members in an 'ingame' guild, Non-members elsewhere); nothing is known about when they were last seen, and there is nothing to block (no account, no person).
+async function rosterPage(ctx, scope, guildContext, parsed) {
+  const head = scope();
+  const statement = bound(ctx.db, head, `WITH ${rosterCte(head, parsed)} SELECT ro.name AS name, ro.nk AS nk, ro.slug AS slug, ro.cls AS cls, ro.lvl AS lvl, ro.rk AS rk, ro.label AS label,
+            ro.core AS core, ro.rkey AS rkey, ${rosterSegmentSql(head)} AS seg FROM ro`);
+  const row = (await statement.all()).results[0];
+  if (!row) throw notFound();
+  const roster = rosterView(guildContext.guild, row);
+  return {
+    key: row.rkey,
+    kind: 'roster',
+    segment: row.seg,
+    name: row.name,
+    identity: { account: null, battlenet: false, signInMethods: [] },
+    main: { name: row.name, class: roster.class, realm: roster.realm },
+    characters: [],
+    roster,
+    permission: null,
+    permissions: [],
+    lastSeen: null,
+    block: { blocked: false, pendingReview: false, blockedOn: null },
+    flags: {},
+    tags: row.seg === 'nonmembers' ? ['ingame_roster'] : [],
     sightings: [],
   };
 }
