@@ -246,7 +246,7 @@
     const f = flagsOf(row);
     const you = isMine(m, row);
     const tags = tagsText(row).replace(/ \u00b7 /g, ', ');
-    const facts = [tags || (row.permission ? esc(row.permission) + (f.owner || f.suspended ? ', Owner seat' : '') : '<span class="gs-muted">None</span>'), row.lastSeen ? esc(shortDay(row.lastSeen)) : '<span class="gs-muted">\u2014</span>'];
+    const facts = [tags ? esc(tags) : (row.permission ? esc(row.permission) + (f.owner || f.suspended ? ', Owner seat' : '') : '<span class="gs-muted">None</span>'), row.lastSeen ? esc(shortDay(row.lastSeen)) : '<span class="gs-muted">\u2014</span>'];
     const l1 = '<span class="gs-us-urow-l1"><span class="gs-rs-name">' + esc(row.name) + '</span>' + (you ? '<span class="gs-you">You</span>' : '') + (row.kind === 'person' ? '<span class="gs-us-urow-note">No account yet</span>' : '') +
       (f.pendingReview ? chipHtml('rose', 'Needs review') : '') + (f.suspended ? chipHtml('rose', 'Suspended') : '') +
       (row.main ? '<span class="gs-us-urow-main">' + crestHtml(row.main.class, 16) + G.ui.classNameHtml(row.main.name, row.main.class) + '</span>' : '') + '</span>';

@@ -1,7 +1,8 @@
 // The max-level rule (user decision 2026-10-24, B8b "My characters"): a Battle.net character at the level cap of its game version (worker/realms.js maxLevelOf: 70 TBC
-// Anniversary, 60 Classic Era) joins the member's profile in each of their guilds of that version when Battle.net connects and at every refresh, with the same plan, writes,
-// proof and audit rows as the Add on My characters (worker/claim-apply.js applyPicks, source 'bnet'). Lower characters stay on the list: the member picks them ("Add N
-// characters"). Called by the Battle.net callback after the sign-in match, with the snapshot it just wrote; it never fails the callback.
+// Anniversary, 60 Classic Era) on the guild's OWN realm joins the member's profile in each of their guilds of that version when Battle.net connects and at every refresh, with
+// the same plan, writes, proof and audit rows as the Add on My characters (worker/claim-apply.js applyPicks, source 'bnet'). Lower characters, and max-level characters on
+// another realm of the version and region (R4 F3, 2026-10-28), stay on the list: the member picks them ("Add N characters"). A ruleset guild (WoW Forever) has no realm,
+// so every max-level character counts there. Called by the Battle.net callback after the sign-in match, with the snapshot it just wrote; it never fails the callback.
 //   - A character a manual add would refuse (already on the record, on someone else's linked person, a claim waiting) is left alone; a conflict becomes the usual claim that
 //     waits for an officer ("Waiting for an officer"); one an officer turned down before is not asked again at every refresh.
 //   - The callback's D1 statement budget (worker/bnet-match.js CALLBACK_STATEMENT_BUDGET) holds: what does not fit waits for the next refresh and stays offered under "Add".
@@ -12,7 +13,7 @@ import { loadMemberGuilds } from './bnet-store.js';
 import { CALLBACK_STATEMENT_BUDGET } from './bnet-match.js';
 import { applyPicks, snapshotIdentity } from './claim-apply.js';
 import { maxLevelOf } from './realms.js';
-import { cleanCharacterName } from './roster-data.js';
+import { cleanCharacterName, realmKey } from './roster-data.js';
 import { resolveRealm } from './routes/roster.js';
 
 // The D1 statements the smallest useful run costs: for one guild the plan (3), the claim reads (3) and the writes of one character (3); the first guild also needs the
@@ -22,12 +23,15 @@ const START_MIN_STATEMENTS = GUILD_MIN_STATEMENTS + 3;
 
 const byLevelThenName = (a, b) => (b.level || 0) - (a.level || 0) || a.name.localeCompare(b.name);
 
-// The picks of ONE guild: the characters of its namespace at the level cap, on the guild's realm, with a name a roster can hold, one per name and realm.
+// The picks of ONE guild: the characters of its namespace at the level cap, on the guild's own realm (same realmKey as the roster; a ruleset guild has none and takes all),
+// with a name a roster can hold, one per name and realm.
 // -> [{ index, name, realm: { realm, key }, class, level, identity }] (applyPicks' shape), best first. identity: the Blizzard key the snapshot holds for the character in the
 // guild's profile `namespace` (worker/claim-apply.js snapshotIdentity), or null.
 export function maxLevelPicks(guild, entry, namespace = null) {
   const cap = maxLevelOf(guild.game_version);
   if (cap === null || !entry || entry.error || !Array.isArray(entry.characters)) return [];
+  const ownRealmOnly = guild.realm_kind !== 'ruleset';
+  const guildRealmKey = realmKey(guild.realm);
   const seen = new Set();
   const picks = [];
   for (const character of [...entry.characters].sort(byLevelThenName)) {
@@ -35,6 +39,7 @@ export function maxLevelPicks(guild, entry, namespace = null) {
     const name = cleanCharacterName(character.name);
     const realm = resolveRealm(guild, character.realm);
     if (!name || !realm) continue;
+    if (ownRealmOnly && realm.key !== guildRealmKey) continue;
     const key = `${name.toLowerCase()}|${realm.key}`;
     if (seen.has(key)) continue;
     seen.add(key);

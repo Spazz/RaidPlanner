@@ -634,6 +634,20 @@ check('Guild setup, step 3 (G3): the Owner panel, the summary, five tiles and th
   noRawAttrs(page, 'step 3');
 });
 
+check('Guild setup, step 3 (R4 F1): a team name with markup in the permission gains renders as text and creates no element', async () => {
+  const evil = '<img src=x onerror=alert(1)>';
+  const base = previewOf().permissions;
+  const hostile = { userId: 'u_x', personId: 'p_x', name: 'Mallory', roleId: 'team_lead', roleName: 'Team Lead', teamId: 't_x', teamName: evil, reason: 'rank' };
+  const { html } = await atPreview({
+    preview: previewOf({ permissions: { ...base, gains: { ...base.gains, samples: [...base.gains.samples, hostile] }, discordRoles: { ...base.discordRoles, samples: [...base.discordRoles.samples, { ...hostile, handTwin: false }] } } }),
+  });
+  const page = html();
+  assert(!/<img\b/i.test(page), 'no img element was created');
+  assert(!page.includes(evil), 'the markup is not in the page raw');
+  assert(page.includes('&lt;img src=x onerror=alert(1)&gt;'), 'the team name is written as escaped text');
+  assert(text(page).includes('Mallory Team Lead &lt;img src=x onerror=alert(1)&gt;'), 'the Team cell holds the typed text');
+});
+
 check('Guild setup, step 3: groups show the first rows and "Show all" opens the samples; a list longer than its samples says so', async () => {
   const many = Array.from({ length: 25 }, (_, i) => ({ reason: 'discord_only', name: `Lost${String(i).padStart(2, '0')}` }));
   const { html } = await atPreview({ preview: previewOf({ access: { members: { today: 100, afterFlip: 70 }, loses: { count: 30, reasons: { discord_only: 30 }, samples: many }, gains: { count: 0, reasons: {}, samples: [] } } }) });

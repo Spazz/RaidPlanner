@@ -300,14 +300,46 @@ check('refresh: Connect again adds only what reached the cap since; nothing is a
   await link(s, 'erin');
   assert.equal(await s.w.count('audit_log', `action = 'character.claim'`), first, 'the same list adds nothing');
   assert.equal(await s.w.count('character_claims'), 0);
-  // Cassia levelled to 70 and Hestia is new; Aldric left Battle.net's list.
+  // Cassia (on Nightslayer, not the guild's Dreamscythe) levelled to 70 and Hestia is new on Dreamscythe; Aldric left Battle.net's list.
   s.w.bnet.state.data.tbc = s.w.bnet.state.data.tbc.filter((row) => row[0] !== 'Aldric').map((row) => (row[0] === 'Cassia' ? [row[0], row[1], 70, ...row.slice(3)] : row));
   s.w.bnet.state.data.tbc.push(['Hestia', 5, 70, 0]);
   await link(s, 'erin');
   const view = await guildViewOf(s, 'erin');
-  assert.deepEqual(profileNames(view), ['Aldric', 'Brindle', 'Cassia', 'Dunmar', 'Galdor', 'Hestia', 'Quillfeather'], 'Aldric stays (a refresh never removes), Cassia and Hestia joined');
-  assert.equal(await s.w.count('audit_log', `action = 'character.claim'`), first + 2);
-  assert.deepEqual(view.characters.filter((c) => c.claimable).map((c) => c.name).sort(), ['Eliora', 'Fenwick']);
+  assert.deepEqual(profileNames(view), ['Aldric', 'Brindle', 'Dunmar', 'Galdor', 'Hestia', 'Quillfeather'], 'Aldric stays (a refresh never removes), Hestia joined; Cassia is at the cap on another realm, so she waits for Add (R4 F3)');
+  assert.equal(await s.w.count('audit_log', `action = 'character.claim'`), first + 1);
+  assert.deepEqual(view.characters.filter((c) => c.claimable).map((c) => c.name).sort(), ['Cassia', 'Eliora', 'Fenwick']);
+});
+
+check('maxLevelPicks (R4 F3): a realm guild takes only the characters at the cap on its own realm (the roster\'s realm key), a ruleset guild has no realm and takes them all', async () => {
+  const { maxLevelPicks } = await load('worker/bnet-auto-add.js');
+  const row = (name, realm, extra = {}) => ({ name, level: 70, realm, class: 'MAGE', ...extra });
+  const tbc = { game_version: 'tbc', region: 'US', realm: 'Dreamscythe', realm_kind: 'realm' };
+  const own = maxLevelPicks(tbc, { characters: [row('Home', 'Dreamscythe'), row('Spelled', 'DREAMSCYTHE'), row('Away', 'Nightslayer'), row('Faraway', 'Faraway Isle')] });
+  assert.deepEqual(own.map((p) => [p.name, p.realm.realm]), [['Home', 'Dreamscythe'], ['Spelled', 'Dreamscythe']], 'another listed realm and an unlisted one stay out, a spelling of the own realm is in');
+  assert.deepEqual(maxLevelPicks({ ...tbc, realm: 'Nightslayer' }, { characters: [row('Home', 'Dreamscythe'), row('Away', 'Nightslayer')] }).map((p) => p.name), ['Away'], 'the guild\'s own realm decides, not the first realm of the list');
+  const forever = { game_version: 'forever', region: 'US', realm: null, realm_kind: 'ruleset' };
+  const sixty = (name, realm, level = 60) => row(name, realm, { level });
+  assert.deepEqual(
+    maxLevelPicks(forever, { characters: [sixty('Home', 'Dreamscythe'), sixty('Away', 'Nightslayer'), sixty('Faraway', 'Faraway Isle'), sixty('Low', 'Dreamscythe', 59)] }).map((p) => [p.name, p.realm.key]),
+    [['Away', ''], ['Faraway', ''], ['Home', '']],
+    'a ruleset guild takes every character at the cap, on any realm, as before',
+  );
+});
+
+check('connect (R4 F3): a character at the cap on another realm is not added by itself, stays offered, and the manual Add still takes it', async () => {
+  const s = await scenario();
+  s.w.bnet.state.data.tbc.push(['Nightowl', 5, 70, 1]); // Nightslayer: a US realm of the version, but the guild lives on Dreamscythe
+  await link(s, 'erin');
+  const view = await guildViewOf(s, 'erin');
+  assert.deepEqual(profileNames(view), ['Aldric', 'Brindle', 'Dunmar', 'Galdor', 'Quillfeather'], 'the five on Dreamscythe joined; Nightowl did not');
+  const owl = view.characters.find((c) => c.name === 'Nightowl');
+  assert.deepEqual([owl.state, owl.claimable, owl.level, owl.realmSlug, owl.claim], ['new', true, 70, 'nightslayer', null], 'still offered under Add: nothing filters it by level');
+  assert.equal(await s.w.count('audit_log', `action = 'character.claim'`), 5, 'one audit row per character that joined');
+  const added = await s.w.call(s.jars.erin, 'POST', `${s.guildPath}/claims`, { characters: [{ name: 'Nightowl', realmSlug: 'nightslayer' }] });
+  assert.equal(added.status, 201, JSON.stringify(added.json));
+  assert.deepEqual(added.json.claims.map((claim) => [claim.name, claim.status]), [['Nightowl', 'applied']], 'the member chooses: every realm of the version and region is allowed');
+  assert.deepEqual((await s.w.rows(`SELECT realm FROM characters WHERE name = 'Nightowl' AND guild_id = ?`, s.guildId)).map((r) => r.realm), ['Nightslayer']);
+  assert(profileNames(await guildViewOf(s, 'erin')).includes('Nightowl'));
 });
 
 check('conflicts: a character on a roster person nobody linked waits for an officer (Waiting for an officer); one on someone else\'s linked person is left alone; neither fails the connect', async () => {
@@ -615,6 +647,15 @@ check('contract: My characters draws its cards, waiting row and quiet line from 
     const href = /href="([^"]*)"/.exec(card)[1];
     assert(href.startsWith('#/'), href);
   }
+  // R4 F3: a character at the cap on another realm is not added by itself; it joins the lower ones under Add, in a quiet line that no longer says "below 70".
+  s.w.bnet.state.data.tbc.push(['Nightowl', 5, 70, 1]);
+  await link(s, 'erin');
+  const again = (await s.w.call(s.jars.erin, 'GET', '/auth/bnet')).json;
+  const page = sandbox.Guild.pages.bnet.charactersHtml({ data: again }).replace(/<[^>]*>/g, ' ').replace(/&middot;/g, '·').replace(/\s+/g, ' ');
+  assert(page.includes('4 characters on your Battle.net not on your profile yet · Add'), page);
+  assert(!page.includes('below 70'), 'the line does not claim every character it counts is below the cap');
+  const dialog = sandbox.Guild.pages.bnet.addDialogHtml(again.guilds[0]);
+  assert(dialog.includes('Nightowl') && dialog.includes('Level 70') && dialog.includes('Cassia') && dialog.includes('Add characters from Battle.net'), 'the dialog offers the other-realm character beside the lower ones');
 });
 
 // ---------------------------------------------------------------------------

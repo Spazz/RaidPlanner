@@ -542,7 +542,7 @@
     return '<section class="gs-hd-panel gs-su-list' + (stale ? ' is-stale' : '') + '" aria-label="' + esc(title) + '"><h2 class="gs-h2 gs-su-list-h">' + esc(title) + '</h2>' + innerHtml + '</section>';
   }
   function coreName(id) { return has(CORE_LABEL, id) ? CORE_LABEL[id] : (id ? String(id).charAt(0).toUpperCase() + String(id).slice(1) : 'Social'); }
-  function teamOf(sample) { return sample.teamName ? sample.teamName : '<span class="gs-muted">Whole guild</span>'; }
+  function teamOf(sample) { return sample.teamName ? esc(sample.teamName) : '<span class="gs-muted">Whole guild</span>'; }
   function roleLine(sample) { return esc(sample.roleName || sample.roleId || '') + (sample.teamName ? ', ' + esc(sample.teamName) : ''); }
 
   function ownerPanelHtml(v, gd) {

@@ -189,6 +189,15 @@ function assertNoRawAttrs(out) {
   }
 }
 
+check('list (R4 F6): an unknown tag string with markup is escaped in the phone row and the table cell', () => {
+  resetBrowser();
+  const html = listHtml([row(1, { name: 'Dawn', main: null, tags: ['loot', HOSTILE + QUOTES], lastSeen: null }), row(2, { kind: 'name', name: 'Gus', main: null, tags: [HOSTILE] })]);
+  assertEscaped(html, 'tags');
+  const phone = html.slice(html.indexOf('class="gs-rs-phone"'));
+  assert(phone.includes('Loot, &lt;img src=x onerror=1&gt;'), 'the phone row reads the tag as text, after the known tag');
+  assert(!/<img\b/i.test(html), 'no element was created from a tag');
+});
+
 check('list: the phone shows slim rows (name, You, No account yet, the Main on line 1; permission or sources and the day on line 2)', () => {
   resetBrowser();
   const html = listHtml([row(1, { name: 'Brandon', key: ME, permission: 'Guild Master', flags: { owner: true } }), row(2, { name: 'Ellie', kind: 'person' }), row(3, { name: 'Dawn', main: null, tags: ['loot'], lastSeen: null })]);
