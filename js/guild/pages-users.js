@@ -3,6 +3,8 @@
 // guild.access (shell.js canSeeUsers; app.js checks it before the page loads). It replaces Settings > Accounts, whose two addresses now open it.
 //   List     four segments (Members, Former, Non-members, Blocked), each its own address; search, a rank filter (members, former) or a source filter (non-members), sortable heads
 //            (the Worker sorts and pages: GET /users?segment=&sort=&dir=&q=&rank=&from=&offset=&limit=), 10 rows and "Show all". More: Manage users, Sync now.
+//            A member of the in-game roster that no character carries is a row too (kind 'roster'): under Members in a guild whose ranks come from the roster, else under Non-members tagged
+//            In-game roster. It shows the character, its in-game rank and core rank, has no Last seen and no checkbox, and opens a page of its in-game facts.
 //   Manage   selection mode from the head's More: a checkbox per row (none on your own), a bar with Block (Unblock on Blocked), Add to a person (non-members, a guild with hand-set ranks) and
 //            Done. More than 25 names go in chunks (POST /users/block | /users/unblock); the result is a list dialog of done and skipped names with the API's message each.
 //   User     characters with rank, core rank and team; Permission (where each comes from) with Edit permission; Identity; Block; for a block that waits for review the Keep / Restore decision.
@@ -26,9 +28,9 @@
   const segmentDef = function (id) { return SEGMENTS.filter(function (s) { return s.id === id; })[0] || SEGMENTS[0]; };
   const SEGMENT_SINGULAR = { members: 'Member', former: 'Former member', nonmembers: 'Non-member', blocked: 'Blocked' };
   const RANK_LABELS = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', social: 'Social' };
-  // The tags of a non-member (where Raidsmith saw them): data labels, in the Worker's order.
-  const TAG_LABELS = { discord_signin: 'Discord sign-in', application: 'Application', guest_signup: 'Guest sign-up', raid_helper: 'Raid-Helper', raid_log: 'Raid log', loot: 'Loot' };
-  const SOURCE_TAGS = ['discord_signin', 'application', 'guest_signup', 'raid_helper', 'raid_log', 'loot'];
+  // The tags of a non-member (where Raidsmith saw them): data labels, in the Worker's order. In-game roster: a member of the in-game roster in a guild that has not switched to it.
+  const TAG_LABELS = { discord_signin: 'Discord sign-in', application: 'Application', guest_signup: 'Guest sign-up', raid_helper: 'Raid-Helper', raid_log: 'Raid log', loot: 'Loot', ingame_roster: 'In-game roster' };
+  const SOURCE_TAGS = ['discord_signin', 'application', 'guest_signup', 'raid_helper', 'raid_log', 'loot', 'ingame_roster'];
   const SIGN_IN_LABELS = { battlenet: 'Battle.net', discord: 'Discord' };
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const SORT_COLUMNS = [['user', 'User'], ['main', 'Main character'], ['permission', 'Permission'], ['lastSeen', 'Last seen']];
@@ -89,6 +91,10 @@
     return (Array.isArray(row.tags) ? row.tags : []).map(function (t) { return has(TAG_LABELS, t) ? TAG_LABELS[t] : t; }).join(' \u00b7 ');
   }
   function flagsOf(row) { return row && row.flags && typeof row.flags === 'object' ? row.flags : {}; }
+  // A roster row (kind 'roster') is a member of the in-game roster that nothing else on Raidsmith carries: its facts are the in-game rank (the guild's name for it) and the core rank.
+  function rankLabelOf(roster) { return roster && roster.ingameRank ? (roster.ingameRank.label || 'Rank ' + roster.ingameRank.rank) : ''; }
+  function coreLabelOf(roster) { return roster && has(RANK_LABELS, roster.coreRank) ? RANK_LABELS[roster.coreRank] : ''; }
+  function rosterFacts(row) { return row && row.kind === 'roster' && row.roster ? [rankLabelOf(row.roster), coreLabelOf(row.roster)].filter(Boolean) : []; }
   function chipHtml(tone, label) { return '<span class="gs-hd-chip is-' + tone + '">' + esc(label) + '</span>'; }
   function crestHtml(classId, size) { return G.ui.specIconHtml(classId, null, size || 18); }
   function mainHtml(main) {
@@ -213,7 +219,7 @@
 
   function userCellHtml(m, row, plain) {
     const f = flagsOf(row);
-    const second = row.kind === 'person' ? 'No account yet' : tagsText(row);
+    const second = row.kind === 'person' ? 'No account yet' : [tagsText(row)].concat(rosterFacts(row)).filter(Boolean).join(' \u00b7 ');
     const chips = (f.pendingReview ? chipHtml('rose', 'Needs review') : '') + (f.suspended ? chipHtml('rose', 'Suspended') : '');
     const tag = plain ? 'span' : 'a';
     return '<' + tag + ' class="gs-person gs-us-user"' + (tag === 'a' ? ' href="' + esc(userHref(m.gid, row.key)) + '"' : '') + '>' + G.ui.avatarHtml({ displayName: row.name }, 'gs-avatar-md') +
@@ -223,7 +229,8 @@
   function isMine(m, row) { return !!m.meId && row.key === m.meId; }
   function pickedOf(m, row) { return !!(m.manage && has(m.manage.picked, row.key)); }
   function pickBoxHtml(m, row) {
-    if (isMine(m, row)) return '<span class="gs-us-chkbox is-off" aria-hidden="true"></span>';
+    // (a roster row has nothing to block and no name to add: no box)
+    if (isMine(m, row) || row.kind === 'roster') return '<span class="gs-us-chkbox is-off" aria-hidden="true"></span>';
     return '<label class="gs-us-chkbox"><input type="checkbox" class="gs-us-chk" data-change="users-pick" data-pick="' + esc(row.key) + '"' + (pickedOf(m, row) ? ' checked' : '') + ' aria-label="Select ' + esc(row.name) + '"></label>';
   }
 
@@ -245,7 +252,7 @@
   function phoneRowHtml(m, row) {
     const f = flagsOf(row);
     const you = isMine(m, row);
-    const tags = tagsText(row).replace(/ \u00b7 /g, ', ');
+    const tags = [tagsText(row).replace(/ \u00b7 /g, ', ')].concat(rosterFacts(row)).filter(Boolean).join(', ');
     const facts = [tags ? esc(tags) : (row.permission ? esc(row.permission) + (f.owner || f.suspended ? ', Owner seat' : '') : '<span class="gs-muted">None</span>'), row.lastSeen ? esc(shortDay(row.lastSeen)) : '<span class="gs-muted">\u2014</span>'];
     const l1 = '<span class="gs-us-urow-l1"><span class="gs-rs-name">' + esc(row.name) + '</span>' + (you ? '<span class="gs-you">You</span>' : '') + (row.kind === 'person' ? '<span class="gs-us-urow-note">No account yet</span>' : '') +
       (f.pendingReview ? chipHtml('rose', 'Needs review') : '') + (f.suspended ? chipHtml('rose', 'Suspended') : '') +
@@ -600,7 +607,7 @@
     const seen = data.lastSeen ? 'last seen ' + shortDay(data.lastSeen) : '';
     if (data.block && data.block.blocked) return ['Blocked', seen].filter(Boolean).join(' \u00b7 ');
     const main = (data.characters || []).filter(function (c) { return c.isMain; })[0];
-    return [SEGMENT_SINGULAR[data.segment] || '', main && main.ingameRank ? main.ingameRank.label : '', seen].filter(Boolean).join(' \u00b7 ');
+    return [SEGMENT_SINGULAR[data.segment] || '', data.kind === 'roster' ? rankLabelOf(data.roster) : (main && main.ingameRank ? main.ingameRank.label : ''), seen].filter(Boolean).join(' \u00b7 ');
   }
 
   // opts: { guildData, data (GET /users/:ukey), meId, flash }
@@ -622,7 +629,12 @@
         primary: { label: 'Keep block', attrs: { 'data-action': 'users-keep', 'data-key': 'users-keep' } }, secondary: { label: 'Restore access', attrs: { 'data-action': 'users-restore', 'data-key': 'users-restore' } } }
       : null;
     const left = [];
-    if (data.kind !== 'name') {
+    if (data.kind === 'roster' && data.roster) {
+      const r = data.roster;
+      left.push(panelHtml({ id: 'roster', title: 'In-game roster', metaHtml: data.battlenetOnly ? 'Rank comes from the in-game guild roster' : '', flush: true,
+        bodyHtml: kvHtml('Character', '<span class="gs-us-chr">' + crestHtml(r.class, 18) + G.ui.classNameHtml(data.name, r.class) + '</span>') + kvHtml('Class', esc(G.ui.className(r.class))) +
+          (r.level != null ? kvHtml('Level', esc(String(r.level))) : '') + kvHtml('In-game rank', esc(rankLabelOf(r))) + kvHtml('Core rank', esc(coreLabelOf(r))) + (r.realm ? kvHtml('Realm', esc(r.realm)) : '') }));
+    } else if (data.kind !== 'name') {
       left.push(panelHtml({ id: 'characters', title: 'Characters', metaHtml: data.battlenetOnly ? 'Rank comes from the in-game guild roster' : '', flush: true,
         bodyHtml: characters.length ? characters.map(function (c) { return characterRowHtml(c, data.battlenetOnly === true); }).join('') : '<p class="gs-pr-empty gs-fine">No characters.</p>' }));
     }
@@ -644,8 +656,8 @@
     if (data.kind === 'account') {
       idRows = kvHtml('Account', '<span class="gs-pr-id">' + esc(identity.account ? identity.account.displayName : data.name) + '</span>') + kvHtml('Battle.net', identity.battlenet ? 'Linked' : 'Not linked') +
         kvHtml('Sign-in', methods.length ? esc(methods.join(', ')) : '<span class="gs-muted">None</span>');
-    } else if (data.kind === 'person') {
-      idRows = kvHtml('Account', '<span class="gs-muted">No account yet</span>');
+    } else if (data.kind === 'person' || data.kind === 'roster') {
+      idRows = kvHtml('Account', '<span class="gs-muted">No account yet</span>') + (data.kind === 'roster' && data.tags && data.tags.length ? kvHtml('Seen in', esc(tagsText(data))) : '');
     } else if (data.tags && data.tags.length) {
       idRows = kvHtml('Seen in', esc(tagsText(data)));
     }

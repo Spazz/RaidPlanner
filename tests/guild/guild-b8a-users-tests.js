@@ -218,7 +218,7 @@ check('list: the rank filter lists only the core ranks the guild maps (no Reserv
   assert.deepEqual(options(listHtml([row(1)], { coreRanks: ['raider', 'trial', 'reserve', 'social'] }), 'users-rank').map((o) => o[1]), ['All ranks', 'Raider', 'Trial', 'Reserve', 'Social'], 'a guild that maps Reserve gets it');
   assert(listHtml([row(1)], { segment: 'former' }, { view: viewOf({ segment: 'former' }) }).includes('id="users-rank"'));
   const non = listHtml([row(1)], { segment: 'nonmembers' }, { view: viewOf({ segment: 'nonmembers' }) });
-  assert.deepEqual(options(non, 'users-from'), [['', 'All sources'], ['discord_signin', 'Discord sign-in'], ['application', 'Application'], ['guest_signup', 'Guest sign-up'], ['raid_helper', 'Raid-Helper'], ['raid_log', 'Raid log'], ['loot', 'Loot']]);
+  assert.deepEqual(options(non, 'users-from'), [['', 'All sources'], ['discord_signin', 'Discord sign-in'], ['application', 'Application'], ['guest_signup', 'Guest sign-up'], ['raid_helper', 'Raid-Helper'], ['raid_log', 'Raid log'], ['loot', 'Loot'], ['ingame_roster', 'In-game roster']]);
   assert(!non.includes('id="users-rank"'));
   const blocked = listHtml([row(1)], { segment: 'blocked' }, { view: viewOf({ segment: 'blocked' }) });
   assert(!blocked.includes('id="users-rank"') && !blocked.includes('id="users-from"'));
@@ -1091,13 +1091,75 @@ check('worker: the list and the page keep to their budgets with the guild facts 
   await s.ok('off', 'GET', '/users');
   const used = statements.slice(from).length;
   assert(used <= 12, `${used} statements for a list`);
-  assert(statements.slice(from).filter((entry) => /FROM source_rank_maps/.test(entry.sql)).length === 1, 'one statement reads the rank map');
-  const plan = s.w.db.sqlite.prepare(`EXPLAIN QUERY PLAN ${statements.slice(from).find((entry) => /FROM source_rank_maps/.test(entry.sql)).sql}`).all(...statements.slice(from).find((entry) => /FROM source_rank_maps/.test(entry.sql)).values).map((r) => r.detail).join('\n');
+  // (the roster rows of the list read the map too, for their rank label and core rank; the guild facts are the one statement that lists the mapped core ranks)
+  const facts = statements.slice(from).filter((entry) => /FROM source_rank_maps/.test(entry.sql) && /group_concat\(m\.core_rank\)/.test(entry.sql));
+  assert(facts.length === 1, 'one statement reads the mapped core ranks');
+  const plan = s.w.db.sqlite.prepare(`EXPLAIN QUERY PLAN ${facts[0].sql}`).all(...facts[0].values).map((r) => r.detail).join('\n');
   assert(!/SCAN source_rank_maps|SCAN guilds/.test(plan), plan);
   const other = await baseScenario();
   other.exec(`INSERT INTO source_rank_maps (guild_id, source, source_key, label, core_rank, role_id, team_id) VALUES ('${other.gid}', 'ingame', '1', 'X', 'reserve', NULL, NULL)`);
   assert.deepEqual((await s.ok('off', 'GET', '/users')).coreRanks, ['raider', 'trial', 'reserve', 'social']);
   void rowsOf;
 });
+
+// ---------------------------------------------------------------------------
+// 6. Roster rows (kind 'roster': a member of the in-game roster that no character carries; 2026-10-29)
+
+const rosterKey = (name) => `r_${Buffer.from(`${name.toLowerCase()}/dreamscythe`, 'utf8').toString('hex')}`;
+function rosterRow(name, over) {
+  return Object.assign({
+    key: rosterKey(name), kind: 'roster', name, main: main(name, 'MAGE'), permission: null, lastSeen: null, tags: [], flags: {},
+    roster: { class: 'MAGE', level: 70, realm: 'Dreamscythe', ingameRank: { rank: 1, label: 'Officer' }, coreRank: 'raider' },
+  }, over || {});
+}
+
+check('roster rows (list): the character, its in-game rank and core rank, a dash for Last seen, no box in selection mode; a pinned guild\'s row says In-game roster in the cell, the phone row and the filter', () => {
+  resetBrowser();
+  const html = listHtml([rosterRow('Rosteralpha'), row(1, { name: 'Zed' })]);
+  assert(html.includes(`<a class="gs-person gs-us-user" href="#/g/g1/users/u/${rosterKey('Rosteralpha')}">`));
+  assert(text(html).includes('Rosteralpha Officer · Raider'), 'line 2 of the cell: the in-game rank and the core rank');
+  assert(html.includes('<span class="gs-char-name gs-class-mage">Rosteralpha</span>'), 'the character in its class colour');
+  const mine = html.slice(html.indexOf('Rosteralpha'), html.indexOf('Zed'));
+  assert(mine.includes('aria-label="No activity">—</span>') && mine.includes('<span class="gs-muted">None</span>'), 'no Last seen, no permission');
+  // A pinned guild: Non-members, tagged; an unmapped rank reads "Rank 7" and Social.
+  const non = rosterRow('Rosterdelta', { tags: ['ingame_roster'], roster: { class: 'PRIEST', level: 20, realm: 'Dreamscythe', ingameRank: { rank: 7, label: null }, coreRank: 'social' } });
+  const pinned = listHtml([non], { segment: 'nonmembers', battlenetOnly: false }, { view: viewOf({ segment: 'nonmembers' }) });
+  assert(text(pinned).includes('Rosterdelta In-game roster · Rank 7 · Social'), 'the tag, then the rank');
+  const phone = pinned.slice(pinned.indexOf('class="gs-rs-phone"'));
+  assert(phone.includes('In-game roster, Rank 7, Social · <span class="gs-muted">—</span>'), 'the phone row: the facts, then a dash for no day');
+  const filter = pinned.slice(pinned.indexOf('id="users-from"')).split('</select>')[0];
+  assert(filter.includes('<option value="ingame_roster">In-game roster</option>'));
+  const picked = listHtml([rosterRow('Rosteralpha'), row(1, { name: 'Zed' })], {}, { manage: { picked: {} } });
+  assert(!picked.includes(`data-pick="${rosterKey('Rosteralpha')}"`) && picked.includes(`data-pick="${key(1)}"`), 'a roster row has nothing to select, a user does');
+  assertNoRawAttrs(html);
+  assertNoRawAttrs(pinned);
+  const hostile = listHtml([rosterRow(HOSTILE + QUOTES, { tags: ['ingame_roster'], roster: { class: 'MAGE', level: 1, realm: HOSTILE, ingameRank: { rank: 2, label: HOSTILE + QUOTES }, coreRank: HOSTILE } })]);
+  assertEscaped(hostile, 'roster row');
+});
+
+check('roster rows (user page): the in-game facts as a panel (character, class, level, in-game rank, core rank, realm), no characters panel, no block, no More; the head names the segment and rank', () => {
+  resetBrowser();
+  const data = (over) => Object.assign({
+    key: rosterKey('Rosteralpha'), kind: 'roster', segment: 'members', name: 'Rosteralpha', identity: { account: null, battlenet: false, signInMethods: [] }, main: main('Rosteralpha', 'MAGE'),
+    characters: [], roster: { class: 'MAGE', level: 70, realm: 'Dreamscythe', ingameRank: { rank: 1, label: 'Officer' }, coreRank: 'raider' }, permission: null, permissions: [], lastSeen: null,
+    block: { blocked: false, pendingReview: false, blockedOn: null }, flags: {}, tags: [], sightings: [], battlenetOnly: true, ownerSeat: true,
+  }, over || {});
+  const html = userPage(data());
+  assert(/<h1[^>]*>Rosteralpha<\/h1>/.test(html) && html.includes('Member · Officer'));
+  const panel = text(html.slice(html.indexOf('id="roster"'), html.indexOf('id="identity"')));
+  assert(panel.includes('In-game roster') && panel.includes('Character Rosteralpha') && panel.includes('Class Mage') && panel.includes('Level 70') && panel.includes('In-game rank Officer') &&
+    panel.includes('Core rank Raider') && panel.includes('Realm Dreamscythe'), panel);
+  assert(!html.includes('id="characters"') && !html.includes('id="permission"') && !html.includes('id="block"') && !html.includes('user-more') && !html.includes('users-user-block'));
+  const identity = text(html.slice(html.indexOf('id="identity"')));
+  assert(identity.includes('Account No account yet') && identity.includes('Last seen —'));
+  // A pinned guild: a Non-member tagged In-game roster; an unmapped rank reads "Rank 7".
+  const pinned = userPage(data({ segment: 'nonmembers', tags: ['ingame_roster'], battlenetOnly: false, roster: { class: 'PRIEST', level: null, realm: 'Dreamscythe', ingameRank: { rank: 7, label: null }, coreRank: 'social' } }));
+  assert(pinned.includes('Non-member · Rank 7') && text(pinned.slice(pinned.indexOf('id="identity"'))).includes('Seen in In-game roster'));
+  const panel2 = text(pinned.slice(pinned.indexOf('id="roster"'), pinned.indexOf('id="identity"')));
+  assert(panel2.includes('In-game rank Rank 7') && panel2.includes('Core rank Social') && !panel2.includes('Level') && !panel2.includes('Rank comes from'), panel2);
+  assertNoRawAttrs(html);
+  assertEscaped(userPage(data({ name: HOSTILE + QUOTES, roster: { class: 'MAGE', level: 70, realm: HOSTILE + QUOTES, ingameRank: { rank: 1, label: HOSTILE + QUOTES }, coreRank: 'raider' } })), 'roster page');
+});
+
 
 runChecks(checks);

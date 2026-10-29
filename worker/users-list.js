@@ -1,21 +1,28 @@
 // The Users list of a guild (user-hierarchy build, lane B7b part 1; plan "Users API/UI", H-Q26..H-Q36, U R4-Q8): everyone who interacted with THIS guild, in four segments, paged
 // and sorted. READ ONLY. The routes are in worker/routes/users.js; tasks/open/b7b-api-contract.md (outside git) is the written contract.
 //
-//   members ....... current members by the guild's rank source (worker/membership.js): accounts AND account-less roster persons
+//   members ....... current members by the guild's rank source (worker/membership.js): accounts AND account-less roster persons, and in an 'ingame' guild the ROSTER rows below
 //   former ........ the person's characters are ALL Former (left_on): an account with such a person, or an account-less person
 //   nonmembers .... everyone else: accounts that are no member (applicants, Discord server members the source does not let in, Discord sign-ins, open-raid guests), persons
-//                   not on the in-game roster, and NAMES (kind 'name'): sightings that resolve to no character (guest sign-ups, Raid-Helper sign-ups, applications, raid log, loot)
+//                   not on the in-game roster, and NAMES (kind 'name'): sightings that resolve to no character (guest sign-ups, Raid-Helper sign-ups, applications, raid log, loot);
+//                   and, in a guild whose rank source is not 'ingame' (a pinned one that has not switched over), the ROSTER rows tagged ingame_roster
+//   roster rows ... (kind 'roster') the guild's in-game roster (guild_roster) members that resolve to NO visible character of the guild: by the identity key (namespace, realm id,
+//                   character id), else, for a character with no key, by name key and realm. Such a member signed in nowhere and was never added or logged, yet is a member of the
+//                   guild in game (user decision U R4-Q8: Users lists everyone, the roster included). Key 'r_' + hex of the name key, '/' and the realm slug: name and realm, never a Blizzard id.
+//                   A roster row carries its in-game facts (class, level, realm, in-game rank label, core rank of the stored rank map: Social when unmapped) and no Last seen. A sighting
+//                   (a name row) that carries the roster member's name key is that member: the name row is not listed (unresolvedSql), the roster row stands for it.
 //   blocked ....... guild_blocks (accounts) and person_blocks (account-less persons). A block row on the unsuspended Owner blocks nobody (ignored, as everywhere) but is KEPT, so it is
 //                   listed here too with flags.ignoredWhileOwner (the Owner stays a member as well): somebody must be able to see it and restore it
 // A person who HAS an account (players.user_id, or the Discord id they carry when that account is on the list for another reason: a Discord ID recorded on a person ties nobody to
 // the guild by itself) is listed once, as the account. Precedence: blocked > member (the rank source's rule, which already lets the
 // live Owner of an 'ingame' guild in; the Owner is never Former) > former > non-member.
 //
-// A row is an `account` (key = users.id), a `person` (key = players.id) or a `name` (key = 'n_' + the hex of the lower-cased name: a typed or logged name). A key never carries a
-// Discord id, a Battle.net account id or a BattleTag.
+// A row is an `account` (key = users.id), a `person` (key = players.id), a `name` (key = 'n_' + the hex of the lower-cased name: a typed or logged name) or a `roster` row (key =
+// 'r_' + the hex of name key, '/', realm slug). A key never carries a Discord id, a Battle.net account id, a BattleTag or a Blizzard id.
 //
 // HOW IT IS READ (D1: at most 45 statements, 5 compound terms, 100 bound parameters; nothing walks a table):
-//   core ......... accounts (candidates from indexed lookups) and persons are classified in SQL, the requested segment is sorted in SQL (ORDER BY ... LIMIT offset + limit + 1)
+//   core ......... accounts (candidates from indexed lookups), persons and roster rows are classified in SQL (three terms of one compound), the requested segment is sorted in SQL
+//                  (ORDER BY ... LIMIT offset + limit + 1); a roster row carries all its display columns, so it costs no statement of its own
 //   names ........ ONE grouped statement over every sighting source (a name seen in two sources is one row with both tags); loot and the raid log are enumerated by a loose
 //                  index scan (one index seek per DISTINCT name, not one read per award or pull), the sign-ups through the partial index of migration 0038
 //   merge ........ the two lists are merged in JS under the same comparator (sort value, name, kind, key) and cut to the page; the display columns of the page rows come from
@@ -26,15 +33,17 @@ import { visibleCharacterSql } from './character-visibility.js';
 import { serverIdIsDiscordSql } from './discord-guard.js';
 import { blockedSql, personOnRosterSql, rankSourceSql, reachesGuildSql } from './membership.js';
 import { ownerCandidatesSql, ownerSql, seatHeldBySql } from './owner.js';
-import { CORE_RANK_IDS } from './rank-map.js';
+import { realmDisplayName } from './bnet-store.js';
+import { CORE_RANK_IDS, rosterCoreRankSql, rosterRankLabelSql } from './rank-map.js';
 import { todayIn } from './roster-data.js';
 import { offsetModifier, zoneOffsetMinutes } from './trial-clock.js';
 
 export const USERS_SEGMENTS = Object.freeze(['members', 'former', 'nonmembers', 'blocked']);
 export const USERS_SORTS = Object.freeze(['user', 'main', 'permission', 'lastSeen']);
 // The where-from tags of a non-member (the mockup's filter). An account carries any of the first four (discord_signin: it sits in the guild's Discord server; raid_helper: its Discord id
-// is on a Raid-Helper sign-up that names no person); a name carries any of application, guest_signup, raid_helper, raid_log and loot (several at once when it was seen in several places).
-export const USERS_TAGS = Object.freeze(['discord_signin', 'application', 'guest_signup', 'raid_helper', 'raid_log', 'loot']);
+// is on a Raid-Helper sign-up that names no person); a name carries any of application, guest_signup, raid_helper, raid_log and loot (several at once when it was seen in several places);
+// a roster row of a guild that is not (yet) on the in-game rank source carries ingame_roster alone.
+export const USERS_TAGS = Object.freeze(['discord_signin', 'application', 'guest_signup', 'raid_helper', 'raid_log', 'loot', 'ingame_roster']);
 export const ACCOUNT_TAGS = Object.freeze(USERS_TAGS.slice(0, 4));
 export const USERS_DEFAULT_LIMIT = 50;
 export const USERS_MAX_LIMIT = 100;
@@ -112,6 +121,7 @@ export function newScope(guild, now, { signIn, viewer }) {
     s: once(guild.discord_server_id === undefined ? null : guild.discord_server_id),
     today: once(todayIn(guild.time_zone, now)),
     mod: once(offsetModifier(zoneOffsetMinutes(guild.time_zone, now))),
+    ruleset: guild.realm_kind === 'ruleset',
     signIn,
     viewer,
   };
@@ -262,9 +272,46 @@ export function accountTagSql(sc, tag, alias) {
 // ---------------------------------------------------------------------------
 // The names: sightings that resolve to no character, one row per name key
 
-// A name key no character of the guild carries now or carried before (a dated alias): the sighting names nobody on the roster.
+// A name key no character of the guild carries now or carried before (a dated alias) and no member of the in-game roster carries: the sighting names nobody on the roster. A roster
+// member's name key is that member (the roster row of the list stands for it; the same exact-key rule that resolves a name to a character).
 export const unresolvedSql = (sc, keyExpr) => `(NOT EXISTS (SELECT 1 FROM characters ch WHERE ch.guild_id = ${sc.g()} AND ch.name_key = ${keyExpr})
-    AND NOT EXISTS (SELECT 1 FROM character_name_aliases al WHERE al.guild_id = ${sc.g()} AND al.name_key = ${keyExpr}))`;
+    AND NOT EXISTS (SELECT 1 FROM character_name_aliases al WHERE al.guild_id = ${sc.g()} AND al.name_key = ${keyExpr})
+    AND NOT EXISTS (SELECT 1 FROM guild_roster rn WHERE rn.guild_id = ${sc.g()} AND rn.name_key = ${keyExpr}))`;
+
+// ---------------------------------------------------------------------------
+// The roster rows: members of the in-game roster that no character carries
+
+// A guild_roster row (alias given) that resolves to NO visible character of its guild: no character carries its identity key (namespace, realm id, character id), and no character
+// WITHOUT a key carries its name and realm (the fallback of worker/flip-binding.js nameMatchSql: a ruleset guild has no realm in a key). Both lookups are index-backed
+// (characters_identity, characters_guild_name).
+export const rosterUnresolvedSql = (sc, r) => `(NOT EXISTS (SELECT 1 FROM characters rc WHERE rc.guild_id = ${r}.guild_id AND rc.namespace = ${r}.namespace
+        AND rc.blizzard_realm_id = ${r}.blizzard_realm_id AND rc.blizzard_char_id = ${r}.blizzard_char_id AND ${visibleCharacterSql('rc')})
+    AND NOT EXISTS (SELECT 1 FROM characters rn WHERE rn.guild_id = ${r}.guild_id AND rn.blizzard_char_id IS NULL AND rn.name_key = ${r}.name_key
+        AND (${flag(sc.ruleset)} OR rn.realm_key = replace(${r}.realm_slug, '-', '')) AND ${visibleCharacterSql('rn')}))`;
+
+// The segment every roster row of the guild belongs to: the members of an 'ingame' guild; in every other guild (a pinned one that has not switched over) the roster is not the
+// membership, so its rows are non-members.
+export const rosterSegmentSql = (sc) => `CASE ${rankSourceSql(sc.g())} WHEN 'ingame' THEN 'members' ELSE 'nonmembers' END`;
+
+// The key of a roster row: name key and realm slug (UNIQUE (guild_id, name_key, realm_slug)), never a Blizzard id.
+export const rosterKeySql = (r) => `'r_' || lower(hex(${r}.name_key || '/' || ${r}.realm_slug))`;
+
+// CTE `ro`: the guild's roster rows no character carries, with the display columns (nk name key, slug, cls class, lvl level, rk in-game rank, label the map's name for it, core the
+// stored map's core rank, Social when unmapped).
+// `only`: one row by its key parts ({ nameKey, realmSlug }), for the page of a roster row (UNIQUE (guild_id, name_key, realm_slug)).
+export const rosterCte = (sc, only = null) => `ro AS MATERIALIZED (
+  SELECT gr.name AS name, gr.name_key AS nk, gr.realm_slug AS slug, gr.class AS cls, gr.level AS lvl, gr.rank AS rk, ${rosterRankLabelSql('gr')} AS label,
+         ${rosterCoreRankSql('gr')} AS core, ${rosterKeySql('gr')} AS rkey
+    FROM guild_roster gr WHERE gr.guild_id = ${sc.g()}${only ? ` AND gr.name_key = ${sc.add(only.nameKey)} AND gr.realm_slug = ${sc.add(only.realmSlug)}` : ''} AND ${rosterUnresolvedSql(sc, 'gr')})`;
+
+// The view of a roster row for the list and the page: the in-game facts (a Blizzard id never leaves the Worker). row: the columns of CTE `ro` (cls, lvl, slug, rk, label, core).
+export const rosterView = (guild, row) => ({
+  class: row.cls,
+  level: row.lvl === null || row.lvl === undefined ? null : row.lvl,
+  realm: realmDisplayName(guild.game_version, guild.region, row.slug, null),
+  ingameRank: { rank: row.rk, label: row.label || null },
+  coreRank: row.core,
+});
 
 // The distinct values of an indexed column of one guild, by a loose index scan: one index seek per distinct value (not one read per row).
 const looseScan = (name, table, column, sc, allowed) => `${name}(k) AS (
@@ -336,39 +383,63 @@ function nameSortKeys(sort) {
   if (sort === 'permission') return { s1: '4', s2: "''" };
   return { s1: 'seen', s2: 'NULL' };
 }
+// A roster row is its own character: its name is its Main (the row's `main`), it holds no permission and has no evidence to date (Last seen sorts it last in both directions).
+function rosterSortKeys(sort) {
+  if (sort === 'user' || sort === 'main') return { s1: 'ro.nk', s2: 'NULL' };
+  if (sort === 'permission') return { s1: '4', s2: "''" };
+  return { s1: 'NULL', s2: 'NULL' };
+}
 
 // ORDER BY of the outer select: the sort value (NULL last), the second value, then the name, the kind and the key, so a page boundary is stable. The tie-break columns always
 // ascend; the direction is the sort value's (and the second value's).
 const orderBy = (dir) => `ORDER BY (s1 IS NULL), s1 ${dir === 'desc' ? 'DESC' : 'ASC'}, s2 ${dir === 'desc' ? 'DESC' : 'ASC'}, sn, ko, tie`;
 
-// The page of the core (accounts and persons) of one segment, at most `window` rows: columns kind, id, name, sn, s1, s2, ko, tie.
+// The page of the core (accounts, persons and roster rows) of one segment, at most `window` rows: columns kind, id, name, sn, s1, s2, ko, tie, and the roster rows' own display columns
+// (rcls class, rlvl level, rslug realm slug, rrank in-game rank, rlabel its name in the rank map, rcore core rank; NULL on the other kinds).
+const NO_ROSTER = 'NULL AS rcls, NULL AS rlvl, NULL AS rslug, NULL AS rrank, NULL AS rlabel, NULL AS rcore';
+// The roster rows are in the list of the Members of an 'ingame' guild and of the Non-members of every other guild: only those two segments read them, and only without a source filter
+// or with the roster's own.
+const rosterOn = (query) => (query.segment === 'members' || query.segment === 'nonmembers') && (!query.from || query.from === 'ingame_roster');
+
 function corePageStatement(db, sc, query, window) {
   const { segment, sort, dir, q, rank, from } = query;
   const accountsOn = !(from && !ACCOUNT_TAGS.includes(from));
   const personsOn = !from;
-  const ctes = [accountsCte(sc)];
-  if (personsOn) ctes.push(personsCte(sc));
+  const withRoster = rosterOn(query);
+  const ctes = [];
   const terms = [];
   if (accountsOn) {
+    ctes.push(accountsCte(sc));
     const where = [accountSegmentSql(sc, segment)];
     if (q) { const p = sc.add(q.core); where.push(`(lower(${ACCOUNT_NAME}) LIKE ${p} ESCAPE '\\' OR lower(${mainNameSql('a.pid')}) LIKE ${p} ESCAPE '\\')`); }
     if (rank) where.push(mainRankSql('a.pid', sc.add(rank)));
     if (from) where.push(accountTagSql(sc, from, 'a'));
     const keys = accountSortKeys(sc, sort);
-    terms.push(`SELECT 'account' AS kind, a.id AS id, ${ACCOUNT_NAME} AS name, lower(${ACCOUNT_NAME}) AS sn, ${keys.s1} AS s1, ${keys.s2} AS s2, 0 AS ko, a.id AS tie
+    terms.push(`SELECT 'account' AS kind, a.id AS id, ${ACCOUNT_NAME} AS name, lower(${ACCOUNT_NAME}) AS sn, ${keys.s1} AS s1, ${keys.s2} AS s2, 0 AS ko, a.id AS tie, ${NO_ROSTER}
       FROM a WHERE ${where.map((part) => `(${part})`).join(' AND ')}`);
   }
   if (personsOn) {
+    ctes.push(personsCte(sc));
     const where = [personSegmentSql(sc, segment)];
     if (q) { const p = sc.add(q.core); where.push(`(lower(${personNameSql()}) LIKE ${p} ESCAPE '\\' OR lower(${mainNameSql('solo.id')}) LIKE ${p} ESCAPE '\\')`); }
     if (rank) where.push(mainRankSql('solo.id', sc.add(rank)));
     const keys = personSortKeys(sc, sort);
-    terms.push(`SELECT 'person' AS kind, solo.id AS id, ${personNameSql()} AS name, lower(${personNameSql()}) AS sn, ${keys.s1} AS s1, ${keys.s2} AS s2, 1 AS ko, solo.id AS tie
+    terms.push(`SELECT 'person' AS kind, solo.id AS id, ${personNameSql()} AS name, lower(${personNameSql()}) AS sn, ${keys.s1} AS s1, ${keys.s2} AS s2, 1 AS ko, solo.id AS tie, ${NO_ROSTER}
       FROM solo WHERE ${where.map((part) => `(${part})`).join(' AND ')}`);
+  }
+  if (withRoster) {
+    ctes.push(rosterCte(sc));
+    const where = [`${rosterSegmentSql(sc)} = ${sc.add(segment)}`];
+    if (q) where.push(`ro.nk LIKE ${sc.add(q.name)} ESCAPE '\\'`);
+    if (rank) where.push(`ro.core = ${sc.add(rank)}`);
+    const keys = rosterSortKeys(sort);
+    terms.push(`SELECT 'roster' AS kind, ro.rkey AS id, ro.name AS name, ro.nk AS sn, ${keys.s1} AS s1, ${keys.s2} AS s2, 3 AS ko, ro.rkey AS tie,
+        ro.cls AS rcls, ro.lvl AS rlvl, ro.slug AS rslug, ro.rk AS rrank, ro.label AS rlabel, ro.core AS rcore
+      FROM ro WHERE ${where.map((part) => `(${part})`).join(' AND ')}`);
   }
   if (!terms.length) return null;
   const sql = `WITH ${ctes.join(',\n')}
-    SELECT kind, id, name, sn, s1, s2, ko, tie FROM (${terms.join(' UNION ALL ')}) ${orderBy(dir)} LIMIT ${sc.add(window)}`;
+    SELECT kind, id, name, sn, s1, s2, ko, tie, rcls, rlvl, rslug, rrank, rlabel, rcore FROM (${terms.join(' UNION ALL ')}) ${orderBy(dir)} LIMIT ${sc.add(window)}`;
   return db.prepare(sql).bind(...sc.values);
 }
 
@@ -387,14 +458,15 @@ function namesPageStatement(db, sc, query, window) {
   return db.prepare(sql).bind(...sc.values);
 }
 
-// The four counts in one statement: accounts and persons by segment, and every name is a non-member. The live Owner whose block row is ignored is counted a second time, as blocked
-// (the Owner is a member as well). -> rows { seg, n }.
+// The four counts in one statement: accounts and persons by segment, every name is a non-member, and every roster row is a member (an 'ingame' guild) or a non-member (any other).
+// The live Owner whose block row is ignored is counted a second time, as blocked (the Owner is a member as well). Five terms: D1's limit. -> rows { seg, n }.
 function countsStatement(db, sc) {
-  const sql = `WITH RECURSIVE ${accountsCte(sc)},\n${personsCte(sc)},\n${namesCtes(sc)}
+  const sql = `WITH RECURSIVE ${accountsCte(sc)},\n${personsCte(sc)},\n${namesCtes(sc)},\n${rosterCte(sc)}
     SELECT seg, COUNT(*) AS n FROM (
       SELECT ${accountSegmentSql(sc, null)} AS seg FROM a
       UNION ALL SELECT ${personSegmentSql(sc, null)} FROM solo
       UNION ALL SELECT 'nonmembers' FROM nm
+      UNION ALL SELECT ${rosterSegmentSql(sc)} FROM ro
       UNION ALL SELECT 'blocked' FROM a WHERE ${ignoredBlockSql(sc, 'a')}) GROUP BY seg`;
   return db.prepare(sql).bind(...sc.values);
 }
@@ -473,7 +545,8 @@ export async function listUsers(ctx, guildContext, requested, { signIn = LAST_SE
   const first = [countsStatement(db, scope())];
   const core = corePageStatement(db, scope(), query, window);
   if (core) first.push(core);
-  const names = query.segment === 'nonmembers' ? namesPageStatement(db, scope(), query, window) : null;
+  // (no name carries the roster's tag)
+  const names = query.segment === 'nonmembers' && query.from !== 'ingame_roster' ? namesPageStatement(db, scope(), query, window) : null;
   if (names) first.push(names);
   const results = await db.batch(first);
   const counts = { members: 0, former: 0, nonmembers: 0, blocked: 0 };
@@ -500,6 +573,14 @@ export async function listUsers(ctx, guildContext, requested, { signIn = LAST_SE
     if (row.kind === 'name') {
       return {
         key: row.id, kind: 'name', name: row.name, main: null, permission: null, lastSeen: row.seen || null, tags: sortedTags(String(row.tags || '').split(',')), flags: {},
+      };
+    }
+    if (row.kind === 'roster') {
+      // The row is its own character: its name is its Main; the in-game facts are in `roster`. No evidence dates it (Last seen is a dash).
+      const roster = rosterView(guild, { cls: row.rcls, lvl: row.rlvl, slug: row.rslug, rk: row.rrank, label: row.rlabel, core: row.rcore });
+      return {
+        key: row.id, kind: 'roster', name: row.name, main: { name: row.name, class: roster.class, realm: roster.realm }, permission: null, lastSeen: null,
+        tags: query.segment === 'nonmembers' ? ['ingame_roster'] : [], flags: {}, roster,
       };
     }
     if (row.kind === 'person') {

@@ -2,7 +2,7 @@
 //   POST /api/guild/:gid/users/block     { keys: [ukey, ...], reason? }
 //   POST /api/guild/:gid/users/unblock   { keys: [ukey, ...] }
 //   -> { action, done: [{ key, kind, name }], skipped: [{ key, name, reason, message }], cap, tombstonesKept? }
-// A key is a key of the Users list: an account (u_...), an account-less person (p_...) or a name (n_...: nothing to block, skipped). Each name gets EXACTLY the guards of the single
+// A key is a key of the Users list: an account (u_...), an account-less person (p_...) a name (n_...) or a member of the in-game roster that nothing carries (r_...): nothing to block, skipped. Each name gets EXACTLY the guards of the single
 // routes (POST/DELETE /people/:uid/block for an account, POST/DELETE /roster/:pid/block for a person), read first for the reason it is skipped and repeated inside the write:
 //   - the actor holds guild.access (the route's gate and the guard of every statement), never blocks themself, never the Guild Master, never the live Owner, and is strictly senior to
 //     the account (an account-less person: to the rank its in-game rank would give it, or the actor is the Owner); an account that has a person is blocked as the account;
@@ -38,6 +38,7 @@ const TOMBSTONE_ROWS_PER_STATEMENT = 300;
 export const SKIP_MESSAGES = Object.freeze({
   not_found: 'That user was not found.',
   name_only: 'A name seen in a log has no account or roster person: nothing to block. Add it to a person or leave it.',
+  roster_only: 'This member of the in-game roster has no account or roster person yet: nothing to block.',
   has_account: 'That person has an account. Use the account\'s row.',
   self: 'You cannot change your own access.',
   owner: 'The Owner of the guild cannot be removed.',
@@ -79,6 +80,7 @@ function sortKeys(keys) {
     const parsed = parseUserKey(key);
     if (!parsed) skip.set(key, 'not_found');
     else if (parsed.kind === 'name') skip.set(key, 'name_only');
+    else if (parsed.kind === 'roster') skip.set(key, 'roster_only');
     else if (accounts.length + persons.length >= BULK_MAX_NAMES) skip.set(key, 'over_cap');
     else (parsed.kind === 'account' ? accounts : persons).push(parsed.id);
   }
