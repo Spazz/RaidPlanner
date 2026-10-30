@@ -28,17 +28,15 @@ export const FREQUENT_CRON = '*/15 * * * *';
 const ZONE_FILL_BATCH = 200;
 
 // Raids with an event title but no zone and no zone source (made before zones were inferred, or by the previous release) get the zones their title names, source 'event'.
-// Bounded and idempotent: newest raids first; a title that names nothing is looked at again tomorrow, a filled raid is never selected again.
+// Bounded and idempotent: newest raids first; every raid looked at gets source 'event', so a title that names nothing (zone stays NULL) is not selected again and
+// cannot starve older raids; the event refresh still re-reads it, and a log or a hand pick still replaces it.
 export async function fillEventZones(db, now) {
   const rows = (await db.prepare(
     `SELECT r.id, r.event_title, g.game_version FROM raids r JOIN guilds g ON g.id = r.guild_id
       WHERE r.zone IS NULL AND r.zone_source IS NULL AND r.event_title IS NOT NULL ORDER BY r.starts_at DESC, r.id LIMIT ?`,
   ).bind(ZONE_FILL_BATCH).all()).results;
-  const statements = [];
-  for (const row of rows) {
-    const value = joinZones(parseZones(row.event_title, row.game_version));
-    if (value) statements.push(db.prepare("UPDATE raids SET zone = ?, zone_source = 'event' WHERE id = ? AND zone IS NULL AND zone_source IS NULL").bind(value, row.id));
-  }
+  const statements = rows.map((row) => db.prepare("UPDATE raids SET zone = ?, zone_source = 'event' WHERE id = ? AND zone IS NULL AND zone_source IS NULL")
+    .bind(joinZones(parseZones(row.event_title, row.game_version)), row.id));
   if (statements.length) await db.batch(statements);
   return statements.length;
 }

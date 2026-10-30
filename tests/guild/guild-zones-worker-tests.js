@@ -353,7 +353,7 @@ check('daily cron: fills raids with an event title but no zone and no source (so
   const e = await mk('2026-06-05', null);
   await s.run('17 4 * * *');
   assert.deepEqual(await s.row(a), { zone: 'Black Temple + Hyjal Summit', zone_source: 'event', size: null });
-  for (const [rid, zone, source] of [[b, null, null], [c, 'Karazhan', 'hand'], [d, null, 'hand'], [e, null, null]]) assert.deepEqual(await s.row(rid), { zone, zone_source: source, size: null });
+  for (const [rid, zone, source] of [[b, null, 'event'], [c, 'Karazhan', 'hand'], [d, null, 'hand'], [e, null, null]]) assert.deepEqual(await s.row(rid), { zone, zone_source: source, size: null });
   await s.run('17 4 * * *'); // idempotent
   assert.equal((await s.row(a)).zone, 'Black Temple + Hyjal Summit');
   // Bounded: 205 raids to fill, one run looks at 200 (the newest first).
@@ -363,7 +363,7 @@ check('daily cron: fills raids with an event title but no zone and no source (so
   for (let i = 0; i < 205; i++) insert.run(`r_bulk${String(i).padStart(3, '0')}`, new Date(Date.UTC(2024, 0, 1 + i)).toISOString().slice(0, 10), stamp.starts_at - (i + 1) * 100000, b);
   await s.run('17 4 * * *');
   const filled = sqlite.prepare("SELECT COUNT(*) AS n FROM raids WHERE id LIKE 'r_bulk%' AND zone = 'Black Temple'").get().n;
-  assert.equal(filled, 199, '200 looked at: the title Team KJ of the newest raid names nothing and takes a slot');
+  assert.equal(filled, 200, '200 looked at, all bulk: Team KJ (names nothing) was stamped event on the first run and takes no slot');
   await s.run('17 4 * * *');
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM raids WHERE id LIKE 'r_bulk%' AND zone = 'Black Temple'").get().n, 205);
 }));
