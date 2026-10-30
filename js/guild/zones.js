@@ -8,6 +8,7 @@
 //   G.zones.parse(text, v)  canonical names in first-appearance order, unique, at most MAX_ZONES
 //   G.zones.split(value, v) the canonical list of a STORED zone value ('Black Temple + Hyjal Summit', an old 'BT / Hyjal'); unknown text -> []
 //   G.zones.join(list)      'A + B' or null
+//   G.zones.artImagesHtml(names, { size: 'sm'|'md', max, lazy, alt })  the zone art pictures of a raid ('' when no zone has art); alt: true = the zone name, else '' (decorative)
 (function (G) {
   'use strict';
 
@@ -119,5 +120,21 @@
     return { abbr: abbr.toUpperCase() || '?', tint: 'other' };
   }
 
-  G.zones = { tile: tile, ART_SIZES: ART_SIZES, ART_KEYS: ART_KEYS, ALIASES: ALIASES, MAX_ZONES: MAX_ZONES, zonesFor: zonesFor, zoneChoicesFor: zoneChoicesFor, parse: parse, split: parse, join: join };
+  // The art pictures of a raid, in zone order, at most `max` (default MAX_ZONES): an <img class="gs-hd-artimg"> per zone with art (the -<size> crop), a plain filler span for a zone
+  // without art among zones with art. '' when no zone has art (the caller then uses its plain markup). o: { size ('sm' | 'md', default 'md'), max, lazy, alt (true: the zone name) }.
+  function artImagesHtml(names, o) {
+    const opts = o || {};
+    const size = opts.size === 'sm' ? 'sm' : 'md';
+    const max = opts.max > 0 ? opts.max : MAX_ZONES;
+    const esc = G.ui.esc; // read at call time: ui.js loads after zones.js
+    const tiles = (Array.isArray(names) ? names : []).slice(0, max).map(function (name) { return { name: name, tile: tile(name) }; });
+    if (!tiles.some(function (z) { return !!z.tile.art; })) return '';
+    const dim = ART_SIZES[size];
+    return tiles.map(function (z) {
+      return z.tile.art
+        ? '<img class="gs-hd-artimg" src="/icons/raids/' + z.tile.art + '-' + size + '.webp" alt="' + (opts.alt ? esc(z.name) : '') + '" width="' + dim.w + '" height="' + dim.h + '"' + (opts.lazy ? ' loading="lazy"' : '') + '>'
+        : '<span class="gs-hd-artimg is-fill" aria-hidden="true"></span>';
+    }).join('');
+  }
+  G.zones = { tile: tile, ART_SIZES: ART_SIZES, ART_KEYS: ART_KEYS, ALIASES: ALIASES, MAX_ZONES: MAX_ZONES, zonesFor: zonesFor, zoneChoicesFor: zoneChoicesFor, parse: parse, split: parse, join: join, artImagesHtml: artImagesHtml };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

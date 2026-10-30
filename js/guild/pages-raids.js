@@ -254,14 +254,35 @@
     return '<span class="gs-up-note">Sign-ups closed</span>';
   }
 
+  // The zone art behind a card: the first two zones as halves (G.zones.artImagesHtml, -md, lazy), a dark shade, and a chip with every zone's short name. '' when no zone has art.
+  // The layer is decorative (aria-hidden); the zone names reach a screen reader through cardZonesSrHtml when the title does not name them.
+  function cardArtHtml(r) {
+    const zones = Array.isArray(r.zones) ? r.zones : [];
+    const imgs = G.zones.artImagesHtml(zones, { size: 'md', max: 2, lazy: true });
+    if (!imgs) return '';
+    const label = zones.map(function (n) { return G.zones.tile(n).abbr; }).join(' + ');
+    return '<div class="gs-up-bg" aria-hidden="true"><div class="gs-hd-art">' + imgs + '</div><div class="gs-up-bgshade"></div><span class="gs-hd-artlabel">' + esc(label) + '</span></div>';
+  }
+
+  // Screen-reader text naming the zones, only when the card's title does not already name all of them.
+  function cardZonesSrHtml(r, title) {
+    const zones = Array.isArray(r.zones) ? r.zones : [];
+    const low = String(title).toLowerCase();
+    if (!zones.length || zones.every(function (n) { return low.indexOf(String(n).toLowerCase()) >= 0; })) return '';
+    return '<span class="gs-sr">, ' + esc(zones.join(' + ')) + '</span>';
+  }
+
   // One upcoming raid as a card: ONE link (to the raid page) around the gold date, the time and the title; the sign-up figure and bar; then the status item.
+  // With zone art the card is "has-art": the art layer is its first child and the text sits on top.
   function cardHtml(gd, r, canEdit, canSignUp) {
     const zone = gd && gd.guild ? gd.guild.timeZone : '';
     const day = G.ui.weekdayDay(r.raidOn) || r.raidOn;
     const time = r.timeKnown === false ? '' : timeText(r.startsAt, zone);
     const status = cardStatusHtml(r, canEdit, canSignUp);
-    return '<li class="gs-up"><a class="gs-up-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '"><span class="gs-hd-daydate gs-up-date">' + esc(day) + '</span>' +
-      '<span class="gs-up-time">' + esc(time || 'Time not set') + '</span><span class="gs-up-title">' + esc(cardTitleText(r)) + '</span></a>' +
+    const art = cardArtHtml(r);
+    const title = cardTitleText(r);
+    return '<li class="gs-up' + (art ? ' has-art' : '') + '">' + art + '<a class="gs-up-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '"><span class="gs-hd-daydate gs-up-date">' + esc(day) + '</span>' +
+      '<span class="gs-up-time">' + esc(time || 'Time not set') + '</span><span class="gs-up-title">' + esc(title) + (art ? cardZonesSrHtml(r, title) : '') + '</span></a>' +
       cardFigureHtml(r) + (status ? '<div class="gs-up-status">' + status + '</div>' : '') + '</li>';
   }
 

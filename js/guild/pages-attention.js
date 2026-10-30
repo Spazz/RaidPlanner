@@ -277,14 +277,7 @@
   // tiles). A zone without art among zones with art gets a plain filler half. opts: { size: 'sm' | 'md', lazy, label (the initials on the art) }.
   function artZones(zone) { return splitZones(zone).slice(0, 2).map(function (name) { return { name: name, tile: tileOf(name) }; }); }
   function hasArt(zone) { return artZones(zone).some(function (z) { return !!z.tile.art; }); }
-  function artImagesHtml(zone, size, lazy) {
-    const dim = G.zones.ART_SIZES[size];
-    return artZones(zone).map(function (z) {
-      return z.tile.art
-        ? '<img class="gs-hd-artimg" src="/icons/raids/' + z.tile.art + '-' + size + '.webp" alt="' + esc(z.name) + '" width="' + dim.w + '" height="' + dim.h + '"' + (lazy ? ' loading="lazy"' : '') + '>'
-        : '<span class="gs-hd-artimg is-fill" aria-hidden="true"></span>';
-    }).join('');
-  }
+  function artImagesHtml(zone, size, lazy) { return G.zones.artImagesHtml(splitZones(zone), { size: size, max: 2, lazy: lazy, alt: true }); }
   function artLabelHtml(zone) {
     return '<span class="gs-hd-artlabel" aria-hidden="true">' + esc(artZones(zone).map(function (z) { return z.tile.abbr; }).join(' + ')) + '</span>';
   }

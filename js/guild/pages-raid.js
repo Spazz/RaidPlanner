@@ -424,14 +424,8 @@
   // null when no zone has art (the head stays as it is).
   function headArtOf(r) {
     const zones = (Array.isArray(r.zones) ? r.zones : []).slice(0, G.zones.MAX_ZONES);
-    const tiles = zones.map(function (name) { return { name: name, tile: G.zones.tile(name) }; });
-    if (!tiles.some(function (z) { return !!z.tile.art; })) return null;
-    const dim = G.zones.ART_SIZES.md;
-    return { count: tiles.length, html: tiles.map(function (z) {
-      return z.tile.art
-        ? '<img class="gs-hd-artimg" src="/icons/raids/' + z.tile.art + '-md.webp" alt="' + esc(z.name) + '" width="' + dim.w + '" height="' + dim.h + '">'
-        : '<span class="gs-hd-artimg is-fill" aria-hidden="true"></span>';
-    }).join('') };
+    const html = G.zones.artImagesHtml(zones, { size: 'md', max: G.zones.MAX_ZONES, alt: true });
+    return html ? { count: zones.length, html: html } : null;
   }
 
   // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress, loot (G.pages.raidLoot.stateFor), signups (G.pages.raidSignups.stateFor), roster (G.pages.raidRoster.stateFor), board }
