@@ -13,6 +13,7 @@
 import { runScheduled as runBnetPurge } from './bnet-purge.js';
 import { repairTombstones } from './block-tombstones.js';
 import { refreshDueEvents } from './event-refresh.js';
+import { joinZones, parseZones } from './raid-zones.js';
 import { runNotifications } from './notify-run.js';
 import { pruneNotificationLog } from './notify-store.js';
 import { runRetention } from './retention.js';
@@ -23,6 +24,25 @@ export const DAILY_CRON = '17 4 * * *';
 export const FREQUENT_CRON = '*/15 * * * *';
 
 // deps: { db, env, fetch, now, randomBytes, log }. Never throws.
+// How many raids one daily run looks at.
+const ZONE_FILL_BATCH = 200;
+
+// Raids with an event title but no zone and no zone source (made before zones were inferred, or by the previous release) get the zones their title names, source 'event'.
+// Bounded and idempotent: newest raids first; a title that names nothing is looked at again tomorrow, a filled raid is never selected again.
+export async function fillEventZones(db, now) {
+  const rows = (await db.prepare(
+    `SELECT r.id, r.event_title, g.game_version FROM raids r JOIN guilds g ON g.id = r.guild_id
+      WHERE r.zone IS NULL AND r.zone_source IS NULL AND r.event_title IS NOT NULL ORDER BY r.starts_at DESC, r.id LIMIT ?`,
+  ).bind(ZONE_FILL_BATCH).all()).results;
+  const statements = [];
+  for (const row of rows) {
+    const value = joinZones(parseZones(row.event_title, row.game_version));
+    if (value) statements.push(db.prepare("UPDATE raids SET zone = ?, zone_source = 'event' WHERE id = ? AND zone IS NULL AND zone_source IS NULL").bind(value, row.id));
+  }
+  if (statements.length) await db.batch(statements);
+  return statements.length;
+}
+
 export async function runDaily(deps) {
   const purged = await runBnetPurge({ db: deps.db, now: deps.now, log: deps.log });
   try {
@@ -34,6 +54,11 @@ export async function runDaily(deps) {
     await sweepShareLinks(deps.db, deps.now());
   } catch (error) {
     try { deps.log(`share link sweep failed: ${error && error.message}`); } catch { /* logging must not throw */ }
+  }
+  try {
+    await fillEventZones(deps.db, deps.now());
+  } catch (error) {
+    try { deps.log(`event zone fill failed: ${error && error.message}`); } catch { /* logging must not throw */ }
   }
   await runRetention({ db: deps.db, now: deps.now, log: deps.log, randomBytes: deps.randomBytes });
   // Never throws. Needs TOMBSTONE_KEY (the Worker env): without it the repair logs one operator line and leaves the blocks flagged.

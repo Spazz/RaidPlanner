@@ -125,7 +125,7 @@ function daysBetween(from, to) {
 //           current week. With no explicit `weekOffset`: when no raid of the current week starts after `now` and the next week has a raid, the next week comes
 //           back with offset 1 and autoAdvanced true (the offset route never does that). `raids` is every raid of a live team the viewer can see (any of
 //           ATTENTION_VIEW_ACTIONS) whose guild date is in start..end, by start time:
-//           { raidId, teamId, teamName, date, startsAt, zone, title, size, signed, lineupPublished, confirmed, cantCome, noAnswer, signupsCloseAt,
+//           { raidId, teamId, teamName, date, startsAt, zone, zones (canonical list), zoneSource ('hand' | 'event' | 'log' | null), title, size, signed, lineupPublished, confirmed, cantCome, noAnswer, signupsCloseAt,
 //             signupsLocked (the raid's own lock flag), eventMovedOn, status, people, openSeats }
 //           status: a raid that has started: 'done' (no open to-do tied to it) | 'todo'; an upcoming one: 'short' (signed < size) | 'ready' (full and the line-up
 //           is published) | 'open'. Every raid to-do keeps its `raidId`, so a page can attach it to its day.
@@ -263,7 +263,7 @@ function buildWeek(input, teamById, openTodoRaids) {
     else if (signed < size) status = 'short';
     else status = lineupPublished ? 'ready' : 'open';
     raids.push({
-      raidId: row.id, teamId: row.team_id, teamName: team.name, date: row.raid_on, startsAt: row.starts_at, zone: row.zone || null,
+      raidId: row.id, teamId: row.team_id, teamName: team.name, date: row.raid_on, startsAt: row.starts_at, zone: row.zone || null, zones: row.zones || [], zoneSource: row.zoneSource || null,
       title: row.title || row.event_title || null, size, signed, lineupPublished, confirmed: row.confirmed || 0, cantCome: row.declined || 0, noAnswer: row.pending || 0,
       signupsCloseAt: row.starts_at - (row.close_hours || 0) * 3600000, signupsLocked: row.signups_locked === 1, eventMovedOn: row.event_moved_on || null, status,
       ...raidPeople(row, size, lineupPublished, started, data, input.timeZone),

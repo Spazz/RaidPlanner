@@ -155,7 +155,7 @@ check('pure: the week block is the reset week (Tue 2027-01-12 .. Mon 2027-01-18)
   ]);
   assert.deepEqual(Object.keys(built.week.raids[0]).sort(), [
     'cantCome', 'confirmed', 'date', 'eventMovedOn', 'lineupPublished', 'noAnswer', 'openSeats', 'people', 'raidId', 'signed', 'signupsCloseAt', 'signupsLocked', 'size', 'startsAt',
-    'status', 'teamId', 'teamName', 'title', 'zone',
+    'status', 'teamId', 'teamName', 'title', 'zone', 'zoneSource', 'zones',
   ]);
   const open = built.week.raids.find((r) => r.raidId === 'r_open');
   assert.deepEqual(

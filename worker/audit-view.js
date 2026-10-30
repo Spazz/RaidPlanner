@@ -382,6 +382,7 @@ export function describeRow(row, names = {}) {
       if (after.signupCloseHours !== undefined && after.signupCloseHours !== before.signupCloseHours) {
         parts.push(after.signupCloseHours === null ? 'sign-up deadline back to the team default' : `sign-ups close ${plural(after.signupCloseHours, 'hour', 'hours')} before the start`);
       }
+      if (after.zone !== undefined && after.zone !== before.zone) parts.push(after.zone === null ? 'no zones' : `zones ${after.zone}`);
       if (after.guestLimit !== undefined && after.guestLimit !== before.guestLimit) parts.push(after.guestLimit === null ? 'no guest limit' : `at most ${plural(after.guestLimit, 'guest', 'guests')}`);
       return `Changed the settings of ${onRaid(ent)}${parts.length ? `: ${list(parts)}` : ''}`;
     }

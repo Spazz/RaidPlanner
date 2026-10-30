@@ -49,6 +49,10 @@ function buildEvent(id, serverId, title) {
     id,
     serverId,
     title,
+    displayTitle: title,
+    description: 'Please come prepared with consumes.',
+    channelName: 'tbc-team-kil’jaeden-fri-sat',
+    templateId: 'wowtbc',
     startTime: EVENT_START,
     signUps: [
       signUp(5001, '200000000000000001', 'Thornwick/Mendra', 'Warrior', 'Arms', 1),

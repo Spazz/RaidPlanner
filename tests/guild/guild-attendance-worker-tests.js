@@ -514,7 +514,7 @@ check('golden: event + report -> present, bench-who-left-early, late, missed (no
   assert.deepEqual([detail.raid.state, detail.raid.openFlags, detail.raid.stale], ['to_review', 4, false]);
   assert.equal(detail.pulls.length, 3, 'the Trash fight and the unfinished Magtheridon fight are not pulls');
   assert.deepEqual(detail.sources.reports.map((x) => [x.code, x.pulls]), [[R1, 3]]);
-  assert.equal(detail.raid.zone, 'Gruul');
+  assert.equal(detail.raid.zone, "Gruul's Lair"); // the report says 'Gruul': mapped to the canonical name
   assert.equal((await s.w.rows('SELECT open_flags FROM raids WHERE id = ?', id))[0].open_flags, 4);
   // The flagged rows come first.
   assert.deepEqual(detail.people.slice(0, 3).map((x) => x.needsReview), [true, true, true]);
@@ -2195,7 +2195,7 @@ check('planner seed: an Alt of the signed-up class, else the Main, else the Disc
   assert.deepEqual(res.json.signups.map((x) => x.personId === null), [false, false, false, false, false, true, false, false, false]);
   assert.equal(res.json.signups[0].personId, s.p.aldric);
   assert.deepEqual(res.json.raid, {
-    id, raidOn: made.json.raid.raidOn, startsAt: made.json.raid.startsAt, title: 'Test Raid', zone: null, eventId, teamId: s.A, timeKnown: true, size: 25, sizeOverride: null, gameVersion: 'tbc', timeZone: NY,
+    id, raidOn: made.json.raid.raidOn, startsAt: made.json.raid.startsAt, title: 'Test Raid', zone: null, zones: [], zoneSource: null, eventId, teamId: s.A, timeKnown: true, size: 25, sizeOverride: null, gameVersion: 'tbc', timeZone: NY,
   });
   assert.equal(res.json.livePlan, null);
   // A raid made by hand has no sign-ups and no event.

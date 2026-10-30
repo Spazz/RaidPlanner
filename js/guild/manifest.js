@@ -10,6 +10,7 @@
     '/js/guild/icons.js',
     '/js/guild/api.js',
     '/js/guild/router.js',
+    '/js/guild/zones.js',
     '/js/guild/people-sort.js',
     '/js/guild/roster-sort.js',
     '/js/guild/ui.js',

@@ -35,7 +35,7 @@ import { personRankSql } from '../person-rank-sql.js';
 import { visibleCharacterSql } from '../character-visibility.js';
 import { LOG_GRACE_HOURS, LOG_NUDGE_LOOKBACK_DAYS, RAID_DURATION_HOURS } from '../duties.js';
 import { CONFIRM_HOURS } from '../notify.js';
-import { effectiveRaidSize } from '../raid-zones.js';
+import { effectiveRaidSize, raidZoneFields } from '../raid-zones.js';
 import { guildToday, personColumnsOf } from '../roster-view.js';
 import { MERGED_ROWS } from './raids.js';
 import { metricsRaid, metricsRow } from './attendance.js';
@@ -242,7 +242,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     // Home redesign: the Week block's raids (the reset week(s) in the guild's days; archived teams and teams the viewer cannot see are dropped in
     // buildAttention), with the sign-up count and the line-up answers. The sign-up count is the same merged count as `upcoming`'s.
     bind(
-      `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.size, r.title, r.event_title, r.signups_locked, r.roster_published_at, r.event_moved_on,
+      `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.zone_source, r.size, r.title, r.event_title, r.signups_locked, r.roster_published_at, r.event_moved_on,
               COALESCE(r.signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = r.team_id), 0) AS close_hours,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind IN ('signed', 'late')) AS n_in,
               (SELECT COUNT(*) FROM raid_roster rr WHERE rr.raid_id = r.id AND rr.status = 'confirmed') AS confirmed,
@@ -352,7 +352,7 @@ async function readAttentionInput(ctx, guildContext, weekOffset) {
     webhooksOff: webhooksOff.results,
     logMissing: logMissing.results,
     dismissals: attentionDismissals.results,
-    weekRaids: weekRaids.results.map((row) => ({ ...row, size: effectiveRaidSize(row, teamSizes.get(row.team_id), guild.game_version) })),
+    weekRaids: weekRaids.results.map((row) => ({ ...row, ...raidZoneFields(row, guild.game_version), size: effectiveRaidSize(row, teamSizes.get(row.team_id), guild.game_version) })),
     resetDay,
     weekOffset: hasOffset ? weekOffset : undefined,
     timeZone: guild.time_zone,

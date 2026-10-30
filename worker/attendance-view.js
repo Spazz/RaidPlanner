@@ -7,7 +7,7 @@ import { HttpError } from './http.js';
 import { allows } from './permissions.js';
 import { EVIDENCE_NAME_KEY, PLAN_NAME_KEY, findUnmatched, makePolicyResolver, presenceKey } from './attendance-store.js';
 import { DUTIES_SQL, dutiesView } from './duties.js';
-import { raidSizeFields } from './raid-zones.js';
+import { raidSizeFields, raidZoneFields } from './raid-zones.js';
 import { roleGroup, signUpRole } from './roster-data.js';
 import { SLOT_TIME_SQL, closeHoursOf, closesAtOf, windowFieldsOf } from './signup-window.js';
 
@@ -205,6 +205,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       upcoming: raid.starts_at > ctx.now(),
       title: raid.title || raid.event_title || null,
       zone: raid.zone,
+      ...raidZoneFields(raid, guild.game_version),
       ...raidSizeFields(raid, raid.team_size, guild.game_version),
       planLive: allows(can, 'raids.edit', teamId) ? raid.plan_live || null : null, // an edit link to the plan: only for those who may edit
       state,

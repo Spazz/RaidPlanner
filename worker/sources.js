@@ -129,7 +129,10 @@ export const cleanLine = (value, max) => (typeof value === 'string'
   ? Array.from(value.replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '').trim()).slice(0, max).join('')
   : '');
 
-// -> { id, title, serverId, startTime (ms | null), signUps: [{ id, userId | null, name, className, specName, status, position }] }
+// Free text of an event (its description, its channel name) for zone inference only (never stored): line breaks become spaces, so words do not run together.
+const freeText = (value, max) => cleanLine(typeof value === 'string' ? value.replace(/[\r\n\t]+/g, ' ') : '', max) || null;
+
+// -> { id, title, displayTitle | null, description | null, channelName | null, serverId, startTime (ms | null), signUps: [{ id, userId | null, name, className, specName, status, position }] }
 export async function fetchRaidHelperEvent(ctx, id) {
   if (!isEventId(id)) throw new Error('fetchRaidHelperEvent needs a validated event id');
   const base = localBase(ctx.env.RAID_HELPER_API_BASE) || RAID_HELPER_DEFAULT_BASE;
@@ -152,6 +155,9 @@ export async function fetchRaidHelperEvent(ctx, id) {
   return {
     id: String(event.id ?? id),
     title: cleanLine(event.title, 100),
+    displayTitle: freeText(event.displayTitle, 100),
+    description: freeText(event.description, 2000),
+    channelName: freeText(event.channelName, 100),
     serverId: event.serverId === undefined || event.serverId === null ? null : String(event.serverId),
     startTime: Number.isFinite(startSeconds) && startSeconds > 0 ? startSeconds * 1000 : null,
     signUps: event.signUps.filter((entry) => entry && typeof entry === 'object' && Number.isInteger(entry.id)).map((entry, index) => ({
