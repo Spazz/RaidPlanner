@@ -1591,6 +1591,51 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
   .gs-devbar-select { flex: 1 1 160px; }
 }
 
+/* RAID ZONES. The Zones picker (New raid and Raid settings): one fieldset, tiles with the small art; the checkbox covers the tile (real control), the tile shows the state. */
+.gs-zp { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.gs-zp-legend { padding: 0; margin-bottom: 0; }
+.gs-zp .gs-fine { max-width: 600px; }
+.gs-zp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 600px; }
+.gs-zt { position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--hd-panel-edge); border-radius: 6px; background: var(--hd-panel); cursor: pointer; }
+.gs-zt input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 2; }
+.gs-zt-art { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #101113; }
+.gs-zt-letter { display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 9; background: #2a2d2f; font: 700 22px/1 var(--font-cond); letter-spacing: 0.06em; color: #f2f3f1; }
+.gs-zt-body { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px; }
+.gs-zt-name { font-size: 14px; font-weight: 600; line-height: 1.25; color: var(--hd-white); overflow-wrap: anywhere; }
+.gs-zt-tier { font-size: 12px; line-height: 1.3; color: var(--text-muted); }
+.gs-zt-tick { position: absolute; top: 6px; right: 6px; z-index: 1; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 11px; border: 1px solid rgba(255, 255, 255, 0.55); background: rgba(19, 20, 22, 0.6); color: transparent; }
+.gs-zt.is-on { border-color: var(--hd-white); background: linear-gradient(var(--seg-on-bg), var(--seg-on-bg)), var(--hd-panel); }
+.gs-zt.is-on .gs-zt-tick { background: #f2f3f1; border-color: #f2f3f1; color: #131416; }
+.gs-zt.is-off { opacity: 0.38; cursor: not-allowed; }
+.gs-zt.is-off input { cursor: not-allowed; }
+.gs-zt:has(input:focus-visible) { outline: 2px solid var(--hd-white); outline-offset: 2px; }
+.gs-dialog .gs-zt-name { font-size: 13px; }
+@media (max-width: 600px) {
+  .gs-zp-grid { gap: 8px; }
+  .gs-zt-body { padding: 6px 6px 8px; }
+  .gs-zt-name { font-size: 12px; }
+  .gs-zt-tier { display: none; }
+  .gs-zt-tick { top: 4px; right: 4px; }
+}
+
+/* RAID ZONES. The raid page head on the zone art: one zone = the picture on the right half fading into the page; two or three = equal shares of the width. */
+.gs-rz-head { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 200px; box-sizing: border-box; padding: 16px 24px 20px; border: 1px solid var(--hd-panel-edge); border-radius: 8px; background: #101113; } /* no overflow clip here: the More menu drops over the page */
+.gs-rz-art, .gs-rz-scrim { border-radius: 7px; overflow: hidden; }
+.gs-rz-art { position: absolute; inset: 0; display: flex; }
+.gs-rz-art.is-1 { left: 45%; }
+.gs-rz-art .gs-hd-artimg { height: 100%; }
+.gs-rz-scrim { position: absolute; inset: 0; background: linear-gradient(rgba(19, 20, 22, 0.78) 0%, rgba(19, 20, 22, 0.5) 45%, rgba(19, 20, 22, 0.92) 100%); }
+.gs-rz-head.is-1 .gs-rz-scrim { background: linear-gradient(90deg, #101113 0%, #101113 45%, rgba(16, 17, 19, 0) 68%), linear-gradient(rgba(19, 20, 22, 0.55) 0%, rgba(19, 20, 22, 0.2) 40%, rgba(19, 20, 22, 0.7) 100%); }
+.gs-rz-head > header.gs-pagehead { position: relative; z-index: 1; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: space-between; gap: 40px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+.gs-rz-head header .gs-h1 { color: #fff; }
+.gs-rz-head header .gs-pagehead-context, .gs-rz-head header .gs-back-link { color: var(--text-primary); }
+.gs-rz-head header .gs-hd-chip, .gs-rz-head header .gs-btn { text-shadow: none; }
+.gs-rz-head header .gs-hd-chip { background-color: #131416; }
+@media (max-width: 600px) {
+  .gs-rz-head { min-height: 160px; padding: 12px 16px 16px; }
+  .gs-rz-head > header.gs-pagehead { gap: 24px; }
+}
+
 @media (max-width: 600px) {
   .gs-h1, .gs-h1-lg { font-size: var(--t-h1-phone); }
   .gs-btn-lg { min-height: var(--control-h-lg); }
@@ -2283,6 +2328,13 @@ a.gs-ph-cardlink:focus-visible::after { outline: 2px solid var(--text-primary); 
 .gs-hd-tile.is-bt { background: linear-gradient(135deg, #7b3a8c, #220f2a); }
 .gs-hd-tile.is-za { background: linear-gradient(135deg, #a0702a, #2e1e0a); }
 .gs-hd-tile.is-swp { background: linear-gradient(135deg, #b8862c, #33230a); }
+.gs-hd-tile.is-mc { background: linear-gradient(135deg, #b0501c, #2e1207); }
+.gs-hd-tile.is-ony { background: linear-gradient(135deg, #8a3248, #2a0f16); }
+.gs-hd-tile.is-bwl { background: linear-gradient(135deg, #9a2a22, #2a0c0a); }
+.gs-hd-tile.is-zg { background: linear-gradient(135deg, #3f7f3a, #12260f); }
+.gs-hd-tile.is-aq20 { background: linear-gradient(135deg, #9a8248, #2e260f); }
+.gs-hd-tile.is-aq40 { background: linear-gradient(135deg, #7a6a9a, #1f1a2e); }
+.gs-hd-tile.is-naxx { background: linear-gradient(135deg, #4a8aa0, #0f262e); }
 
 /* The strip */
 .gs-hd-strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }

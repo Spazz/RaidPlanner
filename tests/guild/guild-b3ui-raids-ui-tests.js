@@ -117,7 +117,7 @@ check('api: the open-raid calls hit /api/open/:gid/raids/:rid with the contract 
 });
 
 // ═══ New raid and Raid settings ═════════════════════════════════════
-const NR_FORM = over => Object.assign({ teamId: 't2', event: '', reports: [''], plan: '', mode: 'log', date: '2026-11-01', time: '19:00', zone: 'Serpentshrine Cavern', title: '', size: '', guestsOpen: false, guestLimit: '' }, over || {});
+const NR_FORM = over => Object.assign({ teamId: 't2', event: '', reports: [''], date: '2026-11-01', time: '19:00', zones: ['Serpentshrine Cavern'], title: '', size: '', guestsOpen: false, guestLimit: '' }, over || {});
 const nrHtml = form => G.pages.raidNew.raidNewHtml({ guildData: gd(), state: { gid: 'g1', form, run: null, error: '' }, today: '2026-10-26' });
 
 check('New raid: Open to guests is an unticked check with its one-line help; the guest limit field is there but hidden until the check is ticked (board 5)', () => {
@@ -128,7 +128,7 @@ check('New raid: Open to guests is an unticked check with its one-line help; the
   assert(out.includes('<label class="gs-label" for="nr-guests-limit">Guest limit (optional)</label>') && out.includes('placeholder="No limit"') && out.includes('inputmode="numeric"') && out.includes('min="1"'));
   assert(out.includes('id="nr-guests-limit-help">Leave empty for no limit. With a limit, the sign-up page shows how many spots are left.</p>'));
   assert(out.includes('id="nr-guests-limit-err" role="alert" hidden'));
-  assert(out.indexOf('id="nr-size"') < out.indexOf('id="nr-guests"') && out.indexOf('id="nr-guests"') < out.indexOf('id="nr-plan"'), 'under Raid size, above the plan');
+  assert(out.indexOf('id="nr-size"') < out.indexOf('id="nr-guests"') && out.indexOf('id="nr-guests"') < out.indexOf('id="nr-reports"'), 'under Raid size, above the reports');
   const ticked = nrHtml(NR_FORM({ guestsOpen: true, guestLimit: '10' }));
   assert(ticked.includes('id="nr-guests" name="guestsOpen" checked') && /id="nr-guests-limit-field">/.test(ticked) && ticked.includes('value="10"'), 'ticked: the field shows with the limit');
   assert(nrHtml(NR_FORM({ date: '2026-10-10' })).includes('id="nr-guests"'), 'whatever the date');

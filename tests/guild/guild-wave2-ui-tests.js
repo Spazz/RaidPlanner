@@ -496,11 +496,11 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   });
 
   await check('New raid: the create body omits size when Automatic and sends the number otherwise; the form state reads the select', withState(async (S) => {
-    const base = { teamId: 't1', event: '', reports: [''], plan: '', mode: 'log', date: '2026-10-24', time: '20:00', zone: '', title: '', size: '' };
+    const base = { teamId: 't1', event: '', reports: [''], date: '2026-10-24', time: '20:00', zones: [], title: '', size: '' };
     const body = (f) => plain(G.pages.raidNew.createBody(Object.assign({}, base, f), false, '2026-10-17'));
     assert.deepEqual(body({}), { teamId: 't1', raidOn: '2026-10-24', startTime: '20:00' }, 'Automatic: no size key at all');
     assert(!('size' in body({ size: '' })) && !('size' in body({ size: null })) && !('size' in body({ size: undefined })));
-    assert.deepEqual(body({ size: '20', zone: 'Hyjal Summit' }), { teamId: 't1', raidOn: '2026-10-24', startTime: '20:00', zone: 'Hyjal Summit', size: 20 });
+    assert.deepEqual(body({ size: '20', zones: ['Hyjal Summit'] }), { teamId: 't1', raidOn: '2026-10-24', startTime: '20:00', zones: ['Hyjal Summit'], size: 20 });
     assert.equal(typeof body({ size: '40' }).size, 'number');
     assert.equal(body({ size: '10', date: '2026-10-10' }).size, 10, 'a past raid too');
     // The form is read from the select (and a fresh form starts Automatic).

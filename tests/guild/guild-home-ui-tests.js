@@ -164,14 +164,15 @@ function withState(fn) {
   await check('Week: the zone tile is the short name with its tint (Karazhan KARA, Gruul GRUUL, Magtheridon MAG ...); two zones show the first + "+1" in the strip and both in the panel; unknown zones use the first letters', () => {
     const want = { 'Karazhan': 'KARA', 'Gruul\'s Lair': 'GRUUL', 'Magtheridon\'s Lair': 'MAG', 'Serpentshrine Cavern': 'SSC', 'Tempest Keep': 'TK', 'Hyjal Summit': 'HYJAL', 'Black Temple': 'BT', 'Zul\'Aman': 'ZA', 'Sunwell Plateau': 'SWP' };
     for (const zone of Object.keys(want)) assert.equal(G.pages.attention.zoneTile(zone).abbr, want[zone], zone);
-    assert.deepEqual(plain(G.pages.attention.zoneTile('Molten Core')), { abbr: 'MC', tint: 'other' });
-    assert.deepEqual(plain(G.pages.attention.zoneTile('Naxxramas')), { abbr: 'NAX', tint: 'other' });
+    assert.deepEqual(plain(G.pages.attention.zoneTile('Molten Core')), { abbr: 'MC', tint: 'mc', art: 'mc' });
+    assert.deepEqual(plain(G.pages.attention.zoneTile('Naxxramas')), { abbr: 'NAXX', tint: 'naxx', art: 'naxx' });
+    assert.deepEqual(plain(G.pages.attention.zoneTile('Barrow Deeps')), { abbr: 'BD', tint: 'other' });
     const out = html(ATTN());
-    const noArt = html(ATTN({ week: WK([raid('r_wed', { zone: 'Molten Core + Naxxramas' })]) }));
+    const noArt = html(ATTN({ week: WK([raid('r_wed', { zone: 'Barrow Deeps + Mystery Hall' })]) }));
     const wedStrip = desk(noArt).slice(desk(noArt).indexOf('Wed - Oct 21'), desk(noArt).indexOf('Thu - Oct 22'));
     assert(wedStrip.includes('gs-hd-tile is-other') && wedStrip.includes('>+1</span>') && !wedStrip.includes('gs-hd-art'), 'no art: the strip keeps the first tile + "+1"');
     const panel = desk(noArt).slice(desk(noArt).indexOf('aria-label="Selected day"'), desk(noArt).indexOf('aria-label="Guild"'));
-    assert(panel.includes('is-other is-big') && panel.includes('>MC</span>') && panel.includes('>NAX</span>') && !panel.includes('gs-hd-art'), 'no art: the panel keeps both tiles');
+    assert(panel.includes('is-other is-big') && panel.includes('>BD</span>') && panel.includes('>MH</span>') && !panel.includes('gs-hd-art'), 'no art: the panel keeps both tiles');
     assert(out.length > 0);
   });
 
@@ -498,7 +499,7 @@ function withState(fn) {
   const gnOf = (s, name) => (s.match(new RegExp('<button type="button" class="gs-hd-gn[^>]*data-action="home-pick"[^>]*>(?:(?!</button>)[^])*>' + name + '</span>(?:(?!</button>)[^])*</button>')) || [''])[0];
 
   await check('Art: the files and the whitelist; a day card has the 64 px art strip (-sm, lazy, width/height, alt = the zone), split halves for two zones, and the initials label', () => {
-    for (const key of ['kara', 'gruul', 'mag', 'ssc', 'tk', 'hyjal', 'bt', 'za', 'swp']) for (const size of ['sm', 'md']) assert(fs.existsSync(path.join(ROOT, 'icons', 'raids', key + '-' + size + '.webp')), key + '-' + size);
+    for (const key of ctx.Guild.zones.ART_KEYS) for (const size of ['sm', 'md']) assert(fs.existsSync(path.join(ROOT, 'icons', 'raids', key + '-' + size + '.webp')), key + '-' + size);
     assert(read('.gitignore').includes('!icons/raids/*.webp'));
     const d = desk(html(ATTN()));
     const wed = d.slice(d.indexOf('data-raid="r_wed"'), d.indexOf('Thu - Oct 22'));
@@ -513,12 +514,22 @@ function withState(fn) {
     assert(/\.gs-hd-artlabel[^}]*rgba\(19, 20, 22, 0\.62\)/.test(css) && /\.gs-hd-art\.is-strip \{ height: 64px/.test(css) && /\.gs-hd-artimg \{[^}]*object-fit: cover; object-position: 50% 50%/.test(css));
   });
 
+  await check('Art: legacy and joined stored values resolve to canonical zones, so "BT / Hyjal" and "Karazhan + Gruul\'s Lair" get their art; Classic and Forever zones too', () => {
+    const wed = value => { const d = desk(html(ATTN({ week: WK([raid('r_wed', { zone: value })]) }))); return d.slice(d.indexOf('Wed - Oct 21'), d.indexOf('Thu - Oct 22')); };
+    const legacy = desk(html(ATTN({ week: WK([raid('r_wed', { zone: 'BT / Hyjal' })]) })));
+    assert(legacy.includes('bt-sm.webp') && legacy.includes('hyjal-sm.webp') && legacy.includes('>BT + HYJAL</span>'), 'BT / Hyjal: two halves');
+    const joined = desk(html(ATTN({ week: WK([raid('r_wed', { zone: "Karazhan + Gruul's Lair" })]) })));
+    assert(joined.includes('kara-sm.webp') && joined.includes('gruul-sm.webp'));
+    assert(ctx.Guild.zones.tile("Onyxia's Lair").art === 'ony' && ctx.Guild.zones.tile('Hyjal Summit').art === 'hyjal' && !ctx.Guild.zones.tile('Barrow Deeps').art);
+    assert.equal(wed('Barrow Deeps').includes('<img'), false);
+  });
+
   await check('Art fallback: a zone with no art keeps the initials + tint tile; a half with no art among two fills in; the panel and the card fall back too', () => {
-    const none = html(ATTN({ week: WK([raid('r_wed', { zone: 'Molten Core' })]) }));
-    assert(!desk(none).includes('<img') && desk(none).includes('gs-hd-tile is-other') && desk(none).includes('>MC</span>'));
+    const none = html(ATTN({ week: WK([raid('r_wed', { zone: 'Barrow Deeps' })]) }));
+    assert(!desk(none).includes('<img') && desk(none).includes('gs-hd-tile is-other') && desk(none).includes('>BD</span>'));
     assert(!phone(none).includes('<img') && phone(none).includes('is-other is-big'));
-    const mixed = desk(html(ATTN({ week: WK([raid('r_wed', { zone: 'Karazhan + Molten Core' })]) })));
-    assert(mixed.includes('kara-sm.webp') && mixed.includes('gs-hd-artimg is-fill') && mixed.includes('>KARA + MC</span>'));
+    const mixed = desk(html(ATTN({ week: WK([raid('r_wed', { zone: 'Karazhan + Barrow Deeps' })]) })));
+    assert(mixed.includes('kara-sm.webp') && mixed.includes('gs-hd-artimg is-fill') && mixed.includes('>KARA + BD</span>'));
   });
 
   await check('Header: This week + the range + "Resets <Day>" (from resetDay), no Back on this week; Last / Next week + Back; square Previous / Next buttons with aria-labels', () => {

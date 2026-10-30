@@ -380,11 +380,11 @@ const keys = items => plain(items.map(i => i.key));
   });
 
   // ═══ 8. New raid, Link event, dialogs ═══
-  await check('New raid: the Raid-Helper event is the first thing asked, before the date and the attendance source; the head has a Back to Raids', () => {
-    const state = { gid: 'g1', form: { teamId: 't1', event: '', reports: [''], plan: '', mode: 'log', date: '' }, run: null, error: '' };
+  await check('New raid: the Raid-Helper event is the first thing asked, before the date and the zones; the head has a Back to Raids', () => {
+    const state = { gid: 'g1', form: { teamId: 't1', event: '', reports: [''], zones: [], date: '' }, run: null, error: '' };
     const out = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN, { teams: [TEAM('t1', 'Main team'), TEAM('t2', 'Weekend team')] }), state });
     const at = id => out.indexOf('id="' + id + '"');
-    assert(at('nr-team') < at('nr-event') && at('nr-event') < at('nr-date') && at('nr-event') < at('nr-source') && at('nr-source') < at('nr-reports') && at('nr-reports') < at('nr-plan'), 'team, Raid-Helper event, date, attendance source, reports, plan');
+    assert(at('nr-team') < at('nr-event') && at('nr-event') < at('nr-date') && at('nr-event') < at('nr-zones-field') && at('nr-zones-field') < at('nr-reports') && out.indexOf('nr-source') < 0 && out.indexOf('nr-plan') < 0, 'team, Raid-Helper event, date, zones, reports; no attendance source, no plan');
     assert(out.includes('<a class="gs-back-link" href="#/g/g1/raids">') && out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">New raid</h1>'));
     assert(count(out, /gs-btn-molten/g) === 1, 'one primary: Create raid');
   });

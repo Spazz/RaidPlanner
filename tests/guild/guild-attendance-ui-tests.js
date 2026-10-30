@@ -307,13 +307,11 @@ function teamData(over) {
   });
 
   // ── new raid ───────────────────────────────────────────────────
-  await check('new raid: form fields, team select with several teams, manual mode hides the report rows; run lines list statuses and actions', () => {
-    const state = { gid: 'g1', form: { teamId: 't1', event: '', reports: ['', ''], plan: '', mode: 'log', date: '' }, run: null, error: '' };
+  await check('new raid: form fields, team select with several teams, no Attendance source and no plan field; run lines list statuses and actions', () => {
+    const state = { gid: 'g1', form: { teamId: 't1', event: '', reports: ['', ''], zones: [], date: '' }, run: null, error: '' };
     const out = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN), state });
-    assert(out.includes('New raid') && out.includes('id="nr-team"') && out.includes('id="nr-event"') && out.includes('id="nr-plan"') && out.includes('nr-report-1') && out.includes('Remove report 2'));
-    assert(out.includes('No log - enter attendance by hand') && out.includes('type="date"'));
-    const manual = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN), state: Object.assign({}, state, { form: Object.assign({}, state.form, { mode: 'manual' }) }) });
-    assert(!manual.includes('nr-report-0') && manual.includes('tick who was present'));
+    assert(out.includes('New raid') && out.includes('id="nr-team"') && out.includes('id="nr-event"') && !out.includes('id="nr-plan"') && out.includes('nr-report-1') && out.includes('Remove report 2'));
+    assert(!out.includes('Attendance source') && !out.includes('No log - enter attendance by hand') && !out.includes('nr-mode') && !out.includes('Raidsmith plan') && out.includes('type="date"'));
     const one = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN, { teams: [{ id: 't1', name: 'A', size: 25, archived: false }] }), state: Object.assign({}, state, { form: Object.assign({}, state.form, { reports: ['x'] }) }) });
     assert(!one.includes('id="nr-team"') && !one.includes('Remove report'));
     const run = { gid: 'g1', form: state.form, raidId: 'r9', running: false, lines: [
@@ -377,35 +375,32 @@ function teamData(over) {
     assertNoRawAttrs(out);
   });
 
-  await check('new raid: Start time, Zone and Title show only for a date from today on; a later date drops the attendance source; the body carries them', () => {
-    const base = { teamId: 't1', event: '', reports: [''], plan: '', mode: 'log', date: '', time: '20:00', zone: '', title: '' };
+  await check('new raid: Start time and Title show only for a date from today on, the Zones field always; a later date drops the report rows; the body carries them', () => {
+    const base = { teamId: 't1', event: '', reports: [''], date: '', time: '20:00', zones: [], title: '' };
     const html = (f, extra) => G.pages.raidNew.raidNewHtml(Object.assign({ guildData: gd(OFFICER_CAN), state: { gid: 'g1', form: Object.assign({}, base, f), run: null, error: '' }, today: '2026-10-17' }, extra || {}));
     const shown = (out, id) => !new RegExp('id="' + id + '"[^>]*hidden').test(out);
     const past = html({ date: '2026-10-10' });
-    assert(!shown(past, 'nr-time-field') && !shown(past, 'nr-zone-field') && !shown(past, 'nr-title-field'));
-    assert(!shown(html({}), 'nr-time-field'));
+    assert(!shown(past, 'nr-time-field') && !shown(past, 'nr-title-field') && shown(past, 'nr-zones-field'), 'a past date: zones stay');
+    assert(!shown(html({}), 'nr-time-field') && shown(html({}), 'nr-zones-field'), 'no date: zones stay');
     const today = html({ date: '2026-10-17' });
-    assert(shown(today, 'nr-time-field') && shown(today, 'nr-zone-field') && shown(today, 'nr-title-field') && today.includes('type="time"') && today.includes('value="20:00"'));
-    assert(!/id="nr-source"[^>]*hidden/.test(today) && !/id="nr-reports"[^>]*hidden/.test(today));
-    const later = html({ date: '2026-10-24', zone: 'Karazhan' });
-    assert(shown(later, 'nr-time-field') && /id="nr-source"[^>]*hidden/.test(later) && /id="nr-reports"[^>]*hidden/.test(later));
-    assert(!shown(html({ date: '2026-10-24', event: '123456' }), 'nr-time-field') && shown(html({ date: '2026-10-24', event: '123456' }), 'nr-zone-field'));
-    assert(!shown(html({ date: '2026-10-24', mode: 'manual' }), 'nr-time-field') === false, 'a later date ignores manual mode');
-    assert(!shown(html({ date: '2026-10-17', mode: 'manual' }), 'nr-time-field'), 'manual today hides the when-fields');
+    assert(shown(today, 'nr-time-field') && shown(today, 'nr-zones-field') && shown(today, 'nr-title-field') && today.includes('type="time"') && today.includes('value="20:00"'));
+    assert(!/id="nr-reports"[^>]*hidden/.test(today) && !today.includes('id="nr-source"'));
+    const later = html({ date: '2026-10-24', zones: ['Karazhan'] });
+    assert(shown(later, 'nr-time-field') && /id="nr-reports"[^>]*hidden/.test(later) && shown(later, 'nr-zones-field'));
+    assert(!shown(html({ date: '2026-10-24', event: '123456' }), 'nr-time-field') && shown(html({ date: '2026-10-24', event: '123456' }), 'nr-zones-field'));
     const body = (f, today) => plain(G.pages.raidNew.createBody(Object.assign({}, base, f), false, today));
-    assert.deepEqual(body({ date: '2026-10-24', zone: 'Karazhan', title: ' Prog night ' }, '2026-10-17'), { teamId: 't1', raidOn: '2026-10-24', startTime: '20:00', zone: 'Karazhan', title: 'Prog night' });
-    assert.deepEqual(body({ date: '2026-10-10', zone: 'Karazhan' }, '2026-10-17'), { teamId: 't1', raidOn: '2026-10-10' });
+    assert.deepEqual(body({ date: '2026-10-24', zones: ['Karazhan'], title: ' Prog night ' }, '2026-10-17'), { teamId: 't1', raidOn: '2026-10-24', startTime: '20:00', title: 'Prog night', zones: ['Karazhan'] });
+    assert.deepEqual(body({ date: '2026-10-10', zones: ['Karazhan', 'Black Temple'] }, '2026-10-17'), { teamId: 't1', raidOn: '2026-10-10', zones: ['Karazhan', 'Black Temple'] });
     assert.deepEqual(body({ date: '2026-10-24', event: '123456' }, '2026-10-17'), { teamId: 't1', raidOn: '2026-10-24', eventSource: '123456' });
     assert.deepEqual(body({ date: '2026-10-24' }), { teamId: 't1', raidOn: '2026-10-24' });
   });
 
-  await check('new raid: one create step carries the event and every report; only the plan is a second step', () => {
-    const L = f => plain(G.pages.raidNew.buildLines(Object.assign({ teamId: 't1', event: '', reports: [''], plan: '', mode: 'log', date: '' }, f)).map(l => l.id));
+  await check('new raid: one create step carries the event, the zones and every report', () => {
+    const L = f => plain(G.pages.raidNew.buildLines(Object.assign({ teamId: 't1', event: '', reports: [''], date: '' }, f)).map(l => l.id));
     assert.deepEqual(L({ event: '123456', date: '' }), ['raid']);
     assert.deepEqual(L({ event: '123456', date: '2026-10-10' }), ['raid']);
-    assert.deepEqual(L({ date: '2026-10-10', reports: ['a', ' ', 'b'], plan: 'PP:2:x' }), ['raid', 'plan']);
+    assert.deepEqual(L({ date: '2026-10-10', reports: ['a', ' ', 'b'] }), ['raid']);
     assert.deepEqual(L({ reports: ['a'] }), ['raid']);
-    assert.deepEqual(L({ date: '2026-10-10', reports: ['a'], mode: 'manual' }), ['raid']);
   });
 
   // ── raid detail ────────────────────────────────────────────────
@@ -1090,16 +1085,12 @@ function teamData(over) {
     await new Promise(r => setTimeout(r, 0));
     assert.deepEqual(plain(posts.map(p => p.body)), [{ teamId: 't1', raidOn: '2026-10-10', eventSource: '123456', reportSources: ['AAAAAAAAAAAAAAAA', 'BBBBBBBBBBBBBBBB'] }]);
     assert.equal(puts.length, 0);
-    // Nothing that gives a date: refused, nothing sent. Manual mode drops the reports, so it needs the date too.
+    // Nothing that gives a date: refused, nothing sent.
     posts.length = 0;
     A.nr = { gid: 'g1', form: form({ reports: ['', ''] }), run: null, error: '' };
     G.handlers.submit['nr-create-form']();
     assert.match(A.nr.error, /raid date/);
-    A.nr = { gid: 'g1', form: form({ mode: 'manual' }), run: null, error: '' };
-    G.handlers.submit['nr-create-form']();
-    assert.match(A.nr.error, /raid date/);
     assert.equal(posts.length, 0);
-    assert.deepEqual(plain(G.pages.raidNew.createBody(form({ mode: 'manual', date: '2026-10-10' }), true)), { teamId: 't1', raidOn: '2026-10-10', acceptOtherServer: true });
     const html = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN), state: { gid: 'g1', form: form(), run: null, error: '' } });
     assert(html.includes('Raid date (optional)'));
     A.nr = null;

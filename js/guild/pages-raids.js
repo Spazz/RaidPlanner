@@ -3,7 +3,7 @@
 // time, title in ONE link, the sign-up figure and bar, then ONE status item - the officer's Plan chip or the member's Sign up / chip) and Past (newest first, a
 // table with one status chip) tabs, "Create upcoming raids" from the team's weekly schedule (also run by itself when the team's schedule says so), "Subscribe in
 // your calendar" (pages-calendar.js), the rail (standing sign-ups, the officer's away panel, the member's away line) and the New raid page, which
-// runs its calls in order (create raid, event, each report, plan) with a status line per source. A failure stops that
+// runs its calls in order (create raid with its event, zones and reports) with a status line per source. A failure stops that
 // source only: the raid exists, the page links to it and offers Retry. Dates are the guild's calendar dates.
 (function (G) {
   'use strict';
@@ -614,7 +614,7 @@
   function newState() { return a().nr || null; }
 
   function freshForm(gd) {
-    return { teamId: G.app.teamFor(gd) || '', event: '', reports: [''], plan: '', mode: 'log', date: '', time: DEFAULT_START, zone: '', title: '', size: '', guestsOpen: false, guestLimit: '' };
+    return { teamId: G.app.teamFor(gd) || '', event: '', reports: [''], date: '', time: DEFAULT_START, zones: [], title: '', size: '', guestsOpen: false, guestLimit: '' };
   }
 
   function editableTeams(gd) {
@@ -626,12 +626,65 @@
     return dateOf(Date.now(), gd && gd.guild && gd.guild.timeZone ? gd.guild.timeZone : undefined);
   }
 
-  // The raid names of the guild's game version (the planner's raid list, planning templates left out) for the Zone select.
-  function zonesOf(gd) {
-    const rules = typeof RulesData !== 'undefined' && RulesData && gd && gd.guild ? RulesData[gd.guild.gameVersion] : null;
-    const raids = rules && rules.raids ? rules.raids : {};
-    return Object.keys(raids).filter(function (k) { return raids[k].tier !== 'Planning templates'; }).map(function (k) { return raids[k].name; });
+  // ── Zones picker (New raid: prefix 'nr'; the Raid settings dialog: prefix 'rs') ──
+  // Tiles with the small art, up to G.zones.MAX_ZONES ticked; the checkbox covers the tile. Ticking works in place (G.handlers.change['zone-pick']): at the cap the
+  // other tiles dim and cannot be ticked. A zone without art gets a letter tile.
+  // o: { prefix, choices ([{ name, tier }], G.zones.zoneChoicesFor), picked ([name]), eventTyped (New raid: an event link is typed), sourceHtml (a line under the count) }
+  function zoneLineText(count, eventTyped) {
+    const max = G.zones.MAX_ZONES;
+    if (count >= max) return count + ' of ' + max + ' picked. Untick one to pick another.';
+    if (count > 0) return count + ' of ' + max + ' picked.';
+    return eventTyped ? 'Leave empty to read the zones from the Raid-Helper event title. Or pick up to ' + max + '.' : 'Pick up to ' + max + '.';
   }
+
+  function zoneTileHtml(o, c, i, on, off) {
+    const t = G.zones.tile(c.name);
+    const id = o.prefix + '-zones-' + i;
+    const dim = G.zones.ART_SIZES.sm;
+    const art = t.art
+      ? '<img class="gs-zt-art" src="/icons/raids/' + t.art + '-sm.webp" alt="" width="' + dim.w + '" height="' + dim.h + '" loading="lazy">'
+      : '<span class="gs-zt-art gs-zt-letter" aria-hidden="true">' + esc(t.abbr) + '</span>';
+    return '<label class="gs-zt' + (on ? ' is-on' : '') + (off ? ' is-off' : '') + '" for="' + id + '"><input type="checkbox" id="' + id + '" name="zones" value="' + esc(c.name) + '"' + (on ? ' checked' : '') + (off ? ' disabled' : '') +
+      ' aria-describedby="' + o.prefix + '-zones-help" data-change="zone-pick">' + art + '<span class="gs-zt-tick" aria-hidden="true">' + G.icons.icon('check', 14) + '</span>' +
+      '<span class="gs-zt-body"><span class="gs-zt-name">' + esc(c.name) + '</span>' + (c.tier ? '<span class="gs-zt-tier">' + esc(c.tier) + '</span>' : '') + '</span></label>';
+  }
+
+  function zonePickerHtml(o) {
+    const picked = o.picked || [];
+    const capped = picked.length >= G.zones.MAX_ZONES;
+    return '<fieldset class="gs-field gs-zp" id="' + o.prefix + '-zones-field"><legend class="gs-label gs-zp-legend">Zones (optional)</legend><div class="gs-zp-grid">' +
+      o.choices.map(function (c, i) { const on = picked.indexOf(c.name) >= 0; return zoneTileHtml(o, c, i, on, capped && !on); }).join('') +
+      '</div><p class="gs-fine" id="' + o.prefix + '-zones-help">' + esc(zoneLineText(picked.length, !!o.eventTyped)) + '</p>' + (o.sourceHtml || '') + '</fieldset>';
+  }
+
+  // The names ticked in a picker's fieldset, in tile order.
+  function pickedZonesIn(root) {
+    return Array.prototype.filter.call(root.querySelectorAll('input[name="zones"]'), function (i) { return i.checked; }).map(function (i) { return i.value; });
+  }
+
+  // Redraws a picker's state in place (a re-render could swallow the click on Create raid or Save).
+  function refreshZonePicker(prefix) {
+    if (typeof document === 'undefined') return;
+    const root = document.getElementById(prefix + '-zones-field');
+    if (!root) return;
+    const count = pickedZonesIn(root).length;
+    const capped = count >= G.zones.MAX_ZONES;
+    Array.prototype.forEach.call(root.querySelectorAll('input[name="zones"]'), function (input) {
+      const off = capped && !input.checked;
+      input.disabled = off;
+      const tile = input.parentNode;
+      if (tile && tile.classList) { tile.classList.toggle('is-on', !!input.checked); tile.classList.toggle('is-off', off); }
+    });
+    const ev = prefix === 'nr' ? document.getElementById('nr-event') : null;
+    const help = document.getElementById(prefix + '-zones-help');
+    if (help) help.textContent = zoneLineText(count, !!(ev && String(ev.value || '').trim()));
+  }
+
+  G.handlers.change['zone-pick'] = function (box) {
+    if (!box || !box.id) return;
+    refreshZonePicker(box.id.replace(/-zones-\d+$/, ''));
+    if (box.id.indexOf('nr-') === 0) syncForm();
+  };
 
   // "Open to guests" and its optional guest limit (New raid: prefix 'nr'; the Raid settings dialog: prefix 'rs'). The limit field shows once the check is ticked (G.handlers.change['guests-open']
   // toggles it in place); empty = no limit. The Worker takes whole numbers from 1 to 100 (guestLimit, null = none).
@@ -663,13 +716,12 @@
     if (box.id === 'nr-guests') syncForm();
   };
 
-  // What the New raid form shows for its date: a date from today on adds Start time, Zone and Title; a date after today is a raid
-  // that has not happened, so the attendance source and report rows go.
+  // What the New raid form shows for its date: a date from today on adds Start time and Title; a date after today is a raid
+  // that has not happened, so the report rows go. The Zones field shows always.
   function whenFlags(f, today) {
     const dated = !!f.date && !!today && f.date >= today;
     const future = dated && f.date > today;
-    const manual = f.mode === 'manual' && !future;
-    return { dated: dated, future: future, manual: manual, showWhen: dated && !manual, showTime: dated && !manual && !String(f.event || '').trim() };
+    return { dated: dated, future: future, showWhen: dated, showTime: dated && !String(f.event || '').trim() };
   }
 
   function loadNew(r, gd) {
@@ -725,11 +777,9 @@
     const run = nr.run;
     const today = opts.today || guildTodayOf(gd);
     const flags = whenFlags(f, today);
-    const manual = flags.manual;
     const hideFuture = flags.future ? ' hidden' : '';
-    const zones = zonesOf(gd);
     const whenFields = '<div class="gs-field" id="nr-time-field"' + (flags.showTime ? '' : ' hidden') + '><label class="gs-label" for="nr-time">Start time</label><input class="gs-input" type="time" id="nr-time" data-key="nr-time" value="' + esc(f.time == null ? DEFAULT_START : f.time) + '" aria-describedby="nr-time-help"><p class="gs-fine" id="nr-time-help">The guild\'s local time.</p></div>' +
-      '<div class="gs-field" id="nr-zone-field"' + (flags.showWhen ? '' : ' hidden') + '><label class="gs-label" for="nr-zone">Zone (optional)</label><select class="gs-input" id="nr-zone" data-key="nr-zone">' + G.ui.optionsHtml([{ value: '', label: 'No zone yet' }].concat(zones.map(function (z) { return { value: z, label: z }; })), f.zone || '') + '</select></div>' +
+      zonePickerHtml({ prefix: 'nr', choices: G.zones.zoneChoicesFor(gd.guild.gameVersion), picked: f.zones, eventTyped: !!f.event.trim() }) +
       '<div class="gs-field" id="nr-title-field"' + (flags.showWhen ? '' : ' hidden') + '><label class="gs-label" for="nr-title">Title (optional)</label><input class="gs-input" type="text" id="nr-title" data-key="nr-title" maxlength="100" autocomplete="off" value="' + esc(f.title || '') + '"></div>';
     const sizeField = '<div class="gs-field"><label class="gs-label" for="nr-size">Raid size</label><select class="gs-input" id="nr-size" data-key="nr-size" aria-describedby="nr-size-help">' +
       G.ui.optionsHtml(G.ui.sizeChoices('Automatic - from the zone, else the team\'s size'), f.size == null ? '' : f.size) + '</select>' +
@@ -745,15 +795,10 @@
     const form = run ? '' : '<form class="gs-card-sec" data-submit="nr-create-form" novalidate><div class="gs-card-sec-body">' + teamField +
       '<div class="gs-field"><label class="gs-label" for="nr-event">Raid-Helper event (optional)</label><input class="gs-input" type="text" id="nr-event" data-key="nr-event" data-input="nr-when" placeholder="Event link or ID" autocomplete="off" value="' + esc(f.event) + '" aria-describedby="nr-event-help">' +
       '<p class="gs-fine" id="nr-event-help">The sign-ups. The event\'s start time also sets the raid date and time. A future event is fine.</p></div>' +
-      '<fieldset class="gs-fieldset" id="nr-source" data-future-hide' + hideFuture + '><legend class="gs-legend">Attendance source</legend><div class="gs-radios">' +
-      '<div class="gs-check"><input type="radio" id="nr-mode-log" name="nr-mode" value="log"' + (manual ? '' : ' checked') + ' data-change="nr-mode"><label for="nr-mode-log">Warcraft Logs report</label></div>' +
-      '<div class="gs-check"><input type="radio" id="nr-mode-manual" name="nr-mode" value="manual"' + (manual ? ' checked' : '') + ' data-change="nr-mode"><label for="nr-mode-manual">No log - enter attendance by hand</label></div></div></fieldset>' +
-      '<div class="gs-field"><label class="gs-label" for="nr-date">Raid date' + (f.event.trim() || (!manual && f.reports.some(function (v) { return v.trim(); })) ? ' (optional)' : '') + '</label><input class="gs-input" type="date" id="nr-date" data-key="nr-date" data-input="nr-when" value="' + esc(f.date) + '" aria-describedby="nr-date-help">' +
+      '<div class="gs-field"><label class="gs-label" for="nr-date">Raid date' + (f.event.trim() || f.reports.some(function (v) { return v.trim(); }) ? ' (optional)' : '') + '</label><input class="gs-input" type="date" id="nr-date" data-key="nr-date" data-input="nr-when" value="' + esc(f.date) + '" aria-describedby="nr-date-help">' +
       '<p class="gs-fine" id="nr-date-help">Needed unless a Raid-Helper event or a Warcraft Logs report gives the date. The guild\'s calendar date. A date from today on can be a raid that has not happened yet.</p></div>' + whenFields + sizeField + guestFieldsHtml({ prefix: 'nr', open: f.guestsOpen, limit: f.guestLimit }) +
-      (manual ? '<p class="gs-fine" data-future-hide' + hideFuture + '>After the raid is created you tick who was present and give a reason.</p>'
-        : '<fieldset class="gs-fieldset" id="nr-reports" data-future-hide' + hideFuture + '><legend class="gs-legend">Warcraft Logs reports (optional)</legend>' + f.reports.map(function (v, i) { return reportRowHtml(v, i, f.reports.length); }).join('') +
-          '<div><button type="button" class="gs-btn gs-btn-sm" data-action="nr-add-report" data-key="nr-add-report">Add another report</button></div></fieldset>') +
-      '<div class="gs-field"><label class="gs-label" for="nr-plan">Raidsmith plan (optional)</label><textarea class="gs-input gs-textarea" id="nr-plan" data-key="nr-plan" rows="2" placeholder="Plan link or share code" autocomplete="off">' + esc(f.plan) + '</textarea></div>' +
+      '<fieldset class="gs-fieldset" id="nr-reports" data-future-hide' + hideFuture + '><legend class="gs-legend">Warcraft Logs reports (optional)</legend>' + f.reports.map(function (v, i) { return reportRowHtml(v, i, f.reports.length); }).join('') +
+        '<div><button type="button" class="gs-btn gs-btn-sm" data-action="nr-add-report" data-key="nr-add-report">Add another report</button></div></fieldset>' +
       '<p class="gs-alert" id="nr-error" role="alert"' + (nr.error ? '' : ' hidden') + '>' + esc(nr.error) + '</p>' +
       '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten">Create raid</button><a class="gs-btn" href="' + esc(G.router.format({ name: 'section', gid: gid, section: 'raids' })) + '">Cancel</a></div></div></form>';
     // Raid-Helper first: the event gives the date, the time and the sign-ups, so it is the first thing asked.
@@ -776,7 +821,7 @@
     const flags = whenFlags(nr.form, guildTodayOf(gd));
     const set = function (id, hide) { const el = document.getElementById(id); if (el) el.hidden = hide; };
     set('nr-time-field', !flags.showTime);
-    set('nr-zone-field', !flags.showWhen);
+    refreshZonePicker('nr');
     set('nr-title-field', !flags.showWhen);
     Array.prototype.forEach.call(document.querySelectorAll('[data-future-hide]'), function (el) { el.hidden = flags.future; });
   }
@@ -792,9 +837,9 @@
     if (val('nr-team') != null) f.teamId = val('nr-team');
     if (val('nr-event') != null) f.event = val('nr-event');
     if (val('nr-date') != null) f.date = val('nr-date');
-    if (val('nr-plan') != null) f.plan = val('nr-plan');
     if (val('nr-time') != null) f.time = val('nr-time');
-    if (val('nr-zone') != null) f.zone = val('nr-zone');
+    const zoneRoot = document.getElementById('nr-zones-field');
+    if (zoneRoot) f.zones = pickedZonesIn(zoneRoot);
     if (val('nr-title') != null) f.title = val('nr-title');
     if (val('nr-size') != null) f.size = val('nr-size');
     const guests = document.getElementById('nr-guests');
@@ -802,11 +847,8 @@
     if (val('nr-guests-limit') != null) f.guestLimit = val('nr-guests-limit');
     const reports = document.querySelectorAll('.nr-report');
     if (reports.length) f.reports = Array.prototype.map.call(reports, function (el) { return el.value; });
-    const mode = document.querySelector('input[name="nr-mode"]:checked');
-    if (mode) f.mode = mode.value;
   }
 
-  G.handlers.change['nr-mode'] = function () { syncForm(); G.app.render(); };
   G.handlers.click['nr-add-report'] = function () {
     syncForm();
     const nr = newState();
@@ -856,17 +898,6 @@
     } else if (!run.raidId) {
       line.status = 'skipped';
       return Promise.resolve();
-    } else if (line.id === 'plan') {
-      promise = G.planSource.read(f.plan, { surname: !!currentGd() && currentGd().guild.gameVersion === 'forever' }).then(function (read) {
-        if (!read.ok) { const e = new Error(read.error); e.planError = true; throw e; }
-        return G.api.put(base + '/raids/' + encodeURIComponent(run.raidId) + '/plan', { label: read.label, players: read.players, live: read.live }).then(function () {
-          if (read.skippedText) line.message = read.skippedText;
-        }, function (err) {
-          const planText = G.planSource.describeError(err, read.players);
-          if (planText) { const e = new Error(planText); e.planError = true; throw e; }
-          throw err;
-        });
-      });
     } else {
       line.status = 'skipped';
       return Promise.resolve();
@@ -898,18 +929,12 @@
       });
     }, Promise.resolve()).then(function () {
       run.running = false;
-      if (run.form.mode === 'manual' && run.raidId && run.lines.every(function (l) { return l.status === 'ok'; })) {
-        a().openManual = run.raidId;
-        if (stillHere()) G.app.go(raidHref(run.gid, run.raidId));
-        return;
-      }
       if (stillHere()) G.app.render();
     });
   }
 
-  // The non-blank report sources of the form; none in manual mode.
+  // The non-blank report sources of the form.
   function reportSourcesOf(f) {
-    if (f.mode !== 'log') return [];
     return f.reports.map(function (v) { return v.trim(); }).filter(Boolean);
   }
 
@@ -923,9 +948,9 @@
     if (reports.length) body.reportSources = reports;
     if (today && whenFlags(f, today).showWhen) {
       if (f.time && !f.event.trim()) body.startTime = f.time;
-      if (f.zone) body.zone = f.zone;
       if (String(f.title || '').trim()) body.title = String(f.title).trim();
     }
+    if (f.zones && f.zones.length) body.zones = f.zones.slice(0, G.zones.MAX_ZONES);
     if (f.size !== '' && f.size != null) body.size = Number(f.size); // Automatic sends nothing: the Worker picks the zone's size, else the team's
     if (f.guestsOpen) {
       body.guestsOpen = true;
@@ -936,12 +961,10 @@
   }
 
   function buildLines(f) {
-    // One create call carries the event and every report, so a failed source writes nothing; only the plan is a second step.
+    // One create call carries the event and every report, so a failed source writes nothing.
     const reports = reportSourcesOf(f);
     const from = [f.event.trim() ? 'Raid-Helper event' : '', reports.length ? plural(reports.length, 'Warcraft Logs report', 'Warcraft Logs reports') : ''].filter(Boolean).join(' and ');
-    const lines = [{ id: 'raid', label: from ? 'Create the raid from the ' + from : 'Create the raid', status: 'pending' }];
-    if (f.plan.trim()) lines.push({ id: 'plan', label: 'Raidsmith plan', status: 'pending' });
-    return lines;
+    return [{ id: 'raid', label: from ? 'Create the raid from the ' + from : 'Create the raid', status: 'pending' }];
   }
 
   G.handlers.submit['nr-create-form'] = function () {
@@ -952,8 +975,8 @@
     const f = nr.form;
     const today = guildTodayOf(gd);
     const flags = whenFlags(f, today);
-    // A raid that has not happened yet has no log and no hand-entered attendance.
-    if (flags.future) { f.mode = 'log'; f.reports = ['']; }
+    // A raid that has not happened yet has no log.
+    if (flags.future) f.reports = [''];
     nr.error = '';
     if (!f.teamId) nr.error = 'Choose a team.';
     else if (f.date && !RAID_DATE.test(f.date)) nr.error = 'Enter the raid date as a calendar date.';
@@ -987,5 +1010,5 @@
     raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, timeNotSetHtml: timeNotSetHtml, momentText: momentText, deadlineHtml: deadlineHtml, closeNoteText: closeNoteText, zoneSizeText: zoneSizeText, signupsText: signupsText, planPillHtml: planPillHtml,
     planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, statusChipHtml: statusChipHtml, cardHtml: cardHtml, fillText: fillText, applySignupView: applySignupView, reloadList: reloadList, load: loadList, main: mainList,
   };
-  G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, guestFieldsHtml: guestFieldsHtml, guestLimitProblem: guestLimitProblem, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
+  G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, guestFieldsHtml: guestFieldsHtml, guestLimitProblem: guestLimitProblem, zonePickerHtml: zonePickerHtml, pickedZonesIn: pickedZonesIn, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

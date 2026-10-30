@@ -104,8 +104,19 @@
 
   // The "Raid settings" form dialog (More > Raid settings): the raid's own size and, until it starts, its sign-up deadline, "Open to guests" and its optional guest limit
   // (pages-raids.js guestFieldsHtml; empty = no limit). Same PATCH as the card it replaced.
+  // Where the zones came from, under the picker: only while they still follow the event title, or when they were cleared by hand on a raid that has an event.
+  function zoneSourceLineHtml(r, event) {
+    const zones = Array.isArray(r.zones) ? r.zones : [];
+    let text = '';
+    if (r.zoneSource === 'event' && zones.length) text = 'Read from the event title "' + (event && event.title ? event.title : '') + '". They keep following it until you change them here.';
+    else if (r.zoneSource === 'hand' && !zones.length && event) text = 'No zones. The event title is not read again.';
+    return text ? '<p class="gs-fine gs-zp-src">' + esc(text) + '</p>' : '';
+  }
+
   function settingsDialogHtml(gd, data) {
     const r = data.raid;
+    const eventSrc = data.sources && data.sources.event ? data.sources.event : null;
+    const zonesField = G.pages.raidNew.zonePickerHtml({ prefix: 'rs', choices: G.zones.zoneChoicesFor(gd.guild.gameVersion), picked: Array.isArray(r.zones) ? r.zones : [], sourceHtml: zoneSourceLineHtml(r, eventSrc) });
     const own = r.closeHoursOverride != null;
     const teamHours = teamCloseHours(data);
     const sizeField = '<div class="gs-field"><label class="gs-label" for="rs-size">Raid size</label><select class="gs-input" id="rs-size" name="size" data-key="rs-size" aria-describedby="rs-size-help">' +
@@ -121,7 +132,7 @@
     // Guests only sign up before the start, so a raid that has started offers neither field.
     const guestFields = isUpcoming(data) ? G.pages.raidNew.guestFieldsHtml({ prefix: 'rs', open: !!r.guestsOpen, limit: r.guestLimit }) : '';
     return '<form class="gs-dialog-form gs-forge gs-rs" data-submit="raid-settings-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Raid settings</h2>' +
-      '<div class="gs-su-fields">' + sizeField + hoursField + '</div>' + guestFields +
+      '<div class="gs-su-fields">' + zonesField + sizeField + hoursField + '</div>' + guestFields +
       '<p class="gs-alert" id="rs-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten" data-key="rs-save">Save settings</button></div></form>';
   }
@@ -409,6 +420,20 @@
     };
   }
 
+  // The zone art behind the head: one picture per zone (at most 3, the raid's canonical list), the -md crop; a zone without art among zones with art is a plain filler.
+  // null when no zone has art (the head stays as it is).
+  function headArtOf(r) {
+    const zones = (Array.isArray(r.zones) ? r.zones : []).slice(0, G.zones.MAX_ZONES);
+    const tiles = zones.map(function (name) { return { name: name, tile: G.zones.tile(name) }; });
+    if (!tiles.some(function (z) { return !!z.tile.art; })) return null;
+    const dim = G.zones.ART_SIZES.md;
+    return { count: tiles.length, html: tiles.map(function (z) {
+      return z.tile.art
+        ? '<img class="gs-hd-artimg" src="/icons/raids/' + z.tile.art + '-md.webp" alt="' + esc(z.name) + '" width="' + dim.w + '" height="' + dim.h + '">'
+        : '<span class="gs-hd-artimg is-fill" aria-hidden="true"></span>';
+    }).join('') };
+  }
+
   // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress, loot (G.pages.raidLoot.stateFor), signups (G.pages.raidSignups.stateFor), roster (G.pages.raidRoster.stateFor), board }
   function raidHtml(opts) {
     const gd = opts.guildData;
@@ -423,6 +448,7 @@
     const you = G.pages.raidYou ? G.pages.raidYou.youBarHtml({ guildData: gd, data: data, parts: parts, nextHasPrimary: !!(next && next.primary) }) : '';
     return G.ui.objectPageHtml({
       head: headOf(gd, data, parts, model),
+      headArt: headArtOf(data.raid),
       noticesHtml: notices,
       nextStep: officer ? next : null, // a member's next step is the You bar
       afterYouHtml: you,
@@ -532,8 +558,7 @@
 
   function fetchDetail(gid, rid) {
     return G.api.get(raidBase(gid, rid)).then(function (data) {
-      a().raid = { gid: gid, rid: rid, data: data, filter: a().raid && a().raid.rid === rid ? a().raid.filter : null, auto: a().openManual === rid };
-      if (a().openManual === rid) a().openManual = null;
+      a().raid = { gid: gid, rid: rid, data: data, filter: a().raid && a().raid.rid === rid ? a().raid.filter : null };
       return data;
     });
   }
@@ -572,15 +597,10 @@
     });
   }
 
-  // Called by the app after each render: the New raid page asks for the manual dialog to open on the new raid.
+  // Called by the app after each render.
   function afterRender() {
     const x = a().raid;
     if (x && G.pages.raidSignupLink && typeof window !== 'undefined') G.pages.raidSignupLink.focusIfAsked(G.router.parse(window.location.hash));
-    if (!x || !x.auto) return;
-    const c = cur();
-    if (!c || typeof document === 'undefined' || !document.getElementById('guild-dialogs')) return;
-    x.auto = false;
-    openManualDialog(c);
   }
 
   // ── operations ──
@@ -695,6 +715,9 @@
     const r = c.data.raid;
     ['rs-err-size', 'rs-err-hours', 'rs-guests-limit-err', 'rs-error'].forEach(function (id) { G.ui.setText(id, ''); });
     const body = {};
+    const picked = form.querySelectorAll ? G.pages.raidNew.pickedZonesIn(form) : null; // null: no picker in the form, the zones stay
+    const before = Array.isArray(r.zones) ? r.zones : [];
+    if (picked && (picked.length !== before.length || picked.some(function (z) { return before.indexOf(z) < 0; }))) body.zones = picked;
     const size = form.elements.size.value === '' ? null : Number(form.elements.size.value);
     if (size !== null && G.ui.RAID_SIZES.indexOf(size) < 0) { G.ui.setText('rs-err-size', 'Choose Automatic or one of the sizes.'); form.elements.size.focus(); return; }
     if (size !== (r.sizeOverride == null ? null : r.sizeOverride)) body.size = size;

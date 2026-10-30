@@ -67,13 +67,22 @@
   // ("You are in Group 2 as Enhancement Shaman"), then the sections in the same order for every object. A locked section says when it opens.
   //   nextStep   ui.nextStepHtml options (omit for none)
   //   noticesHtml  banners and notes between the header and the next-step bar      afterYouHtml  a card that belongs right under the You line (a member's seat)
+  //   headArt  { count, html }: the head sits on a banner of art (the raid page's zones; count = 1 to 3 pictures, html = the <img>s); omit for the plain head
   //   pageClass  an extra class on the page      footHtml  what closes the page after the last section (a person's Delete row)
   //   sections   [{ id, title, chipHtml, bodyHtml, locked (text: when it opens), actionsHtml, bare }]; the id is a jump target. A bare section is
   //              only the jump target around bodyHtml, for a card that draws its own heading and tools.
+  // The page head, on a banner of art when there is some: one picture = the right part fading into the page, two or three = equal shares (guild.css .gs-rz-head).
+  ui.bannerHeadHtml = function (head, art) {
+    const hd = ui.pageHeadHtml(head);
+    if (!art || !art.html) return hd;
+    const n = Math.min(3, Math.max(1, art.count || 1));
+    return '<div class="gs-rz-head is-' + n + '"><div class="gs-rz-art is-' + n + '">' + art.html + '</div><div class="gs-rz-scrim"></div>' + hd + '</div>';
+  };
+
   ui.objectPageHtml = function (opts) {
     const o = opts || {};
     const sections = (Array.isArray(o.sections) ? o.sections : []).filter(Boolean).map(ui.objectSectionHtml).join('');
-    return '<div class="gs-page gs-object-page' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + (o.nextStep ? ui.nextStepHtml(o.nextStep) : '') +
+    return '<div class="gs-page gs-object-page' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.bannerHeadHtml(o.head, o.headArt) + (o.noticesHtml || '') + (o.nextStep ? ui.nextStepHtml(o.nextStep) : '') +
       (o.youHtml ? '<div class="gs-youline">' + o.youHtml + '</div>' : '') + (o.afterYouHtml || '') + sections + (o.footHtml || '') + '</div>';
   };
 

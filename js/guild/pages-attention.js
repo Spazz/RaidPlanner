@@ -226,20 +226,7 @@
     claim_review: { label: 'Hide', note: 'The Owner review page closes too' },
   };
 
-  // Raid zones: the short name on a tile and its tint class (guild.css, .gs-hd-tile.is-<tint>), and `art`: the key of the loading-screen crop in
-  // icons/raids/<art>-sm.webp (192x108) and -md.webp (480x270). Any other zone gets the first letters, a neutral tile and no art.
-  const ZONE_TILES = {
-    'karazhan': { abbr: 'KARA', tint: 'kara', art: 'kara' },
-    'gruul\'s lair': { abbr: 'GRUUL', tint: 'gruul', art: 'gruul' },
-    'magtheridon\'s lair': { abbr: 'MAG', tint: 'mag', art: 'mag' },
-    'serpentshrine cavern': { abbr: 'SSC', tint: 'ssc', art: 'ssc' },
-    'tempest keep': { abbr: 'TK', tint: 'tk', art: 'tk' },
-    'hyjal summit': { abbr: 'HYJAL', tint: 'hyjal', art: 'hyjal' },
-    'black temple': { abbr: 'BT', tint: 'bt', art: 'bt' },
-    'zul\'aman': { abbr: 'ZA', tint: 'za', art: 'za' },
-    'sunwell plateau': { abbr: 'SWP', tint: 'swp', art: 'swp' },
-  };
-  const ART_SIZES = { sm: { w: 192, h: 108 }, md: { w: 480, h: 270 } };
+  // Raid zones: tiles, tints and art keys live in G.zones (zones.js); the art files are icons/raids/<art>-sm|md.webp.
   // The Roles grid: columns in order; people whose role is null go to a fifth "Other" column that exists only when it has someone.
   const ROLE_COLS = [['tank', 'Tanks'], ['healer', 'Healers'], ['melee', 'Melee'], ['ranged', 'Ranged']];
   const STATE_TEXT = { confirmed: 'Confirmed', no_answer: 'No answer', cant_come: 'Can\'t come', signed: 'Signed up', late: 'Late', tentative: 'Tentative', standby: 'Standby', listed: 'In the raid' };
@@ -254,17 +241,24 @@
   const TOAST_MS = 8000;
   const STATUS_LABELS = { done: 'Done', todo: 'To do', short: 'Short', ready: 'Ready', open: 'Open' };
 
+  // The zones in a stored raid value ('Black Temple + Hyjal Summit', an old 'BT / Hyjal'): the text is cut at + & / ; and commas, and each piece goes through
+  // G.zones.split (the guild's version) so short names become canonical zones; a piece the version does not know keeps its own tile.
   function splitZones(zone) {
-    return String(zone == null ? '' : zone).split(/\s*(?:\+|&|\/|;)\s*|,\s+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    const text = String(zone == null ? '' : zone);
+    const s = st();
+    const gd = s && s.currentGid && s.guilds ? s.guilds[s.currentGid] : null;
+    const own = gd && gd.guild ? gd.guild.gameVersion : null;
+    const versions = own ? [own] : Object.keys(G.zones.ALIASES); // a Home without its guild data yet tries every version
+    const out = [];
+    text.split(/\s*(?:\+|&|\/|;)\s*|,\s+/).map(function (piece) { return piece.trim(); }).filter(Boolean).forEach(function (piece) {
+      let names = [];
+      for (let i = 0; i < versions.length && !names.length; i++) names = G.zones.split(piece, versions[i]);
+      (names.length ? names : [piece]).forEach(function (name) { if (out.indexOf(name) < 0) out.push(name); });
+    });
+    return out;
   }
 
-  function tileOf(name) {
-    const known = ZONE_TILES[String(name).toLowerCase()];
-    if (known) return known;
-    const words = String(name).split(/[^A-Za-z0-9]+/).filter(Boolean);
-    const abbr = words.length > 1 ? words.slice(0, 4).map(function (w) { return w.charAt(0); }).join('') : (words[0] || '').slice(0, 3);
-    return { abbr: abbr.toUpperCase() || '?', tint: 'other' };
-  }
+  const tileOf = function (name) { return G.zones.tile(name); };
 
   function tileHtml(name, big) {
     const t = tileOf(name);
@@ -284,7 +278,7 @@
   function artZones(zone) { return splitZones(zone).slice(0, 2).map(function (name) { return { name: name, tile: tileOf(name) }; }); }
   function hasArt(zone) { return artZones(zone).some(function (z) { return !!z.tile.art; }); }
   function artImagesHtml(zone, size, lazy) {
-    const dim = ART_SIZES[size];
+    const dim = G.zones.ART_SIZES[size];
     return artZones(zone).map(function (z) {
       return z.tile.art
         ? '<img class="gs-hd-artimg" src="/icons/raids/' + z.tile.art + '-' + size + '.webp" alt="' + esc(z.name) + '" width="' + dim.w + '" height="' + dim.h + '"' + (lazy ? ' loading="lazy"' : '') + '>'
