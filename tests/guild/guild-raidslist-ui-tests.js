@@ -294,7 +294,7 @@ const cardOf = (out, id) => out.split('<li class="gs-up">').filter(c => c.includ
     assert(/@media \(hover: hover\) \{ \.gs-up:hover \{[^}]*rgba\(255, 255, 255, 0\.03\)/.test(css));
   });
 
-  await check('card zone art: two art zones = has-art, art layer first with two lazy -md halves and the chip; one zone; none = the plain card; a title that does not name the zones gets sr text', () => {
+  await check('card zone art: two art zones = a 64 px strip first with two lazy -md halves and the chip; one zone; none (or a zone without art) = the bare strip; a title that does not name the zones gets sr text', () => {
     const cards = o => o.split('<li class="gs-up').slice(1).map(c => '<li class="gs-up' + c.split('</li>')[0] + '</li>');
     const out = page(LIST({ upcoming: [
       UP('a', { zone: 'Black Temple + Hyjal Summit', zones: ['Black Temple', 'Hyjal Summit'], title: 'Smoke night' }),
@@ -305,13 +305,13 @@ const cardOf = (out, id) => out.split('<li class="gs-up">').filter(c => c.includ
       UP('f', { zone: 'A', zones: ['Karazhan', 'Barrow Deeps', 'Black Temple'] }),
     ] }));
     const [a, b, c, d, e, f] = cards(out);
-    assert(a.startsWith('<li class="gs-up has-art"><div class="gs-up-bg" aria-hidden="true"><div class="gs-hd-art"><img class="gs-hd-artimg" src="/icons/raids/bt-md.webp" alt="" width="480" height="270" loading="lazy"><img class="gs-hd-artimg" src="/icons/raids/hyjal-md.webp" alt="" width="480" height="270" loading="lazy"></div><div class="gs-up-bgshade"></div><span class="gs-hd-artlabel">BT + HYJAL</span></div><a class="gs-up-link"'), a);
+    assert(a.startsWith('<li class="gs-up"><div class="gs-hd-art is-strip gs-up-art" aria-hidden="true"><img class="gs-hd-artimg" src="/icons/raids/bt-md.webp" alt="" width="480" height="270" loading="lazy"><img class="gs-hd-artimg" src="/icons/raids/hyjal-md.webp" alt="" width="480" height="270" loading="lazy"><span class="gs-hd-artlabel">BT + HYJAL</span></div><a class="gs-up-link"'), a);
     assert(a.includes('<span class="gs-up-title">Smoke night<span class="gs-sr">, Black Temple + Hyjal Summit</span></span>'), 'title without the zones');
     assert.equal(count(a, '<img '), 2);
-    assert(b.includes('has-art') && count(b, '<img ') === 1 && b.includes('kara-md.webp') && b.includes('>KARA</span>') && b.includes('<span class="gs-up-title">Kara alts<span class="gs-sr">, Karazhan</span></span>'));
-    assert(c.startsWith('<li class="gs-up"><a class="gs-up-link"') && !c.includes('<img') && !c.includes('gs-up-bg') && !c.includes('gs-sr">,'), 'no zones = plain card');
+    assert(b.includes('gs-up-art') && count(b, '<img ') === 1 && b.includes('kara-md.webp') && b.includes('>KARA</span>') && b.includes('<span class="gs-up-title">Kara alts<span class="gs-sr">, Karazhan</span></span>'));
+    assert(c.startsWith('<li class="gs-up"><div class="gs-hd-art is-strip gs-up-art" aria-hidden="true"></div><a class="gs-up-link"') && !c.includes('<img') && !c.includes('gs-hd-artlabel') && !c.includes('gs-sr">,'), 'no zones = bare strip');
     assert(d.includes('<span class="gs-up-title">Black Temple + Hyjal Summit</span>') && !d.includes('gs-sr">,'), 'the title already names the zones');
-    assert(e.startsWith('<li class="gs-up"><a') && !e.includes('gs-up-bg'), 'a zone without art = plain card');
+    assert(e.startsWith('<li class="gs-up"><div class="gs-hd-art is-strip gs-up-art" aria-hidden="true"></div><a') && !e.includes('<img'), 'a zone without art = bare strip');
     assert.equal(count(f, '<img '), 1);
     assert(f.includes('gs-hd-artimg is-fill') && f.includes('>KARA + BD + BT</span>'), 'first two zones as halves (one filler), the chip names all three');
     // the shared helper keeps the Home and raid page output
@@ -319,7 +319,8 @@ const cardOf = (out, id) => out.split('<li class="gs-up">').filter(c => c.includ
     assert.equal(G.zones.artImagesHtml([], {}), '');
     assert.equal(G.zones.artImagesHtml(['Barrow Deeps'], { size: 'md' }), '');
     const css = read('guild.css');
-    assert(/\.gs-up\.has-art \{[^}]*padding-top: 56px/.test(css) && css.includes('rgba(13, 14, 16, 0.04) 0%, rgba(13, 14, 16, 0.3) 18%, rgba(13, 14, 16, 0.86) 40%, rgba(13, 14, 16, 0.94) 100%') && /\.gs-up-status \.gs-hd-chip \{ background-color: #131416/.test(css));
+    assert(/\.gs-hd-art\.is-strip \{ height: 64px/.test(css) && /\.gs-hd-art\.gs-up-art \{[^}]*width: calc\(100% \+ 32px\)[^}]*margin: -16px -16px 0/.test(css) && /\.gs-hd-art\.gs-up-art \.gs-hd-artlabel \{ left: 8px; bottom: 8px/.test(css), 'the 64 px edge-to-edge strip');
+    assert(!/has-art|gs-up-bg|gs-up-bgshade/.test(css.slice(css.indexOf('.gs-up-grid'), css.indexOf('/* Past table'))), 'the full-card shade rules are gone');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);
