@@ -126,7 +126,7 @@
     const opts = o || {};
     const size = opts.size === 'sm' ? 'sm' : 'md';
     const max = opts.max > 0 ? opts.max : MAX_ZONES;
-    const esc = G.ui && G.ui.esc ? G.ui.esc : function (s) { return String(s); };
+    const esc = G.ui.esc; // read at call time: ui.js loads after zones.js
     const tiles = (Array.isArray(names) ? names : []).slice(0, max).map(function (name) { return { name: name, tile: tile(name) }; });
     if (!tiles.some(function (z) { return !!z.tile.art; })) return '';
     const dim = ART_SIZES[size];
